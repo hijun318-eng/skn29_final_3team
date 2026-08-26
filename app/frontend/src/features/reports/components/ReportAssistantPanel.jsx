@@ -1,6 +1,7 @@
 /** 선택한 Artifact를 근거로 보고서 AI 초안 요청과 승인 가능한 새 분석 계획을 표시한다. */
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Bot, Check, Database, LoaderCircle, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+import { reportEvidenceLabel } from "../../../contracts/report";
 
 /** 실제 assistant API가 반환한 모델·시도 횟수·처리 시간만 성공 영수증으로 표시하며 trace가 없으면 렌더링하지 않는다. */
 function AssistantReceipt({ trace }) {
@@ -79,6 +80,19 @@ function AssistantWorkflowStatus({ status, errorCode, requiredAction, retryable,
   </article>;
 }
 
+/** 서버가 허용한 대기 phase만 취소하고 실행·저장 중에는 새로고침 안내만 표시한다. */
+function AssistantCancelAction({ status, onCancel, pending }) {
+  if (["ready", "waiting_patch_approval", "waiting_approval"].includes(status)) {
+    return <button type="button" className="report-assistant-cancel" onClick={onCancel} disabled={pending}>
+      <X size={12} aria-hidden="true" />Assistant 요청 취소
+    </button>;
+  }
+  if (["running_data_agent", "waiting_artifact", "saving_revision"].includes(status)) {
+    return <p className="report-assistant-processing-note">처리 중에는 취소할 수 없습니다. 잠시 후 서버 상태를 새로 확인해 주세요.</p>;
+  }
+  return null;
+}
+
 /** 현재 사용자 요청의 안전한 서버 평가만 표시하고 전체 사용자 비용·원문 trace는 노출하지 않는다. */
 function AssistantEvaluationReceipt({ evaluation }) {
   if (!evaluation) return null;
@@ -115,20 +129,51 @@ function AssistantApproval({ request, status, onApprove, onReject, pending }) {
 
 /** 서버가 검증·dry-run한 제한 patch의 요약과 연산을 적용 전에 표시한다. */
 function AssistantPatchApproval({ preview, status, onApprove, onReject, pending }) {
+  const [selectedIndexes, setSelectedIndexes] = useState([]);
+  useEffect(() => {
+    if (!preview) {
+      setSelectedIndexes([]);
+      return;
+    }
+    setSelectedIndexes(
+      preview.approvedIndexes?.length
+        ? [...preview.approvedIndexes]
+        : preview.items.map((item) => item.index),
+    );
+  }, [preview?.requestId]);
   if (!preview) return null;
   const waiting = status === "waiting_patch_approval";
+  const toggleOperation = (index) => setSelectedIndexes((current) => (
+    current.includes(index)
+      ? current.filter((item) => item !== index)
+      : [...current, index].sort((left, right) => left - right)
+  ));
   return <section className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label="AI 보고서 변경안">
     <header><ShieldCheck size={15} aria-hidden="true" /><span><b>{waiting ? "AI 변경안 검토 필요" : "Revision 저장 재개"}</b><small>승인 전에는 현재 보고서를 변경하지 않습니다.</small></span></header>
     <dl>
       <div><dt>변경 요약</dt><dd>{preview.summary}</dd></div>
       <div><dt>적용 작업</dt><dd>{preview.operations.map((operation) => PATCH_OPERATION_LABEL[operation] || operation).join(" · ")}</dd></div>
       {preview.evidenceRefs?.length
-        ? <div><dt>사용 근거</dt><dd>{preview.evidenceRefs.map((ref) => ref === "artifact_narrative" ? "Artifact 요약" : ref.replace("metric_", "지표 근거 ")).join(" · ")}</dd></div>
+        ? <div><dt>사용 근거</dt><dd>{preview.evidenceRefs.map(reportEvidenceLabel).join(" · ")}</dd></div>
         : null}
     </dl>
+    <div className="report-assistant-patch-items" aria-label="적용할 변경 선택">
+      {preview.items.map((item) => <label key={`${preview.requestId}-${item.index}`}>
+        <input
+          type="checkbox"
+          checked={selectedIndexes.includes(item.index)}
+          disabled={!waiting || pending}
+          onChange={() => toggleOperation(item.index)}
+        />
+        <span><b>{PATCH_OPERATION_LABEL[item.operation] || item.operation} · {item.target}</b>
+          {item.before == null ? null : <small><em>변경 전</em>{item.before}</small>}
+          {item.after == null ? null : <small><em>변경 후</em>{item.after}</small>}
+        </span>
+      </label>)}
+    </div>
     <nav aria-label="AI 변경안 결정">
       {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />취소</button>}
-      <button type="button" className="primary" onClick={onApprove} disabled={pending}><Check size={12} />{waiting ? "변경안 적용" : "Revision 저장 재개"}</button>
+      <button type="button" className="primary" onClick={() => onApprove(selectedIndexes)} disabled={pending || !selectedIndexes.length}><Check size={12} />{waiting ? `선택 ${selectedIndexes.length}개 적용` : "Revision 저장 재개"}</button>
     </nav>
   </section>;
 }
@@ -145,6 +190,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   instruction,
   onApproveDataRequest,
   onApprovePatch,
+  onCancel,
   onInstructionChange,
   onRejectDataRequest,
   onRejectPatch,
@@ -250,6 +296,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
         onRetry={onRetry}
         pending={Boolean(pending)}
       />
+      <AssistantCancelAction status={workflowStatus} onCancel={onCancel} pending={Boolean(pending)} />
       <AssistantEvaluationReceipt evaluation={evaluation} />
       {waiting && <article className="report-assistant-message assistant pending"><LoaderCircle size={15} aria-hidden="true" /><p>근거를 유지하며 초안을 구성하고 있습니다.</p></article>}
     </div>

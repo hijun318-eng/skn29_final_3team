@@ -23,10 +23,10 @@ function normalizeBlock(block: ReportBlockResponse): DraftLayoutBlock {
     id: block.block_id,
     title: block.title,
     artifactId: block.artifact_id ?? undefined,
-    queryId: block.query_id ?? undefined,
     columns: block.columns,
     type: block.type,
     content: block.content,
+    evidenceRefs: [...(block.evidence_refs ?? [])],
     x: block.x,
     y: block.y,
     w: block.w,
@@ -107,7 +107,6 @@ export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
   if (["table", "chart", "artifact"].includes(type) && !block.artifactId) {
     throw new Error("table·chart·artifact block은 Artifact가 필요합니다.");
   }
-  if (type === "artifact" && !block.queryId) throw new Error("artifact block은 Query 참조가 필요합니다.");
   const content = block.content ?? "";
   if (type === "text" && !content.trim()) throw new Error("text block 내용은 비어 있을 수 없습니다.");
   const w = block.w ?? block.columns;
@@ -115,7 +114,6 @@ export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
     block_id: block.id,
     title: block.title,
     ...(block.artifactId ? { artifact_id: block.artifactId } : {}),
-    ...(block.queryId ? { query_id: block.queryId } : {}),
     columns: w,
     type,
     x: block.x ?? 0,
@@ -123,6 +121,7 @@ export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
     w,
     h: block.h ?? 1,
     content,
+    evidence_refs: [...(block.evidenceRefs ?? [])],
   };
 }
 

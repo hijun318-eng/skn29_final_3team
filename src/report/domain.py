@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
+import re
 
 REPORT_CONTRACT_VERSION = "REPORT-v1.0.0"
 REPORT_PROPOSAL_VERSION = "REPORT-v1.1.0-DRAFT"
@@ -89,6 +90,7 @@ class ReportBlock:
     w: int | None = None
     h: int = 1
     content: str = ""
+    evidence_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.block_id or not self.title:
@@ -105,6 +107,14 @@ class ReportBlock:
             raise ValueError("table·chart·artifact block은 artifact_id가 필요합니다.")
         if self.type is BlockType.TEXT and not self.content.strip():
             raise ValueError("text block은 빈 content를 허용하지 않습니다.")
+        if (
+            len(self.evidence_refs) > 16
+            or len(set(self.evidence_refs)) != len(self.evidence_refs)
+            or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", ref) for ref in self.evidence_refs)
+        ):
+            raise ValueError("Report block 근거 별칭 계약이 올바르지 않습니다.")
+        if self.type is not BlockType.TEXT and self.evidence_refs:
+            raise ValueError("근거 별칭은 text block에만 저장할 수 있습니다.")
 
 
 @dataclass(frozen=True, slots=True)

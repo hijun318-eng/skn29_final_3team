@@ -379,3 +379,123 @@ Agent는 이번 범위에서 호출하거나 변경하지 않았다.
 이번 검증은 strict contract와 deterministic fake 기반이다. 실제 GPT 비용 호출, PostgreSQL migration
 적용, Browser 상호작용은 실행하지 않았으므로 5차 live E2E 완료로 표현하지 않는다. 1~5차 실제
 GPT·PostgreSQL·Browser 통합 검증과 2차 근거 ref의 block·Canvas 영속 여부 결정이 후속 작업이다.
+
+## 2026-08-26 GPT 고도화 6차: Report block 근거 영속화
+
+- 신규 migration `20260826_39`로 Report block에 최대 16개의 검증 근거 별칭을 저장
+- Assistant `add_text`·본문 변경 `update_text`가 서버에서 검증한 `evidence_refs`를 최종 CAS
+  Revision까지 전달하며 이동·복제·직전 Revision 복원에서도 기존 근거를 보존
+- 일반 Report 생성 API가 임의 근거를 만들지 못하게 차단하고, 수동 편집은 같은 본문·같은 근거를
+  보존하거나 근거를 지우는 동작만 허용
+- Client는 근거 있는 본문을 직접 수정할 때 이전 근거를 자동 해제해 변경된 문장에 오래된 근거가
+  남지 않도록 처리
+- Report definition 응답과 저장 요청에 근거 별칭을 연결하고 Canvas·속성 패널에서 실제 Artifact
+  ID·query ID·checksum 대신 안전한 사용자용 라벨로 표시
+- AnalysisController, Trino, DataHub, 별도 GPT 호출, 관리자 운영 UI 변경 없음
+- Backend·AI 관련 unittest 109개와 Frontend 전체 테스트 24개 통과
+
+이번 검증은 deterministic fake와 contract/unit 테스트다. migration 39의 실제 PostgreSQL 적용,
+실제 GPT patch 승인, Browser Canvas·새로고침 복구는 실행하지 않았으므로 live E2E 완료로 표현하지
+않는다.
+
+## 2026-08-26 GPT 고도화 7·8차: operation 미리보기와 선택 승인
+
+- 서버가 검증·dry-run한 patch를 operation별 `target`, `before`, `after` 미리보기로 만들어 Assistant
+  session에 저장하고 새로고침 뒤에도 같은 승인 카드를 복구
+- block ID, Artifact ID, query ID, checksum과 SQL은 미리보기에서 제외하고 사용자용 제목·배치·본문만
+  공개
+- 승인 카드에서 각 operation을 체크해 일부만 승인할 수 있고, 선택된 operation으로 다시 server
+  dry-run한 뒤에만 기존 CAS Report Revision 저장기를 호출
+- operation 인덱스는 서버 patch 순서의 0-based 값이며, 범위 밖·중복·비정렬·빈 선택은 모델·DB
+  mutation 전에 거부
+- 기존 Client의 `operation_indexes` 없는 요청은 전체 operation 승인으로 유지
+- 최초 선택을 session에 원자 저장하고 동일 patch request ID의 중복 승인은 같은 선택일 때만 멱등;
+  다른 선택으로 재호출하면 `ASSISTANT_STATE_CONFLICT`
+- migration 이전 완료 patch의 NULL 선택값은 기존 계약대로 전체 승인으로 해석해 중복 승인 호환 유지
+- 감사용 원본 patch는 보존하고 실제 Revision에는 선택된 operation만 적용
+- 신규 migration `20260826_40`으로 안전한 preview JSON과 최대 12개의 승인 operation 인덱스를 추가
+- AnalysisController, Trino, DataHub, 별도 GPT 호출과 관리자 운영 UI 변경 없음
+- AI·Backend 관련 unittest 116개와 Frontend 전체 테스트 24개, production build, OpenAPI,
+  문서화·아키텍처·repository 감사·compileall·`git diff --check` 통과
+
+이번 검증은 deterministic fake와 contract/unit 테스트다. migration 40의 실제 PostgreSQL 적용,
+실제 GPT patch 생성, Browser 부분 승인·새로고침 복구는 실행하지 않았으므로 live E2E 완료로
+표현하지 않는다.
+
+## 2026-08-26 GPT 고도화 9차: saving_revision 안전 재개
+
+- 새로고침으로 복구한 session이 `saving_revision`이면 기존 patch 승인 또는 분석 계획 승인 API를
+  재사용해 Revision 저장만 한 번 재개
+- patch 재개 시 8차에서 저장한 `approved_operation_indexes`를 그대로 전달하고 controller 중간
+  경계가 선택값을 누락하던 연결 오류 수정
+- Backend는 이미 승인된 session의 claim을 다시 획득하지 않고 저장된 patch·Artifact·Report version을
+  재검증한 뒤 기존 CAS Revision transaction만 실행
+- transaction commit 뒤 응답이 끊긴 경우 session 조회가 `completed`를 반환하므로 추가 Revision을
+  만들지 않음
+- Report version이 바뀌었거나 patch·Artifact 검증이 실패하면 기존 typed conflict로 중단
+- GPT, AnalysisController를 다시 호출하는 별도 복구 경로, queue, worker, migration은 추가하지 않음
+- 1~9차 관련 Backend·AI unittest 116개와 Frontend 전체 테스트 24개, production build 및 정적 검사 통과
+
+## 2026-08-26 GPT 고도화 10차: 부분 승인 operation 의존성 검증
+
+- 공통 Report patch 적용기에 typed operation 조합 검증을 추가해 모델 제안·부분 승인·재개가 같은
+  정책을 사용
+- 삭제할 block을 동시에 수정·이동·복제하거나 새 block의 anchor로 사용하는 조합을 승인 전에 차단
+- 같은 Report 제목, 같은 text 수정, 같은 block 이동·삭제를 한 patch에서 반복하는 모호한 변경 차단
+- 서로 다른 대상의 제목 변경·block 삭제처럼 독립 operation 조합은 기존대로 허용
+- 충돌 조합은 DB 승인 claim과 Report Revision 저장 전에 `REPORT_ASSISTANT_PATCH_INVALID`로 종료
+- 실제 block ID를 오류 응답에 포함하지 않고 Client 전용 의존성 규칙이나 신규 migration은 추가하지 않음
+- 1~10차 관련 Backend·AI unittest 119개, Frontend 테스트 24개와 production build 및 정적 검사 통과
+
+## 2026-08-26 검증보고서 결함 수정과 11차 안전 취소
+
+- `new_data` 분석 성공 직후 최종 typed patch·preview·model trace를 `saving_revision` 전이에 함께
+  고정하고, 이후 재개 경로는 저장된 patch만 사용하도록 분리했다. 따라서 재개 중 GPT와
+  `AnalysisController`를 다시 호출하지 않는다.
+- Report 공개 Artifact 응답과 definition block 응답에서 실제 query ID와 Artifact checksum 값을
+  제거했다. Report 저장소는 브라우저 입력 대신 Artifact ID로 승인 lineage와 query ID를 다시
+  조회해 저장한다.
+- 비저장 품질 검토도 모델 latency·attempt·token·추정 비용을 기존 request ID 평가 레코드에
+  누적하고, token·cost 제한을 모델 결과 공개 전에 적용한다. provider usage나 가격이 없으면
+  `null`을 유지한다.
+- `report.assistant.turn`의 내부 식별자 금지 문구를 `Never emit ...`으로 바로잡고 prompt를
+  `PROMPT-v1.8.1`, release를 `MODEL-RELEASE-v1.33.0`으로 갱신했다.
+- `ready`, `waiting_patch_approval`, `waiting_approval`만 취소할 수 있는 Assistant 전용 cancel API와
+  Client action을 추가했다. 취소는 모델·분석·Revision을 실행하지 않으며 terminal 재호출은
+  멱등이다. 실행·Artifact 대기·Revision 저장 중에는 취소 가능하다고 가장하지 않고 안내만 한다.
+- operation 선택값은 공개 응답을 만들기 전에 typed contract로 재검증해 음수·중복·비정렬·범위
+  초과 저장값을 fail-closed한다. 기존 migration 40은 수정하지 않았다.
+
+현재 검증은 deterministic fake·unit/contract 범위다. migration 39·40 실제 PostgreSQL 적용과
+실제 GPT·Browser 통합 E2E는 별도로 남아 있으며, Trino·DataHub `new_data` live E2E도 완료로
+표현하지 않는다.
+
+검증 결과: Report 등록을 포함한 Backend·AI unittest 136개 중 134개 통과·환경 통합 2개 skip,
+Frontend 24개 전부 통과, production build·OpenAPI·문서화·아키텍처·repository 감사·compileall·
+`git diff --check` 통과. Alembic head는 단일 `20260826_40`이다.
+
+## 2026-08-26 migration 40 기준 실제 GPT·PostgreSQL·Browser 편집 E2E
+
+- 격리 DB `app_db_report_assistant_e2e`에 Alembic 단일 head `20260826_40`을 실제 적용하고
+  test 전용 승인 Artifact와 Report definition만 준비했다.
+- 실제 OpenAI strict proposal은 제목 변경과 근거 기반 텍스트 블록 추가 두 operation을 반환했고,
+  승인 전 Canvas는 최신 Report `v10`과 1개 block을 그대로 유지했다.
+- 제목 operation을 해제하고 텍스트 추가만 승인해 `approved_operation_indexes={1}`과 새 draft
+  `v11` 한 건이 저장됐다. 제목은 유지되고 근거가 결속된 텍스트 block만 추가됐다.
+- Revision 저장 중 Backend 재시작 상황에서 session이 `saving_revision`을 보존했고, 같은 승인 요청을
+  다시 보내자 GPT·AnalysisController 재호출 없이 고정 patch로 `completed`에 도달했다.
+- 새로고침 뒤 목록과 Canvas에서 `v11`, 기존 차트, 추가 텍스트 block이 동일하게 복구됐다.
+- Browser DOM에는 query ID, 64자리 checksum과 SQL이 없었고 console error도 없었다.
+
+실제 PostgreSQL에서만 드러난 nullable bind parameter 결함 두 건도 함께 수정했다.
+
+- Report block lineage 검증의 nullable query ID를 명시적 `text` cast로 결속해 psycopg의
+  `AmbiguousParameter` 500을 제거했다.
+- 평가 upsert의 nullable 예상 비용을 명시적 `numeric` cast로 결속해 평가 레코드 누락을 제거했다.
+  수정 후 격리 DB에서 `existing_artifact`, `approved`, `completed`, `revision_created=true` 평가
+  read-back을 확인했다. 실제 provider token 사용량과 가격 정보가 없는 필드는 `null`로 유지했다.
+
+회귀 검증은 Backend·AI 137개 중 135개 통과·환경 통합 2개 skip, Frontend 24개 전부 통과,
+production build·OpenAPI·문서화·아키텍처·repository 감사·compileall·`git diff --check` 통과다.
+이번 결과는 기존 승인 Artifact 편집 E2E이며 Trino·DataHub와 Analysis Agent를 사용하는
+`new_data` live E2E는 실행하지 않았다.

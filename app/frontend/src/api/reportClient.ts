@@ -67,6 +67,34 @@ function assertAssistantSession(
     && (!session.patch_request_id || !session.patch_summary || !session.patch_operations?.length)) {
     throw new Error("patch 승인 대기 세션에는 변경 미리보기가 필요합니다.");
   }
+  const patchPreview = Array.isArray(session.patch_preview)
+    ? session.patch_preview
+    : (session.patch_operations || []).map((operation, index) => ({
+        index,
+        operation,
+        target: operation,
+        before: null,
+        after: null,
+      }));
+  const approvedOperationIndexes = Array.isArray(session.approved_operation_indexes)
+    ? session.approved_operation_indexes
+    : [];
+  if ((session.phase === "waiting_patch_approval"
+      && patchPreview.length !== session.patch_operations.length)
+    || patchPreview.some((item, index) => (
+      item.index !== index
+      || item.operation !== session.patch_operations[index]
+      || typeof item.target !== "string"
+      || !item.target.trim()
+    ))
+    || approvedOperationIndexes.some((index, position, indexes) => (
+      !Number.isInteger(index)
+      || index < 0
+      || index >= session.patch_operations.length
+      || (position > 0 && indexes[position - 1] >= index)
+    ))) {
+    throw new Error("Report Assistant patch 미리보기·선택 계약이 올바르지 않습니다.");
+  }
   if (!Array.isArray(session.patch_evidence_refs)) {
     throw new Error("Report Assistant 근거 참조 계약이 올바르지 않습니다.");
   }
@@ -76,7 +104,11 @@ function assertAssistantSession(
   if (session.retryable && (session.phase !== "failed" || session.required_action !== "RETRY")) {
     throw new Error("재시도 가능한 Report Assistant 세션 계약이 올바르지 않습니다.");
   }
-  return session;
+  return {
+    ...session,
+    patch_preview: patchPreview,
+    approved_operation_indexes: approvedOperationIndexes,
+  };
 }
 
 function assertAssistantSessionRequest(
@@ -346,6 +378,16 @@ export function createReportClient(
         `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}`,
       )), assistantRequestId);
     },
+    async cancelAssistantSession(assistantRequestId: string) {
+      const session = assertAssistantSessionRequest(await parse<ReportAssistantSessionResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/cancel`,
+        "POST",
+      )), assistantRequestId);
+      if (!["cancelled", "completed", "failed"].includes(session.phase)) {
+        throw new Error("취소 응답은 terminal Report Assistant 상태여야 합니다.");
+      }
+      return session;
+    },
     async retryAssistantSession(assistantRequestId: string) {
       const session = assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
         `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/retry`,
@@ -409,11 +451,19 @@ export function createReportClient(
       assertAssistantSuggestions(review.suggestions);
       return review;
     },
-    async approveAssistantPatch(assistantRequestId: string, requestId: string) {
+    async approveAssistantPatch(
+      assistantRequestId: string,
+      requestId: string,
+      operationIndexes?: readonly number[],
+    ) {
       const session = assertAssistantSessionRequest(await parse<ReportAssistantSessionResponse>(await send(
         `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/patch-approval`,
         "POST",
-        { request_id: requestId, approved: true },
+        {
+          request_id: requestId,
+          approved: true,
+          ...(operationIndexes ? { operation_indexes: operationIndexes } : {}),
+        },
       )), assistantRequestId);
       if (!["saving_revision", "completed"].includes(session.phase)) {
         throw new Error("승인된 Report Assistant patch가 저장 phase로 전이되지 않았습니다.");

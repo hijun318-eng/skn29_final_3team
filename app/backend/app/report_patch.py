@@ -32,6 +32,48 @@ class VerifiedArtifactBinding:
             raise ValueError("검증 Artifact binding이 완전하지 않습니다.")
 
 
+def validate_report_patch_operation_dependencies(patch: ReportAssistantPatch) -> None:
+    """삭제 대상과 같은 block을 동시에 사용하거나 반복 변경하는 모순 patch를 거부한다.
+
+    선택 조합의 권위는 모델 설명이 아니라 typed operation의 기존 block·anchor 참조다. 실제
+    block ID는 오류에 포함하지 않으며 최종 구조 유효성은 적용기의 dry-run이 이어서 확인한다.
+    """
+
+    removed = {
+        operation.block_id
+        for operation in patch.operations
+        if operation.op == "remove_block"
+    }
+    used_targets = {
+        operation.block_id
+        for operation in patch.operations
+        if operation.op in {"update_text", "reposition_block", "duplicate_block"}
+    }
+    anchors: set[str] = set()
+    for operation in patch.operations:
+        if operation.op == "reposition_block" and operation.after_block_id:
+            anchors.add(operation.after_block_id)
+        elif (
+            operation.op in {"add_text", "add_artifact_view"}
+            and operation.placement.after_block_id
+        ):
+            anchors.add(operation.placement.after_block_id)
+    if removed & (used_targets | anchors):
+        raise ValueError("Report patch operation 선택에 서로 충돌하는 block 변경이 있습니다.")
+
+    unique_targets: set[tuple[str, str]] = set()
+    for operation in patch.operations:
+        if operation.op == "set_report_title":
+            key = (operation.op, "report")
+        elif operation.op in {"update_text", "reposition_block", "remove_block"}:
+            key = (operation.op, operation.block_id)
+        else:
+            continue
+        if key in unique_targets:
+            raise ValueError("Report patch가 같은 대상을 중복 변경합니다.")
+        unique_targets.add(key)
+
+
 def _insert_block(
     blocks: list[ReportBlock],
     block: ReportBlock,
@@ -59,6 +101,7 @@ def _insert_block(
             item.w,
             item.h,
             item.content,
+            item.evidence_refs,
         )
         for item in blocks
     ]
@@ -76,6 +119,7 @@ def _insert_block(
             block.w,
             block.h,
             block.content,
+            block.evidence_refs,
         )
     )
 
@@ -94,6 +138,7 @@ def apply_report_assistant_patch(
 
     if definition.status is not DefinitionStatus.DRAFT:
         raise ValueError("Report Assistant patch는 draft에만 적용할 수 있습니다.")
+    validate_report_patch_operation_dependencies(patch)
     if patch.operations[0].op == "restore_previous_revision":
         if (
             previous_definition is None
@@ -146,6 +191,7 @@ def apply_report_assistant_patch(
                     source.w,
                     source.h,
                     source.content,
+                    source.evidence_refs,
                 ),
                 source.block_id,
             )
@@ -173,6 +219,7 @@ def apply_report_assistant_patch(
                     width,
                     source.h,
                     source.content,
+                    source.evidence_refs,
                 ),
                 operation.after_block_id,
             )
@@ -197,6 +244,7 @@ def apply_report_assistant_patch(
                 source.w,
                 source.h,
                 operation.content or source.content,
+                operation.evidence_refs if operation.content is not None else source.evidence_refs,
             )
             continue
         width = 6 if operation.placement.width == "half" else 12
@@ -234,6 +282,7 @@ def apply_report_assistant_patch(
                 width,
                 _DEFAULT_HEIGHT[block_type],
                 content,
+                operation.evidence_refs if operation.op == "add_text" else (),
             ),
             effective_anchor,
         )

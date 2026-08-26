@@ -225,6 +225,35 @@ class ReportArtifactRepositoryMixin:
                 },
             )
 
+    async def cancel_assistant_session(
+        self,
+        assistant_request_id: str,
+    ) -> tuple[dict[str, object], bool]:
+        """취소 가능한 대기 phase만 원자 종결하고 terminal 재호출은 현재 상태를 반환한다."""
+
+        request_id = _uuid(assistant_request_id, "assistant_request_id")
+        async with self._sessionmaker.begin() as session:
+            claimed = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET phase = 'cancelled', status = 'failed',
+                        error_code = 'ASSISTANT_CANCELLED', completed_at = now()
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND phase IN ('ready', 'waiting_patch_approval', 'waiting_approval')
+                      AND status = 'running'
+                    RETURNING assistant_request_id
+                    """
+                ),
+                {"request_id": request_id, "owner_id": self._owner_id},
+            )).scalar_one_or_none()
+        current = await self.get_assistant_session(assistant_request_id)
+        if claimed is not None:
+            return current, True
+        if current.get("phase") in {"completed", "failed", "cancelled"}:
+            return current, False
+        raise ValueError("ASSISTANT_CANCEL_NOT_ALLOWED")
+
     async def start_assistant_session(
         self,
         assistant_request_id: str,
@@ -454,7 +483,8 @@ class ReportArtifactRepositoryMixin:
                            report_patch_json, status, instruction_hash,
                            decision_hash, model_version, prompt_id,
                            prompt_version, prompt_hash, approved_at, rejected_at,
-                           retry_of_assistant_request_id, retry_created_at
+                           retry_of_assistant_request_id, retry_created_at,
+                           patch_preview_json, approved_operation_indexes
                     FROM report_v1.report_assistant_requests
                     WHERE retry_of_assistant_request_id = :source_request_id
                       AND owner_id = :owner_id
@@ -481,7 +511,8 @@ class ReportArtifactRepositoryMixin:
                            decision_hash, model_version, prompt_id,
                            prompt_version, prompt_hash,
                            approved_at, rejected_at,
-                           retry_of_assistant_request_id, retry_created_at
+                           retry_of_assistant_request_id, retry_created_at,
+                           patch_preview_json, approved_operation_indexes
                     FROM report_v1.report_assistant_requests
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase IS NOT NULL
@@ -579,6 +610,7 @@ class ReportArtifactRepositoryMixin:
         prompt_version: str,
         prompt_hash: str,
         patch: dict[str, object],
+        patch_preview: tuple[dict[str, object], ...],
         instruction_text: str,
         assistant_message: str,
     ) -> dict[str, object]:
@@ -592,6 +624,8 @@ class ReportArtifactRepositoryMixin:
                     SET phase = 'waiting_patch_approval',
                         patch_request_id = :patch_request_id,
                         report_patch_json = CAST(:patch AS jsonb),
+                        patch_preview_json = CAST(:patch_preview AS jsonb),
+                        approved_operation_indexes = NULL,
                         instruction_hash = :instruction_hash,
                         decision_hash = :decision_hash,
                         model_version = :model_version,
@@ -612,12 +646,14 @@ class ReportArtifactRepositoryMixin:
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, patch_request_id, report_patch_json,
+                              patch_preview_json, approved_operation_indexes,
                               result_artifact_id, result_revision, error_code
                     """
                 ),
                 {
                     "patch_request_id": _uuid(patch_request_id, "patch_request_id"),
                     "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
+                    "patch_preview": json.dumps(patch_preview, ensure_ascii=False),
                     "instruction_hash": instruction_hash,
                     "decision_hash": decision_hash,
                     "model_version": model_version,
@@ -652,6 +688,7 @@ class ReportArtifactRepositoryMixin:
         prompt_version: str,
         prompt_hash: str,
         patch: dict[str, object],
+        patch_preview: tuple[dict[str, object], ...],
         instruction_text: str,
         assistant_message: str,
     ) -> dict[str, object]:
@@ -665,6 +702,8 @@ class ReportArtifactRepositoryMixin:
                     UPDATE report_v1.report_assistant_requests
                     SET patch_request_id = :patch_request_id,
                         report_patch_json = CAST(:patch AS jsonb),
+                        patch_preview_json = CAST(:patch_preview AS jsonb),
+                        approved_operation_indexes = NULL,
                         instruction_hash = :instruction_hash,
                         decision_hash = :decision_hash,
                         model_version = :model_version,
@@ -680,6 +719,7 @@ class ReportArtifactRepositoryMixin:
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, patch_request_id, report_patch_json,
+                              patch_preview_json, approved_operation_indexes,
                               result_artifact_id, result_revision, error_code
                     """
                 ),
@@ -689,6 +729,7 @@ class ReportArtifactRepositoryMixin:
                         expected_patch_request_id, "expected_patch_request_id"
                     ),
                     "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
+                    "patch_preview": json.dumps(patch_preview, ensure_ascii=False),
                     "instruction_hash": instruction_hash,
                     "decision_hash": decision_hash,
                     "model_version": model_version,
@@ -716,6 +757,7 @@ class ReportArtifactRepositoryMixin:
         assistant_request_id: str,
         patch_request_id: str,
         approved: bool,
+        operation_indexes: tuple[int, ...] | None = None,
     ) -> tuple[dict[str, object], bool]:
         """owner·session·patch 요청·phase를 한 CAS로 확인해 최초 결정만 claim한다."""
 
@@ -729,7 +771,11 @@ class ReportArtifactRepositoryMixin:
                     UPDATE report_v1.report_assistant_requests
                     SET phase = :target_phase,
                         approved_at = CASE WHEN :approved THEN now() ELSE approved_at END,
-                        rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END
+                        rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END,
+                        approved_operation_indexes = CASE
+                            WHEN :approved THEN CAST(:operation_indexes AS smallint[])
+                            ELSE approved_operation_indexes
+                        END
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND patch_request_id = :patch_request_id
                       AND phase = 'waiting_patch_approval' AND status = 'running'
@@ -742,6 +788,7 @@ class ReportArtifactRepositoryMixin:
                     "request_id": request_uuid,
                     "owner_id": self._owner_id,
                     "patch_request_id": patch_uuid,
+                    "operation_indexes": list(operation_indexes) if operation_indexes is not None else None,
                 },
             )).scalar_one_or_none()
         current = await self.get_assistant_session(assistant_request_id)
@@ -750,7 +797,17 @@ class ReportArtifactRepositoryMixin:
             current.get("approved_at") is not None
             if approved else current.get("rejected_at") is not None
         )
-        if claimed is None and (not same_request or not already_decided):
+        stored_selection = tuple(current.get("approved_operation_indexes") or ())
+        if (
+            approved
+            and not stored_selection
+            and current.get("approved_at") is not None
+            and current.get("patch_request_id") is not None
+        ):
+            patch = current.get("report_patch_json") or {}
+            stored_selection = tuple(range(len(patch.get("operations") or ())))
+        same_selection = not approved or stored_selection == tuple(operation_indexes or ())
+        if claimed is None and (not same_request or not already_decided or not same_selection):
             raise ValueError("현재 승인 대기 중인 patch 요청과 일치하지 않습니다.")
         return current, claimed is not None
 
@@ -822,6 +879,8 @@ class ReportArtifactRepositoryMixin:
                         data_request_id = :data_request_id,
                         patch_request_id = NULL,
                         report_patch_json = NULL,
+                        patch_preview_json = NULL,
+                        approved_operation_indexes = NULL,
                         approved_at = NULL,
                         rejected_at = NULL,
                         result_artifact_id = NULL,
@@ -996,10 +1055,11 @@ class ReportArtifactRepositoryMixin:
                             INSERT INTO report_v1.report_blocks
                                 (definition_id, definition_version, block_id, title,
                                  artifact_id, query_id, columns, block_type, x, y, w, h,
-                                 content, analysis_definition_id, analysis_definition_version)
+                                 content, evidence_refs, analysis_definition_id,
+                                 analysis_definition_version)
                             VALUES (:definition_id, :version, :block_id, :title,
                                     :artifact_id, :query_id, :columns, :block_type,
-                                    :x, :y, :w, :h, :content,
+                                    :x, :y, :w, :h, :content, :evidence_refs,
                                     :analysis_definition_id, :analysis_definition_version)
                             """
                         ),
@@ -1009,7 +1069,7 @@ class ReportArtifactRepositoryMixin:
                             "block_id": _uuid(block.block_id, "block_id"),
                             "title": block.title,
                             "artifact_id": block_artifact_id,
-                            "query_id": block.query_id,
+                            "query_id": lineage[2] if lineage else None,
                             "columns": block.columns,
                             "block_type": block.type.value,
                             "x": block.x,
@@ -1017,6 +1077,7 @@ class ReportArtifactRepositoryMixin:
                             "w": block.w,
                             "h": block.h,
                             "content": block.content,
+                            "evidence_refs": list(block.evidence_refs),
                             "analysis_definition_id": lineage[0] if lineage else None,
                             "analysis_definition_version": lineage[1] if lineage else None,
                         },
@@ -1270,8 +1331,16 @@ class ReportArtifactRepositoryMixin:
         assistant_request_id: str,
         data_request_id: str,
         artifact: dict[str, object],
+        *,
+        decision_hash: str,
+        model_version: str,
+        prompt_id: str,
+        prompt_version: str,
+        prompt_hash: str,
+        patch: dict[str, object],
+        patch_preview: tuple[dict[str, object], ...],
     ) -> dict[str, object]:
-        """검증된 Artifact lineage를 저장하고 Revision 저장 대기 phase로 원자 전이한다."""
+        """검증된 Artifact lineage와 합성 patch를 고정하고 Revision 저장 대기로 원자 전이한다."""
 
         async with self._sessionmaker.begin() as session:
             row = (await session.execute(
@@ -1280,7 +1349,14 @@ class ReportArtifactRepositoryMixin:
                     UPDATE report_v1.report_assistant_requests
                     SET phase = 'saving_revision', result_artifact_id = :artifact_id,
                         result_query_id = :query_id,
-                        result_artifact_checksum = :artifact_checksum
+                        result_artifact_checksum = :artifact_checksum,
+                        decision_hash = :decision_hash,
+                        model_version = :model_version,
+                        prompt_id = :prompt_id,
+                        prompt_version = :prompt_version,
+                        prompt_hash = :prompt_hash,
+                        report_patch_json = CAST(:patch AS jsonb),
+                        patch_preview_json = CAST(:patch_preview AS jsonb)
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND data_request_id = :data_request_id
                       AND phase = 'waiting_artifact' AND status = 'running'
@@ -1291,6 +1367,13 @@ class ReportArtifactRepositoryMixin:
                     "artifact_id": _uuid(str(artifact["artifact_id"]), "artifact_id"),
                     "query_id": str(artifact["trino_query_id"]),
                     "artifact_checksum": str(artifact["artifact_checksum"]),
+                    "decision_hash": decision_hash,
+                    "model_version": model_version,
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_hash": prompt_hash,
+                    "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
+                    "patch_preview": json.dumps(patch_preview, ensure_ascii=False),
                     "request_id": _uuid(assistant_request_id, "assistant_request_id"),
                     "owner_id": self._owner_id,
                     "data_request_id": _uuid(data_request_id, "data_request_id"),

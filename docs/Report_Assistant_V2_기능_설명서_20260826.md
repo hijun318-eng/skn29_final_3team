@@ -8,9 +8,9 @@
 
 - 저장소: `report-assistant-advanced`
 - 공유 브랜치: `seung`
-- 문서 확인 기준 커밋: `0ea675cf3560973e8931e634bc3844f0b727bcc8`
+- 문서 확인 기준 커밋: `ed16f1fb` 이후 로컬 근거 영속화 변경
 - 문서 기준일: 2026-08-26
-- 현재 작업 tree migration head: `20260826_38` (`seung` 마지막 공유 커밋은 `20260825_36`)
+- 현재 작업 tree migration head: `20260826_39` (`seung` 마지막 공유 커밋은 `ed16f1fb`)
 
 실제 구현 여부의 최종 권위는 현재 코드, OpenAPI, migration과 실행 결과다. 다른 브랜치에서
 migration 번호를 재배치했다면 번호가 아니라 revision graph와 실제 schema를 함께 확인한다.
@@ -35,6 +35,15 @@ Artifact와 현재 Report draft를 읽고 제한된 변경안을 생성하며, �
 10. 분석 결과 Artifact의 owner·request·query·checksum lineage 재검증
 11. 실패 유형별 안전한 사용자 조치 및 새 session 재시도
 12. 모델 계약·지연·token·예상 비용·승인·Revision 결과 평가
+13. 승인 전 변경안 재수정 대화와 최신 patch ID 충돌 차단
+14. 비저장 보고서 품질 검토
+15. 최대 다섯 승인 Artifact를 이용한 종합 편집
+16. Report·선택 block 문맥형 후속 작업 제안
+17. 검증된 텍스트 근거의 Revision·Canvas·새로고침 복구
+18. operation별 변경 전·후 미리보기
+19. 독립 patch operation 선택 승인과 동일 선택 멱등 처리
+20. `saving_revision` 새로고침 복구와 CAS Revision 저장 재개
+21. 부분 승인 operation의 삭제·수정·이동·anchor 충돌 검증
 
 ## 3. 구현 범위와 현재 판정
 
@@ -48,8 +57,14 @@ Artifact와 현재 Report draft를 읽고 제한된 변경안을 생성하며, �
 | 새 데이터 분석 코드 경로 | 구현 및 unit/contract 확인 | 승인·AnalysisController·Artifact 검증·Revision |
 | Trino·DataHub `new_data` live E2E | 미완료 | dependency readiness 미확보 |
 | 변경안에 대한 추가 수정 대화 | 구현·contract/unit 확인 | 최신 patch ID를 결속한 전체 대체 patch, 승인 전 무저장 |
-| 텍스트 Artifact 근거 참조 검증 | 구현·contract/unit 확인 | 안전한 catalog 별칭, 서버 ref 검증, 승인 카드 표시 |
-| 여러 Artifact 동시 종합 | 미구현 | session당 Artifact 한 개 결속 |
+| 텍스트 Artifact 근거 참조 검증 | 구현·contract/unit 확인 | 안전한 catalog 별칭, 서버 ref 검증, 승인 카드·Revision·Canvas 표시 |
+| 여러 Artifact 동시 종합 | 구현·contract/unit 확인 | session당 최대 5개 owner·checksum 결속 |
+| 비저장 품질 검토 | 구현·contract/unit 확인 | finding 선택 전 Report·Revision 무변경 |
+| 문맥형 후속 작업 제안 | 구현·contract/unit 확인 | 별도 GPT 호출·자동 적용 없이 composer만 채움 |
+| operation 변경 전·후 미리보기 | 구현·contract/unit 확인 | 내부 ID 없이 서버 생성 preview를 session에 저장 |
+| patch 선택 승인 | 구현·contract/unit 확인 | 선택 인덱스 CAS·server dry-run·다른 중복 선택 차단 |
+| 중단된 Revision 저장 재개 | 구현·contract/unit 확인 | 기존 승인 API 재사용·선택 보존·CAS 중복 방지 |
+| operation 의존성 검증 | 구현·contract/unit 확인 | 삭제 target·anchor 충돌과 동일 대상 중복 변경 차단 |
 
 `model=ready`, 화면 렌더링 또는 fake 테스트만으로 전체 Agent E2E 완료라고 판정하지 않는다.
 
@@ -163,7 +178,9 @@ existing_artifact
 → 서버 dry-run
 → waiting_patch_approval
 ├─ 거절: rejected_at 기록 → Report 무변경 → ready
-└─ 승인: saving_revision → CAS Revision → completed
+└─ 전체 또는 일부 operation 선택 승인
+    → 선택 patch 서버 dry-run
+    → saving_revision → CAS Revision → completed
 ```
 
 지원 operation은 다음 8종이다.
@@ -181,6 +198,10 @@ existing_artifact
 
 모델은 절대 좌표, 실제 Artifact ID, query ID나 checksum을 patch에 넣을 수 없다. 서버가 현재
 Report와 `VerifiedArtifactBinding`을 사용해 최종 값을 계산한다.
+
+승인 카드의 각 operation에는 사용자용 대상과 변경 전·후가 표시된다. 선택을 생략한 기존 Client는
+전체 operation을 승인하며, 선택할 때는 서버 응답 순서의 0-based 인덱스를 오름차순으로 전달한다.
+감사용 원본 patch는 유지하지만 실제 Revision에는 선택된 operation만 적용한다.
 
 ### 7.4 새 데이터 계획
 
@@ -209,7 +230,7 @@ new_data
 | `POST` | `/reports/assistant/sessions` | definition/version/artifact | `ready` session |
 | `GET` | `/reports/assistant/sessions/{assistant_request_id}` | 없음 | 현재 서버 session |
 | `POST` | `/reports/assistant/sessions/{assistant_request_id}/messages` | `instruction` | proposal + session |
-| `POST` | `/reports/assistant/sessions/{assistant_request_id}/patch-approval` | request ID + approved | patch 결정 후 session |
+| `POST` | `/reports/assistant/sessions/{assistant_request_id}/patch-approval` | request ID + approved + 선택 operation | patch 결정 후 session |
 | `POST` | `/reports/assistant/sessions/{assistant_request_id}/approval` | request ID + approved | 분석 계획 결정 후 session |
 | `POST` | `/reports/assistant/sessions/{assistant_request_id}/retry` | 없음 | 새 `ready` session |
 | `GET` | `/reports/assistant/sessions/{assistant_request_id}/evaluation` | 없음 | 자신의 안전한 평가 |
@@ -245,7 +266,8 @@ new_data
 ```json
 {
   "request_id": "00000000-0000-4000-8000-000000000003",
-  "approved": true
+  "approved": true,
+  "operation_indexes": [0]
 }
 ```
 
@@ -253,6 +275,8 @@ new_data
 - 분석 계획 결정에는 `analysis_plan.request_id`를 전달한다.
 - 클라이언트가 새 request ID를 생성하면 안 된다.
 - URL session ID와 body request ID를 혼동하면 서버가 `409`로 닫는다.
+- `operation_indexes`를 생략하면 전체 patch 승인이고, 명시할 때는 비어 있지 않은 정렬·고유
+  인덱스만 허용한다.
 
 ### 8.4 핵심 Session 응답 필드
 
@@ -268,6 +292,23 @@ new_data
   "patch_request_id": "...",
   "patch_summary": "요약을 줄이고 차트를 위로 이동합니다.",
   "patch_operations": ["update_text", "reposition_block"],
+  "patch_preview": [
+    {
+      "index": 0,
+      "operation": "update_text",
+      "target": "핵심 요약",
+      "before": "본문: 기존 요약",
+      "after": "본문: 두 문장 요약"
+    },
+    {
+      "index": 1,
+      "operation": "reposition_block",
+      "target": "매출 차트",
+      "before": "12/12 폭 · 3행",
+      "after": "6/12 폭 · 보고서 끝"
+    }
+  ],
+  "approved_operation_indexes": [],
   "result_artifact_id": null,
   "result_revision": null,
   "error_code": null,
@@ -277,7 +318,7 @@ new_data
 }
 ```
 
-응답에는 patch의 전체 본문, SQL, raw prompt, raw model response, credential을 포함하지 않는다.
+응답에는 내부 patch JSON, SQL, raw prompt, raw model response, credential을 포함하지 않는다.
 
 ## 9. HTTP 오류와 클라이언트 처리
 
@@ -428,6 +469,8 @@ SQL, 사용자 지시 원문과 raw model response는 평가 레코드나 API에
 | `20260825_36` | 실패 session retry lineage와 unique child |
 | `20260826_37` | bounded 원문 turn 정리를 위한 runtime DELETE 권한 |
 | `20260826_38` | 세션별 최대 5개 승인 Artifact의 별칭·순서·checksum 결속 |
+| `20260826_39` | Report block별 검증 근거 별칭 영속화 |
+| `20260826_40` | patch operation 변경 전후 미리보기와 선택 승인 결속 |
 
 공용 또는 운영 DB에 적용하기 전 현재 revision, target DB와 단일 migration head 여부를 확인해야
 한다. 기존 migration을 수정하거나 volume을 초기화하지 않는다.
@@ -444,28 +487,29 @@ SQL, 사용자 지시 원문과 raw model response는 평가 레코드나 API에
 | `tests/frontend/contracts.test.mjs` | URL/body·phase·retry·UI 계약 |
 | `evals/report_assistant_quality_cases.json` | deterministic Assistant 품질 시나리오 |
 
-2026-08-26 현재 변경안 재수정과 근거 참조 계약을 포함한 Backend·AI unittest 100개와 Frontend
-test 24개가 통과했다. 새 기능의 실제 GPT·PostgreSQL·Browser 검증은 아직 실행하지 않았다. 이전
+2026-08-26 현재 operation 의존성 검증까지 포함한 Backend·AI 관련 unittest 119개와
+Frontend test 24개 및 production build가 통과했다. 새 기능의 실제 GPT·PostgreSQL·Browser 검증은
+아직 실행하지 않았다. 이전
 기능의 실제 GPT와 격리 PostgreSQL 편집 E2E 및 Browser 승인·새로고침 복구는 확인한 상태다.
 
 ## 17. 현재 제한과 다음 고도화
 
 ### 현재 제한
 
-- 근거 별칭은 승인 patch와 카드에는 남지만 저장된 Report block에는 아직 영속되지 않는다.
-- session은 승인 Artifact 한 개에 결속된다.
-- Report Assistant 전용 실행 취소 API가 없다.
+- migration `20260826_39`·`20260826_40`의 실제 PostgreSQL 적용과 Canvas·부분 승인 새로고침 Browser
+  검증은 아직 남아 있다.
+- 대기 중인 session은 전용 API로 안전하게 취소할 수 있지만, 이미 실행·저장 중인 원격 작업을
+  강제로 중단하는 worker-level cancellation은 지원하지 않는다.
 - `running_data_agent` 직후 process crash의 완전한 exactly-once 복구는 보장하지 않는다.
 - Trino·DataHub `new_data` live E2E는 미완료다.
 
 ### Trino·DataHub와 무관하게 가능한 다음 고도화
 
-1. 현재 보고서의 중복·장문·표현 불일치를 찾는 비저장 품질 검토
-2. 여러 승인 Artifact를 함께 사용하는 종합 보고서 변경안
-3. 현재 Report와 선택 block에 맞춘 문맥형 추천 요청
-4. 필요성이 확인되면 Report block 근거 영속과 Canvas 복구 migration
+1. 선택 operation 사이의 의미 의존성을 사용자에게 더 명확히 설명하는 검증
+2. 장시간 대화에서 승인 카드 preview의 접근성·모바일 레이아웃 Browser 검증
+3. 실제 PostgreSQL에서 process 중단 시점별 복구 통합 검증
 
-이 항목들은 계획이며 현재 구현 기능으로 소개하면 안 된다.
+이 항목들은 후속 계획이며 현재 구현 기능으로 소개하면 안 된다.
 
 ## 18. 인수인계 체크리스트
 

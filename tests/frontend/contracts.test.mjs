@@ -158,10 +158,13 @@ assert.match(reportSources.page, /onToggleArtifact=\{artifacts\.toggleAssistantA
 assert.match(reportAssistantPanelSource, /failed" && retryable/);
 assert.match(reportAssistantPanelSource, /새 세션으로 다시 시도/);
 assert.match(reportSources.page, /evidenceRefs: lifecycle\.assistantSession\.patch_evidence_refs/);
+assert.match(source("contracts/reportNormalization.ts"), /evidenceRefs: \[\.\.\.\(block\.evidence_refs \?\? \[\]\)\]/);
+assert.match(source("contracts/reportNormalization.ts"), /evidence_refs: \[\.\.\.\(block\.evidenceRefs \?\? \[\]\)\]/);
+assert.match(reportSources.draftState, /change\.content !== block\.content[\s\S]*evidenceRefs: \[\]/);
 assert.match(reportSources.page, /key=\{`\$\{lifecycle\.selectedDefinition\?\.definitionId/);
 assert.match(reportSources.controller, /assistantArtifactIds\.join\(":"\)/);
 assert.match(reportAssistantPanelSource, /사용 근거/);
-assert.match(reportAssistantPanelSource, /artifact_narrative/);
+assert.match(source("contracts/reportContract.ts"), /artifact_narrative/);
 assert.doesNotMatch(reportAssistantPanelSource, /요약을 세 줄로 줄여줘/);
 assert.match(reportAssistantPanelSource, /suggestions\.map/);
 assert.doesNotMatch(reportAssistantPanelSource, /estimated_cost|raw_model_response|sql_text/);
@@ -615,12 +618,16 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     definition_id: "definition-1", definition_version: 2, base_revision: 2,
     artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
     patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [], result_artifact_id: null,
+    patch_preview: [], approved_operation_indexes: [],
     result_revision: null, error_code: null, retryable: false, required_action: "NONE",
     retry_of_assistant_request_id: null,
   };
   const retrySession = url.endsWith("/retry") ? {
     ...session, assistant_request_id: "assistant-2",
     retry_of_assistant_request_id: "assistant/1",
+  } : null;
+  const cancelledSession = url.endsWith("/cancel") ? {
+    ...session, phase: "cancelled", error_code: "ASSISTANT_CANCELLED",
   } : null;
   const patchApproval = url.endsWith("/patch-approval") ? JSON.parse(init.body) : null;
   const approval = url.endsWith("/approval") && !patchApproval ? JSON.parse(init.body) : null;
@@ -643,6 +650,11 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     patch_summary: "표 제목 변경",
     patch_operations: ["set_report_title"],
     patch_evidence_refs: [],
+    patch_preview: [{
+      index: 0, operation: "set_report_title", target: "보고서 제목",
+      before: "기존 제목", after: "새 제목",
+    }],
+    approved_operation_indexes: patchApproval.approved ? patchApproval.operation_indexes || [0] : [],
     result_revision: patchApproval.approved ? 3 : null,
   } : null;
   const messageBody = url.endsWith("/messages") ? JSON.parse(init.body) : null;
@@ -661,7 +673,7 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
       prompt_version: "PROMPT-v1.0.0", prompt_hash: "b".repeat(64), attempts: 1, duration_ms: 10,
     },
   } : null;
-  return new Response(JSON.stringify(review || retrySession || patchSession || approvalSession || (url.endsWith("/messages") ? {
+  return new Response(JSON.stringify(review || retrySession || cancelledSession || patchSession || approvalSession || (url.endsWith("/messages") ? {
     change_kind: instruction === "모호한 요청" ? "clarification" : "existing_artifact",
     message: instruction === "모호한 요청" ? "어느 기간을 기준으로 할까요?" : "기존 근거로 수정할 수 있습니다.",
     suggestions: ["선택한 블록의 제목을 간결하게 바꿔 줘"],
@@ -669,6 +681,10 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
       ...session, phase: "waiting_patch_approval",
       patch_request_id: "patch-1", patch_summary: "표 제목 변경",
       patch_operations: ["set_report_title"], patch_evidence_refs: [],
+      patch_preview: [{
+        index: 0, operation: "set_report_title", target: "보고서 제목",
+        before: "기존 제목", after: "새 제목",
+      }],
     },
   } : session)), { status: 200, headers: { "Content-Type": "application/json" } });
 }, "runtime-token");
@@ -686,6 +702,11 @@ const retriedAssistant = await assistantSessionClient.retryAssistantSession("ass
 assert.equal(retriedAssistant.phase, "ready");
 assert.equal(retriedAssistant.retry_of_assistant_request_id, "assistant/1");
 assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant/sessions/assistant%2F1/retry");
+assert.equal(assistantSessionRequest.init.method, "POST");
+
+const cancelledAssistant = await assistantSessionClient.cancelAssistantSession("assistant/1");
+assert.equal(cancelledAssistant.phase, "cancelled");
+assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant/sessions/assistant%2F1/cancel");
 assert.equal(assistantSessionRequest.init.method, "POST");
 
 await assistantSessionClient.getAssistantSession("assistant/1");
@@ -723,7 +744,7 @@ assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
 });
 
 const approvedPatch = await assistantSessionClient.approveAssistantPatch(
-  "assistant/1", "patch-1",
+  "assistant/1", "patch-1", [0],
 );
 assert.equal(approvedPatch.phase, "completed");
 assert.equal(
@@ -731,7 +752,7 @@ assert.equal(
   "http://backend.test/reports/assistant/sessions/assistant%2F1/patch-approval",
 );
 assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
-  request_id: "patch-1", approved: true,
+  request_id: "patch-1", approved: true, operation_indexes: [0],
 });
 
 const rejectedPatch = await assistantSessionClient.rejectAssistantPatch(

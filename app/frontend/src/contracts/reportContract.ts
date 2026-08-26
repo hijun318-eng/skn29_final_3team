@@ -54,6 +54,7 @@ export function seoulWallClockToIso(value: string): string {
   readonly y?: number;
   readonly w?: number;
   readonly h?: number;
+  readonly evidenceRefs?: readonly string[];
 }
 
 /** 편집기에서 모든 grid 좌표가 확정된 블록이다. */ export type DraftLayoutBlock = ReportBlock & Required<Pick<ReportBlock, "x" | "y" | "w" | "h">>;
@@ -170,7 +171,6 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly block_id: string;
   readonly title: string;
   readonly artifact_id: string | null;
-  readonly query_id: string | null;
   readonly columns: number;
   readonly type: ReportBlockType;
   readonly x: number;
@@ -178,6 +178,7 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly w: number;
   readonly h: number;
   readonly content: string;
+  readonly evidence_refs: readonly string[];
 }
 
 /** 실행 목록 API의 versioned wire envelope다. */ export interface ReportRunListResponse {
@@ -288,6 +289,18 @@ export interface ReportAssistantAnalysisPlan {
   };
 }
 
+/** 내부 식별자 없이 공개하는 patch operation 한 건의 변경 전후다. */
+export interface ReportAssistantPatchPreviewItem {
+  readonly index: number;
+  readonly operation:
+    | "set_report_title" | "add_text" | "update_text" | "add_artifact_view"
+    | "reposition_block" | "remove_block" | "duplicate_block"
+    | "restore_previous_revision";
+  readonly target: string;
+  readonly before: string | null;
+  readonly after: string | null;
+}
+
 /** 대화형 Assistant 세션의 서버 권위 상태 계약이다. */
 export interface ReportAssistantSessionResponse {
   readonly assistant_request_id: string;
@@ -306,6 +319,8 @@ export interface ReportAssistantSessionResponse {
     | "restore_previous_revision"
   )[];
   readonly patch_evidence_refs: readonly string[];
+  readonly patch_preview: readonly ReportAssistantPatchPreviewItem[];
+  readonly approved_operation_indexes: readonly number[];
   readonly result_artifact_id: string | null;
   readonly result_revision: number | null;
   readonly error_code: string | null;
@@ -423,6 +438,16 @@ export interface ReportAssistantFailureListResponse {
   readonly w: number;
   readonly h: number;
   readonly content: string;
+  readonly evidence_refs: readonly string[];
+}
+
+/** 서버가 검증한 근거 별칭을 실제 식별자 노출 없이 사람이 읽는 짧은 표기로 바꾼다. */
+export function reportEvidenceLabel(reference: string): string {
+  if (reference === "artifact_narrative") return "Artifact 요약";
+  const artifactMetric = /^artifact_(\d+)_metric_(\d+)$/.exec(reference);
+  if (artifactMetric) return `Artifact ${artifactMetric[1]} · 지표 ${artifactMetric[2]}`;
+  const metric = /^metric_(\d+)$/.exec(reference);
+  return metric ? `지표 근거 ${metric[1]}` : "검증된 Artifact 근거";
 }
 
 /** 서버 응답 계약 버전 불일치를 즉시 예외로 차단한다. */

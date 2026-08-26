@@ -94,6 +94,8 @@ class ReportAssistantPatchTest(unittest.TestCase):
         self.assertEqual("query-new", chart.query_id)
         self.assertEqual(11, chart.y)
         self.assertEqual("기존 요약", result.blocks[0].content)
+        summary = next(block for block in result.blocks if block.title == "전월 비교 요약")
+        self.assertEqual(("artifact_narrative",), summary.evidence_refs)
 
     def test_text_update_and_title_change_do_not_touch_artifact_lineage(self) -> None:
         """기존 근거만 쓰는 편집은 text와 보고서 제목 외 Artifact 참조를 바꾸지 않는다."""
@@ -117,6 +119,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
 
         self.assertEqual("월간 경영 요약", result.title)
         self.assertEqual("수정된 운영 요약", result.blocks[0].content)
+        self.assertEqual(("artifact_narrative",), result.blocks[0].evidence_refs)
         self.assertEqual("artifact-old", result.blocks[1].artifact_id)
         self.assertEqual("query-old", result.blocks[1].query_id)
 
@@ -226,6 +229,47 @@ class ReportAssistantPatchTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             apply_report_assistant_patch(single, patch, self.bindings)
 
+    def test_remove_conflicts_with_same_target_change_or_anchor_use(self) -> None:
+        """삭제 block을 동시에 수정하거나 새 block의 anchor로 사용하는 모순 patch를 거부한다."""
+
+        same_target = ReportAssistantPatch.model_validate({
+            "summary": "요약을 수정한 뒤 삭제합니다.",
+            "operations": [
+                {"op": "update_text", "block_id": "summary", "content": "새 요약"},
+                {"op": "remove_block", "block_id": "summary"},
+            ],
+        })
+        removed_anchor = ReportAssistantPatch.model_validate({
+            "summary": "차트를 기준으로 설명을 추가하고 차트를 삭제합니다.",
+            "operations": [
+                {
+                    "op": "add_text", "title": "설명", "content": "설명입니다.",
+                    "placement": {"after_block_id": "current-chart"},
+                },
+                {"op": "remove_block", "block_id": "current-chart"},
+            ],
+        })
+
+        for conflicting in (same_target, removed_anchor):
+            with self.subTest(summary=conflicting.summary), self.assertRaises(ValueError):
+                apply_report_assistant_patch(self.definition, conflicting, self.bindings)
+
+    def test_independent_title_and_block_removal_can_be_selected_together(self) -> None:
+        """서로 다른 대상을 바꾸는 operation 조합은 기존 부분 승인 범위를 유지한다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "제목을 바꾸고 요약을 삭제합니다.",
+            "operations": [
+                {"op": "set_report_title", "title": "새 보고서"},
+                {"op": "remove_block", "block_id": "summary"},
+            ],
+        })
+
+        result = apply_report_assistant_patch(self.definition, patch, self.bindings)
+
+        self.assertEqual("새 보고서", result.title)
+        self.assertEqual(("current-chart",), tuple(block.block_id for block in result.blocks))
+
     def test_duplicate_block_gets_server_id_and_preserves_artifact_lineage(self) -> None:
         """복제본은 새 서버 ID를 받지만 원본 Artifact와 query lineage는 그대로 공유한다."""
 
@@ -244,6 +288,27 @@ class ReportAssistantPatchTest(unittest.TestCase):
         self.assertEqual(2, len({block.block_id for block in copies}))
         self.assertEqual({"artifact-old"}, {block.artifact_id for block in copies})
         self.assertEqual({"query-old"}, {block.query_id for block in copies})
+
+    def test_structure_operations_preserve_existing_text_evidence(self) -> None:
+        """텍스트 이동·복제는 검증 근거를 보존하고 본문 변경만 새 근거로 교체한다."""
+
+        grounded = self.definition.replace_blocks((
+            ReportBlock(
+                "summary", "운영 요약", None, 12, None, BlockType.TEXT,
+                0, 0, 12, 4, "기존 요약", ("artifact_narrative",),
+            ),
+            self.definition.blocks[1],
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "근거 있는 요약을 복제합니다.",
+            "operations": [{"op": "duplicate_block", "block_id": "summary"}],
+        })
+
+        result = apply_report_assistant_patch(grounded, patch, self.bindings)
+
+        copies = [block for block in result.blocks if block.title == "운영 요약"]
+        self.assertEqual(2, len(copies))
+        self.assertTrue(all(block.evidence_refs == ("artifact_narrative",) for block in copies))
 
     def test_restore_previous_revision_creates_current_snapshot_without_mutating_history(self) -> None:
         """직전 version의 전체 문서 설정과 block을 현재 draft 값으로 복원한다."""

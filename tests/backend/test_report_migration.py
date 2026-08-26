@@ -228,6 +228,31 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("UNIQUE (assistant_request_id, artifact_alias)", source)
         self.assertNotIn("UPDATE artifact.analysis_artifacts", source)
 
+    def test_report_block_evidence_refs_are_additive_and_bounded(self):
+        """근거 영속 migration은 기존 block을 보존하고 별칭 개수만 DB에서 제한한다."""
+
+        source = (MIGRATIONS / "20260826_39_report_block_evidence_refs.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260826_38"', source)
+        self.assertIn("ADD COLUMN evidence_refs text[] NOT NULL DEFAULT", source)
+        self.assertIn("cardinality(evidence_refs) <= 16", source)
+        self.assertNotIn("DROP TABLE report_v1.report_blocks", source)
+
+    def test_report_assistant_patch_selection_is_additive_and_bounded(self):
+        """patch 선택 migration은 39 뒤에서 기존 세션을 보존하고 선택 개수만 제한한다."""
+
+        source = (
+            MIGRATIONS / "20260826_40_report_assistant_patch_selection.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision = "20260826_39"', source)
+        self.assertIn("ADD COLUMN patch_preview_json jsonb", source)
+        self.assertIn("ADD COLUMN approved_operation_indexes smallint[]", source)
+        self.assertIn("cardinality(approved_operation_indexes) BETWEEN 1 AND 12", source)
+        upgrade = source.split("def downgrade", 1)[0]
+        self.assertNotIn("DROP TABLE", upgrade)
+        self.assertNotIn("DELETE FROM", upgrade)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"

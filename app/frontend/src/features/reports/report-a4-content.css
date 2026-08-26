@@ -468,3 +468,10 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+.report-text-evidence {
+  margin: auto 0 0;
+  padding-top: 8px;
+  color: #718096;
+  border-top: 1px solid #dbe4ed;
+  font-size: 9px;
+}

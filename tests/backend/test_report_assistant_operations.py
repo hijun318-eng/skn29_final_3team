@@ -98,6 +98,15 @@ class ReportAssistantOperationsTest(unittest.TestCase):
             source,
         )
 
+    def test_nullable_estimated_cost_has_explicit_postgres_type(self):
+        """비용 미측정값도 실제 PostgreSQL에서 모호한 bind parameter가 되지 않아야 한다."""
+
+        source = Path(
+            "app/backend/app/adapters/report_assistant_operations_repository.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("CAST(:estimated_cost AS numeric)", source)
+        self.assertNotIn("(:estimated_cost IS NOT NULL)", source)
+
     def test_e2e_migration_receipt_uses_current_alembic_head(self):
         source = Path("tests/e2e/prepare_report_assistant_e2e.py").read_text(
             encoding="utf-8"

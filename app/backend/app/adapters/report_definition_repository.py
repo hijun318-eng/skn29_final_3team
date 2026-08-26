@@ -33,13 +33,11 @@ class ReportDefinitionRepositoryMixin:
         session: AsyncSession,
         artifact_id: UUID,
         query_id: str | None,
-    ) -> tuple[UUID, int]:
-        if not query_id:
-            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+    ) -> tuple[UUID, int, str]:
         owned = (await session.execute(
             text(
                 """
-                SELECT l.definition_id, l.definition_version
+                SELECT l.definition_id, l.definition_version, q.trino_query_id
                 FROM artifact.analysis_artifacts a
                 JOIN query.query_executions q
                   ON q.query_execution_id = a.query_execution_id
@@ -49,7 +47,8 @@ class ReportDefinitionRepositoryMixin:
                   AND a.status = 'APPROVED'
                   AND r.status IN ('SUCCEEDED', 'PARTIAL')
                   AND r.user_id = :owner_id
-                  AND q.trino_query_id = :query_id
+                  AND (CAST(:query_id AS text) IS NULL
+                       OR q.trino_query_id = CAST(:query_id AS text))
                 """
             ),
             {
@@ -61,7 +60,7 @@ class ReportDefinitionRepositoryMixin:
         if owned is None:
             raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
 
-        return UUID(str(owned[0])), int(owned[1])
+        return UUID(str(owned[0])), int(owned[1]), str(owned[2])
 
     async def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         """draft 레코드를 저장소의 비동기 트랜잭션 안에서 영속화한다."""
@@ -126,10 +125,10 @@ class ReportDefinitionRepositoryMixin:
                             INSERT INTO report_v1.report_blocks
                                 (definition_id, definition_version, block_id, title,
                                  artifact_id, query_id, columns, block_type, x, y, w, h, content,
-                                 analysis_definition_id, analysis_definition_version)
+                                 evidence_refs, analysis_definition_id, analysis_definition_version)
                             VALUES (:definition_id, :version, :block_id, :title,
                                     :artifact_id, :query_id, :columns, :block_type,
-                                    :x, :y, :w, :h, :content,
+                                    :x, :y, :w, :h, :content, :evidence_refs,
                                     :analysis_definition_id, :analysis_definition_version)
                             """
                         ),
@@ -139,7 +138,7 @@ class ReportDefinitionRepositoryMixin:
                             "block_id": _uuid(block.block_id, "block_id"),
                             "title": block.title,
                             "artifact_id": block_artifact_id,
-                            "query_id": block.query_id,
+                            "query_id": analysis_lineage[2] if analysis_lineage else None,
                             "columns": block.columns,
                             "block_type": block.type.value,
                             "x": block.x,
@@ -147,6 +146,7 @@ class ReportDefinitionRepositoryMixin:
                             "w": block.w,
                             "h": block.h,
                             "content": block.content,
+                            "evidence_refs": list(block.evidence_refs),
                             "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
                             "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
                         },
@@ -186,7 +186,7 @@ class ReportDefinitionRepositoryMixin:
                 text(
                     """
                     SELECT block_id, title, artifact_id, query_id, columns,
-                           block_type, x, y, w, h, content
+                           block_type, x, y, w, h, content, evidence_refs
                     FROM report_v1.report_blocks
                     WHERE definition_id = :definition_id
                       AND definition_version = :version
@@ -213,6 +213,7 @@ class ReportDefinitionRepositoryMixin:
                         block["w"],
                         block["h"],
                         block["content"],
+                        tuple(block["evidence_refs"] or ()),
                     )
                     for block in blocks
                 ),
@@ -422,10 +423,10 @@ class ReportDefinitionRepositoryMixin:
                         INSERT INTO report_v1.report_blocks
                             (definition_id, definition_version, block_id, title,
                              artifact_id, query_id, columns, block_type, x, y, w, h, content,
-                             analysis_definition_id, analysis_definition_version)
+                             evidence_refs, analysis_definition_id, analysis_definition_version)
                         VALUES (:definition_id, :version, :block_id, :title,
                                 :artifact_id, :query_id, :columns, :block_type,
-                                :x, :y, :w, :h, :content,
+                                :x, :y, :w, :h, :content, :evidence_refs,
                                 :analysis_definition_id, :analysis_definition_version)
                         """
                     ),
@@ -435,7 +436,7 @@ class ReportDefinitionRepositoryMixin:
                         "block_id": _uuid(block.block_id, "block_id"),
                         "title": block.title,
                         "artifact_id": block_artifact_id,
-                        "query_id": block.query_id,
+                        "query_id": analysis_lineage[2] if analysis_lineage else None,
                         "columns": block.columns,
                         "block_type": block.type.value,
                         "x": block.x,
@@ -443,6 +444,7 @@ class ReportDefinitionRepositoryMixin:
                         "w": block.w,
                         "h": block.h,
                         "content": block.content,
+                        "evidence_refs": list(block.evidence_refs),
                         "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
                         "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
                     },

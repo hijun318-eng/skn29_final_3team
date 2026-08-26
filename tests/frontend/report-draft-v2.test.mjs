@@ -152,9 +152,9 @@ assert.equal(analysisSources.some((source) => Object.hasOwn(source, "question"))
 const analysisArtifactBefore = structuredClone(analysisLibraryFixture.artifact);
 const adaptedAnalysisArtifact = adaptAnalysisRunArtifact(analysisLibraryFixture.artifact);
 assert.equal(adaptedAnalysisArtifact.artifact_id, "artifact-revenue");
-assert.equal(adaptedAnalysisArtifact.query_id, "query-revenue");
+assert.equal(Object.hasOwn(adaptedAnalysisArtifact, "query_id"), false);
 assert.equal(adaptedAnalysisArtifact.evidence.artifact_id, "artifact-revenue");
-assert.equal(adaptedAnalysisArtifact.evidence.query_id, "query-revenue");
+assert.equal(Object.hasOwn(adaptedAnalysisArtifact.evidence, "query_id"), false);
 assert.equal(adaptedAnalysisArtifact.evidence.product_release_id, "walkerhill-v4-synthetic");
 assert.equal(adaptedAnalysisArtifact.evidence.evidence_cutoff, "2026-07-02");
 assert.equal(adaptedAnalysisArtifact.evidence.period.end_exclusive, "2026-07-01");
@@ -175,12 +175,9 @@ const insertedAnalysisArtifact = insertFrontendArtifact([], {
 assert.equal(insertedAnalysisArtifact.ok, true, insertedAnalysisArtifact.errors?.join("; "));
 const persistedAnalysisBlock = toReportBlockRequest(insertedAnalysisArtifact.blocks[0]);
 assert.equal(persistedAnalysisBlock.type, "artifact");
-assert.equal(persistedAnalysisBlock.query_id, "query-revenue");
+assert.equal(Object.hasOwn(persistedAnalysisBlock, "query_id"), false);
 assert.equal(persistedAnalysisBlock.content, insertedAnalysisArtifact.blocks[0].content);
-assert.throws(
-  () => toReportBlockRequest({ ...insertedAnalysisArtifact.blocks[0], queryId: undefined }),
-  /Query/,
-);
+assert.doesNotThrow(() => toReportBlockRequest({ ...insertedAnalysisArtifact.blocks[0], queryId: undefined }));
 const serverOnlyDefinition = normalizeReportDefinition({
   contract_version: REPORT_CONTRACT_VERSION,
   definition_id: report.definitionId,
@@ -195,7 +192,7 @@ const serverOnlyDefinition = normalizeReportDefinition({
 assert.equal(loadFrontendDraft({ getItem: () => null }, report.definitionId, report.version), null);
 assert.equal(serverOnlyDefinition.blocks[0].type, "artifact");
 assert.equal(serverOnlyDefinition.blocks[0].artifactId, "artifact-revenue");
-assert.equal(serverOnlyDefinition.blocks[0].queryId, "query-revenue");
+assert.equal(serverOnlyDefinition.blocks[0].queryId, undefined);
 assert.equal(serverOnlyDefinition.orientation, "landscape");
 assert.equal(serverOnlyDefinition.currencyDisplayUnit, "million");
 assert.equal(reportArtifactLibrarySources(serverOnlyDefinition, [])[0].artifactRequestId, "request-revenue-new");
@@ -329,9 +326,14 @@ assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block,
 assert.match(reportSources.draftMutations, /\["artifact", "chart", "table"\]\.includes\(block\.type \?\? ""\)[\s\S]*sizeMode: "manual"/);
 assert.match(reportSources.draftState, /density: "comfortable", sizeMode: "auto"/);
 
-assert.equal(reportEvidenceReady(monthlyArtifact), true);
+const publicMonthlyArtifact = {
+  ...monthlyArtifact,
+  query_id: undefined,
+  evidence: { ...monthlyArtifact.evidence, query_id: undefined },
+};
+assert.equal(reportEvidenceReady(publicMonthlyArtifact), true);
 assert.equal(
-  reportEvidenceReady({ ...monthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["unknown_measure"] } }),
+  reportEvidenceReady({ ...publicMonthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["unknown_measure"] } }),
   false,
   "an artifact chart must not reference an ungoverned result field",
 );

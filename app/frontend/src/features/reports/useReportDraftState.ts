@@ -163,7 +163,14 @@ export function useReportDraftState(
 
   const updateBlock = useCallback((blockId: string, change: Partial<DraftReportBlock>, record = true) => {
     commitBlocks((current) => {
-      const next = current.map((block) => block.id === blockId ? { ...block, ...change } : block);
+      const next = current.map((block) => block.id === blockId
+        ? {
+            ...block,
+            ...change,
+            ...(Object.hasOwn(change, "content") && change.content !== block.content
+              && !Object.hasOwn(change, "evidenceRefs") ? { evidenceRefs: [] } : {}),
+          }
+        : block);
       if (!Object.hasOwn(change, "content")) return next;
       return compactDraftLayout(next.map((block) => (
         block.id === blockId && block.type === "text"
@@ -250,7 +257,6 @@ export function useReportDraftState(
       blockId,
       title: source.title || source.definitionTitle || "분석 결과",
       artifactId,
-      artifactChecksum: source.artifactChecksum || artifact?.artifact_checksum,
       ...(!analysisSource ? {
         artifactDefinitionId: source.definitionId,
         artifactDefinitionVersion: source.definitionVersion,
@@ -260,7 +266,6 @@ export function useReportDraftState(
         analysisDefinitionId: source.analysisDefinitionId,
         analysisDefinitionVersion: source.analysisDefinitionVersion,
       }),
-      queryId: source.queryId || artifact?.query_id,
       question: source.question,
       sourceUrns: source.sourceUrns,
       artifact,

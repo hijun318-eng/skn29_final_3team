@@ -25,6 +25,7 @@
 
 - [`Report_Assistant_V2_기능_설명서_20260826.md`](Report_Assistant_V2_기능_설명서_20260826.md): `seung` 브랜치 Report Assistant의 현재 기능, API, 상태 전이, Backend·Client 연동 경계와 미완료 범위를 정리한 개발자 인수인계 문서다.
 - [`Report_Assistant_V2_GPT_고도화_기획_20260826.md`](Report_Assistant_V2_GPT_고도화_기획_20260826.md): Analysis Agent·Trino·DataHub를 제외하고 GPT와 기존 승인 Artifact만 사용하는 변경안 재수정, 근거 결속, 품질 검토, 다중 Artifact와 문맥형 후속 제안 고도화를 정의한다.
+- [`Report_Assistant_V2_GPT_고도화_10_14차_구현계획_20260826.md`](Report_Assistant_V2_GPT_고도화_10_14차_구현계획_20260826.md): 분석 인프라를 제외한 부분 승인 의존성, 안전 취소, 실제 편집 E2E, 접근성, GPT 품질 평가의 10~14차 실행 순서와 완료 조건을 정의한다.
 - `e2e_mvp/source/`: 사용자가 지정한 원문. 이번 재정의의 근거이지만 최신 제품 계약은 아니다.
 - `e2e_mvp/derived/`: 과거 시점의 작업 문서와 실행 기록. 현재 성공을 자동 증명하지 않는다.
 - `reference/Walkerhill_V4.1_SQL_검토.md`: 실행 금지 판정을 포함한 과거 SQL 후보의 읽기 전용 감사 기록이다.

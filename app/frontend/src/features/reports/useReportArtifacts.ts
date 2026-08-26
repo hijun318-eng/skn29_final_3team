@@ -62,10 +62,11 @@ export function useReportArtifacts({
     if (!artifact || !reportEvidenceReady(artifact)) {
       throw new Error("검증 근거가 완전하지 않아 보고서 결과를 표시하지 않습니다.");
     }
+    const publicSource = { ...source };
+    delete publicSource.queryId;
+    delete publicSource.artifactChecksum;
     const hydratedSource = {
-      ...source,
-      queryId: artifact.query_id,
-      artifactChecksum: source.artifactChecksum || artifact.artifact_checksum,
+      ...publicSource,
       sourceUrns: artifact.evidence.sources.map((item: any) => item.urn),
       ...(analysisSource ? {
         sourceKind: "analysisRun",

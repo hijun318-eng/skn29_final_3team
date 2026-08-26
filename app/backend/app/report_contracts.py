@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+import re
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -38,6 +39,18 @@ class ReportBlockRequest(ReportContractModel):
     w: int | None = Field(default=None, ge=1, le=12)
     h: int = Field(default=1, ge=1)
     content: str = ""
+    evidence_refs: tuple[str, ...] = Field(default=(), max_length=16)
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def validate_evidence_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """저장 요청의 근거 별칭을 bounded 고유 식별자로 제한한다."""
+
+        if len(set(value)) != len(value) or any(
+            not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", ref) for ref in value
+        ):
+            raise ValueError("Report block 근거 별칭 계약이 올바르지 않습니다.")
+        return value
 
 
 class CreateReportDefinitionRequest(ReportContractModel):
@@ -90,13 +103,13 @@ class ReportBlockResponse(ReportContractModel):
     title: str
     artifact_id: str | None
     columns: int
-    query_id: str | None
     type: Literal["table", "chart", "artifact", "text"]
     x: int
     y: int
     w: int
     h: int
     content: str
+    evidence_refs: tuple[str, ...] = ()
 
 
 class ReportDefinitionResponse(ReportContractModel):
@@ -140,17 +153,18 @@ class ReportDocumentResponse(ReportContractModel):
 
 
 class ReportArtifactResponse(ReportContractModel):
-    """보고서가 참조할 분석 요약·지표·표·차트·증거를 산출물 ID 및 checksum과 반환한다."""
+    """보고서가 렌더링할 분석 내용과 공개 가능한 증거만 반환한다.
+
+    query ID와 checksum은 저장소 내부 lineage 검증에만 사용하며 브라우저 계약에는 넣지 않는다.
+    """
     contract_version: str
     artifact_id: UUID
-    query_id: str
     title: str
     summary: str
     metrics: tuple[MetricValue, ...] = ()
     table: TableResult
     chart: ChartSpec | None = None
     evidence: Evidence
-    artifact_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class ReportBlockRunResponse(ReportContractModel):
@@ -449,6 +463,20 @@ class ReportAssistantAnalysisPlan(ReportContractModel):
         return value.strip()
 
 
+class ReportAssistantPatchPreviewItem(ReportContractModel):
+    """식별자·SQL 없이 사용자가 승인 전에 확인할 operation별 변경 전후를 반환한다."""
+
+    index: int = Field(ge=0, le=11)
+    operation: Literal[
+        "set_report_title", "add_text", "update_text", "add_artifact_view",
+        "reposition_block", "remove_block", "duplicate_block",
+        "restore_previous_revision",
+    ]
+    target: str = Field(min_length=1, max_length=255)
+    before: str | None = Field(default=None, max_length=4000)
+    after: str | None = Field(default=None, max_length=4000)
+
+
 class ReportAssistantSessionResponse(ReportContractModel):
     """서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다."""
 
@@ -470,6 +498,8 @@ class ReportAssistantSessionResponse(ReportContractModel):
         ], ...
     ] = ()
     patch_evidence_refs: tuple[str, ...] = ()
+    patch_preview: tuple[ReportAssistantPatchPreviewItem, ...] = ()
+    approved_operation_indexes: tuple[int, ...] = ()
     result_artifact_id: UUID | None = None
     result_revision: int | None = None
     error_code: str | None = None
@@ -490,8 +520,19 @@ class ReportAssistantSessionResponse(ReportContractModel):
         has_patch = bool(self.patch_request_id and self.patch_summary and self.patch_operations)
         if self.phase == "waiting_patch_approval" and not has_patch:
             raise ValueError("patch 승인 대기 phase에는 변경 미리보기가 필요합니다.")
+        if self.phase == "waiting_patch_approval" and len(self.patch_preview) != len(
+            self.patch_operations
+        ):
+            raise ValueError("patch 승인 대기 phase에는 operation별 미리보기가 필요합니다.")
         if self.phase == "saving_revision" and self.analysis_plan is None and not has_patch:
             raise ValueError("revision 저장 phase에는 분석 계획 또는 patch 미리보기가 필요합니다.")
+        if self.approved_operation_indexes and (
+            tuple(sorted(set(self.approved_operation_indexes)))
+            != self.approved_operation_indexes
+            or not self.patch_operations
+            or self.approved_operation_indexes[-1] >= len(self.patch_operations)
+        ):
+            raise ValueError("승인 operation 선택이 저장 patch 범위를 벗어났습니다.")
         return self
 
 
@@ -500,6 +541,25 @@ class ReportAssistantApprovalRequest(ReportContractModel):
 
     request_id: UUID
     approved: bool
+
+
+class ReportAssistantPatchApprovalRequest(ReportAssistantApprovalRequest):
+    """patch 승인 시 선택할 0-based operation 인덱스를 정렬된 고유 목록으로 받는다."""
+
+    operation_indexes: tuple[int, ...] | None = Field(default=None, min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def validate_operation_selection(self) -> "ReportAssistantPatchApprovalRequest":
+        """기존 전체 승인 호환을 유지하며 명시 선택은 승인 요청에서만 허용한다."""
+
+        if self.operation_indexes is not None:
+            if not self.approved:
+                raise ValueError("거절 요청에는 operation 선택을 포함할 수 없습니다.")
+            if tuple(sorted(set(self.operation_indexes))) != self.operation_indexes:
+                raise ValueError("operation 인덱스는 중복 없이 오름차순이어야 합니다.")
+            if self.operation_indexes[0] < 0:
+                raise ValueError("operation 인덱스는 0 이상이어야 합니다.")
+        return self
 
 
 class ReportAssistantProposalResponse(ReportContractModel):

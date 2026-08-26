@@ -43,6 +43,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const dndBridgeRef = useRef(null);
   const openRequestRef = useRef(0);
   const assistantRecoveryRef = useRef("");
+  const assistantRevisionResumeRef = useRef("");
 
   const handleHydratedArtifacts = useCallback((artifactMap) => {
     draftBridgeRef.current?.fitHydratedArtifactViews(artifactMap);
@@ -356,8 +357,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     [lifecycle],
   );
 
-  const approveAssistantPatch = useCallback(async () => {
-    const result = await lifecycle.approveAssistantPatch();
+  const approveAssistantPatch = useCallback(async (operationIndexes) => {
+    const result = await lifecycle.approveAssistantPatch(operationIndexes);
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
@@ -368,6 +369,15 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     () => lifecycle.rejectAssistantPatch(),
     [lifecycle],
   );
+
+  const resumeAssistantRevision = useCallback((session) => {
+    if (session?.phase !== "saving_revision") return null;
+    if (session.patch_request_id) {
+      return approveAssistantPatch(session.approved_operation_indexes);
+    }
+    if (session.analysis_plan?.request_id) return approveAssistantDataRequest();
+    return null;
+  }, [approveAssistantDataRequest, approveAssistantPatch]);
 
   const assistantStorageKey = lifecycle.selectedDefinition && selectedArtifactSource?.artifactId
     ? `answervice.report-assistant:${lifecycle.selectedDefinition.definitionId}:${lifecycle.selectedDefinition.version}:${assistantArtifactIds.join(":")}`
@@ -393,6 +403,14 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       if (!session) assistantRecoveryRef.current = "";
     });
   }, [assistantArtifactIds, assistantStorageKey, lifecycle.assistantSession, lifecycle.clearAssistantTrace, lifecycle.restoreAssistantSession, lifecycle.selectedDefinition, selectedArtifactSource]);
+  useEffect(() => {
+    const session = lifecycle.assistantSession;
+    if (session?.phase !== "saving_revision") return;
+    const resumeKey = `${session.assistant_request_id}:${session.patch_request_id || session.analysis_plan?.request_id || ""}`;
+    if (assistantRevisionResumeRef.current === resumeKey) return;
+    assistantRevisionResumeRef.current = resumeKey;
+    void resumeAssistantRevision(session);
+  }, [lifecycle.assistantSession, resumeAssistantRevision]);
   useEffect(() => {
     if (!assistantStorageKey || !lifecycle.assistantSession) return;
     const session = lifecycle.assistantSession;

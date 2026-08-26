@@ -543,6 +543,25 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return session;
   }, [mutate, reportClient]);
 
+  const cancelAssistantSession = useCallback(async () => {
+    const current = assistantSessionRef.current;
+    if (!current || !["ready", "waiting_patch_approval", "waiting_approval"].includes(current.phase)) {
+      return null;
+    }
+    const request = ++assistantRequestRef.current;
+    const session = await mutate(
+      "assistant-cancel",
+      () => reportClient.cancelAssistantSession(current.assistant_request_id),
+      () => assistantRequestRef.current === request,
+    );
+    if (!session || assistantRequestRef.current !== request) return null;
+    setAssistantSession(session);
+    setAssistantReview(null);
+    setAssistantSuggestionSet(null);
+    setNotice("Report Assistant 요청을 취소했습니다. 보고서는 변경되지 않았습니다.");
+    return session;
+  }, [mutate, reportClient]);
+
   const approveAssistantRequest = useCallback(async () => {
     const current = assistantSessionRef.current;
     const requestId = current?.analysis_plan?.request_id;
@@ -582,7 +601,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return session;
   }, [mutate, reportClient]);
 
-  const approveAssistantPatch = useCallback(async () => {
+  const approveAssistantPatch = useCallback(async (operationIndexes?: readonly number[]) => {
     const current = assistantSessionRef.current;
     const requestId = current?.patch_request_id;
     if (!current || !requestId) return null;
@@ -590,6 +609,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     const session = await mutate("assistant-patch-approval", () => reportClient.approveAssistantPatch(
       current.assistant_request_id,
       requestId,
+      operationIndexes,
     ), () => assistantRequestRef.current === request);
     if (!session || assistantRequestRef.current !== request) return null;
     setAssistantSession(session);
@@ -752,6 +772,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     approveAssistantPatch,
     rejectAssistantPatch,
     retryAssistantSession,
+    cancelAssistantSession,
   }), [
     analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, assistantInstruction,
     assistantEvaluation, assistantFailures, assistantOperations, assistantReview, assistantSession, assistantSuggestionSet, assistantTrace, cadence,
@@ -760,7 +781,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     finalDocumentState, findLatestDraft, loadAssistantOperations, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
     pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient, requestAssistantDraft,
-    restoreAssistantSession, retryAssistantSession, runDefinition, runQuery,
+    restoreAssistantSession, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
     runs, scheduleAt, schedules, selectedDefinition, selectedRun, selectedSchedules,
     selectDefinition, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
     reviewAssistantReport, submitAssistantInstruction, visibleDefinitions, visibleRunCount, visibleRuns,

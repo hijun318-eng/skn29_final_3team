@@ -18,6 +18,7 @@ import {
   isCurrencyMetricUnit,
 } from "../reportCurrency";
 import { ReportWholeArtifactBlock } from "../ReportWholeArtifactBlock";
+import { reportEvidenceLabel } from "../../../contracts/report";
 import { sampleReportTableRows } from "../reportTableRows";
 import {
   artifactMetric,
@@ -355,6 +356,11 @@ export const GeneratedReportBlock = memo(function GeneratedReportBlock({
         {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
       </header>
       {content}
+      {block.type === "text" && block.evidenceRefs?.length ? (
+        <p className="report-text-evidence" role="note">
+          근거 · {block.evidenceRefs.map(reportEvidenceLabel).join(" · ")}
+        </p>
+      ) : null}
       {textLayout.overflow && (
         <p className="report-content-overflow-note" role="note">
           내용이 한 페이지를 초과합니다. 편집 화면에서 문단을 나누어 전체 내용을 표시하세요.

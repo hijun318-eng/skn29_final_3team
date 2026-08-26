@@ -235,6 +235,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     onInstructionChange={lifecycle.setAssistantInstruction}
     onApproveDataRequest={page.approveAssistantDataRequest}
     onApprovePatch={page.approveAssistantPatch}
+    onCancel={lifecycle.cancelAssistantSession}
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
     onReview={page.reviewAssistantReport}
@@ -244,9 +245,12 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     patchPreview={lifecycle.assistantSession?.patch_request_id
       && ["waiting_patch_approval", "saving_revision"].includes(lifecycle.assistantSession.phase)
       ? {
+          requestId: lifecycle.assistantSession.patch_request_id,
           summary: lifecycle.assistantSession.patch_summary,
           operations: lifecycle.assistantSession.patch_operations,
           evidenceRefs: lifecycle.assistantSession.patch_evidence_refs,
+          items: lifecycle.assistantSession.patch_preview,
+          approvedIndexes: lifecycle.assistantSession.approved_operation_indexes,
         }
       : null}
     review={lifecycle.assistantReview}

@@ -244,6 +244,13 @@
 [data-report-builder="v2"] .report-assistant-approval dl>div{padding:7px;border:1px solid rgba(239,189,92,.14);border-radius:5px;background:rgba(0,0,0,.13)}
 [data-report-builder="v2"] .report-assistant-approval dt{color:#a78d5b;font-size:7px}
 [data-report-builder="v2"] .report-assistant-approval dd{margin:3px 0 0;color:#e5d8be;font-size:8px;line-height:1.45}
+[data-report-builder="v2"] .report-assistant-patch-items{margin-top:8px;display:grid;gap:5px}
+[data-report-builder="v2"] .report-assistant-patch-items label{display:flex;align-items:flex-start;gap:6px;padding:7px;border:1px solid rgba(239,189,92,.18);border-radius:5px;background:rgba(0,0,0,.13);cursor:pointer}
+[data-report-builder="v2"] .report-assistant-patch-items input{margin-top:2px;accent-color:#176fe5}
+[data-report-builder="v2"] .report-assistant-patch-items span,[data-report-builder="v2"] .report-assistant-patch-items b,[data-report-builder="v2"] .report-assistant-patch-items small{display:block;min-width:0}
+[data-report-builder="v2"] .report-assistant-patch-items b{color:#e5d8be;font-size:8px}
+[data-report-builder="v2"] .report-assistant-patch-items small{margin-top:4px;color:#bda77e;font-size:7px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+[data-report-builder="v2"] .report-assistant-patch-items em{display:inline;margin-right:4px;color:#7e9fca;font-style:normal}
 [data-report-builder="v2"] .report-assistant-approval nav{margin-top:9px;display:grid;grid-template-columns:1fr 1.4fr;gap:5px}
 [data-report-builder="v2"] .report-assistant-approval button{min-height:30px;display:flex;align-items:center;justify-content:center;gap:4px;color:#bea978;border:1px solid #5b4822;border-radius:5px;background:#17140d;font-size:8px}
 [data-report-builder="v2"] .report-assistant-approval button.primary{color:#fff;border-color:#176fe5;background:#176fe5}
@@ -337,6 +344,9 @@
 .theme-light [data-report-builder="v2"] .report-assistant-approval header small{color:#8c7040}
 .theme-light [data-report-builder="v2"] .report-assistant-approval dl>div{border-color:#eddbb5;background:#fffdf7}
 .theme-light [data-report-builder="v2"] .report-assistant-approval dd{color:#55472f}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-items label{border-color:#eddbb5;background:#fffdf7}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-items b{color:#55472f}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-items small{color:#76654a}
 .theme-light [data-report-builder="v2"] .report-assistant-approval button{color:#735c31;border-color:#ddc390;background:#fff}
 
 [data-report-builder="v2"]:fullscreen{width:100vw;height:100vh;background:#070b11}

@@ -13,8 +13,10 @@ from __future__ import annotations
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 import os
+import re
 from time import monotonic
 from typing import Any
+import unicodedata
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.contracts import AnalysisRequest, ClarificationType, DisambiguationOption, RequestContext
@@ -71,6 +73,65 @@ _ANALYSIS_OPERATIONS = frozenset(
     }
 )
 _ANALYSIS_TIME_BUCKETS = frozenset({"day", "week", "month", "quarter", "year"})
+_KOREAN_CALENDAR_UNITS = {
+    "분기": "quarter",
+    "연도": "year",
+    "년도": "year",
+    "일": "day",
+    "주": "week",
+    "월": "month",
+    "년": "year",
+}
+
+
+def _explicit_calendar_time_bucket(question: str) -> str | None:
+    """명시된 반복 달력 단위를 유한 time-bucket 계약으로만 변환한다.
+
+    날짜의 ``5월``·``2026년`` 자체는 cadence가 아니므로 선택하지 않는다. 한국어의
+    생산적 ``별/마다/매-`` 형태만 인정하고, 서로 다른 단위가 동시에 나타나면 임의
+    우선순위를 두지 않고 ``None``으로 닫는다.
+    """
+
+    normalized = unicodedata.normalize("NFKC", question).casefold()
+    buckets: set[str] = set()
+    for token in re.findall(r"[가-힣]+", normalized):
+        for stem, bucket in _KOREAN_CALENDAR_UNITS.items():
+            if (
+                token.startswith(f"{stem}별")
+                or token.startswith(f"{stem}마다")
+                or token.startswith(f"매{stem}")
+            ):
+                buckets.add(bucket)
+                break
+    return next(iter(buckets)) if len(buckets) == 1 else None
+
+
+def _reconcile_explicit_calendar_bucket(
+    normalized: dict[str, Any],
+    question: str,
+) -> dict[str, Any]:
+    """질문의 명시 cadence와 일반 shape 오판만 ``time_trend``로 결속한다.
+
+    Metric·기간·차원은 추가하지 않는다. 순위나 정확히 두 기간 비교처럼 다른 연산이
+    이미 선택됐거나 cadence가 충돌하면 모델 결정을 덮지 않고 후속 검증에 맡긴다.
+    """
+
+    bucket = _explicit_calendar_time_bucket(question)
+    operation = normalized.get("analysis_operation")
+    if (
+        bucket is None
+        or normalized.get("metric_resolution") != "selected"
+        or enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES)
+        in {"PRESENTATION", "REPORT_ACTION"}
+        or operation not in {None, "aggregate", "breakdown", "time_trend"}
+        or normalized.get("result_limit") is not None
+    ):
+        return normalized
+    reconciled = dict(normalized)
+    reconciled["analysis_operation"] = "time_trend"
+    reconciled["intent_candidates"] = ["time_trend"]
+    reconciled["analysis_time_bucket"] = bucket
+    return reconciled
 
 
 def _reconcile_comparison_axis(
@@ -1190,6 +1251,10 @@ class MetricResolver:
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 기간 재검토 응답은 객체여야 합니다.")
             interpretation_rechecked = True
+        normalized = _reconcile_explicit_calendar_bucket(
+            normalized,
+            payload.question,
+        )
         shape_violation = (
             None
             if interpretation_rechecked
@@ -1204,6 +1269,10 @@ class MetricResolver:
             normalized = await normalize()
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 결과 형태 재검토 응답은 객체여야 합니다.")
+        normalized = _reconcile_explicit_calendar_bucket(
+            normalized,
+            payload.question,
+        )
         normalized = _reconcile_analysis_bucket_signal(normalized)
         periods = _complete_periods_before_as_of(
             _model_periods(normalized.get("period_candidates"), timezone),

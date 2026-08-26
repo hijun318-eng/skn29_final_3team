@@ -64,6 +64,7 @@ from app.services.analysis.responses import _business_metrics  # noqa: E402
 from app.services.analysis.result_validator import PipelineResultValidator  # noqa: E402
 from app.services.context.metric_resolver import (  # noqa: E402
     MetricResolver,
+    _explicit_calendar_time_bucket,
     _validate_selected_data_availability,
 )
 from app.services.context.metric_execution_scope import select_assets_for_metrics  # noqa: E402
@@ -1745,6 +1746,65 @@ def test_selected_analysis_reconciles_a_governed_bucket_after_bounded_recheck() 
         "attempt": 1,
         "violation": "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT",
     }
+    assert structured["analysis_operation"] == "time_trend"
+    assert structured["intent_candidates"] == ["time_trend"]
+    assert structured["analysis_time_bucket"] == "month"
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("객실 매출을 일별로 보여줘", "day"),
+        ("객실 매출을 매주 비교해줘", "week"),
+        ("5월부터 8월까지 객실 매출을 월별로 비교해줘", "month"),
+        ("객실 매출을 분기마다 보여줘", "quarter"),
+        ("객실 매출을 연도별로 보여줘", "year"),
+        ("2026년 5월부터 8월까지 객실 매출", None),
+        ("객실 매출을 월별과 분기별로 보여줘", None),
+    ],
+)
+def test_explicit_calendar_cadence_is_finite_and_ambiguous_safe(
+    question: str,
+    expected: str | None,
+) -> None:
+    """날짜 자체나 충돌 단위를 cadence로 만들지 않고 명시 문법만 typed bucket으로 변환한다."""
+
+    assert _explicit_calendar_time_bucket(question) == expected
+
+
+def test_explicit_calendar_cadence_repairs_dimensionless_shape_without_second_model_call() -> None:
+    """명시 cadence는 차원 없는 breakdown을 추가 모델 호출 없이 time trend로 결속한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _DimensionlessBreakdownNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000043"),
+        trace_id="explicit-calendar-cadence",
+        user_id=UUID("20000000-0000-0000-0000-000000000044"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="2026-08-01 Amount per Event를 월별로 보여줘",
+                parameters={"active": True},
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert len(model.inputs) == 1
     assert structured["analysis_operation"] == "time_trend"
     assert structured["intent_candidates"] == ["time_trend"]
     assert structured["analysis_time_bucket"] == "month"

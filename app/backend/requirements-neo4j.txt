@@ -1,5 +1,0 @@
--r requirements.txt
-
-# 선택형 Graph adapter 전용. 기본 Backend image에는 설치하지 않는다.
-neo4j==6.2.0
-pytz==2026.3.post1

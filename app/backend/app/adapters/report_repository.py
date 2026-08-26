@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.report_artifact_repository import ReportArtifactRepositoryMixin
+from app.adapters.report_assistant_operations_repository import ReportAssistantOperationsRepositoryMixin
 from app.adapters.report_definition_repository import ReportDefinitionRepositoryMixin
 from app.adapters.report_document_repository import PostgresReportDocumentRepositoryMixin
 from app.adapters.report_execution_repository import ReportExecutionRepositoryMixin
@@ -22,6 +23,7 @@ class PostgresReportRepository(
     ReportRunRepositoryMixin,
     ReportExecutionRepositoryMixin,
     ReportArtifactRepositoryMixin,
+    ReportAssistantOperationsRepositoryMixin,
     ReportScheduleRepositoryMixin,
     PostgresReportDocumentRepositoryMixin,
 ):

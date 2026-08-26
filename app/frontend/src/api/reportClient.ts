@@ -26,13 +26,16 @@ import {
   type ReportAssistantPhase,
   type ReportAssistantProposalResponse,
   type ReportAssistantSessionResponse,
+  type ReportAssistantEvaluationResponse,
+  type ReportAssistantFailureListResponse,
+  type ReportAssistantOperationsSummaryResponse,
 } from "../contracts/report.ts";
 import { createUuid } from "../utils/createUuid.ts";
 
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
 const ASSISTANT_PHASES: readonly ReportAssistantPhase[] = [
-  "ready", "waiting_approval", "running_data_agent", "waiting_artifact",
+  "ready", "waiting_patch_approval", "waiting_approval", "running_data_agent", "waiting_artifact",
   "saving_revision", "completed", "failed", "cancelled",
 ];
 
@@ -46,8 +49,12 @@ function assertAssistantSession(
     throw new Error("Report Assistant revision은 1 이상이어야 합니다.");
   }
   if (["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(session.phase)
-    && !session.analysis_plan) {
-    throw new Error("데이터 실행 phase에는 승인 계획이 필요합니다.");
+    && !session.analysis_plan && !session.patch_request_id) {
+    throw new Error("실행 phase에는 분석 계획 또는 patch 요청이 필요합니다.");
+  }
+  if (session.phase === "waiting_patch_approval"
+    && (!session.patch_request_id || !session.patch_summary || !session.patch_operations?.length)) {
+    throw new Error("patch 승인 대기 세션에는 변경 미리보기가 필요합니다.");
   }
   return session;
 }
@@ -310,10 +317,30 @@ export function createReportClient(
       if (proposal.change_kind === "new_data" && session.phase !== "waiting_approval") {
         throw new Error("새 데이터 응답은 승인 대기 세션이어야 합니다.");
       }
-      if (proposal.change_kind === "existing_artifact" && session.phase !== "completed") {
-        throw new Error("기존 Artifact 변경은 완료된 revision이어야 합니다.");
+      if (proposal.change_kind === "existing_artifact" && session.phase !== "waiting_patch_approval") {
+        throw new Error("기존 Artifact 변경은 patch 승인 대기여야 합니다.");
       }
       return { ...proposal, session };
+    },
+    async approveAssistantPatch(assistantRequestId: string, requestId: string) {
+      const session = assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/patch-approval`,
+        "POST",
+        { request_id: requestId, approved: true },
+      )));
+      if (!["saving_revision", "completed"].includes(session.phase)) {
+        throw new Error("승인된 Report Assistant patch가 저장 phase로 전이되지 않았습니다.");
+      }
+      return session;
+    },
+    async rejectAssistantPatch(assistantRequestId: string, requestId: string) {
+      const session = assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/patch-approval`,
+        "POST",
+        { request_id: requestId, approved: false },
+      )));
+      if (session.phase !== "ready") throw new Error("취소된 Report Assistant patch는 ready여야 합니다.");
+      return session;
     },
     async approveAssistantPlan(assistantRequestId: string, requestId: string) {
       const session = assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
@@ -334,6 +361,29 @@ export function createReportClient(
       )));
       if (session.phase !== "ready") throw new Error("거절된 Report Assistant 계획은 ready여야 합니다.");
       return session;
+    },
+    async getAssistantEvaluation(assistantRequestId: string) {
+      return parse<ReportAssistantEvaluationResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/evaluation`,
+      ));
+    },
+    async getAssistantOperationsSummary(startAt?: string, endAt?: string) {
+      const query = new URLSearchParams();
+      if (startAt) query.set("start_at", startAt);
+      if (endAt) query.set("end_at", endAt);
+      const suffix = query.size ? `?${query.toString()}` : "";
+      return parse<ReportAssistantOperationsSummaryResponse>(await send(
+        `/reports/assistant/operations/summary${suffix}`,
+      ));
+    },
+    async getAssistantOperationFailures(startAt?: string, endAt?: string) {
+      const query = new URLSearchParams();
+      if (startAt) query.set("start_at", startAt);
+      if (endAt) query.set("end_at", endAt);
+      const suffix = query.size ? `?${query.toString()}` : "";
+      return parse<ReportAssistantFailureListResponse>(await send(
+        `/reports/assistant/operations/failures${suffix}`,
+      ));
     },
   };
 }

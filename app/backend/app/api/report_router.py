@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 from inspect import isawaitable
 import json
+import logging
 import os
 from typing import Annotated, Any, Awaitable, Callable
 from uuid import uuid4
@@ -59,6 +60,9 @@ from app.report_contracts import (
     ReportAssistantPatch,
     ReportAssistantProposalResponse,
     ReportAssistantSessionResponse,
+    ReportAssistantEvaluationResponse,
+    ReportAssistantFailureListResponse,
+    ReportAssistantOperationsSummaryResponse,
     ReportScheduleListResponse,
     ReportScheduleResponse,
     RunDueReportScheduleResponse,
@@ -67,11 +71,14 @@ from app.report_contracts import (
 
 
 report_router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
     """저장소 column 이름을 공개 Assistant 세션 계약으로 변환한다."""
 
+    raw_patch = session.get("report_patch_json")
+    patch = ReportAssistantPatch.model_validate(raw_patch) if raw_patch else None
     return {
         "assistant_request_id": session["assistant_request_id"],
         "phase": session["phase"],
@@ -80,6 +87,9 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
         "base_revision": session["base_revision"],
         "artifact_id": session["artifact_id"],
         "analysis_plan": session.get("analysis_plan_json"),
+        "patch_request_id": session.get("patch_request_id"),
+        "patch_summary": patch.summary if patch else None,
+        "patch_operations": tuple(operation.op for operation in patch.operations) if patch else (),
         "result_artifact_id": session.get("result_artifact_id"),
         "result_revision": session.get("result_revision"),
         "error_code": session.get("error_code"),
@@ -111,6 +121,38 @@ async def _repository_call(action: Callable[[], Awaitable[Any]]) -> Any:
         raise HTTPException(status_code=404, detail=str(error.args[0])) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+async def _observe_assistant(repository: Any, method: str, *args: Any, **kwargs: Any) -> None:
+    """평가 저장 장애를 핵심 Assistant·Revision 결과와 분리해 안전하게 기록한다."""
+
+    action = getattr(repository, method, None)
+    if not callable(action):
+        return
+    try:
+        await action(*args, **kwargs)
+    except Exception:
+        logger.warning("Report Assistant evaluation write failed", exc_info=False)
+
+
+async def _fail_observed_assistant(
+    repository: Any,
+    assistant_request_id: str,
+    error_code: str,
+    data_request_id: str | None = None,
+) -> None:
+    """핵심 실패 전이를 먼저 저장한 뒤 평가 실패 결과를 별도 transaction으로 갱신한다."""
+
+    await repository.fail_assistant_request(
+        assistant_request_id, error_code, data_request_id
+    )
+    await _observe_assistant(
+        repository,
+        "finalize_assistant_evaluation",
+        assistant_request_id,
+        approval_decision="approved" if data_request_id else None,
+        error_code=error_code,
+    )
 
 
 async def _execute_assistant_analysis(
@@ -185,6 +227,41 @@ def _report_turn_payload(
             ],
         },
     }
+
+
+async def _apply_existing_artifact_patch(
+    repository: Any,
+    definition: Any,
+    artifact: dict[str, Any],
+    patch: ReportAssistantPatch,
+) -> Any:
+    """저장 patch를 현재 owner draft와 검증 Artifact에 dry-run해 저장 가능한 정의를 만든다."""
+
+    from app.report_patch import VerifiedArtifactBinding, apply_report_assistant_patch
+
+    previous_definition = None
+    if patch.operations[0].op == "restore_previous_revision":
+        if definition.version <= 1:
+            raise ValueError("복원할 직전 Report revision을 찾을 수 없습니다.")
+        try:
+            previous_definition = await repository.get_version(
+                definition.definition_id,
+                definition.version - 1,
+            )
+        except KeyError as error:
+            raise ValueError("복원할 직전 Report revision을 찾을 수 없습니다.") from error
+    return apply_report_assistant_patch(
+        definition,
+        patch,
+        {
+            "source_artifact": VerifiedArtifactBinding(
+                str(artifact["artifact_id"]),
+                str(artifact["trino_query_id"]),
+                str(artifact["artifact_checksum"]),
+            )
+        },
+        previous_definition,
+    )
 
 
 async def _compose_assistant_revision(
@@ -637,6 +714,20 @@ async def create_assistant_session(
     """현재 draft와 그 안의 승인 artifact를 검증해 복구 가능한 Assistant 세션을 연다."""
 
     repository = _router(context).repository
+    counter = getattr(repository, "count_recent_assistant_requests", None)
+    if callable(counter):
+        try:
+            hourly_limit = int(os.getenv("REPORT_ASSISTANT_REQUESTS_PER_HOUR", "30"))
+        except ValueError as error:
+            raise HTTPException(status_code=500, detail="Assistant rate limit 설정이 유효하지 않습니다.") from error
+        if hourly_limit < 1:
+            raise HTTPException(status_code=500, detail="Assistant rate limit 설정이 유효하지 않습니다.")
+        recent = await counter(datetime.now(timezone.utc) - timedelta(hours=1))
+        if recent >= hourly_limit:
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "ASSISTANT_RATE_LIMITED"},
+            )
     assistant_request_id = str(uuid4())
     from src.ai.prompt_registry import get_prompt
 
@@ -719,9 +810,50 @@ async def submit_assistant_message(
     model_payload = _report_turn_payload(
         definition, artifact, payload.instruction, history
     )
+    from app.api.router import execution_gate
+    from src.modelops.runtime import estimate_token_count
+
     try:
-        proposal, trace = await generate_report_change_proposal(model_payload)
+        max_input_tokens = int(os.getenv("REPORT_ASSISTANT_MAX_INPUT_TOKENS", "16000"))
+        max_output_tokens = int(os.getenv("REPORT_ASSISTANT_MAX_OUTPUT_TOKENS", "4096"))
+    except ValueError as error:
+        raise HTTPException(status_code=500, detail="Assistant token 제한 설정이 유효하지 않습니다.") from error
+    estimated_input_tokens = estimate_token_count(
+        json.dumps(model_payload, ensure_ascii=False, separators=(",", ":"))
+    )
+    if max_input_tokens < 1 or max_output_tokens < 1:
+        raise HTTPException(status_code=500, detail="Assistant token 제한 설정이 유효하지 않습니다.")
+    if estimated_input_tokens > max_input_tokens:
+        await _observe_assistant(
+            repository, "upsert_assistant_evaluation", assistant_request_id,
+            contract_valid=False, error_code="ASSISTANT_TOKEN_BUDGET_EXCEEDED",
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_TOKEN_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
+        )
+    if not await execution_gate.acquire(0):
+        await _observe_assistant(
+            repository, "upsert_assistant_evaluation", assistant_request_id,
+            contract_valid=False, error_code="ASSISTANT_CONCURRENCY_LIMITED",
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_CONCURRENCY_LIMITED", "assistant_request_id": assistant_request_id},
+        )
+    try:
+        try:
+            proposal, trace = await generate_report_change_proposal(model_payload)
+        finally:
+            execution_gate.release()
     except ReportAssistantModelError as error:
+        await _observe_assistant(
+            repository,
+            "upsert_assistant_evaluation",
+            assistant_request_id,
+            contract_valid=False,
+            error_code="REPORT_ASSISTANT_TURN_MODEL_FAILED",
+        )
         raise HTTPException(
             status_code=502,
             detail={
@@ -729,6 +861,19 @@ async def submit_assistant_message(
                 "assistant_request_id": assistant_request_id,
             },
         ) from error
+    if trace.get("output_tokens") is not None and int(trace["output_tokens"]) > max_output_tokens:
+        await _observe_assistant(
+            repository, "upsert_assistant_evaluation", assistant_request_id,
+            contract_valid=False,
+            model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+            latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+            input_tokens=trace.get("input_tokens"),
+            output_tokens=trace.get("output_tokens"), error_code="ASSISTANT_TOKEN_BUDGET_EXCEEDED",
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_TOKEN_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
+        )
 
     plan = None
     if proposal["change_kind"] == "new_data":
@@ -737,6 +882,18 @@ async def submit_assistant_message(
                 {"request_id": uuid4(), **dict(proposal["analysis_plan"])}
             ).model_dump(mode="json")
         except (TypeError, ValueError) as error:
+            await _observe_assistant(
+                repository,
+                "upsert_assistant_evaluation",
+                assistant_request_id,
+                route="new_data",
+                contract_valid=False,
+                model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+                latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+                input_tokens=trace.get("input_tokens"),
+                output_tokens=trace.get("output_tokens"),
+                error_code="REPORT_ASSISTANT_TURN_MODEL_INVALID",
+            )
             raise HTTPException(
                 status_code=502,
                 detail={
@@ -754,6 +911,7 @@ async def submit_assistant_message(
         json.dumps(decision, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
     instruction_hash = hashlib.sha256(payload.instruction.encode("utf-8")).hexdigest()
+    patch = None
     try:
         if proposal["change_kind"] in {"clarification", "new_data"}:
             saved = await repository.record_assistant_proposal(
@@ -770,36 +928,11 @@ async def submit_assistant_message(
                 str(proposal["change_kind"]),
             )
         else:
-            from app.report_patch import VerifiedArtifactBinding, apply_report_assistant_patch
-
             patch = ReportAssistantPatch.model_validate(proposal["patch"])
-            previous_definition = None
-            if patch.operations[0].op == "restore_previous_revision":
-                if definition.version <= 1:
-                    raise ValueError("복원할 직전 Report revision을 찾을 수 없습니다.")
-                try:
-                    previous_definition = await repository.get_version(
-                        definition.definition_id,
-                        definition.version - 1,
-                    )
-                except KeyError as error:
-                    raise ValueError(
-                        "복원할 직전 Report revision을 찾을 수 없습니다."
-                    ) from error
-            patched = apply_report_assistant_patch(
-                definition,
-                patch,
-                {
-                    "source_artifact": VerifiedArtifactBinding(
-                        str(artifact["artifact_id"]),
-                        str(artifact["trino_query_id"]),
-                        str(artifact["artifact_checksum"]),
-                    )
-                },
-                previous_definition,
-            )
-            saved = await repository.finalize_existing_assistant_patch(
+            await _apply_existing_artifact_patch(repository, definition, artifact, patch)
+            saved = await repository.record_existing_assistant_patch_proposal(
                 assistant_request_id,
+                str(uuid4()),
                 instruction_hash,
                 decision_hash,
                 str(trace["model_version"]),
@@ -807,25 +940,205 @@ async def submit_assistant_message(
                 str(trace["prompt_version"]),
                 str(trace["prompt_hash"]),
                 patch.model_dump(mode="json"),
-                patched,
-                instruction_text=payload.instruction,
-                assistant_message=str(proposal["message"]),
+                payload.instruction,
+                str(proposal["message"]),
             )
     except ValueError as error:
-        if str(error) == "REPORT_REVISION_CONFLICT":
+        error_code = (
+            "REPORT_REVISION_CONFLICT"
+            if str(error) == "REPORT_REVISION_CONFLICT"
+            else "REPORT_ASSISTANT_PATCH_INVALID"
+        )
+        await _observe_assistant(
+            repository,
+            "upsert_assistant_evaluation",
+            assistant_request_id,
+            route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
+            operation_types=(
+                tuple(operation.op for operation in patch.operations)
+                if patch is not None else ()
+            ),
+            contract_valid=True,
+            model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+            latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+            input_tokens=trace.get("input_tokens"),
+            output_tokens=trace.get("output_tokens"),
+            error_code=error_code,
+        )
+        if error_code == "REPORT_REVISION_CONFLICT":
             raise HTTPException(status_code=409, detail=str(error)) from error
         raise HTTPException(
             status_code=502,
             detail={
-                "code": "REPORT_ASSISTANT_PATCH_INVALID",
+                "code": error_code,
                 "assistant_request_id": assistant_request_id,
             },
         ) from error
+    from app.services.report_assistant_operations import estimate_model_cost
+
+    input_tokens = trace.get("input_tokens")
+    output_tokens = trace.get("output_tokens")
+    try:
+        estimated_cost = estimate_model_cost(input_tokens, output_tokens)
+    except RuntimeError:
+        estimated_cost = None
+    raw_cost_limit = os.getenv("REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD", "1.00")
+    try:
+        from decimal import Decimal
+
+        cost_limit = Decimal(raw_cost_limit)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail="Assistant 비용 제한 설정이 유효하지 않습니다.") from error
+    if cost_limit <= 0:
+        raise HTTPException(status_code=500, detail="Assistant 비용 제한 설정이 유효하지 않습니다.")
+    if estimated_cost is not None and estimated_cost > cost_limit:
+        await repository.fail_assistant_request(
+            assistant_request_id, "ASSISTANT_COST_BUDGET_EXCEEDED"
+        )
+        await _observe_assistant(
+            repository, "upsert_assistant_evaluation", assistant_request_id,
+            route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
+            contract_valid=True,
+            model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+            latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens, estimated_cost=estimated_cost,
+            error_code="ASSISTANT_COST_BUDGET_EXCEEDED",
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_COST_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
+        )
+    await _observe_assistant(
+        repository,
+        "upsert_assistant_evaluation",
+        assistant_request_id,
+        route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
+        operation_types=(
+            tuple(operation.op for operation in patch.operations)
+            if proposal["change_kind"] == "existing_artifact" else ()
+        ),
+        contract_valid=True,
+        model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+        latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        estimated_cost=estimated_cost,
+    )
     return {
         "change_kind": proposal["change_kind"],
         "message": proposal["message"],
         "session": _assistant_session_response(saved),
     }
+
+
+@report_router.post(
+    "/reports/assistant/sessions/{assistant_request_id}/patch-approval",
+    operation_id="reportAssistantDecidePatch",
+    response_model=ReportAssistantSessionResponse,
+)
+async def decide_assistant_patch(
+    assistant_request_id: str,
+    payload: ReportAssistantApprovalRequest,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """기존 Artifact patch를 멱등 승인·취소하고 승인된 경우에만 CAS revision을 저장한다."""
+
+    repository = _router(context).repository
+    session = await _repository_call(
+        lambda: _recover_and_get_assistant_session(repository, assistant_request_id)
+    )
+    if str(session.get("patch_request_id")) != str(payload.request_id):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    if session.get("status") != "running":
+        decided_at = session.get("approved_at") if payload.approved else session.get("rejected_at")
+        if decided_at is not None and session["phase"] in {"completed", "failed", "cancelled"}:
+            await _observe_assistant(
+                repository, "finalize_assistant_evaluation", assistant_request_id,
+                approval_decision="approved" if payload.approved else "rejected",
+                revision_created=True if payload.approved and session["phase"] == "completed" else None,
+                duplicate_revision_prevented=bool(payload.approved),
+            )
+            return _assistant_session_response(session)
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    try:
+        decided, claimed = await repository.decide_existing_assistant_patch(
+            assistant_request_id,
+            str(payload.request_id),
+            payload.approved,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        ) from error
+    if not payload.approved:
+        await _observe_assistant(
+            repository, "finalize_assistant_evaluation", assistant_request_id,
+            approval_decision="rejected",
+        )
+        return _assistant_session_response(decided)
+    if decided["phase"] == "completed":
+        await _observe_assistant(
+            repository, "finalize_assistant_evaluation", assistant_request_id,
+            approval_decision="approved", revision_created=True,
+            duplicate_revision_prevented=not claimed,
+        )
+        return _assistant_session_response(decided)
+    if decided["phase"] != "saving_revision":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    try:
+        patch = ReportAssistantPatch.model_validate(decided.get("report_patch_json"))
+        definition = await repository.get_version(
+            str(decided["session_definition_id"]),
+            int(decided["session_definition_version"]),
+        )
+        artifact = await repository.get_assistant_artifact(str(decided["artifact_id"]))
+        patched = await _apply_existing_artifact_patch(
+            repository, definition, artifact, patch
+        )
+        completed = await repository.finalize_existing_assistant_patch(
+            assistant_request_id,
+            str(decided["instruction_hash"]),
+            str(decided["decision_hash"]),
+            str(decided["model_version"]),
+            str(decided["prompt_id"]),
+            str(decided["prompt_version"]),
+            str(decided["prompt_hash"]),
+            patch.model_dump(mode="json"),
+            patched,
+            expected_phase="saving_revision",
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        error_code = (
+            "REPORT_REVISION_CONFLICT"
+            if str(error) == "REPORT_REVISION_CONFLICT"
+            else "REPORT_ASSISTANT_PATCH_INVALID"
+        )
+        await repository.fail_assistant_request(assistant_request_id, error_code)
+        await _observe_assistant(
+            repository, "finalize_assistant_evaluation", assistant_request_id,
+            approval_decision="approved", error_code=error_code,
+        )
+        raise HTTPException(
+            status_code=409 if error_code == "REPORT_REVISION_CONFLICT" else 502,
+            detail={"code": error_code, "assistant_request_id": assistant_request_id},
+        ) from error
+    await _observe_assistant(
+        repository, "finalize_assistant_evaluation", assistant_request_id,
+        approval_decision="approved", revision_created=True,
+        duplicate_revision_prevented=False,
+    )
+    return _assistant_session_response(completed)
 
 
 @report_router.post(
@@ -866,6 +1179,12 @@ async def decide_assistant_plan(
     if session.get("status") != "running":
         decided_at = session.get("approved_at") if payload.approved else session.get("rejected_at")
         if decided_at is not None and session["phase"] in {"completed", "failed", "cancelled"}:
+            await _observe_assistant(
+                repository, "finalize_assistant_evaluation", assistant_request_id,
+                approval_decision="approved" if payload.approved else "rejected",
+                revision_created=True if payload.approved and session["phase"] == "completed" else None,
+                duplicate_revision_prevented=bool(payload.approved),
+            )
             return _assistant_session_response(session)
         raise HTTPException(
             status_code=409,
@@ -883,6 +1202,10 @@ async def decide_assistant_plan(
             detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
         ) from error
     if not payload.approved:
+        await _observe_assistant(
+            repository, "finalize_assistant_evaluation", assistant_request_id,
+            approval_decision="rejected",
+        )
         return _assistant_session_response(decided)
     saved = decided
     if claimed:
@@ -893,7 +1216,8 @@ async def decide_assistant_plan(
                 analysis_context,
             )
         except Exception as error:
-            await repository.fail_assistant_request(
+            await _fail_observed_assistant(
+                repository,
                 assistant_request_id, "ANALYSIS_FAILED", str(payload.request_id)
             )
             raise HTTPException(
@@ -902,7 +1226,8 @@ async def decide_assistant_plan(
             ) from error
         if not isinstance(analysis_response, AnalysisResponse):
             code = "ANALYSIS_RATE_LIMITED" if analysis_response.status_code == 429 else "ANALYSIS_FAILED"
-            await repository.fail_assistant_request(
+            await _fail_observed_assistant(
+                repository,
                 assistant_request_id, code, str(payload.request_id)
             )
             raise HTTPException(
@@ -920,7 +1245,8 @@ async def decide_assistant_plan(
                 and analysis_response.error.code.value == "ACCESS_DENIED"
                 else "ANALYSIS_FAILED"
             )
-            await repository.fail_assistant_request(
+            await _fail_observed_assistant(
+                repository,
                 assistant_request_id, error_code, str(payload.request_id)
             )
             raise HTTPException(
@@ -941,7 +1267,8 @@ async def decide_assistant_plan(
                 assistant_request_id, str(payload.request_id), artifact
             )
         except KeyError as error:
-            await repository.fail_assistant_request(
+            await _fail_observed_assistant(
+                repository,
                 assistant_request_id, "ARTIFACT_NOT_FOUND", str(payload.request_id)
             )
             raise HTTPException(
@@ -954,7 +1281,8 @@ async def decide_assistant_plan(
                 if "checksum" in str(error).lower()
                 else "ARTIFACT_LINEAGE_MISMATCH"
             )
-            await repository.fail_assistant_request(
+            await _fail_observed_assistant(
+                repository,
                 assistant_request_id, code, str(payload.request_id)
             )
             raise HTTPException(
@@ -973,7 +1301,8 @@ async def decide_assistant_plan(
             plan,
         )
     except KeyError as error:
-        await repository.fail_assistant_request(
+        await _fail_observed_assistant(
+            repository,
             assistant_request_id, "ARTIFACT_NOT_FOUND", str(payload.request_id)
         )
         raise HTTPException(
@@ -986,7 +1315,8 @@ async def decide_assistant_plan(
             if str(error) == "REPORT_REVISION_CONFLICT"
             else "REPORT_ASSISTANT_PATCH_INVALID"
         )
-        await repository.fail_assistant_request(
+        await _fail_observed_assistant(
+            repository,
             assistant_request_id, code, str(payload.request_id)
         )
         raise HTTPException(
@@ -994,7 +1324,8 @@ async def decide_assistant_plan(
             detail={"code": code, "assistant_request_id": assistant_request_id},
         ) from error
     except Exception as error:
-        await repository.fail_assistant_request(
+        await _fail_observed_assistant(
+            repository,
             assistant_request_id, "REPORT_ASSISTANT_COMPOSE_FAILED", str(payload.request_id)
         )
         raise HTTPException(
@@ -1004,7 +1335,81 @@ async def decide_assistant_plan(
                 "assistant_request_id": assistant_request_id,
             },
         ) from error
+    await _observe_assistant(
+        repository, "finalize_assistant_evaluation", assistant_request_id,
+        approval_decision="approved", revision_created=True,
+        duplicate_revision_prevented=not claimed,
+    )
     return _assistant_session_response(completed)
+
+
+def _operations_period(start_at: datetime | None, end_at: datetime | None) -> tuple[datetime, datetime]:
+    """운영 조회를 UTC 기준 최대 31일의 유효한 반개구간으로 제한한다."""
+
+    end = end_at or datetime.now(timezone.utc)
+    start = start_at or end - timedelta(days=7)
+    if start.tzinfo is None or end.tzinfo is None or start >= end or end - start > timedelta(days=31):
+        raise HTTPException(status_code=422, detail="운영 조회 기간은 timezone 포함 최대 31일이어야 합니다.")
+    return start, end
+
+
+@report_router.get(
+    "/reports/assistant/operations/summary",
+    operation_id="reportAssistantOperationsSummary",
+    response_model=ReportAssistantOperationsSummaryResponse,
+)
+async def get_assistant_operations_summary(
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+) -> dict[str, Any]:
+    """관리자에게만 기간·분모가 포함된 Assistant 품질·비용 집계를 반환한다."""
+
+    start, end = _operations_period(start_at, end_at)
+    rows = await _repository_call(
+        lambda: _router(context).repository.list_assistant_evaluations(start, end)
+    )
+    from app.services.report_assistant_operations import summarize_evaluations
+
+    summary = summarize_evaluations(rows)
+    return {"period_start": start, "period_end": end, "denominator": len(rows), **summary}
+
+
+@report_router.get(
+    "/reports/assistant/operations/failures",
+    operation_id="reportAssistantOperationsFailures",
+    response_model=ReportAssistantFailureListResponse,
+)
+async def get_assistant_operation_failures(
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+) -> dict[str, Any]:
+    """관리자에게만 raw prompt·SQL·trace가 제거된 실패 평가를 반환한다."""
+
+    start, end = _operations_period(start_at, end_at)
+    rows = await _repository_call(
+        lambda: _router(context).repository.list_assistant_evaluations(
+            start, end, failures_only=True, limit=100
+        )
+    )
+    return {"period_start": start, "period_end": end, "items": rows}
+
+
+@report_router.get(
+    "/reports/assistant/sessions/{assistant_request_id}/evaluation",
+    operation_id="reportAssistantGetEvaluation",
+    response_model=ReportAssistantEvaluationResponse,
+)
+async def get_assistant_evaluation(
+    assistant_request_id: str,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """분석가는 자신의 평가만, 관리자는 전체 평가를 안전한 계약으로 조회한다."""
+
+    return await _repository_call(
+        lambda: _router(context).repository.get_assistant_evaluation(assistant_request_id)
+    )
 
 
 @report_router.post(

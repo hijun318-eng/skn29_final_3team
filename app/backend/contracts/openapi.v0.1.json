@@ -2462,6 +2462,281 @@
         "title": "ReportAssistantDraftResponse",
         "type": "object"
       },
+      "ReportAssistantEvaluationResponse": {
+        "additionalProperties": false,
+        "description": "원문 prompt·SQL 없이 한 Assistant 요청의 모델·승인·Revision 결과를 연결한다.",
+        "properties": {
+          "approval_decision": {
+            "enum": [
+              "approved",
+              "rejected",
+              "pending"
+            ],
+            "title": "Approval Decision",
+            "type": "string"
+          },
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "contract_valid": {
+            "title": "Contract Valid",
+            "type": "boolean"
+          },
+          "cost_is_estimate": {
+            "title": "Cost Is Estimate",
+            "type": "boolean"
+          },
+          "data_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Request Id"
+          },
+          "definition_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Id"
+          },
+          "definition_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Version"
+          },
+          "duplicate_revision_prevented": {
+            "title": "Duplicate Revision Prevented",
+            "type": "boolean"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "estimated_cost": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost"
+          },
+          "evaluated_at": {
+            "format": "date-time",
+            "title": "Evaluated At",
+            "type": "string"
+          },
+          "evaluation_id": {
+            "format": "uuid",
+            "title": "Evaluation Id",
+            "type": "string"
+          },
+          "final_phase": {
+            "title": "Final Phase",
+            "type": "string"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Attempts"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "operation_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Operation Types",
+            "type": "array"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "patch_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Request Id"
+          },
+          "prompt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Id"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "revision_created": {
+            "title": "Revision Created",
+            "type": "boolean"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "enum": [
+                  "existing_artifact",
+                  "new_data"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          }
+        },
+        "required": [
+          "evaluation_id",
+          "assistant_request_id",
+          "contract_valid",
+          "approval_decision",
+          "final_phase",
+          "revision_created",
+          "duplicate_revision_prevented",
+          "cost_is_estimate",
+          "evaluated_at"
+        ],
+        "title": "ReportAssistantEvaluationResponse",
+        "type": "object"
+      },
+      "ReportAssistantFailureListResponse": {
+        "additionalProperties": false,
+        "description": "관리자에게 bounded 기간의 안전한 실패 평가만 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantEvaluationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "items"
+        ],
+        "title": "ReportAssistantFailureListResponse",
+        "type": "object"
+      },
       "ReportAssistantMessageRequest": {
         "additionalProperties": false,
         "description": "ready 세션에 500자 이하의 보고서 변경 지시를 제출한다.",
@@ -2477,6 +2752,179 @@
           "instruction"
         ],
         "title": "ReportAssistantMessageRequest",
+        "type": "object"
+      },
+      "ReportAssistantOperationsSummaryResponse": {
+        "additionalProperties": false,
+        "description": "관리자용 기간·분모와 nullable 품질·비용 집계를 반환한다.",
+        "properties": {
+          "approval_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Rate"
+          },
+          "average_model_attempts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Model Attempts"
+          },
+          "average_model_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Model Latency Ms"
+          },
+          "contract_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Success Rate"
+          },
+          "denominator": {
+            "title": "Denominator",
+            "type": "integer"
+          },
+          "duplicate_revision_prevention_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Revision Prevention Rate"
+          },
+          "estimated_cost_total": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Total"
+          },
+          "failure_rate_by_error_code": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Failure Rate By Error Code",
+            "type": "object"
+          },
+          "p95_model_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Model Latency Ms"
+          },
+          "patch_validation_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Validation Success Rate"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "rejection_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Rate"
+          },
+          "revision_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Success Rate"
+          },
+          "total_input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Output Tokens"
+          },
+          "total_requests": {
+            "title": "Total Requests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "denominator",
+          "total_requests",
+          "failure_rate_by_error_code"
+        ],
+        "title": "ReportAssistantOperationsSummaryResponse",
         "type": "object"
       },
       "ReportAssistantProposalResponse": {
@@ -2558,9 +3006,53 @@
             ],
             "title": "Error Code"
           },
+          "patch_operations": {
+            "default": [],
+            "items": {
+              "enum": [
+                "set_report_title",
+                "add_text",
+                "update_text",
+                "add_artifact_view",
+                "reposition_block",
+                "remove_block",
+                "duplicate_block",
+                "restore_previous_revision"
+              ],
+              "type": "string"
+            },
+            "title": "Patch Operations",
+            "type": "array"
+          },
+          "patch_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Request Id"
+          },
+          "patch_summary": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Summary"
+          },
           "phase": {
             "enum": [
               "ready",
+              "waiting_patch_approval",
               "waiting_approval",
               "running_data_agent",
               "waiting_artifact",
@@ -6162,6 +6654,200 @@
         "summary": "Create Assistant Draft"
       }
     },
+    "/reports/assistant/operations/failures": {
+      "get": {
+        "description": "관리자에게만 raw prompt·SQL·trace가 제거된 실패 평가를 반환한다.",
+        "operationId": "reportAssistantOperationsFailures",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End At"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantFailureListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Operation Failures"
+      }
+    },
+    "/reports/assistant/operations/summary": {
+      "get": {
+        "description": "관리자에게만 기간·분모가 포함된 Assistant 품질·비용 집계를 반환한다.",
+        "operationId": "reportAssistantOperationsSummary",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End At"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantOperationsSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Operations Summary"
+      }
+    },
     "/reports/assistant/sessions": {
       "post": {
         "description": "현재 draft와 그 안의 승인 artifact를 검증해 복구 가능한 Assistant 세션을 연다.",
@@ -6389,6 +7075,78 @@
         "summary": "Decide Assistant Plan"
       }
     },
+    "/reports/assistant/sessions/{assistant_request_id}/evaluation": {
+      "get": {
+        "description": "분석가는 자신의 평가만, 관리자는 전체 평가를 안전한 계약으로 조회한다.",
+        "operationId": "reportAssistantGetEvaluation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantEvaluationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Evaluation"
+      }
+    },
     "/reports/assistant/sessions/{assistant_request_id}/messages": {
       "post": {
         "description": "ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
@@ -6469,6 +7227,88 @@
           }
         ],
         "summary": "Submit Assistant Message"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/patch-approval": {
+      "post": {
+        "description": "기존 Artifact patch를 멱등 승인·취소하고 승인된 경우에만 CAS revision을 저장한다.",
+        "operationId": "reportAssistantDecidePatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAssistantApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Decide Assistant Patch"
       }
     },
     "/reports/definitions": {

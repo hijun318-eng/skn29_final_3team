@@ -79,6 +79,8 @@ assert.match(toolPanel, /REPORT_CHART_OPTIONS\.map/);
 assert.match(properties, /const blockLocked =/);
 assert.match(properties, /disabled=\{!canEdit \|\| blockLocked\}/);
 assert.match(assistant, /onSubmit\(text\)/);
+assert.match(page, /artifactTitle=\{page\.selectedArtifactSource\?\.title\}/);
+assert.match(assistant, /artifactTitle \|\| "분석 Artifact를 선택해 주세요"/);
 assert.match(assistant, /AI 초안 반영 완료/);
 assert.match(assistant, /trace\.model_version/);
 assert.match(assistant, /request_user_approval|새 데이터 분석 승인 필요/);

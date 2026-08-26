@@ -210,7 +210,8 @@ class ReportArtifactRepositoryMixin:
                         phase = CASE WHEN phase IS NULL THEN NULL ELSE 'failed' END
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND status = 'running'
-                      AND (:data_request_id IS NULL OR data_request_id = :data_request_id)
+                      AND (CAST(:data_request_id AS uuid) IS NULL
+                           OR data_request_id = CAST(:data_request_id AS uuid))
                     """
                 ),
                 {
@@ -312,7 +313,10 @@ class ReportArtifactRepositoryMixin:
                     SELECT assistant_request_id, phase, session_definition_id,
                            session_definition_version, base_revision, artifact_id,
                            analysis_plan_json, result_artifact_id, result_revision,
-                           error_code, data_request_id, status,
+                           error_code, data_request_id, patch_request_id,
+                           report_patch_json, status, instruction_hash,
+                           decision_hash, model_version, prompt_id,
+                           prompt_version, prompt_hash,
                            approved_at, rejected_at
                     FROM report_v1.report_assistant_requests
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
@@ -327,6 +331,121 @@ class ReportArtifactRepositoryMixin:
         if row is None:
             raise KeyError("Report Assistant 세션을 찾을 수 없습니다.")
         return dict(row)
+
+    async def record_existing_assistant_patch_proposal(
+        self,
+        assistant_request_id: str,
+        patch_request_id: str,
+        instruction_hash: str,
+        decision_hash: str,
+        model_version: str,
+        prompt_id: str,
+        prompt_version: str,
+        prompt_hash: str,
+        patch: dict[str, object],
+        instruction_text: str,
+        assistant_message: str,
+    ) -> dict[str, object]:
+        """검증·dry-run된 기존 근거 patch를 적용하지 않고 사용자 승인 대기로 저장한다."""
+
+        async with self._sessionmaker.begin() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET phase = 'waiting_patch_approval',
+                        patch_request_id = :patch_request_id,
+                        report_patch_json = CAST(:patch AS jsonb),
+                        instruction_hash = :instruction_hash,
+                        decision_hash = :decision_hash,
+                        model_version = :model_version,
+                        prompt_id = :prompt_id,
+                        prompt_version = :prompt_version,
+                        prompt_hash = :prompt_hash,
+                        analysis_plan_json = NULL,
+                        data_request_id = NULL,
+                        approved_at = NULL,
+                        rejected_at = NULL,
+                        result_artifact_id = NULL,
+                        result_query_id = NULL,
+                        result_artifact_checksum = NULL,
+                        result_revision = NULL,
+                        error_code = NULL
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND phase = 'ready' AND status = 'running'
+                    RETURNING assistant_request_id, phase, session_definition_id,
+                              session_definition_version, base_revision, artifact_id,
+                              analysis_plan_json, patch_request_id, report_patch_json,
+                              result_artifact_id, result_revision, error_code
+                    """
+                ),
+                {
+                    "patch_request_id": _uuid(patch_request_id, "patch_request_id"),
+                    "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
+                    "instruction_hash": instruction_hash,
+                    "decision_hash": decision_hash,
+                    "model_version": model_version,
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_hash": prompt_hash,
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )).mappings().one_or_none()
+            if row is not None:
+                await self._append_assistant_turn(
+                    session,
+                    request_uuid=_uuid(assistant_request_id, "assistant_request_id"),
+                    instruction_text=instruction_text,
+                    assistant_message=assistant_message,
+                    change_kind="existing_artifact",
+                )
+        if row is None:
+            raise ValueError("ready Report Assistant 세션만 patch 제안을 저장할 수 있습니다.")
+        return dict(row)
+
+    async def decide_existing_assistant_patch(
+        self,
+        assistant_request_id: str,
+        patch_request_id: str,
+        approved: bool,
+    ) -> tuple[dict[str, object], bool]:
+        """owner·session·patch 요청·phase를 한 CAS로 확인해 최초 결정만 claim한다."""
+
+        request_uuid = _uuid(assistant_request_id, "assistant_request_id")
+        patch_uuid = _uuid(patch_request_id, "patch_request_id")
+        target_phase = "saving_revision" if approved else "ready"
+        async with self._sessionmaker.begin() as session:
+            claimed = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET phase = :target_phase,
+                        approved_at = CASE WHEN :approved THEN now() ELSE approved_at END,
+                        rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND patch_request_id = :patch_request_id
+                      AND phase = 'waiting_patch_approval' AND status = 'running'
+                    RETURNING assistant_request_id
+                    """
+                ),
+                {
+                    "target_phase": target_phase,
+                    "approved": approved,
+                    "request_id": request_uuid,
+                    "owner_id": self._owner_id,
+                    "patch_request_id": patch_uuid,
+                },
+            )).scalar_one_or_none()
+        current = await self.get_assistant_session(assistant_request_id)
+        same_request = str(current.get("patch_request_id")) == str(patch_uuid)
+        already_decided = (
+            current.get("approved_at") is not None
+            if approved else current.get("rejected_at") is not None
+        )
+        if claimed is None and (not same_request or not already_decided):
+            raise ValueError("현재 승인 대기 중인 patch 요청과 일치하지 않습니다.")
+        return current, claimed is not None
 
     async def recover_stale_assistant_session(
         self,
@@ -394,6 +513,8 @@ class ReportArtifactRepositoryMixin:
                         prompt_hash = :prompt_hash,
                         analysis_plan_json = CAST(:analysis_plan AS jsonb),
                         data_request_id = :data_request_id,
+                        patch_request_id = NULL,
+                        report_patch_json = NULL,
                         approved_at = NULL,
                         rejected_at = NULL,
                         result_artifact_id = NULL,
@@ -487,7 +608,8 @@ class ReportArtifactRepositoryMixin:
                         FROM report_v1.report_assistant_requests
                         WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                           AND phase = :expected_phase AND status = 'running'
-                          AND (:data_request_id IS NULL OR data_request_id = :data_request_id)
+                          AND (CAST(:data_request_id AS uuid) IS NULL
+                               OR data_request_id = CAST(:data_request_id AS uuid))
                         FOR UPDATE
                         """
                     ),
@@ -608,7 +730,8 @@ class ReportArtifactRepositoryMixin:
                             output_hash = :output_hash, error_code = NULL, completed_at = now()
                         WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                           AND phase = :expected_phase AND status = 'running'
-                          AND (:data_request_id IS NULL OR data_request_id = :data_request_id)
+                          AND (CAST(:data_request_id AS uuid) IS NULL
+                               OR data_request_id = CAST(:data_request_id AS uuid))
                           AND session_definition_id = :definition_id
                           AND session_definition_version = :source_version
                           AND base_revision = :base_revision

@@ -1,0 +1,18 @@
+[
+  {"id":"existing-title","route":"existing_artifact","allowed":["set_report_title"],"approval":true},
+  {"id":"existing-summary","route":"existing_artifact","allowed":["update_text"],"approval":true},
+  {"id":"existing-add-text","route":"existing_artifact","allowed":["add_text"],"approval":true},
+  {"id":"existing-move","route":"existing_artifact","allowed":["reposition_block"],"approval":true},
+  {"id":"existing-duplicate","route":"existing_artifact","allowed":["duplicate_block"],"approval":true},
+  {"id":"existing-delete","route":"existing_artifact","allowed":["remove_block"],"approval":true},
+  {"id":"existing-restore","route":"existing_artifact","allowed":["restore_previous_revision"],"approval":true},
+  {"id":"missing-block","route":"existing_artifact","allowed":[],"error_code":"REPORT_ASSISTANT_PATCH_INVALID"},
+  {"id":"insufficient-evidence","route":"new_data","allowed":[],"approval":true},
+  {"id":"new-data-complete","route":"new_data","allowed":[],"approval":true},
+  {"id":"new-data-period-incomplete","route":"new_data","allowed":[],"error_code":"ASSISTANT_STATE_CONFLICT"},
+  {"id":"new-data-metric-incomplete","route":"new_data","allowed":[],"error_code":"ASSISTANT_STATE_CONFLICT"},
+  {"id":"approval-rejected","route":"new_data","allowed":[],"approval":false},
+  {"id":"approval-forbidden","route":"new_data","allowed":[],"error_code":"ANALYSIS_ACCESS_DENIED"},
+  {"id":"approval-request-mismatch","route":"new_data","allowed":[],"error_code":"ASSISTANT_STATE_CONFLICT"},
+  {"id":"artifact-lineage-mismatch","route":"new_data","allowed":[],"error_code":"ARTIFACT_LINEAGE_MISMATCH"}
+]

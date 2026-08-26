@@ -219,6 +219,18 @@ def _governed_metric_family():
     return candidates, glossary, dimension_terms, normalized
 
 
+def _governed_family_business_terms(glossary):
+    terms = {
+        metric_id: {"kind": "metric", "aliases": list(aliases)}
+        for metric_id, aliases in glossary.items()
+    }
+    terms["observation_segment"] = {
+        "kind": "dimension",
+        "aliases": ["Observation Segment"],
+    }
+    return terms
+
+
 def test_filter_dimension_is_not_duplicated_as_a_period_comparison_group():
     normalized = {
         "analysis_operation": "period_comparison",
@@ -248,12 +260,7 @@ async def test_metric_resolver_rechecks_one_omitted_governed_value_for_the_metri
     )
     resolver = MetricResolver(adapter, object())
     candidates, glossary, dimension_terms, normalized = _governed_metric_family()
-    business_terms = {
-        "observation_segment": {
-            "kind": "dimension",
-            "aliases": ["Observation Segment"],
-        }
-    }
+    business_terms = _governed_family_business_terms(glossary)
 
     async def normalize():
         assert business_terms["observation_segment"]["value_candidates"] == [
@@ -308,17 +315,17 @@ async def test_approved_dimension_member_avoids_domain_distinct_and_keeps_receip
             "semantic_sha256": "a" * 64,
         }
     ]
-    business_terms = {
-        "observation_segment": {
-            "kind": "dimension",
-            "aliases": ["Observation Segment"],
-        }
-    }
+    business_terms = _governed_family_business_terms(glossary)
 
     async def normalize():
         assert business_terms["observation_segment"]["value_candidates"] == [
             "OMEGA"
         ]
+        assert {
+            identifier
+            for identifier, term in business_terms.items()
+            if term["kind"] == "metric"
+        } == {"segment_helium_yield", "segment_argon_yield"}
         return {
             **normalized,
             "selected_metric_ids": [
@@ -363,12 +370,7 @@ async def test_metric_resolver_fails_closed_when_recheck_still_drops_the_governe
     adapter = _FakeAdapter(rows=[{"candidate_value": "OMEGA"}])
     resolver = MetricResolver(adapter, object())
     candidates, glossary, dimension_terms, normalized = _governed_metric_family()
-    business_terms = {
-        "observation_segment": {
-            "kind": "dimension",
-            "aliases": ["Observation Segment"],
-        }
-    }
+    business_terms = _governed_family_business_terms(glossary)
 
     async def normalize():
         return dict(normalized)

@@ -458,6 +458,45 @@ def _selected_metrics_bind_dimension(
     )
 
 
+def _constrain_metric_terms_to_dimension(
+    business_terms: dict[str, dict[str, object]],
+    candidates: list[dict[str, object]],
+    dimension_terms: dict[str, dict[str, object]],
+    identifier: str,
+) -> None:
+    """Node1 재해석 후보를 승인 Dimension과 결속 가능한 Metric으로 제한한다.
+
+    Dimension Member가 확정된 요청에서 해당 필드를 지원하지 않는 Metric은 실행 가능한
+    해석이 아니다. DataHub Metric-Dimension 관계로 불가능한 후보만 제거하며, 남은
+    Metric 중 어떤 측정값을 선택할지는 계속 Node1과 후속 서버 검증이 담당한다.
+    """
+
+    field = dimension_terms[identifier].get("field")
+    field_key = (
+        str(field.get("asset_fqn") or ""),
+        str(field.get("column") or ""),
+    ) if isinstance(field, dict) else ("", "")
+    compatible_ids = {
+        str(metric["id"])
+        for metric in candidates
+        if isinstance(metric.get("id"), str)
+        and field_key in _metric_dimension_keys(metric)
+    }
+    selectable_ids = {
+        metric_id
+        for metric_id, term in business_terms.items()
+        if term.get("kind") == "metric"
+    }
+    retained_ids = selectable_ids & compatible_ids
+    if not retained_ids:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "승인 차원 필터와 결속 가능한 지표 후보가 없습니다.",
+        )
+    for metric_id in selectable_ids - retained_ids:
+        del business_terms[metric_id]
+
+
 def _period_boundary(value: object) -> date:
     """기간 경계를 timezone 유무와 무관하게 달력 날짜로 정규화한다."""
 
@@ -1152,6 +1191,12 @@ class MetricResolver:
 
         identifier, canonical_value, values = matches[0]
         business_terms[identifier]["value_candidates"] = list(values)
+        _constrain_metric_terms_to_dimension(
+            business_terms,
+            candidates,
+            dimension_terms,
+            identifier,
+        )
         rechecked = await normalize()
         if not isinstance(rechecked, dict):
             raise ValueError("Node1 필터 재해석 응답은 객체여야 합니다.")
@@ -1725,6 +1770,13 @@ class MetricResolver:
                         )
                     )
                 ):
+                    if identifier in required_family_values:
+                        _constrain_metric_terms_to_dimension(
+                            business_terms,
+                            candidates,
+                            dimension_terms,
+                            identifier,
+                        )
                     should_reinterpret = True
         if should_reinterpret:
             normalized = await normalize()

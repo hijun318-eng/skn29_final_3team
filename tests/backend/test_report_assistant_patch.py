@@ -77,6 +77,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
                         "op": "add_text",
                         "title": "전월 비교 요약",
                         "content": "검증된 Artifact를 근거로 작성한 비교 요약입니다.",
+                        "evidence_refs": ["artifact_narrative"],
                         "placement": {"width": "full"},
                     },
                 ],
@@ -106,6 +107,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
                         "op": "update_text",
                         "block_id": "summary",
                         "content": "수정된 운영 요약",
+                        "evidence_refs": ["artifact_narrative"],
                     },
                 ],
             }
@@ -129,12 +131,14 @@ class ReportAssistantPatchTest(unittest.TestCase):
                         "op": "add_text",
                         "title": "첫 번째 설명",
                         "content": "첫 번째",
+                        "evidence_refs": ["artifact_narrative"],
                         "placement": {"after_block_id": "summary"},
                     },
                     {
                         "op": "add_text",
                         "title": "두 번째 설명",
                         "content": "두 번째",
+                        "evidence_refs": ["artifact_narrative"],
                         "placement": {"after_block_id": "summary"},
                     },
                 ],
@@ -297,7 +301,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
                 "view": "table",
                 "title": "조작된 표",
             },
-            {"op": "update_text", "block_id": "missing", "content": "변경"},
+            {"op": "update_text", "block_id": "missing", "content": "변경", "evidence_refs": ["artifact_narrative"]},
         )
         for operation in cases:
             with self.subTest(operation=operation):
@@ -320,7 +324,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
                 "view": "chart",
                 "title": "차트",
             },
-            {"op": "add_text", "title": "요약", "content": "내용", "x": 0, "y": 0},
+            {"op": "add_text", "title": "요약", "content": "내용", "evidence_refs": ["artifact_narrative"], "x": 0, "y": 0},
             {"op": "update_text", "block_id": "summary"},
         )
         for operation in invalid_operations:

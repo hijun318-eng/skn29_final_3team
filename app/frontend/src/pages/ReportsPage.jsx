@@ -215,6 +215,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     pageCount={page.reportPages.length}
   />;
   const assistant = <ReportAssistantPanel
+    key={`${lifecycle.selectedDefinition?.definitionId || ""}:${lifecycle.selectedDefinition?.version || ""}:${page.assistantArtifactIds.join(":")}`}
     approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(lifecycle.assistantSession?.phase)
       ? lifecycle.assistantSession?.analysis_plan && {
           ...lifecycle.assistantSession.analysis_plan,
@@ -226,6 +227,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
         }
       : null}
     artifact={page.selectedArtifact}
+    artifactOptions={artifacts.artifactOptions}
+    assistantArtifactIds={page.assistantArtifactIds}
     artifactTitle={page.selectedArtifactSource?.title}
     canEdit={page.canEdit}
     instruction={lifecycle.assistantInstruction}
@@ -234,6 +237,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     onApprovePatch={page.approveAssistantPatch}
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
+    onReview={page.reviewAssistantReport}
+    onToggleArtifact={artifacts.toggleAssistantArtifact}
     onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}
     patchPreview={lifecycle.assistantSession?.patch_request_id
@@ -241,10 +246,15 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
       ? {
           summary: lifecycle.assistantSession.patch_summary,
           operations: lifecycle.assistantSession.patch_operations,
+          evidenceRefs: lifecycle.assistantSession.patch_evidence_refs,
         }
       : null}
+    review={lifecycle.assistantReview}
     pending={lifecycle.pending}
     selectedBlock={page.editorTools.primaryBlock}
+    suggestions={lifecycle.assistantSuggestionSet?.selectedBlockId === (page.editorTools.primaryBlock?.id || null)
+      ? lifecycle.assistantSuggestionSet.suggestions
+      : []}
     trace={lifecycle.assistantTrace}
     workflowStatus={lifecycle.assistantSession?.phase || ""}
     workflowError={lifecycle.assistantSession?.error_code || ""}

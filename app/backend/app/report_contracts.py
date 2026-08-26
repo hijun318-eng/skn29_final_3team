@@ -256,6 +256,37 @@ class ReportAssistantTraceResponse(ReportContractModel):
     duration_ms: float
 
 
+ReportAssistantReviewCategory = Literal[
+    "duplicate_text",
+    "verbose_summary",
+    "title_mismatch",
+    "inconsistent_metric_expression",
+    "unsupported_claim",
+]
+
+
+class ReportAssistantReviewFinding(ReportContractModel):
+    """현재 보고서를 저장하지 않고 발견한 품질 문제와 사용자가 선택할 수정 지시다."""
+
+    category: ReportAssistantReviewCategory
+    severity: Literal["info", "warning"]
+    block_id: str | None = None
+    title: str = Field(min_length=1, max_length=255)
+    detail: str = Field(min_length=1, max_length=1000)
+    suggested_instruction: str = Field(min_length=1, max_length=500)
+    evidence_refs: tuple[str, ...] = Field(default=(), max_length=16)
+
+
+class ReportAssistantReviewResponse(ReportContractModel):
+    """세션 상태나 Report revision을 바꾸지 않는 bounded 품질 검토 결과다."""
+
+    assistant_request_id: UUID
+    summary: str = Field(min_length=1, max_length=1000)
+    findings: tuple[ReportAssistantReviewFinding, ...] = Field(max_length=10)
+    suggestions: tuple[str, ...] = Field(default=(), max_length=3)
+    trace: ReportAssistantTraceResponse
+
+
 class ReportAssistantDraftResponse(ReportContractModel):
     """AI 요청 ID, 성공 상태, 생성된 보고서 정의와 모델 호출 추적을 한 응답으로 반환한다."""
     assistant_request_id: UUID
@@ -331,17 +362,29 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
 
 
 class CreateReportAssistantSessionRequest(ReportContractModel):
-    """보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다."""
+    """보고서 초안과 대표·추가 승인 Artifact 최대 다섯 개를 Assistant 세션에 결속한다."""
 
     definition_id: UUID
     definition_version: int = Field(ge=1)
     artifact_id: UUID
+    additional_artifact_ids: tuple[UUID, ...] = Field(default=(), max_length=4)
+
+    @model_validator(mode="after")
+    def require_unique_artifacts(self) -> "CreateReportAssistantSessionRequest":
+        """대표 Artifact 중복과 추가 Artifact 간 중복을 모델 호출 전에 거부한다."""
+
+        artifact_ids = (self.artifact_id, *self.additional_artifact_ids)
+        if len(set(artifact_ids)) != len(artifact_ids):
+            raise ValueError("Assistant Artifact는 중복될 수 없습니다.")
+        return self
 
 
 class ReportAssistantMessageRequest(ReportContractModel):
-    """ready 세션에 500자 이하의 보고서 변경 지시를 제출한다."""
+    """새 요청 또는 현재 patch를 교체할 500자 이하의 보고서 변경 지시를 제출한다."""
 
     instruction: str = Field(min_length=1, max_length=500)
+    expected_patch_request_id: UUID | None = None
+    selected_block_id: str | None = Field(default=None, min_length=1, max_length=255)
 
     @field_validator("instruction")
     @classmethod
@@ -351,6 +394,12 @@ class ReportAssistantMessageRequest(ReportContractModel):
         if not value.strip():
             raise ValueError("instruction은 비어 있을 수 없습니다.")
         return value.strip()
+
+
+class ReportAssistantReviewRequest(ReportContractModel):
+    """비저장 품질 검토가 참고할 현재 편집기 선택 블록을 선택적으로 지정한다."""
+
+    selected_block_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class ReportAssistantAnalysisScope(ReportContractModel):
@@ -409,6 +458,7 @@ class ReportAssistantSessionResponse(ReportContractModel):
     definition_version: int
     base_revision: int
     artifact_id: UUID
+    artifact_ids: tuple[UUID, ...] = ()
     analysis_plan: ReportAssistantAnalysisPlan | None = None
     patch_request_id: UUID | None = None
     patch_summary: str | None = Field(default=None, min_length=1, max_length=1000)
@@ -419,6 +469,7 @@ class ReportAssistantSessionResponse(ReportContractModel):
             "restore_previous_revision",
         ], ...
     ] = ()
+    patch_evidence_refs: tuple[str, ...] = ()
     result_artifact_id: UUID | None = None
     result_revision: int | None = None
     error_code: str | None = None
@@ -456,6 +507,7 @@ class ReportAssistantProposalResponse(ReportContractModel):
 
     change_kind: Literal["clarification", "existing_artifact", "new_data"]
     message: str = Field(min_length=1, max_length=1000)
+    suggestions: tuple[str, ...] = Field(default=(), max_length=3)
     session: ReportAssistantSessionResponse
 
 
@@ -548,6 +600,9 @@ class ReportAssistantAddTextOperation(ReportContractModel):
     op: Literal["add_text"]
     title: str = Field(min_length=1, max_length=255)
     content: str = Field(min_length=1, max_length=4000)
+    evidence_refs: tuple[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")], ...
+    ] = Field(default=(), max_length=16)
     placement: ReportAssistantPatchPlacement = Field(
         default_factory=ReportAssistantPatchPlacement
     )
@@ -561,6 +616,15 @@ class ReportAssistantAddTextOperation(ReportContractModel):
             raise ValueError("text block 제목과 내용은 비어 있을 수 없습니다.")
         return value.strip()
 
+    @field_validator("evidence_refs")
+    @classmethod
+    def require_unique_evidence_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """같은 근거 별칭의 중복을 거부해 승인 카드와 감사 patch를 결정적으로 유지한다."""
+
+        if len(set(value)) != len(value):
+            raise ValueError("text block 근거 별칭은 중복될 수 없습니다.")
+        return value
+
 
 class ReportAssistantUpdateTextOperation(ReportContractModel):
     """현재 보고서에 존재하는 text block 하나의 제목 또는 내용을 수정한다."""
@@ -569,6 +633,9 @@ class ReportAssistantUpdateTextOperation(ReportContractModel):
     block_id: str = Field(min_length=1)
     title: str | None = Field(default=None, min_length=1, max_length=255)
     content: str | None = Field(default=None, min_length=1, max_length=4000)
+    evidence_refs: tuple[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")], ...
+    ] = Field(default=(), max_length=16)
 
     @model_validator(mode="after")
     def require_change(self) -> "ReportAssistantUpdateTextOperation":
@@ -580,6 +647,10 @@ class ReportAssistantUpdateTextOperation(ReportContractModel):
             raise ValueError("text block 제목은 비어 있을 수 없습니다.")
         if self.content is not None and not self.content.strip():
             raise ValueError("text block 내용은 비어 있을 수 없습니다.")
+        if self.content is None and self.evidence_refs:
+            raise ValueError("본문을 변경하지 않는 update_text에는 근거 별칭을 추가할 수 없습니다.")
+        if len(set(self.evidence_refs)) != len(self.evidence_refs):
+            raise ValueError("text block 근거 별칭은 중복될 수 없습니다.")
         self.title = self.title.strip() if self.title is not None else None
         self.content = self.content.strip() if self.content is not None else None
         return self

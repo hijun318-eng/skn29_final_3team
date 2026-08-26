@@ -15,10 +15,12 @@ from app.api.report_router import (
     _assistant_session_response,
     _compose_assistant_revision,
     _recover_and_get_assistant_session,
+    _validated_contextual_suggestions,
     report_router,
     decide_assistant_patch,
     decide_assistant_plan,
     retry_assistant_session,
+    review_assistant_report,
     submit_assistant_message,
 )
 from app.adapters.report_artifact_repository import ReportArtifactRepositoryMixin
@@ -35,6 +37,7 @@ from app.report_contracts import (
     CreateReportAssistantSessionRequest,
     ReportAssistantAnalysisPlan,
     ReportAssistantMessageRequest,
+    ReportAssistantReviewRequest,
     ReportAssistantApprovalRequest,
     ReportAssistantSessionResponse,
     ReportAssistantRequiredAction,
@@ -73,6 +76,24 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         self.assertEqual(3, validated.base_revision)
         self.assertIsNone(validated.analysis_plan)
 
+    def test_contextual_suggestions_reject_internal_aliases(self) -> None:
+        """후속 제안은 현재 block ID와 Artifact·근거 별칭을 사용자 문장으로 노출하지 못한다."""
+
+        definition = ReportDefinitionVersion(
+            str(uuid4()), 1, DefinitionStatus.DRAFT, "보고서",
+            (ReportBlock("private-block", "차트", str(uuid4()), 12, "query", BlockType.CHART, 0, 0, 12, 7),),
+        )
+        artifact = {
+            "narrative_markdown": "승인 요약", "evidence_json": {},
+        }
+        for suggestion in (
+            "private-block 제목을 바꿔 줘",
+            "source_artifact 차트를 추가해 줘",
+            "artifact_narrative를 요약해 줘",
+        ):
+            with self.subTest(suggestion=suggestion), self.assertRaises(ValueError):
+                _validated_contextual_suggestions([suggestion], definition, (artifact,))
+
     def test_create_and_recovery_routes_are_registered(self) -> None:
         """세션 생성과 새로고침 복구 경로를 보고서 router가 함께 공개한다."""
 
@@ -99,6 +120,10 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
             ("/reports/assistant/sessions/{assistant_request_id}/retry", ("POST",)),
             routes,
         )
+        self.assertIn(
+            ("/reports/assistant/sessions/{assistant_request_id}/review", ("POST",)),
+            routes,
+        )
 
     def test_session_creation_rejects_unknown_client_fields(self) -> None:
         """클라이언트가 phase나 실행 권한을 주입하면 요청 계약이 거부한다."""
@@ -112,6 +137,25 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
                     "phase": "running_data_agent",
                 }
             )
+
+    def test_session_creation_bounds_unique_additional_artifacts(self) -> None:
+        """대표 근거를 포함한 최대 다섯 개만 허용하고 중복 Artifact를 거부한다."""
+
+        primary = uuid4()
+        valid = CreateReportAssistantSessionRequest.model_validate({
+            "definition_id": str(uuid4()),
+            "definition_version": 1,
+            "artifact_id": str(primary),
+            "additional_artifact_ids": [str(uuid4()), str(uuid4())],
+        })
+        self.assertEqual(2, len(valid.additional_artifact_ids))
+        with self.assertRaises(ValidationError):
+            CreateReportAssistantSessionRequest.model_validate({
+                "definition_id": str(uuid4()),
+                "definition_version": 1,
+                "artifact_id": str(primary),
+                "additional_artifact_ids": [str(primary)],
+            })
 
     def test_repository_claim_and_artifact_queries_are_owner_bound(self) -> None:
         """승인 claim과 Artifact 재검증 SQL이 owner·request·phase·lineage를 함께 제한한다."""
@@ -209,6 +253,8 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         )
         self.assertIn("r.owner_id = :owner_id", append)
         self.assertIn("COALESCE(MAX(t.turn_number), 0) + 1", append)
+        self.assertIn("DELETE FROM report_v1.report_assistant_turns", append)
+        self.assertIn("turn_number <= :last_turn_number - 6", append)
 
         retry = inspect.getsource(ReportArtifactRepositoryMixin.retry_assistant_session)
         for condition in (
@@ -376,6 +422,265 @@ class ReportAssistantRetryTest(unittest.IsolatedAsyncioTestCase):
 
 class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
     """새 데이터 모델 제안이 실행 없이 승인 대기 세션으로 저장되는지 확인한다."""
+
+    async def test_quality_review_returns_typed_findings_without_session_or_report_write(self) -> None:
+        """검토는 현재 block·근거 별칭만 반환하고 phase·patch·Revision을 만들지 않는다."""
+
+        assistant_request_id = uuid4()
+        artifact_id = uuid4()
+        definition_id = uuid4()
+        block_id = uuid4()
+        session = {
+            "assistant_request_id": assistant_request_id,
+            "phase": "ready",
+            "session_definition_id": definition_id,
+            "session_definition_version": 2,
+            "base_revision": 2,
+            "artifact_id": artifact_id,
+        }
+        artifact = {
+            "artifact_id": artifact_id,
+            "title": "승인 분석",
+            "narrative_markdown": "매출 지표의 승인된 요약",
+            "evidence_json": {"metric_values": [{"label": "매출", "value": 120, "unit": "KRW"}]},
+            "chart_spec_json": None,
+            "trino_query_id": "private-query",
+            "artifact_checksum": "a" * 64,
+        }
+        definition = ReportDefinitionVersion(
+            str(definition_id), 2, DefinitionStatus.DRAFT, "현재 보고서",
+            (ReportBlock(
+                str(block_id), "매출 차트", str(artifact_id), 12, "private-query",
+                BlockType.CHART, 0, 0, 12, 7,
+            ),),
+        )
+        repository = SimpleNamespace(
+            get_assistant_session=AsyncMock(return_value=session),
+            get_assistant_artifact=AsyncMock(return_value=artifact),
+            get_version=AsyncMock(return_value=definition),
+        )
+        model = AsyncMock(return_value=({
+            "summary": "표현 한 건을 검토했습니다.",
+            "suggestions": ["선택한 차트 제목을 더 간결하게 바꿔 줘"],
+            "findings": [{
+                "category": "title_mismatch",
+                "severity": "warning",
+                "block_id": str(block_id),
+                "title": "차트 제목 확인",
+                "detail": "제목이 승인 지표 표현과 다릅니다.",
+                "suggested_instruction": "매출 차트 제목을 승인 지표 표현에 맞춰 바꿔 줘",
+                "evidence_refs": ["metric_1"],
+            }],
+        }, {
+            "model_version": "report-model",
+            "prompt_id": "report.assistant.review",
+            "prompt_version": "PROMPT-v1.0.0",
+            "prompt_hash": "b" * 64,
+            "attempts": 1,
+            "duration_ms": 10.0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+        }))
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_quality_review", new=model),
+        ):
+            response = await review_assistant_report(
+                str(assistant_request_id), object(), ReportAssistantReviewRequest(
+                    selected_block_id=str(block_id)
+                )
+            )
+
+        self.assertEqual(str(assistant_request_id), response["assistant_request_id"])
+        self.assertEqual(str(block_id), response["findings"][0].block_id)
+        self.assertEqual("metric_1", response["findings"][0].evidence_refs[0])
+        self.assertEqual(("선택한 차트 제목을 더 간결하게 바꿔 줘",), response["suggestions"])
+        self.assertEqual("chart", model.await_args.args[0]["selected_block"]["type"])
+        serialized_input = repr(model.await_args.args[0])
+        self.assertNotIn("private-query", serialized_input)
+        self.assertNotIn("a" * 64, serialized_input)
+        self.assertEqual("ready", session["phase"])
+        self.assertFalse(hasattr(repository, "record_assistant_proposal"))
+
+    async def test_quality_review_rejects_busy_phase_before_model_call(self) -> None:
+        """승인 대기 등 ready가 아닌 phase에서는 검토 모델을 호출하지 않는다."""
+
+        repository = SimpleNamespace(get_assistant_session=AsyncMock(return_value={
+            "phase": "waiting_patch_approval",
+        }))
+        model = AsyncMock()
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_quality_review", new=model),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await review_assistant_report(str(uuid4()), object())
+        self.assertEqual(409, raised.exception.status_code)
+        model.assert_not_awaited()
+
+    async def test_unknown_selected_block_is_rejected_before_model_call(self) -> None:
+        """현재 Report에 없는 선택 블록은 모델 호출 전에 state conflict로 닫는다."""
+
+        definition_id = uuid4()
+        artifact_id = uuid4()
+        repository = SimpleNamespace(
+            get_assistant_session=AsyncMock(return_value={
+                "phase": "ready", "session_definition_id": definition_id,
+                "session_definition_version": 1, "artifact_id": artifact_id,
+            }),
+            get_assistant_artifact=AsyncMock(return_value={
+                "artifact_id": artifact_id, "title": "승인 분석", "narrative_markdown": "요약",
+                "evidence_json": {}, "chart_spec_json": None,
+            }),
+            get_version=AsyncMock(return_value=ReportDefinitionVersion(
+                str(definition_id), 1, DefinitionStatus.DRAFT, "보고서", (),
+            )),
+        )
+        model = AsyncMock()
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_quality_review", new=model),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await review_assistant_report(
+                    str(uuid4()), object(), ReportAssistantReviewRequest(selected_block_id="missing")
+                )
+        self.assertEqual(409, raised.exception.status_code)
+        model.assert_not_awaited()
+
+    async def test_quality_review_rejects_unknown_block_or_evidence_without_write(self) -> None:
+        """다른 block·Artifact 별칭을 섞은 모델 finding은 세션 변경 없이 fail-closed한다."""
+
+        assistant_request_id = uuid4()
+        artifact_id = uuid4()
+        definition_id = uuid4()
+        session = {
+            "assistant_request_id": assistant_request_id,
+            "phase": "ready",
+            "session_definition_id": definition_id,
+            "session_definition_version": 1,
+            "artifact_id": artifact_id,
+        }
+        repository = SimpleNamespace(
+            get_assistant_session=AsyncMock(return_value=session),
+            get_assistant_artifact=AsyncMock(return_value={
+                "artifact_id": artifact_id, "title": "승인 분석", "narrative_markdown": "요약",
+                "evidence_json": {}, "chart_spec_json": None,
+            }),
+            get_version=AsyncMock(return_value=ReportDefinitionVersion(
+                str(definition_id), 1, DefinitionStatus.DRAFT, "보고서", (),
+            )),
+        )
+        model = AsyncMock(return_value=({
+            "summary": "검토 결과",
+            "findings": [{
+                "category": "unsupported_claim", "severity": "warning",
+                "block_id": "other-block", "title": "근거 확인", "detail": "근거 확인 필요",
+                "suggested_instruction": "근거 없는 단정을 완화해 줘", "evidence_refs": ["metric_99"],
+            }],
+        }, {
+            "model_version": "report-model", "prompt_id": "report.assistant.review",
+            "prompt_version": "PROMPT-v1.0.0", "prompt_hash": "b" * 64,
+            "attempts": 1, "duration_ms": 10.0,
+        }))
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_quality_review", new=model),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await review_assistant_report(str(assistant_request_id), object())
+        self.assertEqual(502, raised.exception.status_code)
+        self.assertEqual("REPORT_ASSISTANT_REVIEW_INVALID", raised.exception.detail["code"])
+        self.assertEqual("ready", session["phase"])
+
+    async def test_multiple_artifacts_use_safe_aliases_and_second_binding_in_patch(self) -> None:
+        """다중 근거는 실제 ID 없이 별칭으로 모델에 전달되고 두 번째 Artifact view도 dry-run된다."""
+
+        assistant_request_id = uuid4()
+        definition_id = uuid4()
+        primary_id = uuid4()
+        secondary_id = uuid4()
+        session = {
+            "assistant_request_id": assistant_request_id,
+            "phase": "ready",
+            "session_definition_id": definition_id,
+            "session_definition_version": 1,
+            "base_revision": 1,
+            "artifact_id": primary_id,
+        }
+        definition = ReportDefinitionVersion(
+            str(definition_id), 1, DefinitionStatus.DRAFT, "종합 보고서",
+            (ReportBlock(
+                str(uuid4()), "기존 차트", str(primary_id), 12, "private-primary-query",
+                BlockType.CHART, 0, 0, 12, 7,
+            ),),
+        )
+        artifacts = (
+            {
+                "artifact_id": primary_id, "title": "매출", "narrative_markdown": "승인 매출",
+                "evidence_json": {}, "chart_spec_json": None,
+                "trino_query_id": "private-primary-query", "artifact_checksum": "a" * 64,
+            },
+            {
+                "artifact_id": secondary_id, "title": "객실", "narrative_markdown": "승인 객실",
+                "evidence_json": {"metric_values": [{"label": "객실", "value": 80}]},
+                "chart_spec_json": None,
+                "trino_query_id": "private-secondary-query", "artifact_checksum": "b" * 64,
+            },
+        )
+        waiting = {
+            **session,
+            "phase": "waiting_patch_approval",
+            "patch_request_id": uuid4(),
+            "report_patch_json": {
+                "summary": "두 번째 승인 근거 표 추가",
+                "operations": [{
+                    "op": "add_artifact_view", "artifact_ref": "source_artifact_2",
+                    "view": "table", "title": "객실 현황",
+                }],
+            },
+        }
+        repository = SimpleNamespace(
+            get_assistant_session=AsyncMock(return_value=session),
+            get_assistant_artifacts=AsyncMock(return_value=artifacts),
+            get_assistant_turn_history=AsyncMock(return_value=()),
+            get_version=AsyncMock(return_value=definition),
+            record_existing_assistant_patch_proposal=AsyncMock(return_value=waiting),
+        )
+        model = AsyncMock(return_value=({
+            "change_kind": "existing_artifact",
+            "message": "두 번째 승인 근거의 표를 추가합니다.",
+            "analysis_plan": None,
+            "patch": {
+                "summary": "두 번째 승인 근거 표 추가",
+                "operations": [{
+                    "op": "add_artifact_view", "artifact_ref": "source_artifact_2",
+                    "view": "table", "title": "객실 현황",
+                }],
+            },
+        }, {
+            "model_version": "report-model", "prompt_id": "report.assistant.turn",
+            "prompt_version": "PROMPT-v1.7.0", "prompt_hash": "c" * 64,
+        }))
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_change_proposal", new=model),
+        ):
+            response = await submit_assistant_message(
+                str(assistant_request_id),
+                ReportAssistantMessageRequest(instruction="두 승인 결과를 표로 함께 구성해 줘"),
+                object(),
+            )
+
+        payload = model.await_args.args[0]
+        self.assertEqual("source_artifact", payload["artifact"]["artifact_id"])
+        self.assertEqual("source_artifact_2", payload["additional_artifacts"][0]["artifact_id"])
+        self.assertEqual("artifact_2_metric_1", payload["additional_artifacts"][0]["evidence"]["catalog"][1]["ref"])
+        self.assertNotIn(str(primary_id), repr(payload))
+        self.assertNotIn(str(secondary_id), repr(payload))
+        self.assertNotIn("private-secondary-query", repr(payload))
+        self.assertEqual("waiting_patch_approval", response["session"]["phase"])
+        repository.record_existing_assistant_patch_proposal.assert_awaited_once()
 
     async def test_new_data_proposal_stops_at_waiting_approval(self) -> None:
         """서버 request ID를 붙인 계획을 한 번 저장하고 분석 실행 경계는 호출하지 않는다."""
@@ -565,6 +870,7 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
             "message": "어느 지표를 비교할까요?",
             "analysis_plan": None,
             "patch": None,
+            "suggestions": [],
         }, {
             "model_version": "report-model",
             "prompt_id": "report.assistant.turn",
@@ -628,6 +934,7 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 "operations": [{
                     "op": "add_text", "title": "경영 요약",
                     "content": "현재 승인 근거의 요약입니다.",
+                    "evidence_refs": ["artifact_narrative"],
                     "placement": {"after_block_id": str(block_id), "width": "full"},
                 }],
             },
@@ -659,6 +966,7 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                     "op": "add_text",
                     "title": "경영 요약",
                     "content": "현재 승인 근거의 요약입니다.",
+                    "evidence_refs": ["artifact_narrative"],
                     "placement": {"after_block_id": str(block_id), "width": "full"},
                 }],
             },
@@ -684,9 +992,131 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("waiting_patch_approval", response["session"]["phase"])
         self.assertEqual("기존 근거 요약 추가", response["session"]["patch_summary"])
         self.assertEqual(("add_text",), response["session"]["patch_operations"])
+        self.assertEqual(("artifact_narrative",), response["session"]["patch_evidence_refs"])
         repository.record_assistant_proposal.assert_not_awaited()
         repository.record_existing_assistant_patch_proposal.assert_awaited_once()
         repository.finalize_existing_assistant_patch.assert_not_awaited()
+
+    async def test_waiting_patch_can_be_replaced_without_saving_revision(self) -> None:
+        """현재 patch request ID의 재수정만 새 dry-run patch로 교환하고 Report는 저장하지 않는다."""
+
+        assistant_request_id = uuid4()
+        artifact_id = uuid4()
+        definition_id = uuid4()
+        block_id = uuid4()
+        old_patch_request_id = uuid4()
+        session = {
+            "assistant_request_id": assistant_request_id,
+            "phase": "waiting_patch_approval",
+            "session_definition_id": definition_id,
+            "session_definition_version": 2,
+            "base_revision": 1,
+            "artifact_id": artifact_id,
+            "analysis_plan_json": None,
+            "patch_request_id": old_patch_request_id,
+            "report_patch_json": {
+                "summary": "요약과 차트 위치 변경",
+                "operations": [{
+                    "op": "reposition_block", "block_id": str(block_id),
+                    "after_block_id": None, "width": "half",
+                }],
+            },
+            "result_artifact_id": None,
+            "result_revision": None,
+            "error_code": None,
+        }
+        definition = ReportDefinitionVersion(
+            str(definition_id), 2, DefinitionStatus.DRAFT, "현재 보고서",
+            (ReportBlock(
+                str(block_id), "현재 차트", str(artifact_id), 12, "query-1",
+                BlockType.CHART, 0, 0, 12, 7,
+            ),),
+        )
+        repository = SimpleNamespace(
+            get_assistant_session=AsyncMock(return_value=session),
+            get_assistant_turn_history=AsyncMock(return_value=()),
+            get_assistant_artifact=AsyncMock(return_value={
+                "artifact_id": artifact_id, "trino_query_id": "query-1",
+                "title": "승인 분석", "narrative_markdown": "현재 결과",
+                "evidence_json": {}, "chart_spec_json": None,
+                "artifact_checksum": "a" * 64,
+            }),
+            get_version=AsyncMock(return_value=definition),
+            record_existing_assistant_patch_proposal=AsyncMock(),
+            replace_existing_assistant_patch_proposal=AsyncMock(),
+            finalize_existing_assistant_patch=AsyncMock(),
+        )
+
+        async def replace(*args):
+            return {
+                **session,
+                "patch_request_id": uuid4(),
+                "report_patch_json": args[9],
+            }
+
+        repository.replace_existing_assistant_patch_proposal.side_effect = replace
+        model = AsyncMock(return_value=({
+            "change_kind": "existing_artifact",
+            "message": "차트 위치는 유지하고 제목만 바꿉니다.",
+            "analysis_plan": None,
+            "patch": {
+                "summary": "제목만 변경",
+                "operations": [{"op": "set_report_title", "title": "간결한 보고서"}],
+            },
+        }, {
+            "model_version": "report-model",
+            "prompt_id": "report.assistant.turn",
+            "prompt_version": "PROMPT-v1.5.0",
+            "prompt_hash": "b" * 64,
+        }))
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_change_proposal", new=model),
+        ):
+            response = await submit_assistant_message(
+                str(assistant_request_id),
+                ReportAssistantMessageRequest(
+                    instruction="차트 위치는 유지하고 제목만 바꿔 줘",
+                    expected_patch_request_id=old_patch_request_id,
+                ),
+                object(),
+            )
+
+        self.assertEqual("waiting_patch_approval", response["session"]["phase"])
+        self.assertEqual(("set_report_title",), response["session"]["patch_operations"])
+        self.assertEqual(
+            str(old_patch_request_id),
+            repository.replace_existing_assistant_patch_proposal.await_args.args[1],
+        )
+        self.assertEqual("요약과 차트 위치 변경", model.await_args.args[0]["current_patch"]["summary"])
+        repository.record_existing_assistant_patch_proposal.assert_not_awaited()
+        repository.finalize_existing_assistant_patch.assert_not_awaited()
+
+    async def test_stale_patch_refinement_is_rejected_before_model_call(self) -> None:
+        """현재 patch와 다른 재수정 request ID는 모델·Report 저장 경계 전에 409로 닫는다."""
+
+        repository = SimpleNamespace(get_assistant_session=AsyncMock(return_value={
+            "phase": "waiting_patch_approval",
+            "patch_request_id": uuid4(),
+        }))
+        model = AsyncMock()
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_change_proposal", new=model),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await submit_assistant_message(
+                    str(uuid4()),
+                    ReportAssistantMessageRequest(
+                        instruction="요약만 바꿔 줘",
+                        expected_patch_request_id=uuid4(),
+                    ),
+                    object(),
+                )
+
+        self.assertEqual(409, raised.exception.status_code)
+        self.assertEqual("ASSISTANT_STATE_CONFLICT", raised.exception.detail["code"])
+        model.assert_not_awaited()
 
     async def test_restore_previous_revision_is_dry_run_before_approval(self) -> None:
         """직전 version 복원도 현재 source를 바꾸지 않고 승인 가능한 patch로만 저장한다."""
@@ -803,6 +1233,7 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
                 "summary": "요약 블록 추가",
                 "operations": [{
                     "op": "add_text", "title": "요약", "content": "승인 근거 요약",
+                    "evidence_refs": ["artifact_narrative"],
                     "placement": {"width": "full"},
                 }],
             },
@@ -955,6 +1386,7 @@ class ReportAssistantComposeTest(unittest.IsolatedAsyncioTestCase):
                         "op": "add_text",
                         "title": "분석 요약",
                         "content": "승인된 비교 결과 요약입니다.",
+                        "evidence_refs": ["artifact_narrative"],
                         "placement": {"after_block_id": None, "width": "full"},
                     },
                 ],
@@ -980,7 +1412,9 @@ class ReportAssistantComposeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(completed, result)
         sent = model.await_args.args[0]
         self.assertEqual("source_artifact", sent["artifact"]["artifact_id"])
-        self.assertEqual("source_query", sent["artifact"]["query_id"])
+        self.assertNotIn("query_id", sent["artifact"])
+        self.assertNotIn("checksum", sent["artifact"])
+        self.assertEqual("artifact_narrative", sent["artifact"]["evidence"]["catalog"][0]["ref"])
         self.assertIsNone(sent["report"]["blocks"][0]["artifact_ref"])
         call = repository.finalize_existing_assistant_patch.await_args
         self.assertEqual(str(data_request_id), call.kwargs["data_request_id"])
@@ -1609,14 +2043,22 @@ class ReportAssistantApprovalTest(unittest.IsolatedAsyncioTestCase):
         )
         payload = {
             "instruction": "직전 월과 비교해 줘",
+            "current_patch": None,
+            "selected_block": None,
+            "additional_artifacts": [],
             "artifact": {
-                "artifact_id": "artifact-1",
-                "query_id": "query-1",
+                "artifact_id": "source_artifact",
                 "title": "승인 분석",
                 "narrative": "현재 기간 결과",
-                "evidence": {},
+                "evidence": {"catalog": [{
+                    "ref": "artifact_narrative",
+                    "kind": "narrative",
+                    "label": "Artifact 요약",
+                    "content": "현재 기간 결과",
+                    "value": None,
+                    "unit": None,
+                }]},
                 "chart_spec": None,
-                "checksum": "a" * 64,
             },
             "report": {
                 "title": "현재 보고서",

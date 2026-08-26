@@ -2,12 +2,6 @@
 import { memo, useCallback, useState } from "react";
 import { Bot, Check, Database, LoaderCircle, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 
-const QUICK_REQUESTS = [
-  "요약을 세 줄로 줄여줘",
-  "차트를 표보다 위로 올려줘",
-  "핵심 인사이트를 더 짧게 정리해줘",
-];
-
 /** 실제 assistant API가 반환한 모델·시도 횟수·처리 시간만 성공 영수증으로 표시하며 trace가 없으면 렌더링하지 않는다. */
 function AssistantReceipt({ trace }) {
   if (!trace) return null;
@@ -46,6 +40,29 @@ const PATCH_OPERATION_LABEL = {
   duplicate_block: "블록 복제",
   restore_previous_revision: "직전 Revision 복원",
 };
+
+const REVIEW_CATEGORY_LABEL = {
+  duplicate_text: "중복 문장",
+  verbose_summary: "긴 요약",
+  title_mismatch: "제목 불일치",
+  inconsistent_metric_expression: "지표 표현 불일치",
+  unsupported_claim: "근거 확인 필요",
+};
+
+/** 품질 finding을 보여 주되 선택은 입력창에 수정 지시만 채우고 저장이나 모델 호출을 하지 않는다. */
+function AssistantQualityReview({ review, onSelect, pending }) {
+  if (!review) return null;
+  return <section className="report-assistant-approval waiting" aria-label="AI 보고서 품질 검토">
+    <header><ShieldCheck size={15} aria-hidden="true" /><span><b>비저장 품질 검토</b><small>{review.summary}</small></span></header>
+    {review.findings.length
+      ? <dl>{review.findings.map((finding, index) => <div key={`${finding.category}-${finding.block_id || "report"}-${index}`}>
+          <dt>{REVIEW_CATEGORY_LABEL[finding.category] || finding.category}</dt>
+          <dd>{finding.title} · {finding.detail}</dd>
+          <dd><button type="button" onClick={() => onSelect(finding.suggested_instruction)} disabled={pending}>이 항목 수정하기</button></dd>
+        </div>)}</dl>
+      : <p>현재 지원하는 범위에서 발견된 품질 문제가 없습니다.</p>}
+  </section>;
+}
 
 /** 승인 카드가 닫힌 뒤에도 서버 terminal phase와 안전한 오류 code를 사용자에게 보여준다. */
 function AssistantWorkflowStatus({ status, errorCode, requiredAction, retryable, onRetry, pending }) {
@@ -105,6 +122,9 @@ function AssistantPatchApproval({ preview, status, onApprove, onReject, pending 
     <dl>
       <div><dt>변경 요약</dt><dd>{preview.summary}</dd></div>
       <div><dt>적용 작업</dt><dd>{preview.operations.map((operation) => PATCH_OPERATION_LABEL[operation] || operation).join(" · ")}</dd></div>
+      {preview.evidenceRefs?.length
+        ? <div><dt>사용 근거</dt><dd>{preview.evidenceRefs.map((ref) => ref === "artifact_narrative" ? "Artifact 요약" : ref.replace("metric_", "지표 근거 ")).join(" · ")}</dd></div>
+        : null}
     </dl>
     <nav aria-label="AI 변경안 결정">
       {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />취소</button>}
@@ -117,7 +137,9 @@ function AssistantPatchApproval({ preview, status, onApprove, onReject, pending 
 export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   approvalRequest = null,
   artifact,
+  artifactOptions = [],
   artifactTitle = "",
+  assistantArtifactIds = [],
   canEdit,
   evaluation = null,
   instruction,
@@ -126,11 +148,14 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   onInstructionChange,
   onRejectDataRequest,
   onRejectPatch,
+  onReview,
   onRetry,
   onSubmit,
+  onToggleArtifact,
   pending,
   patchPreview = null,
-  quickRequests = QUICK_REQUESTS,
+  review = null,
+  suggestions = [],
   selectedBlock,
   trace,
   workflowStatus = "",
@@ -141,7 +166,9 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   const [messages, setMessages] = useState([]);
   const waiting = pending === "assistant";
   const workflowActive = Boolean(approvalRequest || patchPreview);
-  const disabled = !canEdit || !artifact || !instruction.trim() || Boolean(pending) || workflowActive;
+  const canRefinePatch = Boolean(patchPreview) && workflowStatus === "waiting_patch_approval";
+  const composerBlocked = workflowActive && !canRefinePatch;
+  const disabled = !canEdit || !artifact || !instruction.trim() || Boolean(pending) || composerBlocked;
 
   const submitInstruction = useCallback(async (event) => {
     event.preventDefault();
@@ -170,6 +197,22 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
       <Database size={14} aria-hidden="true" />
       <span><b>{artifactTitle || "분석 Artifact를 선택해 주세요"}</b><small>{artifact ? "승인된 분석 결과를 근거로 초안을 다시 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
     </div>
+    {artifactOptions.length > 1 && <fieldset className="report-assistant-context" disabled={!canEdit || Boolean(pending) || workflowActive}>
+      <legend>종합 편집 근거 · 최대 5개</legend>
+      {artifactOptions.map((option) => {
+        const primary = option.artifactId === assistantArtifactIds[0];
+        const checked = assistantArtifactIds.includes(option.artifactId);
+        return <label key={option.artifactId}>
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={primary || (!checked && assistantArtifactIds.length >= 5)}
+            onChange={() => onToggleArtifact(option.artifactId)}
+          />
+          {option.title || "승인 Artifact"}{primary ? " · 대표 근거" : ""}
+        </label>;
+      })}
+    </fieldset>}
 
     <div className="report-assistant-thread" aria-live="polite">
       <article className="report-assistant-message assistant">
@@ -198,6 +241,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
         onReject={onRejectPatch}
         pending={Boolean(pending)}
       />
+      <AssistantQualityReview review={review} onSelect={onInstructionChange} pending={Boolean(pending)} />
       <AssistantWorkflowStatus
         status={workflowStatus}
         errorCode={workflowError}
@@ -211,11 +255,12 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
     </div>
 
     <div className="report-assistant-quick" aria-label="빠른 요청">
-      {quickRequests.map((request) => <button type="button" onClick={() => onInstructionChange(request)} disabled={!canEdit || !artifact || Boolean(pending) || workflowActive} key={request}>{request}</button>)}
+      <button type="button" onClick={onReview} disabled={!canEdit || !artifact || Boolean(pending) || workflowActive}>보고서 품질 검토</button>
+      {suggestions.map((request) => <button type="button" onClick={() => onInstructionChange(request)} disabled={!canEdit || !artifact || Boolean(pending) || composerBlocked} key={request}>{request}</button>)}
     </div>
 
     <form className="report-assistant-composer" onSubmit={submitInstruction}>
-      <label htmlFor="report-assistant-instruction">보고서를 어떻게 바꿀까요?</label>
+      <label htmlFor="report-assistant-instruction">{canRefinePatch ? "변경안을 어떻게 다듬을까요?" : "보고서를 어떻게 바꿀까요?"}</label>
       <div>
         <textarea
           id="report-assistant-instruction"
@@ -228,10 +273,10 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
             }
           }}
           maxLength={500}
-          placeholder={artifact ? "예: 핵심 요약을 세 문장으로 정리해줘" : "분석 Artifact를 선택하면 요청할 수 있습니다."}
-          disabled={!canEdit || !artifact || Boolean(pending) || workflowActive}
+          placeholder={canRefinePatch ? "예: 차트 위치는 유지하고 요약만 두 문장으로 바꿔줘" : artifact ? "예: 핵심 요약을 세 문장으로 정리해줘" : "분석 Artifact를 선택하면 요청할 수 있습니다."}
+          disabled={!canEdit || !artifact || Boolean(pending) || composerBlocked}
         />
-        <button type="submit" aria-label="AI 초안 요청 보내기" disabled={disabled}>{waiting ? <LoaderCircle size={16} /> : <Send size={16} />}</button>
+        <button type="submit" aria-label={canRefinePatch ? "변경안 수정 요청" : "AI 초안 요청 보내기"} disabled={disabled}>{waiting ? <LoaderCircle size={16} /> : <Send size={16} />}</button>
       </div>
       <small>생성 결과는 AI 초안이며 확정 전에 검토가 필요합니다.</small>
     </form>

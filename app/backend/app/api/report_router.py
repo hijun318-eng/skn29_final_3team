@@ -60,6 +60,9 @@ from app.report_contracts import (
     ReportAssistantMessageRequest,
     ReportAssistantPatch,
     ReportAssistantProposalResponse,
+    ReportAssistantReviewFinding,
+    ReportAssistantReviewRequest,
+    ReportAssistantReviewResponse,
     ReportAssistantSessionResponse,
     ReportAssistantEvaluationResponse,
     ReportAssistantFailureListResponse,
@@ -82,9 +85,17 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
 
     raw_patch = session.get("report_patch_json")
     patch = ReportAssistantPatch.model_validate(raw_patch) if raw_patch else None
+    evidence_refs = tuple(dict.fromkeys(
+        evidence_ref
+        for operation in patch.operations if patch
+        for evidence_ref in getattr(operation, "evidence_refs", ())
+    )) if patch else ()
     retry_policy = report_assistant_retry_policy(
         session.get("error_code") if session.get("phase") == "failed" else None
     )
+    artifact_ids = tuple(
+        binding["artifact_id"] for binding in session.get("artifact_bindings", ())
+    ) or (session["artifact_id"],)
     return {
         "assistant_request_id": session["assistant_request_id"],
         "phase": session["phase"],
@@ -92,10 +103,12 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
         "definition_version": session["session_definition_version"],
         "base_revision": session["base_revision"],
         "artifact_id": session["artifact_id"],
+        "artifact_ids": artifact_ids,
         "analysis_plan": session.get("analysis_plan_json"),
         "patch_request_id": session.get("patch_request_id"),
         "patch_summary": patch.summary if patch else None,
         "patch_operations": tuple(operation.op for operation in patch.operations) if patch else (),
+        "patch_evidence_refs": evidence_refs,
         "result_artifact_id": session.get("result_artifact_id"),
         "result_revision": session.get("result_revision"),
         "error_code": session.get("error_code"),
@@ -103,6 +116,17 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
         "required_action": retry_policy.required_action,
         "retry_of_assistant_request_id": session.get("retry_of_assistant_request_id"),
     }
+
+
+def _with_artifact_bindings(
+    state: dict[str, Any],
+    source: dict[str, Any],
+) -> dict[str, Any]:
+    """같은 세션의 phase mutation 결과에 조회 시 고정된 다중 Artifact 결속을 보존한다."""
+
+    if not source.get("artifact_bindings"):
+        return state
+    return {**state, "artifact_bindings": source["artifact_bindings"]}
 
 
 def _assistant_retry_error(
@@ -211,26 +235,78 @@ async def _recover_and_get_assistant_session(
     return await repository.get_assistant_session(assistant_request_id)
 
 
+async def _session_artifacts(
+    repository: Any,
+    assistant_request_id: str,
+    session: dict[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    """다중 결속 저장소를 우선 사용하고 기존 fake·단일 세션은 대표 Artifact로 호환한다."""
+
+    loader = getattr(repository, "get_assistant_artifacts", None)
+    if callable(loader):
+        return tuple(await loader(assistant_request_id))
+    return (await repository.get_assistant_artifact(str(session["artifact_id"])),)
+
+
 def _report_turn_payload(
     definition: Any,
-    artifact: dict[str, Any],
+    artifacts: dict[str, Any] | tuple[dict[str, Any], ...],
     instruction: str,
     history: tuple[dict[str, str], ...] = (),
+    current_patch: ReportAssistantPatch | None = None,
+    selected_block_id: str | None = None,
 ) -> dict[str, Any]:
-    """현재 draft와 검증 Artifact를 실제 ID 대신 서버 별칭으로 모델 입력에 직렬화한다."""
+    """현재 draft·Artifact·선택적 승인 대기 patch를 서버 별칭의 모델 입력으로 직렬화한다."""
+
+    from app.adapters.report_assistant import report_evidence_catalog, report_patch_model_payload
+
+    artifact_items = (artifacts,) if isinstance(artifacts, dict) else artifacts
+    primary = artifact_items[0]
+
+    def artifact_payload(artifact: dict[str, Any], index: int) -> dict[str, Any]:
+        alias = "source_artifact" if index == 1 else f"source_artifact_{index}"
+        prefix = "" if index == 1 else f"artifact_{index}_"
+        return {
+            "artifact_id": alias,
+            "title": artifact["title"],
+            "narrative": artifact["narrative_markdown"],
+            "evidence": {"catalog": list(report_evidence_catalog(artifact, prefix))},
+            "chart_spec": artifact["chart_spec_json"],
+        }
+
+    aliases = {
+        str(artifact["artifact_id"]): (
+            "source_artifact" if index == 1 else f"source_artifact_{index}"
+        )
+        for index, artifact in enumerate(artifact_items, start=1)
+    }
+    selected_block = None
+    if selected_block_id is not None:
+        block = next(
+            (item for item in definition.blocks if item.block_id == selected_block_id),
+            None,
+        )
+        if block is None:
+            raise ValueError("ASSISTANT_STATE_CONFLICT")
+        selected_block = {
+            "block_id": block.block_id,
+            "title": block.title,
+            "type": block.type.value,
+        }
 
     return {
         "instruction": instruction,
         "history": list(history[-12:]),
-        "artifact": {
-            "artifact_id": "source_artifact",
-            "query_id": "source_query",
-            "title": artifact["title"],
-            "narrative": artifact["narrative_markdown"],
-            "evidence": artifact["evidence_json"],
-            "chart_spec": artifact["chart_spec_json"],
-            "checksum": artifact["artifact_checksum"],
-        },
+        "current_patch": (
+            report_patch_model_payload(current_patch)
+            if current_patch is not None else None
+        ),
+        "selected_block": selected_block,
+        "artifact": artifact_payload(primary, 1),
+        "additional_artifacts": [
+            artifact_payload(artifact, index)
+            for index, artifact in enumerate(artifact_items[1:], start=2)
+        ],
         "report": {
             "title": definition.title,
             "orientation": definition.orientation,
@@ -241,11 +317,7 @@ def _report_turn_payload(
                     "title": block.title,
                     "type": block.type.value,
                     "content": block.content,
-                    "artifact_ref": (
-                        "source_artifact"
-                        if block.artifact_id == str(artifact["artifact_id"])
-                        else None
-                    ),
+                    "artifact_ref": aliases.get(str(block.artifact_id)),
                     "x": block.x,
                     "y": block.y,
                     "w": block.w,
@@ -257,15 +329,60 @@ def _report_turn_payload(
     }
 
 
+def _validated_contextual_suggestions(
+    raw_suggestions: object,
+    definition: Any,
+    artifacts: tuple[dict[str, Any], ...],
+) -> tuple[str, ...]:
+    """모델 후속 제안을 세 개 이하의 공개 문장으로 제한하고 내부 별칭 노출을 거부한다."""
+
+    from app.adapters.report_assistant import report_evidence_catalog
+
+    if not isinstance(raw_suggestions, (list, tuple)) or len(raw_suggestions) > 3:
+        raise ValueError("REPORT_ASSISTANT_SUGGESTIONS_INVALID")
+    suggestions = tuple(str(item).strip() for item in raw_suggestions)
+    if (
+        any(not item or len(item) > 500 for item in suggestions)
+        or len(set(suggestions)) != len(suggestions)
+    ):
+        raise ValueError("REPORT_ASSISTANT_SUGGESTIONS_INVALID")
+    hidden_values = {
+        block.block_id for block in definition.blocks
+    } | {
+        "source_artifact" if index == 1 else f"source_artifact_{index}"
+        for index in range(1, len(artifacts) + 1)
+    } | {
+        str(item["ref"])
+        for index, artifact in enumerate(artifacts, start=1)
+        for item in report_evidence_catalog(
+            artifact, "" if index == 1 else f"artifact_{index}_"
+        )
+    }
+    if any(value and value in suggestion for suggestion in suggestions for value in hidden_values):
+        raise ValueError("REPORT_ASSISTANT_SUGGESTIONS_INVALID")
+    return suggestions
+
+
 async def _apply_existing_artifact_patch(
     repository: Any,
     definition: Any,
-    artifact: dict[str, Any],
+    artifacts: dict[str, Any] | tuple[dict[str, Any], ...],
     patch: ReportAssistantPatch,
 ) -> Any:
     """저장 patch를 현재 owner draft와 검증 Artifact에 dry-run해 저장 가능한 정의를 만든다."""
 
+    from app.adapters.report_assistant import report_evidence_catalog, validate_report_patch_evidence
     from app.report_patch import VerifiedArtifactBinding, apply_report_assistant_patch
+
+    artifact_items = (artifacts,) if isinstance(artifacts, dict) else artifacts
+    catalog = tuple(
+        evidence
+        for index, artifact in enumerate(artifact_items, start=1)
+        for evidence in report_evidence_catalog(
+            artifact, "" if index == 1 else f"artifact_{index}_"
+        )
+    )
+    validate_report_patch_evidence(patch, catalog)
 
     previous_definition = None
     if patch.operations[0].op == "restore_previous_revision":
@@ -282,14 +399,48 @@ async def _apply_existing_artifact_patch(
         definition,
         patch,
         {
-            "source_artifact": VerifiedArtifactBinding(
-                str(artifact["artifact_id"]),
-                str(artifact["trino_query_id"]),
-                str(artifact["artifact_checksum"]),
-            )
+            ("source_artifact" if index == 1 else f"source_artifact_{index}"):
+                VerifiedArtifactBinding(
+                    str(artifact["artifact_id"]),
+                    str(artifact["trino_query_id"]),
+                    str(artifact["artifact_checksum"]),
+                )
+            for index, artifact in enumerate(artifact_items, start=1)
         },
         previous_definition,
     )
+
+
+def _validated_report_review(
+    review: dict[str, object],
+    definition: Any,
+    artifacts: tuple[dict[str, Any], ...],
+) -> tuple[ReportAssistantReviewFinding, ...]:
+    """모델 finding이 현재 Report block과 현재 Artifact의 공개 근거 별칭만 참조하게 한다."""
+
+    from app.adapters.report_assistant import report_evidence_catalog
+
+    block_ids = {block.block_id for block in definition.blocks}
+    evidence_refs = {
+        str(item["ref"])
+        for index, artifact in enumerate(artifacts, start=1)
+        for item in report_evidence_catalog(
+            artifact, "" if index == 1 else f"artifact_{index}_"
+        )
+    }
+    try:
+        findings = tuple(
+            ReportAssistantReviewFinding.model_validate(item)
+            for item in review["findings"]
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("REPORT_ASSISTANT_REVIEW_INVALID") from error
+    for finding in findings:
+        if finding.block_id is not None and finding.block_id not in block_ids:
+            raise ValueError("REPORT_ASSISTANT_REVIEW_INVALID")
+        if any(reference not in evidence_refs for reference in finding.evidence_refs):
+            raise ValueError("REPORT_ASSISTANT_REVIEW_INVALID")
+    return findings
 
 
 async def _compose_assistant_revision(
@@ -309,8 +460,6 @@ async def _compose_assistant_revision(
         ReportAssistantModelError,
         generate_report_change_proposal,
     )
-    from app.report_patch import VerifiedArtifactBinding, apply_report_assistant_patch
-
     if session.get("phase") != "saving_revision" or not session.get("result_artifact_id"):
         raise ValueError("ASSISTANT_STATE_CONFLICT")
     try:
@@ -330,17 +479,7 @@ async def _compose_assistant_revision(
     patch = ReportAssistantPatch.model_validate(proposal["patch"])
     if patch.operations[0].op == "restore_previous_revision":
         raise ReportAssistantModelError("새 분석 Artifact 합성에서는 이전 revision을 복원할 수 없습니다.")
-    patched = apply_report_assistant_patch(
-        definition,
-        patch,
-        {
-            "source_artifact": VerifiedArtifactBinding(
-                str(artifact["artifact_id"]),
-                str(artifact["trino_query_id"]),
-                str(artifact["artifact_checksum"]),
-            )
-        },
-    )
+    patched = await _apply_existing_artifact_patch(repository, definition, artifact, patch)
     decision = {
         "change_kind": "existing_artifact",
         "message": proposal["message"],
@@ -761,7 +900,8 @@ async def create_assistant_session(
 
     prompt = get_prompt("report.assistant")
     binding = (
-        f"{payload.definition_id}:{payload.definition_version}:{payload.artifact_id}"
+        f"{payload.definition_id}:{payload.definition_version}:"
+        f"{payload.artifact_id}:{','.join(map(str, payload.additional_artifact_ids))}"
     )
     session = await _repository_call(
         lambda: repository.start_assistant_session(
@@ -773,6 +913,7 @@ async def create_assistant_session(
             prompt.prompt_id,
             prompt.version,
             str(prompt.metadata()["hash"]),
+            tuple(map(str, payload.additional_artifact_ids)),
         )
     )
     return _assistant_session_response(session)
@@ -899,6 +1040,116 @@ async def retry_assistant_session(
 
 
 @report_router.post(
+    "/reports/assistant/sessions/{assistant_request_id}/review",
+    operation_id="reportAssistantReview",
+    response_model=ReportAssistantReviewResponse,
+)
+async def review_assistant_report(
+    assistant_request_id: str,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+    payload: ReportAssistantReviewRequest | None = None,
+) -> dict[str, Any]:
+    """현재 Report와 승인 Artifact를 읽기만 하고 typed 품질 finding을 반환한다."""
+
+    from app.adapters.report_assistant import (
+        ReportAssistantModelError,
+        generate_report_quality_review,
+    )
+    from app.api.router import execution_gate
+    from src.modelops.runtime import estimate_token_count
+
+    repository = _router(context).repository
+    session = await _repository_call(
+        lambda: repository.get_assistant_session(assistant_request_id)
+    )
+    if session["phase"] != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    artifacts = await _repository_call(
+        lambda: _session_artifacts(repository, assistant_request_id, session)
+    )
+    definition = await _repository_call(
+        lambda: repository.get_version(
+            str(session["session_definition_id"]),
+            int(session["session_definition_version"]),
+        )
+    )
+    try:
+        model_payload = _report_turn_payload(
+            definition,
+            artifacts,
+            "Review this report for supported quality issues without changing it.",
+            selected_block_id=(payload.selected_block_id if payload else None),
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        ) from error
+    try:
+        max_input_tokens = int(os.getenv("REPORT_ASSISTANT_MAX_INPUT_TOKENS", "16000"))
+        max_output_tokens = int(os.getenv("REPORT_ASSISTANT_MAX_OUTPUT_TOKENS", "4096"))
+    except ValueError as error:
+        raise HTTPException(status_code=500, detail="Assistant token 제한 설정이 유효하지 않습니다.") from error
+    if max_input_tokens < 1 or max_output_tokens < 1:
+        raise HTTPException(status_code=500, detail="Assistant token 제한 설정이 유효하지 않습니다.")
+    if estimate_token_count(json.dumps(model_payload, ensure_ascii=False)) > max_input_tokens:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_TOKEN_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
+        )
+    if not await execution_gate.acquire(0):
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_CONCURRENCY_LIMITED", "assistant_request_id": assistant_request_id},
+        )
+    try:
+        try:
+            review, trace = await generate_report_quality_review(model_payload)
+        finally:
+            execution_gate.release()
+    except ReportAssistantModelError as error:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "REPORT_ASSISTANT_REVIEW_MODEL_FAILED", "assistant_request_id": assistant_request_id},
+        ) from error
+    if trace.get("output_tokens") is not None and int(trace["output_tokens"]) > max_output_tokens:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_TOKEN_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
+        )
+    try:
+        summary = str(review["summary"]).strip()
+        findings = _validated_report_review(review, definition, artifacts)
+        suggestions = _validated_contextual_suggestions(
+            review.get("suggestions", ()), definition, artifacts
+        )
+        if not summary:
+            raise ValueError("REPORT_ASSISTANT_REVIEW_INVALID")
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "REPORT_ASSISTANT_REVIEW_INVALID", "assistant_request_id": assistant_request_id},
+        ) from error
+    return {
+        "assistant_request_id": assistant_request_id,
+        "summary": summary,
+        "findings": findings,
+        "suggestions": suggestions,
+        "trace": {
+            "model_version": trace["model_version"],
+            "prompt_id": trace["prompt_id"],
+            "prompt_version": trace["prompt_version"],
+            "prompt_hash": trace["prompt_hash"],
+            "attempts": trace["attempts"],
+            "duration_ms": trace["duration_ms"],
+        },
+    }
+
+
+@report_router.post(
     "/reports/assistant/sessions/{assistant_request_id}/messages",
     operation_id="reportAssistantSubmitMessage",
     response_model=ReportAssistantProposalResponse,
@@ -908,7 +1159,7 @@ async def submit_assistant_message(
     payload: ReportAssistantMessageRequest,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    """ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.
+    """새 지시 또는 승인 대기 patch 재수정을 strict 모델 계약으로 처리한다.
 
     모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터
     platform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.
@@ -923,10 +1174,40 @@ async def submit_assistant_message(
     session = await _repository_call(
         lambda: repository.get_assistant_session(assistant_request_id)
     )
-    if session["phase"] != "ready":
-        raise HTTPException(status_code=409, detail="ready Assistant 세션만 지시를 받을 수 있습니다.")
-    artifact = await _repository_call(
-        lambda: repository.get_assistant_artifact(str(session["artifact_id"]))
+    expected_patch_request_id = payload.expected_patch_request_id
+    refining_patch = session["phase"] == "waiting_patch_approval"
+    current_patch = None
+    if session["phase"] == "ready":
+        if expected_patch_request_id is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+            )
+    elif refining_patch:
+        if (
+            expected_patch_request_id is None
+            or str(session.get("patch_request_id")) != str(expected_patch_request_id)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+            )
+        try:
+            current_patch = ReportAssistantPatch.model_validate(
+                session.get("report_patch_json")
+            )
+        except (TypeError, ValueError) as error:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+            ) from error
+    else:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    artifacts = await _repository_call(
+        lambda: _session_artifacts(repository, assistant_request_id, session)
     )
     definition = await _repository_call(
         lambda: repository.get_version(
@@ -937,9 +1218,20 @@ async def submit_assistant_message(
     history = await _repository_call(
         lambda: repository.get_assistant_turn_history(assistant_request_id)
     )
-    model_payload = _report_turn_payload(
-        definition, artifact, payload.instruction, history
-    )
+    try:
+        model_payload = _report_turn_payload(
+            definition,
+            artifacts,
+            payload.instruction,
+            history,
+            current_patch,
+            payload.selected_block_id,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        ) from error
     from app.api.router import execution_gate
     from src.modelops.runtime import estimate_token_count
 
@@ -977,9 +1269,10 @@ async def submit_assistant_message(
         finally:
             execution_gate.release()
     except ReportAssistantModelError as error:
-        await repository.fail_assistant_request(
-            assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_FAILED"
-        )
+        if not refining_patch:
+            await repository.fail_assistant_request(
+                assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_FAILED"
+            )
         await _observe_assistant(
             repository,
             "upsert_assistant_evaluation",
@@ -994,6 +1287,21 @@ async def submit_assistant_message(
                 "assistant_request_id": assistant_request_id,
             },
         ) from error
+    if refining_patch and proposal["change_kind"] != "existing_artifact":
+        await _observe_assistant(
+            repository,
+            "upsert_assistant_evaluation",
+            assistant_request_id,
+            contract_valid=False,
+            error_code="REPORT_ASSISTANT_TURN_MODEL_INVALID",
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "REPORT_ASSISTANT_TURN_MODEL_INVALID",
+                "assistant_request_id": assistant_request_id,
+            },
+        )
     if trace.get("output_tokens") is not None and int(trace["output_tokens"]) > max_output_tokens:
         await _observe_assistant(
             repository, "upsert_assistant_evaluation", assistant_request_id,
@@ -1007,6 +1315,30 @@ async def submit_assistant_message(
             status_code=429,
             detail={"code": "ASSISTANT_TOKEN_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
         )
+
+    try:
+        suggestions = _validated_contextual_suggestions(
+            proposal.get("suggestions", ()), definition, artifacts
+        )
+    except ValueError as error:
+        if not refining_patch:
+            await repository.fail_assistant_request(
+                assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_INVALID"
+            )
+        await _observe_assistant(
+            repository,
+            "upsert_assistant_evaluation",
+            assistant_request_id,
+            contract_valid=False,
+            error_code="REPORT_ASSISTANT_TURN_MODEL_INVALID",
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "REPORT_ASSISTANT_TURN_MODEL_INVALID",
+                "assistant_request_id": assistant_request_id,
+            },
+        ) from error
 
     plan = None
     if proposal["change_kind"] == "new_data":
@@ -1042,6 +1374,7 @@ async def submit_assistant_message(
         "message": proposal["message"],
         "analysis_plan": plan,
         "patch": proposal["patch"],
+        "suggestions": suggestions,
     }
     decision_hash = hashlib.sha256(
         json.dumps(decision, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -1065,20 +1398,46 @@ async def submit_assistant_message(
             )
         else:
             patch = ReportAssistantPatch.model_validate(proposal["patch"])
-            await _apply_existing_artifact_patch(repository, definition, artifact, patch)
-            saved = await repository.record_existing_assistant_patch_proposal(
-                assistant_request_id,
-                str(uuid4()),
-                instruction_hash,
-                decision_hash,
-                str(trace["model_version"]),
-                str(trace["prompt_id"]),
-                str(trace["prompt_version"]),
-                str(trace["prompt_hash"]),
-                patch.model_dump(mode="json"),
-                payload.instruction,
-                str(proposal["message"]),
-            )
+            await _apply_existing_artifact_patch(repository, definition, artifacts, patch)
+            patch_request_id = str(uuid4())
+            if refining_patch:
+                try:
+                    saved = await repository.replace_existing_assistant_patch_proposal(
+                        assistant_request_id,
+                        str(expected_patch_request_id),
+                        patch_request_id,
+                        instruction_hash,
+                        decision_hash,
+                        str(trace["model_version"]),
+                        str(trace["prompt_id"]),
+                        str(trace["prompt_version"]),
+                        str(trace["prompt_hash"]),
+                        patch.model_dump(mode="json"),
+                        payload.instruction,
+                        str(proposal["message"]),
+                    )
+                except ValueError as error:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "ASSISTANT_STATE_CONFLICT",
+                            "assistant_request_id": assistant_request_id,
+                        },
+                    ) from error
+            else:
+                saved = await repository.record_existing_assistant_patch_proposal(
+                    assistant_request_id,
+                    patch_request_id,
+                    instruction_hash,
+                    decision_hash,
+                    str(trace["model_version"]),
+                    str(trace["prompt_id"]),
+                    str(trace["prompt_version"]),
+                    str(trace["prompt_hash"]),
+                    patch.model_dump(mode="json"),
+                    payload.instruction,
+                    str(proposal["message"]),
+                )
     except ValueError as error:
         error_code = (
             "REPORT_REVISION_CONFLICT"
@@ -1164,7 +1523,8 @@ async def submit_assistant_message(
     return {
         "change_kind": proposal["change_kind"],
         "message": proposal["message"],
-        "session": _assistant_session_response(saved),
+        "suggestions": suggestions,
+        "session": _assistant_session_response(_with_artifact_bindings(saved, session)),
     }
 
 
@@ -1219,14 +1579,14 @@ async def decide_assistant_patch(
             repository, "finalize_assistant_evaluation", assistant_request_id,
             approval_decision="rejected",
         )
-        return _assistant_session_response(decided)
+        return _assistant_session_response(_with_artifact_bindings(decided, session))
     if decided["phase"] == "completed":
         await _observe_assistant(
             repository, "finalize_assistant_evaluation", assistant_request_id,
             approval_decision="approved", revision_created=True,
             duplicate_revision_prevented=not claimed,
         )
-        return _assistant_session_response(decided)
+        return _assistant_session_response(_with_artifact_bindings(decided, session))
     if decided["phase"] != "saving_revision":
         raise HTTPException(
             status_code=409,
@@ -1238,9 +1598,9 @@ async def decide_assistant_patch(
             str(decided["session_definition_id"]),
             int(decided["session_definition_version"]),
         )
-        artifact = await repository.get_assistant_artifact(str(decided["artifact_id"]))
+        artifacts = await _session_artifacts(repository, assistant_request_id, session)
         patched = await _apply_existing_artifact_patch(
-            repository, definition, artifact, patch
+            repository, definition, artifacts, patch
         )
         completed = await repository.finalize_existing_assistant_patch(
             assistant_request_id,
@@ -1274,7 +1634,7 @@ async def decide_assistant_patch(
         approval_decision="approved", revision_created=True,
         duplicate_revision_prevented=False,
     )
-    return _assistant_session_response(completed)
+    return _assistant_session_response(_with_artifact_bindings(completed, session))
 
 
 @report_router.post(

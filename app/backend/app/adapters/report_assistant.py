@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from time import perf_counter
+from typing import Any
 
 from app.adapters.contract_model import openai_transport
 from app.adapters.model_schemas import PROMPT_IDS, request_definition, response_definition
@@ -20,6 +21,87 @@ from src.modelops.runtime_config import (
 class ReportAssistantModelError(RuntimeError):
     """보고서 제안 모델의 구성·transport·schema 검증 실패로 draft를 신뢰할 수 없음을 알린다."""
     pass
+
+
+def report_evidence_catalog(
+    artifact: dict[str, Any],
+    reference_prefix: str = "",
+) -> tuple[dict[str, object], ...]:
+    """승인 Artifact에서 실제 식별자를 제외한 narrative·metric 근거 catalog를 만든다."""
+
+    catalog: list[dict[str, object]] = [{
+        "ref": f"{reference_prefix}artifact_narrative",
+        "kind": "narrative",
+        "label": "Artifact 요약",
+        "content": str(artifact.get("narrative_markdown") or ""),
+        "value": None,
+        "unit": None,
+    }]
+    evidence = artifact.get("evidence_json")
+    metric_values = evidence.get("metric_values", ()) if isinstance(evidence, dict) else ()
+    if isinstance(metric_values, (list, tuple)):
+        for index, metric in enumerate(metric_values[:15], start=1):
+            if not isinstance(metric, dict) or not str(metric.get("label") or "").strip():
+                continue
+            raw_value = metric.get("value")
+            value = raw_value if raw_value is None or isinstance(raw_value, (str, int, float, bool)) else str(raw_value)
+            catalog.append({
+                "ref": f"{reference_prefix}metric_{index}",
+                "kind": "metric",
+                "label": str(metric["label"]).strip()[:255],
+                "content": str(metric.get("definition") or "").strip()[:1000] or None,
+                "value": value,
+                "unit": str(metric.get("unit")).strip()[:64] if metric.get("unit") is not None else None,
+            })
+    return tuple(catalog)
+
+
+def validate_report_patch_evidence(
+    patch: ReportAssistantPatch,
+    catalog: tuple[dict[str, object], ...],
+) -> tuple[str, ...]:
+    """텍스트 patch의 모든 근거가 현재 Artifact catalog 별칭인지 확인하고 공개 목록을 반환한다."""
+
+    allowed = {str(item["ref"]) for item in catalog}
+    referenced: list[str] = []
+    for operation in patch.operations:
+        evidence_refs = getattr(operation, "evidence_refs", ())
+        if (
+            operation.op == "add_text"
+            or (operation.op == "update_text" and operation.content is not None)
+        ) and not evidence_refs:
+            raise ValueError("Report patch의 생성 본문에는 Artifact 근거가 필요합니다.")
+        for evidence_ref in evidence_refs:
+            if evidence_ref not in allowed:
+                raise ValueError("Report patch가 허용되지 않은 Artifact 근거를 참조했습니다.")
+            if evidence_ref not in referenced:
+                referenced.append(evidence_ref)
+    return tuple(referenced)
+
+
+def report_patch_model_payload(patch: ReportAssistantPatch) -> dict[str, object]:
+    """서버 typed patch를 strict 모델 계약의 nullable 고정 필드 형태로 직렬화한다."""
+
+    operations = []
+    for operation in patch.operations:
+        raw = operation.model_dump(mode="json")
+        placement = raw.pop("placement", None)
+        item = {
+            "op": operation.op,
+            "block_id": raw.get("block_id"),
+            "artifact_ref": raw.get("artifact_ref"),
+            "view": raw.get("view"),
+            "title": raw.get("title"),
+            "content": raw.get("content"),
+            "after_block_id": raw.get("after_block_id"),
+            "width": raw.get("width"),
+            "evidence_refs": raw.get("evidence_refs", []),
+        }
+        if isinstance(placement, dict):
+            item["after_block_id"] = placement.get("after_block_id")
+            item["width"] = placement.get("width")
+        operations.append(item)
+    return {"summary": patch.summary, "operations": operations}
 
 
 async def generate_report_draft(
@@ -143,8 +225,10 @@ async def generate_report_change_proposal(
                     operation = {
                         key: value
                         for key, value in raw_operation.items()
-                        if key not in {"after_block_id", "width"} and value is not None
+                        if key not in {"after_block_id", "width", "evidence_refs"} and value is not None
                     }
+                    if raw_operation["op"] in {"add_text", "update_text"}:
+                        operation["evidence_refs"] = raw_operation["evidence_refs"]
                     if raw_operation["op"] in {"add_text", "add_artifact_view"}:
                         operation["placement"] = {
                             "after_block_id": raw_operation["after_block_id"],
@@ -170,6 +254,7 @@ async def generate_report_change_proposal(
                     "message": str(result["message"]).strip(),
                     "analysis_plan": plan,
                     "patch": patch,
+                    "suggestions": tuple(str(item).strip() for item in result["suggestions"]),
                 },
                 {
                     "model_version": transport_meta.get("model_version") or route.model,
@@ -186,3 +271,58 @@ async def generate_report_change_proposal(
         except (ContractError, OSError, TimeoutError, TypeError, ValueError) as error:
             last_error = error
     raise ReportAssistantModelError("Report Assistant turn model call failed") from last_error
+
+
+async def generate_report_quality_review(
+    payload: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """현재 Report·승인 Artifact를 읽기만 하는 strict 품질 검토를 실행한다."""
+
+    node = "report_assistant_review"
+    try:
+        route = active_route_for_node(resolve_active_model_routes(), node)
+        validate_payload(request_definition(node), payload)
+    except (ContractError, OSError, TypeError, ValueError) as error:
+        raise ReportAssistantModelError(
+            "Report Assistant review configuration or request is invalid"
+        ) from error
+    timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
+    started = perf_counter()
+    last_error: Exception | None = None
+    try:
+        max_attempts = int(os.getenv("REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS", "2"))
+    except ValueError as error:
+        raise ReportAssistantModelError("Report Assistant attempt limit is invalid") from error
+    if not 1 <= max_attempts <= 4:
+        raise ReportAssistantModelError("Report Assistant attempt limit is invalid")
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = await openai_transport(
+                route.endpoint,
+                route.token,
+                node,
+                payload,
+                timeout,
+                model=route.model,
+                provider=route.provider,
+            )
+            transport_meta = result.pop(_TRANSPORT_META_KEY, {})
+            validate_payload(response_definition(node), result)
+            prompt = get_prompt(PROMPT_IDS[node])
+            return (
+                result,
+                {
+                    "model_version": transport_meta.get("model_version") or route.model,
+                    "model_snapshot": transport_meta.get("model_snapshot"),
+                    "prompt_id": prompt.prompt_id,
+                    "prompt_version": prompt.version,
+                    "prompt_hash": prompt.metadata()["hash"],
+                    "attempts": attempt,
+                    "duration_ms": round((perf_counter() - started) * 1000, 3),
+                    "input_tokens": transport_meta.get("input_tokens"),
+                    "output_tokens": transport_meta.get("output_tokens"),
+                },
+            )
+        except (ContractError, OSError, TimeoutError, TypeError, ValueError) as error:
+            last_error = error
+    raise ReportAssistantModelError("Report Assistant review model call failed") from last_error

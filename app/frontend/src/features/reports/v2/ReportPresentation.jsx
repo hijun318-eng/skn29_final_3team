@@ -10,11 +10,22 @@ export function ReportPresentation({ orientation, pages, renderBlock, renderFoot
   const [open, setOpen] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const closeRef = useRef(null);
+  const triggerRef = useRef(null);
   const pageCount = pages.length;
   const move = useCallback((delta) => setPageIndex((current) => (
     Math.min(Math.max(0, pageCount - 1), Math.max(0, current + delta))
   )), [pageCount]);
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => {
+    setOpen(false);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
+  const navigate = useCallback((event) => {
+    event.stopPropagation();
+    if (event.key === " " && event.target.closest?.("button, a, input, textarea, select, [role='button']")) return;
+    if (["ArrowRight", "PageDown", " "].includes(event.key)) { event.preventDefault(); move(1); }
+    else if (["ArrowLeft", "PageUp"].includes(event.key)) { event.preventDefault(); move(-1); }
+    else if (event.key === "Escape") close();
+  }, [close, move]);
 
   useEffect(() => {
     if (pageIndex >= pageCount) setPageIndex(Math.max(0, pageCount - 1));
@@ -24,20 +35,13 @@ export function ReportPresentation({ orientation, pages, renderBlock, renderFoot
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const frame = window.requestAnimationFrame(() => closeRef.current?.focus());
-    const navigate = (event) => {
-      if (["ArrowRight", "PageDown", " "].includes(event.key)) { event.preventDefault(); move(1); }
-      else if (["ArrowLeft", "PageUp"].includes(event.key)) { event.preventDefault(); move(-1); }
-      else if (event.key === "Escape") close();
-    };
-    document.addEventListener("keydown", navigate);
     return () => {
       window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", navigate);
       document.body.style.overflow = previousOverflow;
     };
-  }, [close, move, open]);
+  }, [open]);
 
-  const overlay = open && <div className="report-presentation" role="dialog" aria-modal="true" aria-label={`${reportTitle || "보고서"} 발표`}>
+  const overlay = open && <div className="report-presentation" role="dialog" aria-modal="true" aria-label={`${reportTitle || "보고서"} 발표`} onKeyDown={navigate}>
       <header><div><small>ANSWERVICE · GOVERNED REPORT</small><b>{reportTitle || "보고서"}</b></div><nav><span>{pageIndex + 1} / {pageCount}</span><button type="button" onClick={() => move(-1)} disabled={pageIndex === 0} aria-label="이전 페이지"><ChevronLeft size={18} /></button><button type="button" onClick={() => move(1)} disabled={pageIndex >= pageCount - 1} aria-label="다음 페이지"><ChevronRight size={18} /></button><button ref={closeRef} type="button" onClick={close} aria-label="발표 닫기"><X size={18} /></button></nav></header>
       <main>
         <ReportPageCanvas
@@ -56,7 +60,7 @@ export function ReportPresentation({ orientation, pages, renderBlock, renderFoot
     </div>;
 
   return <>
-    <button type="button" onClick={() => { setPageIndex(0); setOpen(true); }} disabled={!pageCount}><MonitorPlay size={14} />발표</button>
+    <button ref={triggerRef} type="button" onClick={() => { setPageIndex(0); setOpen(true); }} disabled={!pageCount}><MonitorPlay size={14} />발표</button>
     {overlay && createPortal(overlay, document.body)}
   </>;
 }

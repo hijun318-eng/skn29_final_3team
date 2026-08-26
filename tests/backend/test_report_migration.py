@@ -202,6 +202,32 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("CREATE UNIQUE INDEX report_assistant_retry_source_idx", source)
         self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
 
+    def test_report_assistant_turn_retention_adds_only_minimum_runtime_grant(self):
+        """재수정 대화 보관 제한은 기존 표를 바꾸지 않고 DELETE 권한만 추가한다."""
+
+        source = (MIGRATIONS / "20260826_37_report_assistant_turn_retention.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260825_36"', source)
+        self.assertIn("GRANT DELETE ON report_v1.report_assistant_turns", source)
+        self.assertIn("REVOKE DELETE ON report_v1.report_assistant_turns", source)
+        self.assertNotIn("DROP TABLE", source)
+        self.assertNotIn("ALTER TABLE", source)
+
+    def test_report_assistant_artifact_bindings_are_bounded_and_checksum_pinned(self):
+        """다중 Artifact migration은 기존 대표 근거를 보존하고 다섯 개까지 checksum 결속한다."""
+
+        source = (MIGRATIONS / "20260826_38_report_assistant_artifact_bindings.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260826_37"', source)
+        self.assertIn("CREATE TABLE report_v1.report_assistant_artifact_bindings", source)
+        self.assertIn("ordinal BETWEEN 1 AND 5", source)
+        self.assertIn("artifact_checksum ~ '^[0-9a-f]{64}$'", source)
+        self.assertIn("'source_artifact', 1", source)
+        self.assertIn("UNIQUE (assistant_request_id, artifact_alias)", source)
+        self.assertNotIn("UPDATE artifact.analysis_artifacts", source)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"

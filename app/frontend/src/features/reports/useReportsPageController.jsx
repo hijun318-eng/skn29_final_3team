@@ -107,6 +107,14 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const selectedArtifactSource = artifacts.artifactOptions.find(
     (source) => source.artifactId === artifacts.artifactSelection,
   );
+  const assistantArtifactIds = useMemo(() => selectedArtifactSource?.artifactId
+    ? [
+        selectedArtifactSource.artifactId,
+        ...artifacts.assistantAdditionalArtifactIds.filter(
+          (artifactId) => artifactId !== selectedArtifactSource.artifactId,
+        ).slice(0, 4),
+      ]
+    : [], [artifacts.assistantAdditionalArtifactIds, selectedArtifactSource]);
 
   const wholeArtifactTemplateFor = useCallback((source, width = null) => wholeArtifactTemplate(
     source, artifacts.artifacts, draft.reportOrientation, WHOLE_ARTIFACT_TEMPLATE, width,
@@ -315,12 +323,25 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       definition,
       selectedArtifactSource.artifactId,
       instruction,
+      assistantArtifactIds,
+      editorTools.primaryBlock?.id || null,
     );
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
     return result;
-  }, [applyDefinition, artifacts, lifecycle, selectedArtifact, selectedArtifactSource]);
+  }, [applyDefinition, artifacts, assistantArtifactIds, editorTools.primaryBlock?.id, lifecycle, selectedArtifact, selectedArtifactSource]);
+
+  const reviewAssistantReport = useCallback(async () => {
+    const definition = lifecycle.selectedDefinition;
+    if (!definition || !selectedArtifactSource?.artifactId || !selectedArtifact) return null;
+    return lifecycle.reviewAssistantReport(
+      definition,
+      selectedArtifactSource.artifactId,
+      assistantArtifactIds,
+      editorTools.primaryBlock?.id || null,
+    );
+  }, [assistantArtifactIds, editorTools.primaryBlock?.id, lifecycle, selectedArtifact, selectedArtifactSource]);
 
   const approveAssistantDataRequest = useCallback(async () => {
     const result = await lifecycle.approveAssistantRequest();
@@ -349,17 +370,20 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   );
 
   const assistantStorageKey = lifecycle.selectedDefinition && selectedArtifactSource?.artifactId
-    ? `answervice.report-assistant:${lifecycle.selectedDefinition.definitionId}:${lifecycle.selectedDefinition.version}:${selectedArtifactSource.artifactId}`
+    ? `answervice.report-assistant:${lifecycle.selectedDefinition.definitionId}:${lifecycle.selectedDefinition.version}:${assistantArtifactIds.join(":")}`
     : "";
 
   useEffect(() => {
     if (!assistantStorageKey) return;
     const current = lifecycle.assistantSession;
-    if (
-      current?.definition_id === lifecycle.selectedDefinition?.definitionId
-      && current.definition_version === lifecycle.selectedDefinition?.version
+    const currentMatches = Boolean(current
+      && current.definition_id === lifecycle.selectedDefinition?.definitionId
+      && (current.definition_version === lifecycle.selectedDefinition?.version
+        || (current.phase === "completed" && current.result_revision === lifecycle.selectedDefinition?.version))
       && current.artifact_id === selectedArtifactSource?.artifactId
-    ) return;
+      && current.artifact_ids.join(":") === assistantArtifactIds.join(":"));
+    if (currentMatches) return;
+    if (current) lifecycle.clearAssistantTrace();
     let stored = "";
     try { stored = window.sessionStorage.getItem(assistantStorageKey) || ""; } catch { return; }
     const recoveryToken = `${assistantStorageKey}:${stored}`;
@@ -368,17 +392,19 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     void lifecycle.restoreAssistantSession(stored).then((session) => {
       if (!session) assistantRecoveryRef.current = "";
     });
-  }, [assistantStorageKey, lifecycle.assistantSession, lifecycle.restoreAssistantSession, lifecycle.selectedDefinition, selectedArtifactSource]);
+  }, [assistantArtifactIds, assistantStorageKey, lifecycle.assistantSession, lifecycle.clearAssistantTrace, lifecycle.restoreAssistantSession, lifecycle.selectedDefinition, selectedArtifactSource]);
   useEffect(() => {
     if (!assistantStorageKey || !lifecycle.assistantSession) return;
     const session = lifecycle.assistantSession;
     if (
       session.definition_id !== lifecycle.selectedDefinition?.definitionId
-      || session.definition_version !== lifecycle.selectedDefinition?.version
+      || (session.definition_version !== lifecycle.selectedDefinition?.version
+        && !(session.phase === "completed" && session.result_revision === lifecycle.selectedDefinition?.version))
       || session.artifact_id !== selectedArtifactSource?.artifactId
+      || session.artifact_ids.join(":") !== assistantArtifactIds.join(":")
     ) return;
     try { window.sessionStorage.setItem(assistantStorageKey, session.assistant_request_id); } catch { /* 서버 상태는 유지한다. */ }
-  }, [assistantStorageKey, lifecycle.assistantSession, lifecycle.selectedDefinition, selectedArtifactSource]);
+  }, [assistantArtifactIds, assistantStorageKey, lifecycle.assistantSession, lifecycle.selectedDefinition, selectedArtifactSource]);
 
   const leaveEditor = useCallback(() => {
     if (draft.isDirty && !window.confirm("저장하지 않은 변경사항이 있습니다. 편집을 종료할까요?")) return;
@@ -513,6 +539,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
 
   return {
     activeArtifactSource,
+    assistantArtifactIds,
     activeInsert,
     approveDefinition,
     approveAssistantDataRequest,
@@ -520,6 +547,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     artifacts,
     builderV2: REPORT_BUILDER_V2, canEdit,
     createAssistantDraft,
+    reviewAssistantReport,
     createSchedule,
     createDefinition,
     dnd,

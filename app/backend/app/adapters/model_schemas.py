@@ -354,6 +354,7 @@ _NODE_OUTPUT_LIMITS: MappingProxyType[str, int] = MappingProxyType(
         "node3": 500,
         "report_assistant": 1280,
         "report_assistant_turn": 700,
+        "report_assistant_review": 900,
     }
 )
 

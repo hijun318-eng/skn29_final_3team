@@ -32,6 +32,27 @@ REPORT_ASSISTANT_RESPONSE = {
 
 REPORT_ASSISTANT_TURN_REQUEST = {
     **copy.deepcopy(REPORT_ASSISTANT_REQUEST),
+    "artifact": {
+        "artifact_id": "source_artifact",
+        "title": "Approved analysis",
+        "narrative": "The approved evidence describes the measured result.",
+        "evidence": {"catalog": [{
+            "ref": "artifact_narrative",
+            "kind": "narrative",
+            "label": "Artifact summary",
+            "content": "The approved evidence describes the measured result.",
+            "value": None,
+            "unit": None,
+        }]},
+        "chart_spec": {
+            "chart_type": "bar",
+            "x_field": "category_code",
+            "y_fields": ["resolved_measure"],
+        },
+    },
+    "current_patch": None,
+    "selected_block": None,
+    "additional_artifacts": [],
     "history": [],
     "report": {
         "title": "현재 보고서",
@@ -64,6 +85,7 @@ REPORT_ASSISTANT_TURN_RESPONSE = {
         },
     },
     "patch": None,
+    "suggestions": ["현재 보고서 제목을 더 간결하게 바꿔 줘"],
 }
 
 REPORT_ASSISTANT_EXISTING_RESPONSE = {
@@ -81,8 +103,10 @@ REPORT_ASSISTANT_EXISTING_RESPONSE = {
             "content": None,
             "after_block_id": "block-one",
             "width": "full",
+            "evidence_refs": [],
         }],
     },
+    "suggestions": ["선택한 차트 제목을 더 간결하게 바꿔 줘"],
 }
 
 REPORT_ASSISTANT_CLARIFICATION_RESPONSE = {
@@ -90,6 +114,21 @@ REPORT_ASSISTANT_CLARIFICATION_RESPONSE = {
     "message": "어느 기간을 기준으로 비교할까요?",
     "analysis_plan": None,
     "patch": None,
+    "suggestions": [],
+}
+
+REPORT_ASSISTANT_REVIEW_RESPONSE = {
+    "summary": "보고서 품질 문제 한 건을 찾았습니다.",
+    "findings": [{
+        "category": "title_mismatch",
+        "severity": "warning",
+        "block_id": "block-one",
+        "title": "차트 제목 확인",
+        "detail": "차트 제목이 승인된 지표 표현과 다릅니다.",
+        "suggested_instruction": "차트 제목을 승인된 지표 표현에 맞춰 바꿔 줘",
+        "evidence_refs": ["artifact_narrative"],
+    }],
+    "suggestions": ["선택한 차트 제목을 승인 지표에 맞춰 바꿔 줘"],
 }
 
 
@@ -149,6 +188,147 @@ class ReportAssistantContractTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_response", invalid)
 
+    def test_review_contract_is_read_only_and_rejects_hidden_outputs(self):
+        """품질 검토는 기존 안전 입력을 재사용하고 patch·SQL·원시 응답을 출력하지 못한다."""
+
+        validate_payload("report_assistant_review_request", REPORT_ASSISTANT_TURN_REQUEST)
+        validate_payload("report_assistant_review_response", REPORT_ASSISTANT_REVIEW_RESPONSE)
+        for field in ("patch", "sql", "raw_model_response"):
+            invalid = {**copy.deepcopy(REPORT_ASSISTANT_REVIEW_RESPONSE), field: "hidden"}
+            with self.subTest(field=field):
+                with self.assertRaises(ContractError):
+                    validate_payload("report_assistant_review_response", invalid)
+
+    def test_contextual_suggestions_are_bounded_and_receive_selected_block(self):
+        """현재 선택 블록은 typed 입력이며 후속 제안은 고유한 세 문장 이하만 허용한다."""
+
+        request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        request["selected_block"] = {
+            "block_id": "block-one", "title": "현재 차트", "type": "chart",
+        }
+        validate_payload("report_assistant_turn_request", request)
+
+        invalid = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        invalid["suggestions"] = ["하나", "둘", "셋", "넷"]
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", invalid)
+
+        duplicate = copy.deepcopy(REPORT_ASSISTANT_REVIEW_RESPONSE)
+        duplicate["suggestions"] = ["같은 요청", "같은 요청"]
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_review_response", duplicate)
+
+    def test_review_contract_bounds_categories_and_safe_references(self):
+        """지원하지 않는 품질 판단과 원시 식별자 형태는 strict schema 단계에서 거부한다."""
+
+        invalid_category = copy.deepcopy(REPORT_ASSISTANT_REVIEW_RESPONSE)
+        invalid_category["findings"][0]["category"] = "business_prediction"
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_review_response", invalid_category)
+
+        invalid_reference = copy.deepcopy(REPORT_ASSISTANT_REVIEW_RESPONSE)
+        invalid_reference["findings"][0]["evidence_refs"] = ["query:id"]
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_review_response", invalid_reference)
+
+    def test_turn_contract_accepts_bounded_additional_artifact_aliases(self):
+        """다중 근거는 서버 별칭과 이름이 겹치지 않는 evidence ref만 strict 계약에 통과한다."""
+
+        request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        secondary = copy.deepcopy(request["artifact"])
+        secondary["artifact_id"] = "source_artifact_2"
+        secondary["evidence"]["catalog"][0]["ref"] = "artifact_2_artifact_narrative"
+        request["additional_artifacts"] = [secondary]
+        validate_payload("report_assistant_turn_request", request)
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"][0]["artifact_ref"] = "source_artifact_2"
+        validate_payload("report_assistant_turn_response", response)
+
+        request["additional_artifacts"] *= 5
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_request", request)
+
+    def test_text_patch_requires_evidence_refs_but_structural_patch_does_not(self):
+        """생성 본문은 근거 별칭을 요구하고 구조 연산은 근거를 가장하지 못하게 빈 배열만 허용한다."""
+
+        text_response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        text_response["patch"]["operations"] = [{
+            "op": "add_text",
+            "block_id": None,
+            "artifact_ref": None,
+            "view": None,
+            "title": "근거 요약",
+            "content": "승인된 근거를 요약합니다.",
+            "after_block_id": None,
+            "width": "full",
+            "evidence_refs": ["artifact_narrative"],
+        }]
+        validate_payload("report_assistant_turn_response", text_response)
+
+        text_response["patch"]["operations"][0]["evidence_refs"] = []
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", text_response)
+
+        structural = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        structural["patch"]["operations"][0]["evidence_refs"] = ["artifact_narrative"]
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", structural)
+
+    def test_evidence_catalog_hides_lineage_and_rejects_unknown_refs(self):
+        """서버 catalog는 실제 lineage를 제외하고 현재 Artifact에 없는 별칭을 patch 적용 전에 거부한다."""
+
+        from app.adapters.report_assistant import report_evidence_catalog, validate_report_patch_evidence
+        from app.report_contracts import ReportAssistantPatch
+
+        artifact = {
+            "artifact_id": "private-artifact",
+            "trino_query_id": "private-query",
+            "artifact_checksum": "a" * 64,
+            "narrative_markdown": "승인된 요약",
+            "evidence_json": {"metric_values": [{
+                "label": "매출",
+                "definition": "승인 매출",
+                "value": 120,
+                "unit": "KRW",
+            }]},
+        }
+        catalog = report_evidence_catalog(artifact)
+        serialized = repr(catalog)
+        self.assertEqual(("artifact_narrative", "metric_1"), tuple(item["ref"] for item in catalog))
+        self.assertNotIn("private-artifact", serialized)
+        self.assertNotIn("private-query", serialized)
+        self.assertNotIn("a" * 64, serialized)
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "허용되지 않은 근거",
+            "operations": [{
+                "op": "add_text",
+                "title": "요약",
+                "content": "본문",
+                "evidence_refs": ["metric_2"],
+            }],
+        })
+        with self.assertRaises(ValueError):
+            validate_report_patch_evidence(patch, catalog)
+
+    def test_turn_request_accepts_only_typed_current_patch_for_refinement(self):
+        """승인 대기 재수정 입력은 현재 strict patch를 받되 누락·원시 식별자를 거부한다."""
+
+        request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        request["current_patch"] = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE["patch"])
+        validate_payload("report_assistant_turn_request", request)
+
+        missing = copy.deepcopy(request)
+        missing.pop("current_patch")
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_request", missing)
+
+        invalid = copy.deepcopy(request)
+        invalid["current_patch"]["operations"][0]["artifact_id"] = "raw-artifact"
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_request", invalid)
+
     def test_turn_plan_requires_nonempty_metric_scope(self):
         """새 데이터 제안은 사용자에게 공개할 하나 이상의 지표 범위를 반드시 포함한다."""
 
@@ -184,6 +364,7 @@ class ReportAssistantContractTests(unittest.TestCase):
             "content": None,
             "after_block_id": None,
             "width": "half",
+            "evidence_refs": [],
         }]
         validate_payload("report_assistant_turn_response", response)
 
@@ -201,6 +382,7 @@ class ReportAssistantContractTests(unittest.TestCase):
             "content": None,
             "after_block_id": None,
             "width": None,
+            "evidence_refs": [],
         }
         for operation in (
             {"op": "remove_block", "block_id": "block-one", **base},
@@ -326,6 +508,7 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             "content": None,
             "after_block_id": None,
             "width": "half",
+            "evidence_refs": [],
         }]
         route = SimpleNamespace(
             endpoint="https://model.invalid/v1",

@@ -894,8 +894,18 @@
       },
       "CreateReportAssistantSessionRequest": {
         "additionalProperties": false,
-        "description": "보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다.",
+        "description": "보고서 초안과 대표·추가 승인 Artifact 최대 다섯 개를 Assistant 세션에 결속한다.",
         "properties": {
+          "additional_artifact_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Additional Artifact Ids",
+            "type": "array"
+          },
           "artifact_id": {
             "format": "uuid",
             "title": "Artifact Id",
@@ -2581,13 +2591,38 @@
       },
       "ReportAssistantMessageRequest": {
         "additionalProperties": false,
-        "description": "ready 세션에 500자 이하의 보고서 변경 지시를 제출한다.",
+        "description": "새 요청 또는 현재 patch를 교체할 500자 이하의 보고서 변경 지시를 제출한다.",
         "properties": {
+          "expected_patch_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Patch Request Id"
+          },
           "instruction": {
             "maxLength": 500,
             "minLength": 1,
             "title": "Instruction",
             "type": "string"
+          },
+          "selected_block_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Block Id"
           }
         },
         "required": [
@@ -2790,6 +2825,15 @@
           },
           "session": {
             "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+          },
+          "suggestions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Suggestions",
+            "type": "array"
           }
         },
         "required": [
@@ -2813,6 +2857,144 @@
         "title": "ReportAssistantRequiredAction",
         "type": "string"
       },
+      "ReportAssistantReviewFinding": {
+        "additionalProperties": false,
+        "description": "현재 보고서를 저장하지 않고 발견한 품질 문제와 사용자가 선택할 수정 지시다.",
+        "properties": {
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "category": {
+            "enum": [
+              "duplicate_text",
+              "verbose_summary",
+              "title_mismatch",
+              "inconsistent_metric_expression",
+              "unsupported_claim"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "detail": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "suggested_instruction": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Suggested Instruction",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "severity",
+          "title",
+          "detail",
+          "suggested_instruction"
+        ],
+        "title": "ReportAssistantReviewFinding",
+        "type": "object"
+      },
+      "ReportAssistantReviewRequest": {
+        "additionalProperties": false,
+        "description": "비저장 품질 검토가 참고할 현재 편집기 선택 블록을 선택적으로 지정한다.",
+        "properties": {
+          "selected_block_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Block Id"
+          }
+        },
+        "title": "ReportAssistantReviewRequest",
+        "type": "object"
+      },
+      "ReportAssistantReviewResponse": {
+        "additionalProperties": false,
+        "description": "세션 상태나 Report revision을 바꾸지 않는 bounded 품질 검토 결과다.",
+        "properties": {
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantReviewFinding"
+            },
+            "maxItems": 10,
+            "title": "Findings",
+            "type": "array"
+          },
+          "suggestions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/ReportAssistantTraceResponse"
+          }
+        },
+        "required": [
+          "assistant_request_id",
+          "summary",
+          "findings",
+          "trace"
+        ],
+        "title": "ReportAssistantReviewResponse",
+        "type": "object"
+      },
       "ReportAssistantSessionResponse": {
         "additionalProperties": false,
         "description": "서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다.",
@@ -2831,6 +3013,15 @@
             "format": "uuid",
             "title": "Artifact Id",
             "type": "string"
+          },
+          "artifact_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
           },
           "assistant_request_id": {
             "format": "uuid",
@@ -2860,6 +3051,14 @@
               }
             ],
             "title": "Error Code"
+          },
+          "patch_evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Patch Evidence Refs",
+            "type": "array"
           },
           "patch_operations": {
             "default": [],
@@ -6964,7 +7163,7 @@
     },
     "/reports/assistant/sessions/{assistant_request_id}/messages": {
       "post": {
-        "description": "ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
+        "description": "새 지시 또는 승인 대기 patch 재수정을 strict 모델 계약으로 처리한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
         "operationId": "reportAssistantSubmitMessage",
         "parameters": [
           {
@@ -7196,6 +7395,95 @@
           }
         ],
         "summary": "Retry Assistant Session"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/review": {
+      "post": {
+        "description": "현재 Report와 승인 Artifact를 읽기만 하고 typed 품질 finding을 반환한다.",
+        "operationId": "reportAssistantReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReportAssistantReviewRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Review Assistant Report"
       }
     },
     "/reports/definitions": {

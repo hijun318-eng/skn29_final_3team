@@ -8,10 +8,10 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 132 |
-| documentation | 163 |
+| documentation | 166 |
 | production | 311 |
 | project-config | 42 |
-| runtime-config | 72 |
+| runtime-config | 75 |
 | runtime-contract | 10 |
 | test | 145 |
 
@@ -214,6 +214,9 @@
 | `app/backend/migrations/versions/20260824_33_report_assistant_turns.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260825_34_report_assistant_patch_approval.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260825_35_report_assistant_evaluations.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260825_36_report_assistant_retry_lineage.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_37_report_assistant_turn_retention.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_38_report_assistant_artifact_bindings.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -447,7 +450,10 @@
 | `docs/reference/목업_하드코딩_감사_2026-08-19.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Agent_실구현_계획_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_5단계_로컬배포_검증보고서_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_GPT_고도화_기획_20260826.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_개발자_가이드_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_구현_진행_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_기능_설명서_20260826.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_다음_작업_계획서_20260824.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_다음단계_인수인계_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_고도화_현황_및_반응_정의_20260825.docx` | documentation | REFERENCE_NON_RUNTIME |

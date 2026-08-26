@@ -174,7 +174,7 @@ const ScaledPage = memo(function ScaledPage({
           </div>
           <footer className="answer-report-page__footer">
             <div className="answer-report-page__footer-slot">{footer}</div>
-            <span className="answer-report-page__folio" aria-label={`${pageNumber}/${pageCount}페이지`}>
+            <span className="answer-report-page__folio" aria-label={`${pageNumber}/${resolvedPageCount}페이지`}>
               {String(pageNumber).padStart(2, "0")} / {String(resolvedPageCount).padStart(2, "0")}
             </span>
           </footer>

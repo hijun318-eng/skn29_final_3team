@@ -1,9 +1,9 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.27.0",
+  "manifest_version": "MODEL-RELEASE-v1.32.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.20.0",
-  "schema_sha256": "15c7e28561809b6d53977ccd9a9cf6ea3b74dbc55b0549c68d45a802972c3d8f",
+  "schema_version": "MODEL-v1.25.0",
+  "schema_sha256": "d7160a2af0ca4df3df3df874116afff052fc79bb03164dbdad99f8c21ac87e48",
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
@@ -42,10 +42,17 @@
     },
     "report_assistant_turn": {
       "prompt_id": "report.assistant.turn",
-      "prompt_version": "PROMPT-v1.4.0",
-      "prompt_sha256": "6f8aa5d138cf5122a60ff136366a26e26fb504d78f17472a679a7e53b4cffc9a",
+      "prompt_version": "PROMPT-v1.8.0",
+      "prompt_sha256": "ad4a09b8c0fe81b7eb1ebbc0ae0cb0aff0ad16899a52ca8f11f438c0f432753b",
       "request_definition": "report_assistant_turn_request",
       "response_definition": "report_assistant_turn_response"
+    },
+    "report_assistant_review": {
+      "prompt_id": "report.assistant.review",
+      "prompt_version": "PROMPT-v1.2.0",
+      "prompt_sha256": "4de7e0900b2a56a643381a1cd18fab166142f74bce82572d7f2d7c6116614728",
+      "request_definition": "report_assistant_review_request",
+      "response_definition": "report_assistant_review_response"
     }
   }
 }

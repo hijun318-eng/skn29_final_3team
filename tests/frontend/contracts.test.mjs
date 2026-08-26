@@ -138,15 +138,32 @@ assert.match(source("api/reportClient.ts"), /\/reports\/assistant\/operations\/s
 assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);
 assert.doesNotMatch(source("api/reportClient.ts"), /raw_model_response|sql_text/);
 assert.match(reportSources.lifecycle, /reportClient\.getAssistantEvaluation\(session\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /const assistantRequestRef = useRef\(0\)/);
+assert.match(reportSources.lifecycle, /assistantRequestRef\.current !== request/);
+assert.match(reportSources.lifecycle, /if \(isCurrent\(\)\) setError\(reportApiError\(nextError\)\)/);
+assert.match(reportSources.lifecycle, /setAssistantSession\(null\)/);
 assert.match(reportSources.lifecycle, /reportClient\.retryAssistantSession\(current\.assistant_request_id\)/);
 assert.match(reportSources.lifecycle, /reportClient\.getAssistantSession\(session\.assistant_request_id\)/);
-assert.match(reportSources.lifecycle, /if \(recovered\) setAssistantSession\(recovered\)/);
+assert.match(reportSources.lifecycle, /if \(recovered && assistantRequestRef\.current === request\) setAssistantSession\(recovered\)/);
 assert.match(reportSources.lifecycle, /setAssistantEvaluation\(null\)/);
 assert.match(reportSources.page, /evaluation=\{lifecycle\.assistantEvaluation\}/);
 assert.match(reportSources.page, /onRetry=\{lifecycle\.retryAssistantSession\}/);
+assert.match(reportSources.page, /onReview=\{page\.reviewAssistantReport\}/);
+assert.match(reportSources.lifecycle, /reportClient\.reviewAssistantSession\(session\.assistant_request_id, selectedBlockId\)/);
 assert.match(reportAssistantPanelSource, /실행 검증 완료/);
+assert.match(reportAssistantPanelSource, /비저장 품질 검토/);
+assert.match(reportAssistantPanelSource, /이 항목 수정하기/);
+assert.match(reportAssistantPanelSource, /종합 편집 근거 · 최대 5개/);
+assert.match(reportSources.page, /onToggleArtifact=\{artifacts\.toggleAssistantArtifact\}/);
 assert.match(reportAssistantPanelSource, /failed" && retryable/);
 assert.match(reportAssistantPanelSource, /새 세션으로 다시 시도/);
+assert.match(reportSources.page, /evidenceRefs: lifecycle\.assistantSession\.patch_evidence_refs/);
+assert.match(reportSources.page, /key=\{`\$\{lifecycle\.selectedDefinition\?\.definitionId/);
+assert.match(reportSources.controller, /assistantArtifactIds\.join\(":"\)/);
+assert.match(reportAssistantPanelSource, /사용 근거/);
+assert.match(reportAssistantPanelSource, /artifact_narrative/);
+assert.doesNotMatch(reportAssistantPanelSource, /요약을 세 줄로 줄여줘/);
+assert.match(reportAssistantPanelSource, /suggestions\.map/);
 assert.doesNotMatch(reportAssistantPanelSource, /estimated_cost|raw_model_response|sql_text/);
 assert.match(reportSources.operationsPanel, /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
 assert.match(reportSources.lifecycle, /seoulWallClockToIso\(values\.scheduleAt\)/);
@@ -594,10 +611,10 @@ let assistantSessionRequest;
 const assistantSessionClient = createReportClient("http://backend.test", async (url, init) => {
   assistantSessionRequest = { url, init };
   const session = {
-    assistant_request_id: "assistant-1", phase: "ready",
+    assistant_request_id: "assistant/1", phase: "ready",
     definition_id: "definition-1", definition_version: 2, base_revision: 2,
-    artifact_id: "artifact-1", analysis_plan: null,
-    patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
+    artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
+    patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [], result_artifact_id: null,
     result_revision: null, error_code: null, retryable: false, required_action: "NONE",
     retry_of_assistant_request_id: null,
   };
@@ -625,16 +642,33 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     patch_request_id: patchApproval.request_id,
     patch_summary: "표 제목 변경",
     patch_operations: ["set_report_title"],
+    patch_evidence_refs: [],
     result_revision: patchApproval.approved ? 3 : null,
   } : null;
-  const instruction = url.endsWith("/messages") ? JSON.parse(init.body).instruction : "";
-  return new Response(JSON.stringify(retrySession || patchSession || approvalSession || (url.endsWith("/messages") ? {
+  const messageBody = url.endsWith("/messages") ? JSON.parse(init.body) : null;
+  const instruction = messageBody?.instruction || "";
+  const review = url.endsWith("/review") ? {
+    assistant_request_id: "assistant/1",
+    summary: "품질 문제 한 건을 찾았습니다.",
+    suggestions: ["선택한 블록의 제목을 간결하게 바꿔 줘"],
+    findings: [{
+      category: "title_mismatch", severity: "warning", block_id: "block-1",
+      title: "제목 확인", detail: "차트 제목을 확인해 주세요.",
+      suggested_instruction: "차트 제목을 승인 지표에 맞춰 바꿔 줘", evidence_refs: ["metric_1"],
+    }],
+    trace: {
+      model_version: "report-model", prompt_id: "report.assistant.review",
+      prompt_version: "PROMPT-v1.0.0", prompt_hash: "b".repeat(64), attempts: 1, duration_ms: 10,
+    },
+  } : null;
+  return new Response(JSON.stringify(review || retrySession || patchSession || approvalSession || (url.endsWith("/messages") ? {
     change_kind: instruction === "모호한 요청" ? "clarification" : "existing_artifact",
     message: instruction === "모호한 요청" ? "어느 기간을 기준으로 할까요?" : "기존 근거로 수정할 수 있습니다.",
+    suggestions: ["선택한 블록의 제목을 간결하게 바꿔 줘"],
     session: instruction === "모호한 요청" ? session : {
       ...session, phase: "waiting_patch_approval",
       patch_request_id: "patch-1", patch_summary: "표 제목 변경",
-      patch_operations: ["set_report_title"],
+      patch_operations: ["set_report_title"], patch_evidence_refs: [],
     },
   } : session)), { status: 200, headers: { "Content-Type": "application/json" } });
 }, "runtime-token");
@@ -645,6 +679,7 @@ assert.equal(assistantSession.phase, "ready");
 assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant/sessions");
 assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
   definition_id: "definition-1", definition_version: 2, artifact_id: "artifact-1",
+  additional_artifact_ids: [],
 });
 
 const retriedAssistant = await assistantSessionClient.retryAssistantSession("assistant/1");
@@ -659,6 +694,15 @@ assert.equal(
   "http://backend.test/reports/assistant/sessions/assistant%2F1",
 );
 
+const assistantReview = await assistantSessionClient.reviewAssistantSession("assistant/1");
+assert.equal(assistantReview.findings[0].category, "title_mismatch");
+assert.equal(
+  assistantSessionRequest.url,
+  "http://backend.test/reports/assistant/sessions/assistant%2F1/review",
+);
+assert.equal(assistantSessionRequest.init.method, "POST");
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), { selected_block_id: null });
+
 const assistantProposal = await assistantSessionClient.submitAssistantMessage(
   "assistant/1", "표 제목을 바꿔 줘",
 );
@@ -667,7 +711,16 @@ assert.equal(
   assistantSessionRequest.url,
   "http://backend.test/reports/assistant/sessions/assistant%2F1/messages",
 );
-assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), { instruction: "표 제목을 바꿔 줘" });
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  instruction: "표 제목을 바꿔 줘", expected_patch_request_id: null, selected_block_id: null,
+});
+
+await assistantSessionClient.submitAssistantMessage(
+  "assistant/1", "제목은 유지하고 요약만 줄여 줘", "patch-1",
+);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  instruction: "제목은 유지하고 요약만 줄여 줘", expected_patch_request_id: "patch-1", selected_block_id: null,
+});
 
 const approvedPatch = await assistantSessionClient.approveAssistantPatch(
   "assistant/1", "patch-1",
@@ -715,14 +768,27 @@ assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
 const staleApprovalClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
   assistant_request_id: "assistant-1", phase: "ready",
   definition_id: "definition-1", definition_version: 2, base_revision: 2,
-  artifact_id: "artifact-1", analysis_plan: null,
-  patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
+  artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
+  patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [], result_artifact_id: null,
   result_revision: null, error_code: null, retryable: false, required_action: "NONE",
   retry_of_assistant_request_id: null,
 }), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
 await assert.rejects(
   () => staleApprovalClient.approveAssistantPlan("assistant-1", "request-1"),
   /실행 phase로 전이되지 않았습니다/,
+);
+
+const mismatchedSessionClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
+  assistant_request_id: "assistant-2", phase: "ready",
+  definition_id: "definition-1", definition_version: 2, base_revision: 2,
+  artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
+  patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [], result_artifact_id: null,
+  result_revision: null, error_code: null, retryable: false, required_action: "NONE",
+  retry_of_assistant_request_id: null,
+}), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
+await assert.rejects(
+  () => mismatchedSessionClient.getAssistantSession("assistant-1"),
+  /세션 ID가 요청과 일치하지 않습니다/,
 );
 
 console.log("frontend contract tests passed");

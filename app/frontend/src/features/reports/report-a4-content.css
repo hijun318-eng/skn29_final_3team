@@ -401,3 +401,70 @@
   font-weight: 680;
   white-space: nowrap;
 }
+
+/* 블록 resize 시 표의 intrinsic width가 A4 grid column보다 커지지 않게 한다. */
+.answer-report-page__block > .notion-block {
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.answer-report-page .notion-data-embed {
+  min-inline-size: 0;
+  min-block-size: 0;
+  flex: 1;
+}
+
+.answer-report-page .notion-data-embed:has(> .generated-report-table) {
+  overflow: hidden;
+}
+
+.answer-report-page .notion-data-embed > .generated-report-table,
+.answer-report-page .report-whole-artifact-views .generated-report-table {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+  max-block-size: 100%;
+  margin-block-start: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.answer-report-page .generated-report-table table {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  table-layout: fixed;
+}
+
+.answer-report-page .generated-report-table th,
+.answer-report-page .generated-report-table td {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.answer-report-page .generated-report-table .report-table-sort > span {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.answer-report-page .markdown-copy {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.answer-report-page .markdown-copy table {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  table-layout: fixed;
+}
+
+.answer-report-page .markdown-copy th,
+.answer-report-page .markdown-copy td {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

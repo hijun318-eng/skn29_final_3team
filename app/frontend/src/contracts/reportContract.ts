@@ -296,6 +296,7 @@ export interface ReportAssistantSessionResponse {
   readonly definition_version: number;
   readonly base_revision: number;
   readonly artifact_id: string;
+  readonly artifact_ids: readonly string[];
   readonly analysis_plan: ReportAssistantAnalysisPlan | null;
   readonly patch_request_id: string | null;
   readonly patch_summary: string | null;
@@ -304,6 +305,7 @@ export interface ReportAssistantSessionResponse {
     | "reposition_block" | "remove_block" | "duplicate_block"
     | "restore_previous_revision"
   )[];
+  readonly patch_evidence_refs: readonly string[];
   readonly result_artifact_id: string | null;
   readonly result_revision: number | null;
   readonly error_code: string | null;
@@ -316,7 +318,40 @@ export interface ReportAssistantSessionResponse {
 export interface ReportAssistantProposalResponse {
   readonly change_kind: "clarification" | "existing_artifact" | "new_data";
   readonly message: string;
+  readonly suggestions: readonly string[];
   readonly session: ReportAssistantSessionResponse;
+}
+
+/** 저장 없이 현재 보고서에서 발견한 품질 문제와 선택 가능한 수정 지시다. */
+export interface ReportAssistantReviewFinding {
+  readonly category:
+    | "duplicate_text"
+    | "verbose_summary"
+    | "title_mismatch"
+    | "inconsistent_metric_expression"
+    | "unsupported_claim";
+  readonly severity: "info" | "warning";
+  readonly block_id: string | null;
+  readonly title: string;
+  readonly detail: string;
+  readonly suggested_instruction: string;
+  readonly evidence_refs: readonly string[];
+}
+
+/** 세션 phase나 Report revision을 바꾸지 않는 품질 검토 응답이다. */
+export interface ReportAssistantReviewResponse {
+  readonly assistant_request_id: string;
+  readonly summary: string;
+  readonly findings: readonly ReportAssistantReviewFinding[];
+  readonly suggestions: readonly string[];
+  readonly trace: {
+    readonly model_version: string;
+    readonly prompt_id: string;
+    readonly prompt_version: string;
+    readonly prompt_hash: string;
+    readonly attempts: number;
+    readonly duration_ms: number;
+  };
 }
 
 /** 원문 prompt·SQL 없이 관리자와 세션 소유자에게 공개되는 요청별 평가다. */

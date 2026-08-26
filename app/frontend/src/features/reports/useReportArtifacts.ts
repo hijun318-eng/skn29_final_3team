@@ -39,6 +39,7 @@ export function useReportArtifacts({
   const [artifactSources, setArtifactSources] = useState<any[]>([]);
   const [analysisLibraryState, setAnalysisLibraryState] = useState({ status: "idle", message: "" });
   const [artifactSelection, setArtifactSelection] = useState("");
+  const [assistantAdditionalArtifactIds, setAssistantAdditionalArtifactIds] = useState<readonly string[]>([]);
   const loadGenerationRef = useRef(0);
 
   const invalidateLoads = useCallback(() => {
@@ -147,6 +148,7 @@ export function useReportArtifacts({
         : libraryState);
     const availableIds = loaded.filter(({ artifact }) => artifact).map(({ artifactId }) => artifactId);
     setArtifactSelection((current) => availableIds.includes(current) ? current : availableIds[0] || "");
+    setAssistantAdditionalArtifactIds((current) => current.filter((artifactId) => availableIds.includes(artifactId)));
     return true;
   }, [analysisClient, definitions, hydrateSource, onHydrated]);
 
@@ -184,8 +186,15 @@ export function useReportArtifacts({
     });
   }, [artifactSources, artifacts]);
 
+  const toggleAssistantArtifact = useCallback((artifactId: string) => {
+    setAssistantAdditionalArtifactIds((current) => current.includes(artifactId)
+      ? current.filter((item) => item !== artifactId)
+      : current.length < 4 ? [...current, artifactId] : current);
+  }, []);
+
   return {
     analysisLibraryState,
+    assistantAdditionalArtifactIds,
     artifactOptions,
     artifactSelection,
     artifactSources,
@@ -195,5 +204,6 @@ export function useReportArtifacts({
     loadArtifacts,
     retryArtifact,
     setArtifactSelection,
+    toggleAssistantArtifact,
   };
 }

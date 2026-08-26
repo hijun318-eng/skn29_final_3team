@@ -315,3 +315,67 @@ Browser에서 analyst 로그인 후 연결 불가 test model route로 비용 없
 Revision 7 무변경을 확인했다. 정상 Backend로 복원한 뒤 model·App DB·migration·auth readiness도
 ready다. `new_data` live E2E는 기존과 같이 Trino·DataHub release readiness가 준비될 때까지
 미완료다.
+
+## 2026-08-26 GPT 고도화 3차: 비저장 보고서 품질 검토
+
+- 기존 서버 소유 Assistant session과 승인 Artifact 결속을 재사용하는
+  `POST /reports/assistant/sessions/{assistant_request_id}/review` 추가
+- 별도 `report_assistant_review` strict 모델 계약과 prompt release를 추가해 중복 문장, 긴 요약,
+  표·차트 제목 불일치, 지표 표현 불일치, 근거 확인이 필요한 단정만 typed finding으로 제한
+- 모델 finding의 `block_id`를 현재 Report block으로, `evidence_refs`를 현재 Artifact의 안전한
+  `artifact_narrative`·`metric_n` 별칭으로 서버가 다시 검증
+- 실제 Artifact ID, query ID, checksum, SQL, raw model response는 모델 검토 응답과 Client 상태에서 제외
+- 검토 요청은 `ready` phase에서만 가능하고 session phase, patch request, Report definition/block,
+  Revision을 저장하지 않음
+- 사용자가 finding의 `이 항목 수정하기`를 누르면 제안 문구만 기존 composer에 복사하며, 기존
+  메시지→typed patch→dry-run→사용자 승인 흐름을 거쳐야만 Revision 저장 가능
+- 신규 DB migration 없이 기존 session·Report·Artifact read boundary만 사용하고 관리자 운영 UI는 미변경
+- AI·Backend 관련 전체 회귀 테스트 100개, Frontend 전체 테스트 24개와 production build 통과
+
+이번 검증은 fake model과 단위·계약 테스트다. 실제 GPT 비용 호출, PostgreSQL API E2E, Browser
+상호작용은 실행하지 않았으므로 3차 live E2E 완료로 표현하지 않는다. Trino·DataHub와 Analysis
+Agent는 이번 범위에서 호출하거나 변경하지 않았다.
+
+## 2026-08-26 GPT 고도화 4차: 여러 승인 Artifact 종합 편집
+
+- 기존 대표 `artifact_id` 계약을 유지하면서 요청당 최대 네 개의 추가 Artifact를 선택하는 API·UI 추가
+- 신규 migration `20260826_38`로 session별 Artifact ID, 서버 별칭, 순서, 64자리 checksum을 별도
+  결속하고 기존 세션의 대표 Artifact를 `source_artifact`로 backfill
+- 추가 Artifact는 `source_artifact_2`~`source_artifact_5`, 근거는 `artifact_2_*` 형식의 서버
+  별칭으로만 GPT에 전달하며 실제 Artifact ID·query ID·checksum은 모델 입력에서 제외
+- 모든 결속 Artifact의 owner, APPROVED 상태, 분석 SUCCEEDED/PARTIAL, query lineage, 저장 checksum을
+  매 요청마다 함께 재검증하고 하나라도 불일치하면 전체 요청을 fail-closed
+- 모델이 선택되지 않은 Artifact 별칭이나 evidence ref를 반환하면 기존 patch dry-run 단계에서 거부
+- 승인 전에는 Report definition/block/Revision을 저장하지 않고, 최종 승인 시 기존 CAS Revision
+  적용기가 선택된 모든 Artifact binding을 사용
+- Frontend Assistant에서 대표 근거를 고정하고 추가 근거를 체크박스로 선택하며 전체 5개로 제한
+- retry 자식 세션도 원본의 검증된 다중 Artifact 결속을 그대로 복사하고 원본은 변경하지 않음
+- 신규 Agent framework, AnalysisController 변경, Trino·DataHub 호출, 관리자 운영 UI 변경 없음
+- AI·Backend 관련 회귀 테스트 109개, Frontend 전체 테스트 24개, production build와 정적 검사 통과
+
+이번 검증은 deterministic fake와 contract/unit 테스트다. migration 38의 실제 PostgreSQL 적용,
+실제 GPT 종합 제안, Browser 선택·승인·새로고침 E2E는 아직 실행하지 않았으므로 live 완료로
+표현하지 않는다.
+
+## 2026-08-26 GPT 고도화 5차: 문맥형 후속 작업 제안
+
+- Frontend에 고정되어 있던 빠른 요청 세 문장을 제거하고 기존 proposal·quality review 응답이
+  반환하는 최대 세 개의 문맥형 suggestion으로 교체
+- 선택 block ID는 Client에서 전달하되 서버가 현재 Report definition에 실제로 존재하는지 확인하고
+  검증된 title·type만 strict GPT 입력의 `selected_block`으로 전달
+- 존재하지 않는 선택 block은 GPT 호출 전에 `409 ASSISTANT_STATE_CONFLICT`로 차단
+- 모델 suggestion은 비어 있지 않은 고유 문장 최대 세 개로 제한하고 Report block ID, Artifact alias,
+  evidence ref가 포함된 응답을 fail-closed
+- suggestion을 누르면 composer 입력만 변경하고 모델 호출, 승인, patch 적용, Report Revision 저장은
+  자동 실행하지 않음
+- 선택 Report·block이 달라지면 이전 context의 suggestion을 숨기며 SQL, raw model response와 실제
+  Artifact/query/checksum 식별자는 Client 상태에 저장하지 않음
+- 별도 GPT 호출, 신규 migration, Agent framework, AnalysisController, Trino·DataHub와 관리자 운영 UI
+  변경 없음
+- model schema `MODEL-v1.25.0`, release `MODEL-RELEASE-v1.32.0`, turn prompt
+  `PROMPT-v1.8.0`, review prompt `PROMPT-v1.2.0`으로 결속
+- AI·Backend 관련 회귀 테스트 112개와 Frontend 전체 테스트 24개, production build 통과
+
+이번 검증은 strict contract와 deterministic fake 기반이다. 실제 GPT 비용 호출, PostgreSQL migration
+적용, Browser 상호작용은 실행하지 않았으므로 5차 live E2E 완료로 표현하지 않는다. 1~5차 실제
+GPT·PostgreSQL·Browser 통합 검증과 2차 근거 ref의 block·Canvas 영속 여부 결정이 후속 작업이다.

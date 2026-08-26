@@ -90,17 +90,10 @@
 [data-report-builder="v2"] .report-insert-grid{grid-template-columns:1fr}
 [data-report-builder="v2"] .report-chart-gallery{grid-template-columns:1fr 1fr}
 [data-report-builder="v2"] .report-template-grid{grid-template-columns:1fr}
-[data-report-builder="v2"] .notion-editor-sidebar .report-insert-grid>.report-template-tile{grid-template-columns:minmax(0,1fr) 30px}
-[data-report-builder="v2"] .notion-editor-sidebar .report-template-add{display:grid!important;grid-template-columns:15px minmax(0,1fr) 42px;align-items:center!important;gap:7px!important}
-[data-report-builder="v2"] .report-template-drag{width:24px!important;min-width:24px!important;height:32px;min-height:32px!important;margin:auto 4px auto 2px!important;border-radius:5px!important}
-[data-report-builder="v2"] .report-template-grip{width:12px;height:12px}
+[data-report-builder="v2"] .notion-editor-sidebar .report-insert-grid>.report-template-tile{grid-template-columns:1fr}
+[data-report-builder="v2"] .notion-editor-sidebar .report-template-add{display:grid!important;grid-template-columns:15px minmax(0,1fr);align-items:center!important;gap:7px!important}
 [data-report-builder="v2"] .report-template-add>span,[data-report-builder="v2"] .report-template-add b,[data-report-builder="v2"] .report-template-add small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 [data-report-builder="v2"] .report-template-add b{display:block;color:inherit;font:inherit}
-[data-report-builder="v2"] .report-template-minimap{width:42px;height:48px;padding:4px;display:block;border:1px solid #9aabc0;border-radius:3px;background-color:#fff;background-image:linear-gradient(rgba(40,79,124,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(40,79,124,.1) 1px,transparent 1px);background-size:4px 4px;box-shadow:0 3px 8px rgba(0,0,0,.24)}
-[data-report-builder="v2"] .report-template-minimap>i{width:var(--template-width);height:var(--template-height);max-height:38px;padding:3px;display:grid;align-content:start;gap:2px;border:1px solid #4f8edc;border-radius:2px;background:#e9f2ff}
-[data-report-builder="v2"] .report-template-minimap span{height:2px;display:block;border-radius:2px;background:#8cadd4}
-[data-report-builder="v2"] .report-template-minimap span:first-child{width:70%;background:#326fb8}
-[data-report-builder="v2"] .report-template-tile:hover .report-template-minimap>i{border-color:#176fe5;background:#dcecff}
 [data-report-builder="v2"] .report-chart-gallery>button{min-height:40px;margin:0;padding:0 8px;display:flex;align-items:center;justify-content:flex-start;gap:6px;color:#aebed1;border:1px solid #22334a;border-radius:5px;background:var(--builder-panel-raised);font-size:9px}
 [data-report-builder="v2"] .report-chart-gallery>button:hover:not(:disabled){color:#fff;border-color:#4b7fbe;background:#142943}
 [data-report-builder="v2"] .report-chart-gallery>button svg{color:#68a5f8}
@@ -319,11 +312,9 @@
 .theme-light [data-report-builder="v2"] .report-library-search input::placeholder,.theme-light [data-report-builder="v2"] .report-properties-search input::placeholder{color:#5f7288;opacity:1}
 .theme-light [data-report-builder="v2"] .notion-editor-sidebar .report-insert-grid>.report-template-tile{background:#fff;box-shadow:inset 0 0 0 1px #d7e1ec}
 .theme-light [data-report-builder="v2"] .notion-editor-sidebar .report-insert-grid>.report-template-tile:hover{background:#eef5fe;box-shadow:inset 0 0 0 1px #7da8dc}
-.theme-light [data-report-builder="v2"] .report-template-minimap{border-color:#9eb0c5;box-shadow:0 3px 8px rgba(53,79,108,.14)}
 .theme-light [data-report-builder="v2"] .report-marquee-selection{border-color:#176fe5;background:rgba(23,111,229,.12)}
 .theme-light [data-report-builder="v2"] .report-template-add>span{color:#253d58}
 .theme-light [data-report-builder="v2"] .report-template-add small{color:#77889b!important}
-.theme-light [data-report-builder="v2"] .report-template-drag{color:#71849a!important;background:#eef3f8!important}
 .theme-light [data-report-builder="v2"] .report-chart-gallery>button{color:#3d5874;border-color:#d3deea;background:#fff}
 .theme-light [data-report-builder="v2"] .report-chart-gallery>button:hover:not(:disabled){color:#0f56b8;border-color:#7da8dc;background:#edf5ff}
 .theme-light [data-report-builder="v2"] .report-artifact-picker select{color:#29435f;border-color:#d0dce8;background:#fff}

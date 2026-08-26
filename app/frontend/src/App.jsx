@@ -45,9 +45,9 @@ export function App() {
   const canRunAnalysis = hasCapability(capabilities, CAPABILITY.runAnalysis);
   const canDraftReport = hasCapability(capabilities, CAPABILITY.draftReport);
   const canManageReports = hasCapability(capabilities, CAPABILITY.manageReport);
-  const canManageData = hasCapability(capabilities, CAPABILITY.manageData);
+  const canManageSystem = hasCapability(capabilities, CAPABILITY.manageSystem);
   const canUseReports = canDraftReport || canManageReports;
-  const canUseAdmin = canManageReports || canManageData;
+  const canUseAdmin = canManageSystem;
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
   const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 1101px)").matches);
   const [isPending, startTransition] = useTransition();
@@ -146,15 +146,15 @@ export function App() {
     if (route.page === "notFound") return <NotFoundPage onNavigate={navigate} />;
     if (route.page === "reports") {
       if (!canUseReports) return <RoleAccessPage canUseReports={false} canUseAdmin={canUseAdmin} onNavigate={navigate} />;
-      return <ReportsPage role={role} isAdmin={canManageReports} onEditorMode={handleReportEditorMode} theme={theme} onToggleTheme={toggleTheme} />;
+      return <ReportsPage isAdmin={canManageReports} onEditorMode={handleReportEditorMode} theme={theme} onToggleTheme={toggleTheme} />;
     }
     if (route.page === "admin") {
       if (!canUseAdmin) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={false} onNavigate={navigate} />;
-      return <AdminPage role={role} capabilities={capabilities} onNavigate={navigate} />;
+      return <AdminPage role={role} />;
     }
     if (!canRunAnalysis) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={canUseAdmin} onNavigate={navigate} />;
-    return <AgentPage onNavigate={navigate} />;
-  }, [canManageReports, canRunAnalysis, canUseAdmin, canUseReports, capabilities, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
+    return <AgentPage canDraftReport={canDraftReport} onNavigate={navigate} />;
+  }, [canDraftReport, canManageReports, canRunAnalysis, canUseAdmin, canUseReports, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
 
   if (session === undefined) return <main className={`session-login ${themeClass}`}><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
   if (!session) return <SessionLogin theme={theme} onToggleTheme={toggleTheme} notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;

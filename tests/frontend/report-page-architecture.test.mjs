@@ -7,7 +7,7 @@ import {
   reportSources,
 } from "./report-source-contract.mjs";
 
-assert.match(reportSources.page, /useReportsPageController\(\{ role, isAdmin, onEditorMode \}\)/);
+assert.match(reportSources.page, /useReportsPageController\(\{ isAdmin, onEditorMode \}\)/);
 assert.doesNotMatch(reportSources.page, /\buseState\s*\(/, "the page must delegate domain state to hooks");
 
 for (const [componentName, path] of Object.entries(TOP_LEVEL_REPORT_COMPONENTS)) {

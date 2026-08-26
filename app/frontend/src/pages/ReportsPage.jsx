@@ -20,8 +20,8 @@ import { ReportBuilderV2 } from "../features/reports/v2/ReportBuilderV2";
 import { ReportPresentation } from "../features/reports/v2/ReportPresentation";
 
 /** 보고서 controller의 상태를 목록·최종본·편집기 뷰에 배선하며 memoized 하위 경계를 유지한다. */
-export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme }) {
-  const page = useReportsPageController({ role, isAdmin, onEditorMode });
+export function ReportsPage({ isAdmin, onEditorMode, theme, onToggleTheme }) {
+  const page = useReportsPageController({ isAdmin, onEditorMode });
   const { artifacts, dnd, draft, lifecycle } = page;
   const editorCurrencyControl = useMemo(() => (
     <ReportCurrencyControl

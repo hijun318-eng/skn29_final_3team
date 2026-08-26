@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VERSION } from "../../app/frontend/src/contracts/analysis.ts";
 import { compactDraftLayout, placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks, seoulWallClockToIso } from "../../app/frontend/src/contracts/report.ts";
 import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient } from "../../app/frontend/src/api/analysisClient.ts";
+import { AdminApiError, createAdminClient } from "../../app/frontend/src/api/adminClient.ts";
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
@@ -16,7 +17,7 @@ const frontendDockerfile = readFileSync(new URL("../../app/frontend/Dockerfile",
 const frontendPackage = JSON.parse(readFileSync(new URL("../../app/frontend/package.json", import.meta.url), "utf8"));
 const viteConfig = readFileSync(new URL("../../app/frontend/vite.config.js", import.meta.url), "utf8");
 const productSources = [
-  "App.jsx", "routing.js", "api/analysisClient.ts", "api/reportClient.ts",
+  "App.jsx", "routing.js", "api/analysisClient.ts", "api/adminClient.ts", "api/reportClient.ts",
   "pages/AgentPage.jsx", "pages/AdminPage.jsx",
   "components/analysis/AnalysisStatePanel.tsx", "components/analysis/AnalysisStatePanelParts.tsx",
   "components/analysis/AnalysisFailureState.tsx",
@@ -150,7 +151,7 @@ assert.match(source("App.jsx"), /\(min-width: 1101px\)/);
 assert.match(source("styles.css"), /@media\(min-width:901px\) and \(max-width:1100px\)[\s\S]*?\.scrim\{position:fixed;z-index:29;inset:0/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.runAnalysis\)/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageReport\)/);
-assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageData\)/);
+assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageSystem\)/);
 assert.match(source("App.jsx"), /else if \(canUseAdmin\) navigate\(PAGE_PATHS\.admin\)/);
 assert.match(source("App.jsx"), /세션이 만료되었습니다\. 안전을 위해 사용자 임시 상태를 지웠습니다/);
 assert.match(source("App.jsx"), /clearAuthenticatedBrowserState\(\)/);
@@ -161,19 +162,34 @@ assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 
 assert.match(source("App.jsx"), /현재 계정에 허용된 서비스 메뉴가 없습니다/);
 assert.match(source("App.jsx"), /<AppSidebar page=\{route\.page\} role=\{role\} capabilities=\{capabilities\}/);
 assert.match(source("components/layout/AppSidebar.jsx"), /hasCapability\(capabilities, item\.capability\)/);
-assert.match(source("components/layout/AppSidebar.jsx"), /label: "관리자"[\s\S]*?CAPABILITY\.manageReport[\s\S]*?CAPABILITY\.manageData/);
+assert.match(source("components/layout/AppSidebar.jsx"), /label: "관리자"[\s\S]*?CAPABILITY\.manageSystem/);
 assert.match(source("pages/AdminPage.jsx"), /연결 상태/);
-assert.match(source("pages/AdminPage.jsx"), /권한 관리/);
+assert.match(source("pages/AdminPage.jsx"), /계정 관리/);
 assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
-assert.match(source("pages/AdminPage.jsx"), /data\?\.connections \?\? \[\]/);
-assert.match(source("pages/AdminPage.jsx"), /ADMIN API 연결 전/);
-for (const target of ["PMS", "POS", "CRM", "Facility", "Banquet", "App PostgreSQL", "Trino", "DataHub", "Model API"]) {
-  assert.match(source("pages/AdminPage.jsx"), new RegExp(`name: "${target}"`));
+assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(\)/);
+assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
+assert.match(source("pages/AdminPage.jsx"), /client\.listAuditEvents\(auditPage, auditSearch, auditResult\)/);
+assert.match(source("pages/AdminPage.jsx"), /client\.resetPassword/);
+assert.match(source("pages/AdminPage.jsx"), /client\.deleteAccount/);
+assert.match(source("pages/AdminPage.jsx"), /refreshAccountsAfterMutation = async \(\) => \{[\s\S]*?\+\+requestIds\.current\.accounts[\s\S]*?requestIds\.current\.accounts !== requestId/);
+assert.match(source("pages/AdminPage.jsx"), /for \(const \{ id \} of ADMIN_SECTIONS\)[\s\S]*?id !== section\) requestIds\.current\[id\] \+= 1/);
+for (const sectionId of ["connections", "accounts", "audit"]) {
+  assert.match(source("pages/AdminPage.jsx"), new RegExp(`requestIds\\.current\\.${sectionId} !== requestId \\|\\| activeSectionRef\\.current !== "${sectionId}"`));
 }
-assert.match(source("pages/AdminPage.jsx"), /disabled=\{!onRefreshConnections\}/);
-assert.match(source("pages/AdminPage.jsx"), /disabled=\{!onCreateAccount\}/);
-assert.doesNotMatch(source("pages/AdminPage.jsx"), /admin@gmail\.com|SUCCESS.*CONNECTION\.CHECK|status: "ready"/);
-assert.match(source("authorization.ts"), /platform_admin/);
+assert.match(source("pages/AdminPage.jsx"), /role="tab"[\s\S]*?disabled=\{saving\}/);
+assert.match(source("pages/AdminPage.jsx"), /setConnections\(\[\]\);[\s\S]*?setAccounts\(\{ \.\.\.EMPTY_PAGE, page: accountPage \}\);[\s\S]*?setAuditEvents\(\{ \.\.\.EMPTY_PAGE, page: auditPage \}\)/);
+assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{openCreate\}/);
+assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{\(\) => openEdit\(account\)\}/);
+assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{\(\) => openPassword\(account\)\}/);
+assert.match(source("pages/AdminPage.jsx"), /error\.status === 401/);
+assert.match(source("pages/AdminPage.jsx"), /error\.status === 403/);
+assert.match(source("pages/AdminPage.jsx"), /if \(error\.status === 409\) return error\.message/);
+assert.doesNotMatch(source("pages/AdminPage.jsx"), /admin@gmail\.com|SUCCESS.*CONNECTION\.CHECK|CONNECTION_TARGETS/);
+assert.match(source("App.jsx"), /<AgentPage canDraftReport=\{canDraftReport\}/);
+assert.match(source("pages/AgentPage.jsx"), /canDraftReport && turnItem\.run\.artifact/);
+assert.match(source("pages/AgentPage.jsx"), /\{canDraftReport && <TurnReportModal/);
+assert.match(source("authorization.ts"), /ServiceRole = "analyst" \| "admin"/);
+assert.doesNotMatch(productSources, /report_admin|data_admin|platform_admin/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
 assert.match(reportSources.operationsPanel, /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
@@ -283,8 +299,8 @@ for (const exposedImplementationCopy of [
   /제목 또는 ID 검색/, /window\.location\.reload/,
 ]) assert.doesNotMatch(productSources, exposedImplementationCopy);
 assert.match(reportSources.operationsPanel, /<details><summary>기술 정보<\/summary><code>Artifact/);
-assert.match(source("authorization.ts"), /호텔 분석가/);
-assert.match(source("authorization.ts"), /플랫폼 관리자/);
+assert.match(source("authorization.ts"), /분석 사용자/);
+assert.match(source("authorization.ts"), /시스템 관리자/);
 assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
 assert.match(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
 assert.match(source("pages/AgentPage.jsx"), /className="analysis-notice"/);
@@ -670,13 +686,56 @@ assert.deepEqual(await sessionClient.validateSession(), { status: "authenticated
 let loginRequest;
 const loginClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   loginRequest = { url, init };
-  return new Response(JSON.stringify({ data: { status: "authenticated", role: "report_admin", capabilities: ["report.draft", "report.manage"] } }), { status: 200 });
+  return new Response(JSON.stringify({ data: { status: "authenticated", role: "admin", capabilities: ["analysis.run", "analysis.read", "report.draft", "report.manage", "data.manage", "system.manage"] } }), { status: 200 });
 });
 assert.deepEqual(await loginClient.login("admin", "admin1234!"), {
-  status: "authenticated", role: "report_admin", capabilities: ["report.draft", "report.manage"],
+  status: "authenticated", role: "admin", capabilities: ["analysis.run", "analysis.read", "report.draft", "report.manage", "data.manage", "system.manage"],
 });
 assert.equal(loginRequest.url, "http://backend.test/auth/login");
 assert.deepEqual(JSON.parse(loginRequest.init.body), { username: "admin", password: "admin1234!" });
+
+const account = {
+  subject: "00000000-0000-0000-0000-000000000001", username: "analyst", role: "analyst", active: true,
+  created_at: "2030-01-01T00:00:00Z", updated_at: "2030-01-01T00:00:00Z", deleted_at: null,
+};
+let adminRequest;
+const adminClient = createAdminClient("http://backend.test", async (url, init) => {
+  adminRequest = { url, init };
+  if (url.endsWith("/password")) return new Response(null, { status: 204 });
+  if (init.method === "POST") return new Response(JSON.stringify({ data: account }), { status: 201 });
+  return new Response(JSON.stringify({ data: { items: [account], page: 2, page_size: 50, total: 51 } }), { status: 200 });
+});
+assert.deepEqual(await adminClient.listAccounts(2, "kim hong"), { items: [account], page: 2, page_size: 50, total: 51 });
+assert.equal(adminRequest.url, "http://backend.test/admin/accounts?page=2&page_size=50&search=kim+hong");
+assert.equal(adminRequest.init.credentials, "include");
+assert.equal(adminRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
+assert.deepEqual(await adminClient.createAccount({ username: "analyst", password: "temporary-pass", role: "analyst" }), account);
+assert.equal(adminRequest.url, "http://backend.test/admin/accounts");
+assert.deepEqual(JSON.parse(adminRequest.init.body), { username: "analyst", password: "temporary-pass", role: "analyst" });
+await adminClient.resetPassword(account.subject, "rotated-password");
+assert.equal(adminRequest.url, `http://backend.test/admin/accounts/${account.subject}/password`);
+assert.equal(adminRequest.init.method, "POST");
+assert.deepEqual(JSON.parse(adminRequest.init.body), { password: "rotated-password" });
+
+const protectedAdminClient = createAdminClient("http://backend.test", async () => new Response(JSON.stringify({ error: { code: "LAST_ADMIN_REQUIRED", message: "마지막 활성 관리자는 변경할 수 없습니다." } }), { status: 409 }));
+await assert.rejects(() => protectedAdminClient.deleteAccount(account.subject), (nextError) => nextError instanceof AdminApiError
+  && nextError.status === 409
+  && nextError.code === "LAST_ADMIN_REQUIRED"
+  && nextError.message === "마지막 활성 관리자는 변경할 수 없습니다.");
+
+let adminQueryUrl;
+const adminQueryClient = createAdminClient("http://backend.test", async (url) => {
+  adminQueryUrl = url;
+  if (url.endsWith("/connections")) return new Response(JSON.stringify({ data: { items: [{ id: "app_db", name: "App DB", kind: "PostgreSQL", status: "ready", latency_ms: 8, checked_at: "2030-01-01T00:00:00Z" }] } }), { status: 200 });
+  return new Response(JSON.stringify({ data: { items: [{ event_id: "00000000-0000-0000-0000-000000000002", occurred_at: "2030-01-01T00:00:00Z", actor_subject: null, action_code: "ADMIN.ACCOUNT.UPDATE", target_type: "account", target_id: account.subject, result: "FAILED", details: {} }], page: 3, page_size: 50, total: 101 } }), { status: 200 });
+});
+assert.equal((await adminQueryClient.listConnections())[0].status, "ready");
+assert.equal(adminQueryUrl, "http://backend.test/admin/connections");
+assert.equal((await adminQueryClient.listAuditEvents(3, "account", "FAILED")).items[0].actor_subject, null);
+assert.equal(adminQueryUrl, "http://backend.test/admin/audit-events?page=3&page_size=50&search=account&result=FAILED");
+
+const legacyRoleClient = createAdminClient("http://backend.test", async () => new Response(JSON.stringify({ data: { items: [{ ...account, role: "report_admin" }], page: 1, page_size: 50, total: 1 } }), { status: 200 }));
+await assert.rejects(() => legacyRoleClient.listAccounts(), /관리자 계정 API가 올바르지 않은 응답/);
 
 let defaultRequests = 0;
 assert.throws(

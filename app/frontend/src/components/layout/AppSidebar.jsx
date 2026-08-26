@@ -6,7 +6,7 @@ import { PAGE_PATHS } from "../../routing";
 const NAVIGATION = [
   { id: "chat", path: PAGE_PATHS.chat, label: "데이터 분석", icon: MessageSquareText, capability: CAPABILITY.runAnalysis },
   { id: "reports", path: PAGE_PATHS.reports, label: "보고서", icon: FileBarChart, capability: CAPABILITY.draftReport, alternative: CAPABILITY.manageReport },
-  { id: "admin", path: PAGE_PATHS.admin, label: "관리자", icon: ShieldCheck, capability: CAPABILITY.manageReport, alternative: CAPABILITY.manageData },
+  { id: "admin", path: PAGE_PATHS.admin, label: "관리자", icon: ShieldCheck, capability: CAPABILITY.manageSystem },
 ];
 
 /** 서버 세션 역할에 허용된 경로만 노출하고 선택된 페이지를 접근성 상태로 표시한다. */

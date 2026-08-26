@@ -38,7 +38,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     () => options.analysisClient ?? createAnalysisClient(fetch),
     [options.analysisClient],
   );
-  const isAdmin = options.isAdmin ?? ["report_admin", "platform_admin"].includes(options.role ?? "");
+  const isAdmin = options.isAdmin ?? false;
   const autoLoad = options.autoLoad ?? true;
 
   const [definitions, setDefinitions] = useState<readonly ReportDefinitionVersion[]>([]);

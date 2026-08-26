@@ -1,9 +1,9 @@
 {
   "schema_version": "AnswerviceAnalysisCapabilityRelease.v1",
   "status": "SEALED",
-  "catalog_release_id": "walkerhill-v4.3-sql-20260815-derived.1-retirement-20260820.1-iceberg-analyst.4-runtime-v2.20260820.4-phase9-joins.1",
-  "catalog_sha256": "695fe466056ee0e115eba39c985a1264f818faa960b8ba7d97da5f0f7ef4f2ed",
-  "canonical_sha256": "528870fc6a989ed14e3b9324c9e7ed72824357548812bc53ec9570ce08f35480",
+  "catalog_release_id": "walkerhill-analysis-semantics-v1.20260826.1-runtime-v2",
+  "catalog_sha256": "9f0d04c5f1db728046bfb85f9868ca69a142f121a30dbbadbb8bd0974f2d1ebf",
+  "canonical_sha256": "0dc2faac6d05fa45e64011758edc7006dbcb8b309d2983a084ee905196d5545d",
   "contract": {
     "version": "ANSWERVICE-ANALYSIS-CAPABILITY-v1",
     "max_metrics_per_plan": 4,
@@ -29,8 +29,31 @@
             "columns": ["hotel_code"]
           }
         ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.member_revenue_daily",
+        "time": {
+          "mode": "range",
+          "field": "business_date",
+          "default": "required_period"
+        },
+        "dimensions": [
+          {
+            "id": "membership_tier",
+            "columns": ["tier_code"]
+          }
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.room_stay_fact",
+        "time": {
+          "mode": "range",
+          "field": "checkout_date",
+          "default": "required_period"
+        },
+        "dimensions": []
       }
     ]
   },
-  "content_sha256": "52a68437597e879bfe6c6f7f77bd748d9da79dbdfa1b49669feeeaada29884d4"
+  "content_sha256": "68e8369071d47237d9b2d88ac2121288ea9739224768a1120322f8e08acdb8d0"
 }

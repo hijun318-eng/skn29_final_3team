@@ -145,9 +145,23 @@ def test_sealed_conversation_default_is_explicit_and_cannot_be_overridden() -> N
 def test_product_capability_is_sealed_and_exact_catalog_bound() -> None:
     release = load_analysis_capability_release(PRODUCT_CAPABILITY)
 
-    assert release.contract.asset(
+    hotel = release.contract.asset(
         "serving.analytics_v4_3.hotel_operations_daily"
-    ) is not None
+    )
+    member = release.contract.asset(
+        "serving.analytics_v4_3.member_revenue_daily"
+    )
+    checkout = release.contract.asset(
+        "serving.analytics_v4_3.room_stay_fact"
+    )
+    assert hotel is not None
+    assert member is not None
+    assert member.time_field == "business_date"
+    assert member.dimensions[0].id == "membership_tier"
+    assert member.dimensions[0].columns == ("tier_code",)
+    assert checkout is not None
+    assert checkout.time_field == "checkout_date"
+    assert checkout.dimensions == ()
     assert "period_comparison" in release.contract.operations
     assert release.contract_for_catalog(
         release.catalog_release_id,

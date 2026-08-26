@@ -184,9 +184,19 @@ export function useReportDraftState(
     }
   }, [announce, commitBlocks]);
 
-  const resizeBlock = useCallback((blockId: string, requestedWidth: number, requestedHeight?: number) => {
+  const resizeBlock = useCallback((
+    blockId: string,
+    requestedWidth: number,
+    requestedHeight?: number,
+    requestedPosition?: { readonly x: number; readonly y: number },
+  ) => {
     const result = resizeDraftBlocks(
-      blocksRef.current, blockId, requestedWidth, requestedHeight, orientationRef.current,
+      blocksRef.current,
+      blockId,
+      requestedWidth,
+      requestedHeight,
+      orientationRef.current,
+      requestedPosition,
     );
     if (result && commitBlocks(result.blocks)) announce(result.announcement);
   }, [announce, commitBlocks]);

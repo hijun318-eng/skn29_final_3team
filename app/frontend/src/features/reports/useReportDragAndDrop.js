@@ -2,7 +2,7 @@
 import { useCallback, useRef, useState } from "react";
 import { KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 
-import { placeDraftBlock } from "../../contracts/report.ts";
+import { isDraftLayoutValid, placeDraftBlock } from "../../contracts/report.ts";
 import { keyboardEndDropPosition, moveFrontendBlock } from "./reportDraftV2.js";
 
 /** 이동 대상과 형제 블록의 좌·중·우 및 상·중·하가 일치하는 12열 guide를 계산한다. */
@@ -28,6 +28,26 @@ export function computeReportAlignmentGuides(position, blocks, activeId) {
     : null;
 }
 
+/** 선택 블록의 상대 배치를 유지하며 빈 12열 좌표로만 그룹을 이동한다. */
+export function moveReportBlockGroup(blocks, blockIds, activeId, position) {
+  const selectedIds = new Set(blockIds);
+  const selected = blocks.filter((block) => selectedIds.has(block.id));
+  const active = selected.find((block) => block.id === activeId);
+  if (!active || selected.length < 2 || !position) return null;
+  const requestedDeltaX = position.x - active.x;
+  const requestedDeltaY = position.y - active.y;
+  const minimumDeltaX = -Math.min(...selected.map((block) => block.x));
+  const maximumDeltaX = Math.min(...selected.map((block) => 12 - block.w - block.x));
+  const minimumDeltaY = -Math.min(...selected.map((block) => block.y));
+  const deltaX = Math.max(minimumDeltaX, Math.min(maximumDeltaX, requestedDeltaX));
+  const deltaY = Math.max(minimumDeltaY, requestedDeltaY);
+  if (deltaX === 0 && deltaY === 0) return null;
+  const moved = blocks.map((block) => selectedIds.has(block.id)
+    ? { ...block, x: block.x + deltaX, y: block.y + deltaY }
+    : block);
+  return isDraftLayoutValid(moved) ? moved : null;
+}
+
 function reportKeyboardCoordinates(event, { currentCoordinates }) {
   const movement = {
     ArrowRight: [80, 0],
@@ -50,12 +70,16 @@ export function useReportDragAndDrop({
   frontendReportContext,
   reportPages,
   reportTemplateMap,
+  selectedBlockIds,
+  lockedBlockIds,
   setEditorAnnouncement,
-  setSelectedBlockId,
+  selectDraggedBlock,
   viewArtifactTemplateFor,
   wholeArtifactTemplateFor,
 }) {
   const [draggedBlockId, setDraggedBlockId] = useState("");
+  const [draggedBlockIds, setDraggedBlockIds] = useState(() => new Set());
+  const [dragDelta, setDragDelta] = useState(null);
   const [dropPosition, setDropPosition] = useState(null);
   const [alignmentGuides, setAlignmentGuides] = useState(null);
   const lastDropOutcomeRef = useRef({ success: false, message: "" });
@@ -63,6 +87,7 @@ export function useReportDragAndDrop({
   const dragPointerRef = useRef(null);
   const pointerDragRef = useRef(false);
   const dropPositionRef = useRef(null);
+  const draggedBlockIdsRef = useRef(new Set());
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -160,6 +185,9 @@ export function useReportDragAndDrop({
     dragPointerRef.current = null;
     dropPositionRef.current = null;
     setDraggedBlockId("");
+    setDraggedBlockIds(new Set());
+    draggedBlockIdsRef.current = new Set();
+    setDragDelta(null);
     setDropPosition(null);
     setAlignmentGuides(null);
   }, []);
@@ -171,14 +199,25 @@ export function useReportDragAndDrop({
     dropPositionRef.current = null;
     lastDropOutcomeRef.current = { success: false, message: "" };
     setDraggedBlockId(activeId);
-    if (!activeId.startsWith("template:") && !activeId.startsWith("artifact:")) setSelectedBlockId(activeId);
-  }, [setSelectedBlockId]);
+    if (!activeId.startsWith("template:") && !activeId.startsWith("artifact:")) {
+      const group = selectedBlockIds.has(activeId) ? new Set(selectedBlockIds) : new Set([activeId]);
+      draggedBlockIdsRef.current = group;
+      setDraggedBlockIds(group);
+      selectDraggedBlock(activeId);
+    }
+  }, [selectDraggedBlock, selectedBlockIds]);
 
   const handleDragMove = useCallback(({ active, delta }) => {
     const position = dragDestination(active, delta);
     dropPositionRef.current = position;
     setDropPosition(position);
-    setAlignmentGuides(computeReportAlignmentGuides(position, blocksRef.current, String(active.id)));
+    setDragDelta(delta);
+    const group = draggedBlockIdsRef.current;
+    setAlignmentGuides(computeReportAlignmentGuides(
+      position,
+      blocksRef.current.filter((block) => !group.has(block.id) || block.id === String(active.id)),
+      String(active.id),
+    ));
   }, [blocksRef, dragDestination]);
 
   const handleDragEnd = useCallback(({ active, delta }) => {
@@ -200,11 +239,19 @@ export function useReportDragAndDrop({
     } else {
       const source = blocksRef.current.find((block) => block.id === activeId);
       if (position && source && (position.x !== source.x || position.y !== source.y)) {
-        commitBlocks((current) => {
-          const moved = moveFrontendBlock(current, activeId, position.placement, frontendReportContext());
-          return moved.ok ? moved.blocks : placeDraftBlock(current, activeId, position.requestedX, position.y);
-        });
-        succeeded = true;
+        const groupIds = draggedBlockIdsRef.current;
+        if (groupIds.size > 1) {
+          const groupUnlocked = [...groupIds].every((id) => !lockedBlockIds.has(id));
+          const moved = groupUnlocked
+            ? moveReportBlockGroup(blocksRef.current, groupIds, activeId, position)
+            : null;
+          succeeded = Boolean(moved && commitBlocks(moved));
+        } else {
+          succeeded = commitBlocks((current) => {
+            const moved = moveFrontendBlock(current, activeId, position.placement, frontendReportContext());
+            return moved.ok ? moved.blocks : placeDraftBlock(current, activeId, position.requestedX, position.y);
+          });
+        }
       }
     }
     const message = succeeded
@@ -213,7 +260,7 @@ export function useReportDragAndDrop({
     lastDropOutcomeRef.current = { success: succeeded, message };
     setEditorAnnouncement(message);
     resetDrag();
-  }, [addTemplateBlock, addWholeArtifact, artifactOptions, blocksRef, commitBlocks, dragDestination, dragLabel, frontendReportContext, reportPages, reportTemplateMap, resetDrag, setEditorAnnouncement, viewArtifactTemplateFor, wholeArtifactTemplateFor]);
+  }, [addTemplateBlock, addWholeArtifact, artifactOptions, blocksRef, commitBlocks, dragDestination, dragLabel, frontendReportContext, lockedBlockIds, reportPages, reportTemplateMap, resetDrag, setEditorAnnouncement, viewArtifactTemplateFor, wholeArtifactTemplateFor]);
 
   const handleDragCancel = useCallback(({ active }) => {
     const message = `${dragLabel(active.id)} 이동을 취소했습니다. 원래 위치를 유지합니다.`;
@@ -245,6 +292,8 @@ export function useReportDragAndDrop({
       },
     },
     draggedBlockId,
+    draggedBlockIds,
+    dragDelta,
     dropPosition,
     handleDragCancel,
     handleDragEnd,

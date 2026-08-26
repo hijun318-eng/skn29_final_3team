@@ -1,5 +1,5 @@
 /** draft block 복제·설정·resize를 불변 갱신하는 순수 mutation helper 모듈이다. */
-import { compactDraftLayout } from "../../contracts/report.ts";
+import { compactDraftLayout, isDraftLayoutValid } from "../../contracts/report.ts";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
@@ -94,6 +94,7 @@ export function resizeDraftBlocks(
   requestedWidth: number,
   requestedHeight: number | undefined,
   orientation: "portrait" | "landscape",
+  requestedPosition?: { readonly x: number; readonly y: number },
 ): ResizeDraftBlockResult | null {
   const source = current.find((block) => block.id === blockId);
   if (!source) return null;
@@ -108,22 +109,26 @@ export function resizeDraftBlocks(
     ? Math.max(source.h, minimumHeight)
     : Math.max(minimumHeight, Math.min(maximumHeight, requestedHeight));
   if (width === source.w && height === source.h) return null;
-  const resizeRow = requestedHeight !== undefined && height !== source.h;
+  const resizeRow = !requestedPosition && requestedHeight !== undefined && height !== source.h;
   const resized = current.map((block) => {
     if (block.id === blockId) return {
       ...block,
       columns: width,
       w: width,
       h: height,
-      x: Math.min(block.x, 12 - width),
+      x: Math.min(12 - width, Math.max(0, Math.round(requestedPosition?.x ?? block.x))),
+      y: Math.max(0, Math.round(requestedPosition?.y ?? block.y)),
       ...(["artifact", "chart", "table"].includes(block.type ?? "")
         ? { content: JSON.stringify({ ...readDraftBlockSettings(block), sizeMode: "manual" }) }
         : {}),
     };
     return resizeRow && block.y === source.y ? { ...block, h: height } : block;
   });
+  if (requestedPosition && !isDraftLayoutValid(resized)) return null;
   return {
-    blocks: compactDraftLayout(resized) as readonly DraftReportBlock[],
+    blocks: requestedPosition
+      ? resized as readonly DraftReportBlock[]
+      : compactDraftLayout(resized) as readonly DraftReportBlock[],
     announcement: `${source.title || "제목 없음"} 블록 크기를 너비 ${width}/12, 높이 ${height}단으로 변경했습니다.`,
   };
 }

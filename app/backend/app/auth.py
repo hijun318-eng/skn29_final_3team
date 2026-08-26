@@ -8,6 +8,8 @@ import hmac
 import json
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -16,19 +18,122 @@ from app.auth_principal_store import (
     Principal,
     _authentication_error,
     _configured_principal_path,
-    _load_accounts,
     _load_principals,
-    _principal_store_kind,
 )
-from app.database import session_scope
+from app.database import DatabaseConfigurationError, session_scope
 from app.authorization import has_capability
 from app.contracts import Capability, Role
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 
-def authenticate_credentials(username: str, password: str) -> Principal:
-    """운영 account 파일의 PBKDF2 hash와 입력 비밀번호를 constant-time으로 검증한다.
+@dataclass(frozen=True)
+class _AccountCredential:
+    """DB에서 읽은 단일 로그인 verifier와 현재 principal을 묶는다."""
+
+    password_salt: str
+    password_hash: str
+    password_iterations: int
+    principal: Principal
+    active: bool
+
+
+def _account_credential(row: Mapping[str, object]) -> _AccountCredential:
+    try:
+        values = row  # SQLAlchemy RowMapping과 test mapping은 같은 key 계약을 사용한다.
+        salt = str(values["password_salt"])
+        digest = str(values["password_hash"])
+        iterations = int(values["password_iterations"])
+        active = values["active"]
+        decoded_salt = urlsafe_b64decode(salt + "=" * (-len(salt) % 4))
+        bytes.fromhex(digest)
+        if (
+            len(decoded_salt) < 16
+            or len(digest) != 64
+            or iterations < 200_000
+            or not isinstance(active, bool)
+        ):
+            raise ValueError("invalid account verifier")
+        return _AccountCredential(
+            password_salt=salt,
+            password_hash=digest,
+            password_iterations=iterations,
+            principal=Principal(UUID(str(values["subject"])), Role(str(values["role"]))),
+            active=active,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _authentication_error(503) from exc
+
+
+async def _load_account(username: str) -> _AccountCredential | None:
+    try:
+        async with session_scope(_required_session_store_url()) as session:
+            result = await session.execute(
+                text(
+                    """
+                    SELECT password_salt, password_hash, password_iterations,
+                           subject, role, active
+                    FROM security.auth_accounts
+                    WHERE username = :username
+                    """
+                ),
+                {"username": username},
+            )
+            row = result.mappings().one_or_none()
+    except AuthenticationError:
+        raise
+    except (DatabaseConfigurationError, SQLAlchemyError) as exc:
+        raise _authentication_error(503) from exc
+    return _account_credential(row) if row is not None else None
+
+
+async def _load_active_principal(subject: UUID) -> Principal | None:
+    try:
+        async with session_scope(_required_session_store_url()) as session:
+            result = await session.execute(
+                text(
+                    """
+                    SELECT subject, role
+                    FROM security.auth_accounts
+                    WHERE subject = :subject AND active
+                    """
+                ),
+                {"subject": subject},
+            )
+            row = result.mappings().one_or_none()
+    except AuthenticationError:
+        raise
+    except (DatabaseConfigurationError, SQLAlchemyError) as exc:
+        raise _authentication_error(503) from exc
+    if row is None:
+        return None
+    try:
+        return Principal(UUID(str(row["subject"])), Role(str(row["role"])))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _authentication_error(503) from exc
+
+
+async def auth_account_store_ready(database_url: str) -> bool:
+    """runtime DB에 활성 로그인 계정이 하나 이상 존재하는지 실제 SELECT로 확인한다."""
+
+    try:
+        async with session_scope(database_url) as session:
+            result = await session.execute(
+                text("SELECT EXISTS (SELECT 1 FROM security.auth_accounts WHERE active)")
+            )
+            return bool(result.scalar_one())
+    except (DatabaseConfigurationError, SQLAlchemyError) as exc:
+        raise _authentication_error(503) from exc
+
+
+def _derive_password_hash(password: str, salt: bytes, iterations: int) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt, iterations
+    ).hex()
+
+
+async def authenticate_credentials(username: str, password: str) -> Principal:
+    """DB account의 PBKDF2 hash와 입력 비밀번호를 constant-time으로 검증한다.
 
     존재하지 않거나 비활성인 계정도 같은 해시 비용을 지불한 뒤 동일한 인증 오류를 내어
     사용자명 존재 여부와 비교 위치가 timing으로 노출되지 않게 한다.
@@ -36,13 +141,14 @@ def authenticate_credentials(username: str, password: str) -> Principal:
     normalized_username = username.strip().lower()
     if not normalized_username or not password:
         raise _authentication_error()
-    records = _load_accounts(_configured_principal_path())
-    matched = next((record for record in records if record.username == normalized_username), None)
+    matched = await _load_account(normalized_username)
     salt = urlsafe_b64decode((matched.password_salt if matched else "AAAAAAAAAAAAAAAAAAAAAA") + "==")
     iterations = matched.password_iterations if matched else 210_000
     # 존재하지 않는 계정도 동일 PBKDF2 경로를 수행해야 사용자명 존재 여부가 응답 시간으로
     # 새지 않는다. 마지막 비교 역시 constant-time으로 수행해 해시 prefix 추측을 차단한다.
-    supplied_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations).hex()
+    supplied_hash = await asyncio.to_thread(
+        _derive_password_hash, password, salt, iterations
+    )
     expected_hash = matched.password_hash if matched else "0" * 64
     if matched is None or not matched.active or not hmac.compare_digest(expected_hash, supplied_hash):
         raise _authentication_error()
@@ -227,33 +333,13 @@ async def require_active_subject_with_capability(
 ) -> Principal:
     """Background 실행 전에 주체의 현재 Role이 필요한 Capability를 유지하는지 재확인한다.
 
-    저장된 보고서의 과거 Role을 신뢰하거나 관리자 actor의 권한을 빌리지 않는다. 외부
-    principal store에서 같은 subject의 현재 활성 Role을 다시 읽고, 정확히 하나의 Role만
-    Capability를 만족할 때 그 Principal을 반환한다. 중복·모호한 Role은 권한 확대로
-    보정하지 않고 403으로 닫는다.
+    저장된 보고서의 과거 Role을 신뢰하거나 관리자 actor의 권한을 빌리지 않는다.
+    DB 계정 정본에서 같은 subject의 현재 활성 Role을 다시 읽고 Capability를 만족할
+    때만 그 Principal을 반환한다. 비활성·삭제·권한 축소는 403으로 닫는다.
     """
 
-    path = _configured_principal_path()
-    kind = await asyncio.to_thread(_principal_store_kind, path)
-    if kind == "account":
-        records = await asyncio.to_thread(_load_accounts, path)
-        principals = {
-            record.principal
-            for record in records
-            if record.principal.subject == subject
-            and record.active
-            and has_capability(record.principal.role, capability)
-        }
-    else:
-        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-        records = await asyncio.to_thread(_load_principals, path)
-        principals = {
-            record.principal
-            for record in records
-            if record.principal.subject == subject
-            and record.not_before <= current < record.expires_at
-            and has_capability(record.principal.role, capability)
-        }
-    if len(principals) != 1:
+    del now  # 공개 계약 호환용이며 DB의 현재 상태는 별도 wall-clock 비교가 필요 없다.
+    principal = await _load_active_principal(subject)
+    if principal is None or not has_capability(principal.role, capability):
         raise _authentication_error(403)
-    return next(iter(principals))
+    return principal

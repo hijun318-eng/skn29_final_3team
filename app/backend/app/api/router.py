@@ -196,9 +196,7 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
     정상 로그인으로 가장하지 않고 dependency 오류로 변환한다.
     """
     try:
-        principal = await asyncio.to_thread(
-            authenticate_credentials, payload.username, payload.password
-        )
+        principal = await authenticate_credentials(payload.username, payload.password)
         session_token = issue_session_token(principal)
         await register_session(session_token, principal)
     except AuthenticationError as exc:

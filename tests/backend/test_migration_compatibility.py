@@ -6,6 +6,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from alembic.config import Config
@@ -63,6 +64,7 @@ KNOWN_REVISIONS = (
     "20260826_43",
     "20260826_44",
     "20260826_45",
+    "20260826_46",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -89,7 +91,7 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260826_45"], script.get_heads())
+        self.assertEqual(["20260826_46"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
@@ -188,7 +190,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         result = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual("20260826_45", self.revision(self.empty_database))
+        self.assertEqual("20260826_46", self.revision(self.empty_database))
         engine = create_engine(self.base_url.set(database=self.empty_database))
         with engine.connect() as connection:
             widths = connection.execute(
@@ -214,7 +216,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260826_45", self.revision(self.known_database))
+        self.assertEqual("20260826_46", self.revision(self.known_database))
 
     def test_report_head_upgrades_to_analysis_persistence_head(self) -> None:
         database = self.create_database("migration_report")
@@ -225,7 +227,132 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260826_45", self.revision(database))
+        self.assertEqual("20260826_46", self.revision(database))
+
+    def test_database_auth_accounts_roundtrips_from_previous_head(self) -> None:
+        database = self.create_database("migration_auth_accounts")
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        previous = alembic("upgrade", "20260826_45", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+
+        upgraded = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        engine = create_engine(self.base_url.set(database=database))
+        stale_subject = "00000000-0000-0000-0000-000000000099"
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO security.auth_accounts (
+                        username, password_salt, password_hash,
+                        password_iterations, subject, role
+                    ) VALUES (
+                        'stale', :salt, :digest, 210000, :subject, 'analyst'
+                    )
+                    """
+                ),
+                {"salt": "A" * 22, "digest": "0" * 64, "subject": stale_subject},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO security.auth_sessions (
+                        token_sha256, subject, role, issued_at, expires_at
+                    ) VALUES (
+                        :token, :subject, 'analyst', now() - interval '1 minute',
+                        now() + interval '1 hour'
+                    )
+                    """
+                ),
+                {"token": "a" * 64, "subject": stale_subject},
+            )
+        if str(BACKEND) not in sys.path:
+            sys.path.insert(0, str(BACKEND))
+        from app.contracts import Role
+        from app.provision_auth_accounts import AccountDefinition, _provision
+
+        definitions = (
+            AccountDefinition("analyst", Role.ANALYST, uuid4()),
+            AccountDefinition("admin", Role.PLATFORM_ADMIN, uuid4()),
+        )
+        verifiers = {
+            "analyst": ("A" * 22, "1" * 64, 210_000),
+            "admin": ("B" * 22, "2" * 64, 210_000),
+        }
+        with patch.dict(os.environ, {"APP_DATABASE_URL": url}, clear=False):
+            provisioned = _provision(definitions, verifiers, replace=True)
+        self.assertEqual(2, provisioned["account_count"])
+        self.assertEqual(1, provisioned["revoked_sessions"])
+
+        with engine.connect() as connection:
+            columns = connection.execute(
+                text(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'security'
+                      AND table_name = 'auth_accounts'
+                    """
+                )
+            ).scalars().all()
+            accounts = connection.execute(
+                text(
+                    "SELECT username, role FROM security.auth_accounts "
+                    "ORDER BY username"
+                )
+            ).all()
+            active_sessions = connection.execute(
+                text(
+                    "SELECT count(*) FROM security.auth_sessions "
+                    "WHERE revoked_at IS NULL"
+                )
+            ).scalar_one()
+        self.assertEqual(
+            {
+                "username", "password_salt", "password_hash",
+                "password_iterations", "subject", "role", "active",
+                "created_at", "updated_at",
+            },
+            set(columns),
+        )
+        self.assertEqual(
+            [("admin", "platform_admin"), ("analyst", "analyst")],
+            accounts,
+        )
+        self.assertEqual(0, active_sessions)
+        with self.assertRaises(DBAPIError), engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO security.auth_accounts (
+                        username, password_salt, password_hash,
+                        password_iterations, subject, role
+                    ) VALUES (
+                        'invalid account', :salt, :digest, 210000,
+                        '00000000-0000-0000-0000-000000000046', 'analyst'
+                    )
+                    """
+                ),
+                {"salt": "A" * 22, "digest": "0" * 64},
+            )
+        engine.dispose()
+
+        downgraded = alembic("downgrade", "20260826_45", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            relations = connection.execute(
+                text(
+                    "SELECT to_regclass('security.auth_accounts'), "
+                    "to_regclass('security.auth_sessions')"
+                )
+            ).one()
+        engine.dispose()
+        self.assertEqual((None, "security.auth_sessions"), tuple(relations))
+
+        replayed = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+        self.assertEqual("20260826_46", self.revision(database))
 
     def test_analysis_head_roundtrips_through_context_registry_and_run_parameters(self) -> None:
         database = self.create_database("migration_context")
@@ -235,7 +362,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
-        self.assertEqual("20260826_45", self.revision(database))
+        self.assertEqual("20260826_46", self.revision(database))
         downgrade = alembic("downgrade", "20260810_06", database_url=url)
         self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260810_06", self.revision(database))
@@ -267,7 +394,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual((None, None, None, None, False, False), tuple(rolled_back))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260826_45", self.revision(database))
+        self.assertEqual("20260826_46", self.revision(database))
 
     def test_phase1_downgrade_preserves_preexisting_manual_conversation_objects(self) -> None:
         database = self.create_database("migration_conversation_legacy")
@@ -452,7 +579,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260826_45", self.revision(database))
+        self.assertEqual("20260826_46", self.revision(database))
 
     def test_capability_evidence_contract_roundtrips_and_is_immutable(self) -> None:
         database = self.create_database("migration_evidence")
@@ -568,7 +695,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual("20260820_28", self.revision(database))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260826_45", self.revision(database))
+        self.assertEqual("20260826_46", self.revision(database))
 
 
 if __name__ == "__main__":

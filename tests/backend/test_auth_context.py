@@ -10,7 +10,7 @@ from base64 import urlsafe_b64encode
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 from fastapi.security import HTTPAuthorizationCredentials
@@ -20,12 +20,14 @@ BACKEND = ROOT / "app" / "backend"
 sys.path.insert(0, str(BACKEND))
 
 from app.auth import (  # noqa: E402
+    _AccountCredential,
     AuthenticationError,
     authenticate_credentials,
     authenticate_token,
     issue_session_token,
     require_active_subject_with_capability,
 )
+from app.auth_principal_store import Principal  # noqa: E402
 from app.context import (  # noqa: E402
     ContextValidationError,
     _server_kst_date,
@@ -61,23 +63,30 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
     def release_environment(self) -> dict[str, str]:
         return {"AUTH_PRINCIPALS_FILE": str(self.path)}
 
-    def account(self, username: str = "analyst", password: str = "analyst1234!") -> dict[str, object]:
+    def account(
+        self,
+        password: str = "analyst1234!",
+        *,
+        role: Role = Role.ANALYST,
+        active: bool = True,
+    ) -> _AccountCredential:
         salt = b"0123456789abcdef"
-        return {
-            "username": username,
-            "password_salt": urlsafe_b64encode(salt).decode().rstrip("="),
-            "password_hash": hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 210_000).hex(),
-            "password_iterations": 210_000,
-            "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "analyst",
-            "active": True,
-        }
+        return _AccountCredential(
+            password_salt=urlsafe_b64encode(salt).decode().rstrip("="),
+            password_hash=hashlib.pbkdf2_hmac(
+                "sha256", password.encode(), salt, 210_000
+            ).hex(),
+            password_iterations=210_000,
+            principal=Principal(UUID(int=11), role),
+            active=active,
+        )
 
     async def test_credentials_issue_a_signed_expiring_session(self) -> None:
-        self.write([self.account()])
-        environment = self.release_environment() | {"AUTH_SESSION_SECRET": "s" * 32}
-        with patch.dict(os.environ, environment, clear=False):
-            principal = authenticate_credentials("ANALYST", "analyst1234!")
+        with (
+            patch.dict(os.environ, {"AUTH_SESSION_SECRET": "s" * 32}, clear=False),
+            patch("app.auth._load_account", AsyncMock(return_value=self.account())),
+        ):
+            principal = await authenticate_credentials("ANALYST", "analyst1234!")
             token = issue_session_token(principal, now=self.now)
             with self.assertRaises(AuthenticationError) as missing_store:
                 await authenticate_token(token, now=self.now + timedelta(minutes=1))
@@ -85,17 +94,16 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
                 await authenticate_token(token, now=self.now + timedelta(hours=9))
         self.assertEqual(503, missing_store.exception.status_code)
 
-    def test_login_rejects_unknown_wrong_and_inactive_accounts(self) -> None:
-        for name, username, password, active in (
-            ("unknown", "missing", "analyst1234!", True),
-            ("wrong", "analyst", "wrong-password", True),
-            ("inactive", "analyst", "analyst1234!", False),
+    async def test_login_rejects_unknown_wrong_and_inactive_accounts(self) -> None:
+        for name, username, password, account in (
+            ("unknown", "missing", "analyst1234!", None),
+            ("wrong", "analyst", "wrong-password", self.account()),
+            ("inactive", "analyst", "analyst1234!", self.account(active=False)),
         ):
             with self.subTest(name=name):
-                self.write([{**self.account(), "active": active}])
-                with patch.dict(os.environ, self.release_environment(), clear=False):
+                with patch("app.auth._load_account", AsyncMock(return_value=account)):
                     with self.assertRaises(AuthenticationError) as denied:
-                        authenticate_credentials(username, password)
+                        await authenticate_credentials(username, password)
                 self.assertEqual(401, denied.exception.status_code)
 
     async def test_release_uses_digest_owned_subject_and_role(self) -> None:
@@ -106,11 +114,13 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Role.ANALYST, principal.role)
 
     async def test_background_subject_reloads_platform_capability_from_account_store(self) -> None:
-        account = {**self.account(), "role": "platform_admin"}
-        self.write([account])
-        with patch.dict(os.environ, self.release_environment(), clear=False):
+        stored_principal = Principal(UUID(int=11), Role.PLATFORM_ADMIN)
+        with patch(
+            "app.auth._load_active_principal",
+            AsyncMock(return_value=stored_principal),
+        ):
             principal = await require_active_subject_with_capability(
-                UUID(str(account["subject"])),
+                UUID(int=11),
                 Capability.RUN_ANALYSIS,
                 now=self.now,
             )
@@ -118,12 +128,14 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Role.PLATFORM_ADMIN, principal.role)
 
     async def test_background_subject_rejects_role_without_required_capability(self) -> None:
-        account = {**self.account(), "role": "report_admin"}
-        self.write([account])
-        with patch.dict(os.environ, self.release_environment(), clear=False):
+        stored_principal = Principal(UUID(int=11), Role.REPORT_ADMIN)
+        with patch(
+            "app.auth._load_active_principal",
+            AsyncMock(return_value=stored_principal),
+        ):
             with self.assertRaises(AuthenticationError) as denied:
                 await require_active_subject_with_capability(
-                    UUID(str(account["subject"])),
+                    UUID(int=11),
                     Capability.RUN_ANALYSIS,
                     now=self.now,
                 )

@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import tempfile
 import unittest
-from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from sys import path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -165,66 +161,27 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("runtime-user", trino_request.headers["x-trino-user"])
         self.assertTrue(trino_request.headers["authorization"].startswith("Basic "))
 
-    def test_release_auth_readiness_requires_database_secret_and_principal_file(self) -> None:
+    async def test_auth_readiness_requires_database_and_session_secret(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
-            self.assertEqual("not_ready", AppDatabaseReadiness._auth_probe())
+            self.assertEqual("not_ready", await AppDatabaseReadiness._auth_probe())
 
-    def test_auth_readiness_parses_store_and_requires_an_active_principal(self) -> None:
-        salt = urlsafe_b64encode(b"0123456789abcdef").decode().rstrip("=")
-        account = {
-            "username": "analyst",
-            "password_salt": salt,
-            "password_hash": "0" * 64,
-            "password_iterations": 210_000,
-            "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "analyst",
-            "active": True,
+    async def test_auth_readiness_requires_an_active_database_account(self) -> None:
+        environment = {
+            "APP_RUNTIME_DATABASE_URL": "postgresql://readiness",
+            "AUTH_SESSION_SECRET": "s" * 32,
         }
-        with tempfile.TemporaryDirectory() as directory:
-            principal_file = Path(directory) / "principals.json"
-            environment = {
-                "APP_RUNTIME_DATABASE_URL": "postgresql://readiness",
-                "AUTH_SESSION_SECRET": "s" * 32,
-                "AUTH_PRINCIPALS_FILE": str(principal_file),
-            }
-            for name, payload, expected in (
-                ("active", [account], "ready"),
-                ("inactive", [{**account, "active": False}], "not_ready"),
-                ("malformed", {"accounts": [account]}, "not_ready"),
-            ):
-                with self.subTest(name=name):
-                    principal_file.write_text(json.dumps(payload), encoding="utf-8")
-                    with patch.dict("os.environ", environment, clear=True):
-                        self.assertEqual(expected, AppDatabaseReadiness._auth_probe())
-
-    def test_auth_readiness_requires_a_current_digest_principal(self) -> None:
-        now = datetime.now(timezone.utc)
-        record = {
-            "token_sha256": "0" * 64,
-            "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "analyst",
-            "not_before": (now - timedelta(minutes=2)).isoformat(),
-            "expires_at": (now + timedelta(minutes=1)).isoformat(),
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            principal_file = Path(directory) / "principals.json"
-            environment = {
-                "APP_RUNTIME_DATABASE_URL": "postgresql://readiness",
-                "AUTH_SESSION_SECRET": "s" * 32,
-                "AUTH_PRINCIPALS_FILE": str(principal_file),
-            }
-            for name, payload, expected in (
-                ("current", record, "ready"),
-                (
-                    "expired",
-                    {**record, "expires_at": (now - timedelta(minutes=1)).isoformat()},
-                    "not_ready",
-                ),
-            ):
-                with self.subTest(name=name):
-                    principal_file.write_text(json.dumps([payload]), encoding="utf-8")
-                    with patch.dict("os.environ", environment, clear=True):
-                        self.assertEqual(expected, AppDatabaseReadiness._auth_probe())
+        for active, expected in ((True, "ready"), (False, "not_ready")):
+            with self.subTest(active=active):
+                account_probe = AsyncMock(return_value=active)
+                with (
+                    patch.dict("os.environ", environment, clear=True),
+                    patch(
+                        "app.services.readiness.auth_account_store_ready",
+                        account_probe,
+                    ),
+                ):
+                    self.assertEqual(expected, await AppDatabaseReadiness._auth_probe())
+                account_probe.assert_awaited_once_with("postgresql://readiness")
 
     async def test_trino_probe_follows_same_origin_pages_to_terminal_success(self) -> None:
         requests: list[httpx.Request] = []
@@ -339,7 +296,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             patch.object(probe, "_model_probe", AsyncMock(return_value="ready")),
-            patch.object(probe, "_auth_probe", return_value="ready"),
+            patch.object(probe, "_auth_probe", AsyncMock(return_value="ready")),
             patch.object(probe, "_report_scheduler_probe", return_value="ready"),
         ):
             result = await probe.check()

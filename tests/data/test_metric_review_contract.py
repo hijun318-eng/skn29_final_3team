@@ -139,6 +139,46 @@ def test_generic_review_candidate_is_valid_but_never_publishable():
     assert result["publishable"] is False
 
 
+def test_v2_review_binds_asset_and_dimension_additions_to_sql_evidence():
+    """신규 semantic scope는 SQL view·field 근거가 있을 때만 검토안에 들어간다."""
+
+    candidate = _candidate()
+    candidate.update(
+        {
+            "contract_version": "answervice.metric_review.v2",
+            "asset_additions": [
+                {
+                    "fqn": "serving.sample.daily_observations",
+                    "domain_urn": "urn:li:domain:sample",
+                    "grain": {
+                        "kind": "periodic",
+                        "keys": ["observed_on", "segment"],
+                    },
+                }
+            ],
+            "dimension_additions": [
+                {
+                    "id": "sample_segment",
+                    "aliases": ["sample segment", "표본 구분"],
+                    "definition": "Arbitrary segment captured on the observation row.",
+                    "asset_fqn": "serving.sample.daily_observations",
+                    "column": "segment",
+                }
+            ],
+        }
+    )
+
+    result = validate_metric_review(candidate, _evidence())
+
+    assert result["contract_version"] == "answervice.metric_review.v2"
+    assert result["asset_addition_count"] == 1
+    assert result["dimension_addition_count"] == 1
+
+    candidate["dimension_additions"][0]["column"] = "not_in_sql"
+    with pytest.raises(SemanticMetadataError, match="SQL release fields"):
+        validate_metric_review(candidate, _evidence())
+
+
 def test_governed_owner_can_seal_an_approved_review():
     """승인 상태는 owner·timezone timestamp와 모든 Metric 상태가 함께 바뀔 때만 유효하다."""
 

@@ -12,16 +12,22 @@ from metadata_contract_primitives import (
     SemanticMetadataError,
     array,
     exact_keys,
+    fqn,
     identifier,
     mapping,
     text,
     unique_texts,
+    urn,
 )
 from runtime_governance_draft import GovernanceDraft
 from src.data.entitlement_roles import validate_entitlement_roles
 
 
-CONTRACT_VERSION = "answervice.metric_review.v1"
+CONTRACT_VERSION_V1 = "answervice.metric_review.v1"
+CONTRACT_VERSION_V2 = "answervice.metric_review.v2"
+# 기존 호출자가 v1 상수를 사용하는 계약은 유지한다. 신규 physical semantic scope는
+# v2에서만 명시적으로 검토할 수 있다.
+CONTRACT_VERSION = CONTRACT_VERSION_V1
 REVIEW_STATUS = "REVIEW_REQUIRED"
 APPROVED_STATUS = "APPROVED"
 _TOP_LEVEL_KEYS = {
@@ -35,6 +41,7 @@ _TOP_LEVEL_KEYS = {
     "review_owner_candidate_urn",
     "metrics",
 }
+_ADDITION_KEYS = {"asset_additions", "dimension_additions"}
 _APPROVAL_KEYS = {"reviewer", "reviewed_at"}
 _METRIC_KEYS = {
     "id",
@@ -58,6 +65,7 @@ _COLUMN_REDUCTIONS = {"sum", "min", "max", "average", "scalar"}
 _QUERY_STRATEGIES = {"VIEW_REUSE", "VIEW_COMPOSE", "RAW_APPROVED_DETAIL"}
 _ZERO_POLICIES = {"null_on_zero_denominator"}
 _VISIBILITIES = {"BUSINESS", "SUPPORT"}
+_GRAIN_KINDS = {"row", "event", "periodic", "aggregate"}
 
 
 def validate_metric_review(
@@ -68,14 +76,15 @@ def validate_metric_review(
 
     candidate = mapping(document, "metric review")
     status = candidate.get("review_status")
-    expected_keys = (
-        _TOP_LEVEL_KEYS | _APPROVAL_KEYS
-        if status == APPROVED_STATUS
-        else _TOP_LEVEL_KEYS
-    )
-    exact_keys(candidate, expected_keys, "metric review")
-    if candidate["contract_version"] != CONTRACT_VERSION:
+    contract_version = candidate.get("contract_version")
+    if contract_version not in {CONTRACT_VERSION_V1, CONTRACT_VERSION_V2}:
         raise SemanticMetadataError("metric review contract version is unsupported")
+    expected_keys = set(_TOP_LEVEL_KEYS)
+    if contract_version == CONTRACT_VERSION_V2:
+        expected_keys |= _ADDITION_KEYS
+    if status == APPROVED_STATUS:
+        expected_keys |= _APPROVAL_KEYS
+    exact_keys(candidate, expected_keys, "metric review")
     if status not in {REVIEW_STATUS, APPROVED_STATUS}:
         raise SemanticMetadataError("metric review status is unsupported")
     if (
@@ -118,6 +127,11 @@ def validate_metric_review(
         allowed_roles,
         expected_status=str(status),
     )
+    additions = (
+        _validate_additions(candidate, views, metrics)
+        if contract_version == CONTRACT_VERSION_V2
+        else {"asset_count": 0, "dimension_count": 0}
+    )
     business = [item for item in metrics.values() if item["visibility"] == "BUSINESS"]
     if len(business) != target:
         raise SemanticMetadataError("business metric count differs from its declared target")
@@ -129,17 +143,94 @@ def validate_metric_review(
             if status == APPROVED_STATUS
             else "VALID_REVIEW_DRAFT"
         ),
-        "contract_version": CONTRACT_VERSION,
+        "contract_version": contract_version,
         "candidate_sha256": _sha256(candidate),
         "source_sql_sha256": sql_evidence.source_sha256,
         "business_metric_count": len(business),
         "support_metric_count": len(metrics) - len(business),
         "metric_count": len(metrics),
+        "asset_addition_count": additions["asset_count"],
+        "dimension_addition_count": additions["dimension_count"],
         "approval_status": (
             APPROVED_STATUS if status == APPROVED_STATUS else "NOT_APPROVED"
         ),
         "publishable": status == APPROVED_STATUS,
     }
+
+
+def _validate_additions(
+    candidate: Mapping[str, Any],
+    views: Mapping[str, set[str]],
+    metrics: Mapping[str, Mapping[str, Any]],
+) -> dict[str, int]:
+    """SQL 근거가 있는 신규 asset grain·dimension만 검토 범위로 허용한다."""
+
+    assets: dict[str, set[str]] = {}
+    for index, raw in enumerate(
+        array(candidate["asset_additions"], "asset additions", limit=64)
+    ):
+        context = f"asset addition[{index}]"
+        item = mapping(raw, context)
+        exact_keys(item, {"fqn", "grain", "domain_urn"}, context)
+        asset_fqn = fqn(item["fqn"], f"{context}.fqn")
+        urn(item["domain_urn"], "urn:li:domain:", f"{context}.domain_urn")
+        if asset_fqn in assets or asset_fqn not in views:
+            raise SemanticMetadataError(
+                "asset additions must be unique views in the SQL release"
+            )
+        grain = mapping(item["grain"], f"{context}.grain")
+        exact_keys(grain, {"kind", "keys"}, f"{context}.grain")
+        keys = set(
+            unique_texts(
+                grain["keys"],
+                f"{context}.grain.keys",
+                non_empty=True,
+            )
+        )
+        if grain.get("kind") not in _GRAIN_KINDS or not keys <= views[asset_fqn]:
+            raise SemanticMetadataError(
+                "asset addition grain is invalid or references unknown SQL fields"
+            )
+        assets[asset_fqn] = keys
+
+    dimension_ids: set[str] = set()
+    dimension_assets: set[str] = set()
+    for index, raw in enumerate(
+        array(candidate["dimension_additions"], "dimension additions", limit=64)
+    ):
+        context = f"dimension addition[{index}]"
+        item = mapping(raw, context)
+        exact_keys(
+            item,
+            {"id", "aliases", "definition", "asset_fqn", "column"},
+            context,
+        )
+        dimension_id = identifier(item["id"], f"{context}.id")
+        asset_fqn = fqn(item["asset_fqn"], f"{context}.asset_fqn")
+        column = identifier(item["column"], f"{context}.column")
+        unique_texts(item["aliases"], f"{context}.aliases", non_empty=True)
+        text(item["definition"], f"{context}.definition")
+        if (
+            dimension_id in dimension_ids
+            or asset_fqn not in views
+            or column not in views[asset_fqn]
+        ):
+            raise SemanticMetadataError(
+                "dimension additions must be unique and reference SQL release fields"
+            )
+        dimension_ids.add(dimension_id)
+        dimension_assets.add(asset_fqn)
+
+    metric_assets = {
+        str(mapping(metric["source"], "metric source").get("asset_fqn"))
+        for metric in metrics.values()
+        if mapping(metric["source"], "metric source").get("kind") == "COLUMN"
+    }
+    if set(assets) - (metric_assets | dimension_assets):
+        raise SemanticMetadataError(
+            "asset additions must be used by a reviewed Metric or dimension"
+        )
+    return {"asset_count": len(assets), "dimension_count": len(dimension_ids)}
 
 
 def _validate_metrics(

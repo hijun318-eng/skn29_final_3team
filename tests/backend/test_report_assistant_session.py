@@ -271,8 +271,8 @@ class ReportAssistantRetryTest(unittest.IsolatedAsyncioTestCase):
             get_assistant_session=AsyncMock(return_value=self.failed),
             get_version=AsyncMock(return_value=SimpleNamespace(
                 status=DefinitionStatus.DRAFT,
-                revision=4,
             )),
+            get_draft_revision=AsyncMock(return_value=4),
             get_assistant_artifact=AsyncMock(return_value={
                 "artifact_checksum": "a" * 64,
                 "trino_query_id": "query-1",
@@ -297,6 +297,10 @@ class ReportAssistantRetryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.source_id, response["retry_of_assistant_request_id"])
         self.assertFalse(response["retryable"])
         repository.retry_assistant_session.assert_awaited_once()
+        repository.get_draft_revision.assert_awaited_once_with(
+            str(self.failed["session_definition_id"]),
+            self.failed["session_definition_version"],
+        )
         execute.assert_not_awaited()
         compose.assert_not_awaited()
 
@@ -344,10 +348,7 @@ class ReportAssistantRetryTest(unittest.IsolatedAsyncioTestCase):
         """변경된 Revision과 손상 Artifact는 각각 최신 보고서 열기와 관리자 문의로 닫는다."""
 
         repository = self._repository()
-        repository.get_version.return_value = SimpleNamespace(
-            status=DefinitionStatus.DRAFT,
-            revision=5,
-        )
+        repository.get_draft_revision.return_value = 5
         with patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)):
             with self.assertRaises(HTTPException) as stale:
                 await retry_assistant_session(str(self.source_id), self.context)
@@ -468,6 +469,64 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
         saved_plan = repository.record_assistant_proposal.await_args.args[7]
         self.assertRegex(saved_plan["request_id"], r"^[0-9a-f-]{36}$")
         repository.record_assistant_proposal.assert_awaited_once()
+
+    async def test_model_failure_terminates_session_for_safe_retry(self) -> None:
+        """모델 장애는 평가만 남기지 않고 원본 세션을 typed failed로 종결한다."""
+
+        from app.adapters.report_assistant import ReportAssistantModelError
+
+        assistant_request_id = uuid4()
+        artifact_id = uuid4()
+        definition_id = uuid4()
+        session = {
+            "assistant_request_id": assistant_request_id,
+            "phase": "ready",
+            "session_definition_id": definition_id,
+            "session_definition_version": 2,
+            "base_revision": 1,
+            "artifact_id": artifact_id,
+            "analysis_plan_json": None,
+            "result_artifact_id": None,
+            "result_revision": None,
+            "error_code": None,
+        }
+        repository = SimpleNamespace(
+            get_assistant_session=AsyncMock(return_value=session),
+            get_assistant_turn_history=AsyncMock(return_value=()),
+            get_assistant_artifact=AsyncMock(return_value={
+                "artifact_id": artifact_id,
+                "trino_query_id": "query-1",
+                "title": "승인 분석",
+                "narrative_markdown": "현재 기간 결과",
+                "evidence_json": {},
+                "chart_spec_json": {"chart_type": "bar"},
+                "artifact_checksum": "a" * 64,
+            }),
+            get_version=AsyncMock(return_value=ReportDefinitionVersion(
+                str(definition_id), 2, DefinitionStatus.DRAFT, "현재 보고서", (),
+            )),
+            fail_assistant_request=AsyncMock(),
+            upsert_assistant_evaluation=AsyncMock(),
+        )
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch(
+                "app.adapters.report_assistant.generate_report_change_proposal",
+                new=AsyncMock(side_effect=ReportAssistantModelError("model unavailable")),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await submit_assistant_message(
+                    str(assistant_request_id),
+                    ReportAssistantMessageRequest(instruction="요약을 줄여 줘"),
+                    object(),
+                )
+
+        self.assertEqual(502, raised.exception.status_code)
+        repository.fail_assistant_request.assert_awaited_once_with(
+            str(assistant_request_id), "REPORT_ASSISTANT_TURN_MODEL_FAILED"
+        )
+        repository.upsert_assistant_evaluation.assert_awaited_once()
 
     async def test_clarification_persists_turn_and_next_prompt_history(self) -> None:
         """모호한 지시는 ready에서 질문으로 멈추고 저장된 최근 대화를 모델에 전달한다."""

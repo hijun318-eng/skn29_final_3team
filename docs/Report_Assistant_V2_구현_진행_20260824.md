@@ -292,3 +292,26 @@ OpenAI+PostgreSQL 편집 E2E 증거는 유지되지만, 이번 실행의 Browser
 회귀다. `trino`, `datahub_transport`, `semantic_release`, `catalog_manifest`, `trino_schema`는
 여전히 not ready이므로 `new_data` live E2E는 완료되지 않았다. 관리자 계정으로 운영 패널을 실제
 화면에서 여는 검증도 사용자 비밀번호 입력 전까지 남아 있다.
+
+## 2026-08-25 실패 복구 실제 PostgreSQL 통합 검증
+
+- 격리 DB `app_db_report_assistant_e2e`에 기존 데이터 재적재 없이 migration head
+  `20260825_36`만 적용하고 최신 Backend를 `127.0.0.1:18002`에 재기동
+- 실제 analyst 인증과 PostgreSQL 실패 세션으로 retry API를 실행하던 중, 도메인
+  `ReportDefinitionVersion`에 존재하지 않는 `revision` 속성을 router가 읽어 500을 반환하는 문제 발견
+- CAS counter를 도메인 표시 객체에 억지로 추가하지 않고 owner 범위의 draft revision만 조회하는
+  `get_draft_revision()` 저장소 경계를 추가하고, 최종 자식 세션 생성 시 기존 원자 SQL 조건을 유지
+- 동일 실패 세션에 retry API를 두 번 호출해 새 `ready` 세션 하나만 생성되고 동일 ID가 반환됨을 확인
+- 원본 세션의 `failed` phase·`ANALYSIS_FAILED`·완료 시각은 유지되고, 새 세션에는 기존 승인,
+  `data_request_id`, 분석 계획, patch가 복사되지 않으며 Report version 개수도 변하지 않음을 확인
+- 이 통합 검증에서는 모델, AnalysisController, Trino, DataHub, Report Revision 저장을 호출하지 않음
+- 모델 transport·strict plan 실패를 평가에만 남기지 않고 원본 세션을 typed `failed`로 종결하며,
+  Frontend가 실패 응답 직후 서버 session을 재조회해 안전한 retry 카드를 표시하도록 연결
+- 관련 Backend·AI 테스트 89개, Frontend 테스트 24개, production build, 코드 문서화 검사,
+  architectural invariants와 `git diff --check` 통과
+
+Browser에서 analyst 로그인 후 연결 불가 test model route로 비용 없는 실패를 만들고
+`REPORT_ASSISTANT_TURN_MODEL_FAILED` 안내, `새 세션으로 다시 시도` 버튼, 새 `ready` session 전환과
+Revision 7 무변경을 확인했다. 정상 Backend로 복원한 뒤 model·App DB·migration·auth readiness도
+ready다. `new_data` live E2E는 기존과 같이 Trino·DataHub release readiness가 준비될 때까지
+미완료다.

@@ -834,6 +834,10 @@ async def retry_assistant_session(
             str(session["session_definition_id"]),
             int(session["session_definition_version"]),
         )
+        current_revision = await repository.get_draft_revision(
+            str(session["session_definition_id"]),
+            int(session["session_definition_version"]),
+        )
     except (KeyError, ValueError):
         raise _assistant_retry_error(
             assistant_request_id,
@@ -842,7 +846,7 @@ async def retry_assistant_session(
         ) from None
     if (
         definition.status.value != "draft"
-        or definition.revision != int(session["base_revision"])
+        or current_revision != int(session["base_revision"])
     ):
         raise _assistant_retry_error(
             assistant_request_id,
@@ -973,6 +977,9 @@ async def submit_assistant_message(
         finally:
             execution_gate.release()
     except ReportAssistantModelError as error:
+        await repository.fail_assistant_request(
+            assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_FAILED"
+        )
         await _observe_assistant(
             repository,
             "upsert_assistant_evaluation",
@@ -1008,6 +1015,9 @@ async def submit_assistant_message(
                 {"request_id": uuid4(), **dict(proposal["analysis_plan"])}
             ).model_dump(mode="json")
         except (TypeError, ValueError) as error:
+            await repository.fail_assistant_request(
+                assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_INVALID"
+            )
             await _observe_assistant(
                 repository,
                 "upsert_assistant_evaluation",

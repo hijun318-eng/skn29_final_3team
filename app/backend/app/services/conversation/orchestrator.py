@@ -1091,12 +1091,14 @@ class ConversationOrchestrator:
                 if error.code in {
                     ContextBuildErrorCode.METRIC_NOT_AVAILABLE,
                     ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                    ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED,
                 }:
-                    public_code = (
-                        ErrorCode.METRIC_NOT_AVAILABLE
-                        if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE
-                        else ErrorCode.OUT_OF_DATA_RANGE
-                    )
+                    if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
+                        public_code = ErrorCode.METRIC_NOT_AVAILABLE
+                    elif error.code is ContextBuildErrorCode.OUT_OF_DATA_RANGE:
+                        public_code = ErrorCode.OUT_OF_DATA_RANGE
+                    else:
+                        public_code = ErrorCode.CONTEXT_INCOMPLETE
                     public_error = {
                         "status": "BLOCKED",
                         "code": public_code.value,

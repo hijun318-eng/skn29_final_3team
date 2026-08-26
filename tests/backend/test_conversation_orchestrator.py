@@ -2458,6 +2458,62 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         # 분석은 실행되지 않아야 한다.
         self.assertEqual([], self.submitted_requests)
 
+    async def test_dimensionless_breakdown_is_blocked_as_incomplete_context(self) -> None:
+        """재검토 뒤에도 차원이 없는 breakdown은 분석 Run 없이 수정 요청으로 닫는다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "결과 형태 확인")
+        question = "선택 기간의 지표를 분류해서 보여줘"
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        self.support.program_error(
+            question,
+            ContextBuildError(
+                ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED,
+                (
+                    "분석 결과 형태를 확정하지 못했습니다. 전체 값, 기간별 추이, "
+                    "승인된 분류 기준별 값 또는 순위 중 원하는 형태를 질문에 "
+                    "명확히 포함해 주세요."
+                ),
+                partial_context={
+                    "metric_ids": ["room_revenue"],
+                    "metric_candidates": ["room_revenue"],
+                    "metric_resolution": "selected",
+                    "measurement_source_texts": ["지표"],
+                    "selected_metric_id": "room_revenue",
+                    "selected_metric_ids": ["room_revenue"],
+                    "analysis_operation": "breakdown",
+                    "analysis_time_bucket": None,
+                    "dimension_fields": [],
+                    "period_candidates": [
+                        {
+                            "start": "2025-08-01",
+                            "end_exclusive": "2025-09-01",
+                            "source_text": "선택 기간",
+                        }
+                    ],
+                    "period_relationship": "single",
+                    "is_elliptical": False,
+                },
+            ),
+        )
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": question},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual(
+            ErrorCode.CONTEXT_INCOMPLETE.value,
+            result["turn"]["reason_code"],
+        )
+        self.assertEqual("breakdown", result["turn"]["resolved_slots"]["analysis_operation"])
+        self.assertEqual([], self.submitted_requests)
+
     async def test_ambiguous_interpretation_returns_clarification_options(self) -> None:
         """지표·기간 모호성은 빈 신호로 진행하지 않고 선택지와 함께 재질의로 닫는지 검증."""
         conv = await self.repo.create_conversation(self.user_id, "모호성")

@@ -1433,6 +1433,19 @@ class MetricResolver:
                 raise ValueError(
                     "Node1 selected 분석 연산과 의도가 일치하지 않습니다."
                 )
+            if (
+                analysis_operation in {"breakdown", "top_n", "bottom_n"}
+                and not selected_dimensions
+            ):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED,
+                    (
+                        "분석 결과 형태를 확정하지 못했습니다. 전체 값, 기간별 추이, "
+                        "승인된 분류 기준별 값 또는 순위 중 원하는 형태를 질문에 "
+                        "명확히 포함해 주세요."
+                    ),
+                    partial_context=partial_context,
+                )
         elif selected_metric_ids:
             raise ValueError(
                 "Node1은 selected 판정에서만 selected_metric_ids를 반환할 수 있습니다."

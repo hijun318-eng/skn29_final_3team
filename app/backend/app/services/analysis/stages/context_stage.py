@@ -354,6 +354,18 @@ class AnalysisContextStage:
                     decision,
                     detail=str(error),
                 )
+            if error.code is ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED:
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.CONTEXT,
+                    AnalysisStatus.BLOCKED,
+                    ErrorCode.CONTEXT_INCOMPLETE,
+                    str(error),
+                    decision,
+                    detail=str(error),
+                )
             message = (
                 "질문에 시작일·종료일 또는 하나의 상대 기간을 명확히 포함해 주세요."
                 if error.code is ContextBuildErrorCode.PERIOD_REQUIRED

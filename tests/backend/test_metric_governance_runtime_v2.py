@@ -1084,6 +1084,18 @@ class _UnresolvedOperationNormalizer(_Normalizer):
         return result
 
 
+class _DimensionlessBreakdownNormalizer(_Normalizer):
+    """bounded recheck 뒤에도 차원 없는 breakdown을 반환한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["intent_candidates"] = ["breakdown"]
+        result["analysis_operation"] = "breakdown"
+        result["analysis_time_bucket"] = None
+        result["dimension_candidates"] = []
+        return result
+
+
 class _BucketOperationConflictNormalizer(_Normalizer):
     """재검토 뒤에도 일반 집계와 유효한 시간 버킷을 함께 반환한다."""
 
@@ -1797,6 +1809,50 @@ def test_selected_analysis_rejects_an_unresolved_shape_after_one_recheck() -> No
             )
         )
 
+    assert len(model.inputs) == 2
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "analysis_operation",
+        "attempt": 1,
+    }
+
+
+def test_selected_analysis_blocks_dimensionless_breakdown_after_one_recheck() -> None:
+    """차원 없는 분해를 SQL 단계까지 보내지 않고 수정 가능한 shape 오류로 닫는다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _DimensionlessBreakdownNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000051"),
+        trace_id="dimensionless-breakdown-recheck",
+        user_id=UUID("20000000-0000-0000-0000-000000000052"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Amount per Event",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED
+    assert raised.value.partial_context is not None
+    assert raised.value.partial_context["analysis_operation"] == "breakdown"
+    assert raised.value.partial_context["dimension_fields"] == []
     assert len(model.inputs) == 2
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "analysis_operation",

@@ -45,8 +45,6 @@ export { ReportEditorToolbar } from "./ReportEditorToolbar";
 export { ReportPropertiesPanel } from "./ReportPropertiesPanel";
 /** 실제 assistant 요청과 처리 receipt를 표시하는 대화형 패널을 재노출한다. */
 export { ReportAssistantPanel } from "./ReportAssistantPanel";
-/** 관리자 전용 Assistant 품질·비용 운영 패널을 재노출한다. */
-export { ReportAssistantOperationsPanel } from "./ReportAssistantOperationsPanel";
 /** 보고서 목록 화면 컴포넌트를 재노출한다. */
 export { ReportListView } from "./ReportListView";
 /** 실행·schedule 운영 패널을 재노출한다. */

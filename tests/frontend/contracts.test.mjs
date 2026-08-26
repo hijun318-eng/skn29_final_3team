@@ -164,7 +164,8 @@ assert.match(source("components/layout/AppSidebar.jsx"), /hasCapability\(capabil
 assert.match(source("authorization.ts"), /platform_admin/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
-assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadAssistantOperations\(\)/);
+assert.doesNotMatch(reportSources.page, /ReportAssistantOperationsPanel/);
+assert.doesNotMatch(reportSources.lifecycle, /loadAssistantOperations/);
 assert.match(source("api/reportClient.ts"), /getAssistantOperationsSummary/);
 assert.match(source("api/reportClient.ts"), /\/reports\/assistant\/operations\/summary/);
 assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);

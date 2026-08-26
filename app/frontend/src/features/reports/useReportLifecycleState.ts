@@ -7,7 +7,6 @@ import {
   type ReportBlockRequest,
   type ReportAssistantSessionResponse,
   type ReportAssistantEvaluationResponse,
-  type ReportAssistantOperationsSummaryResponse,
   type ReportDefinitionVersion,
   type ReportOrientation,
   type ReportRun,
@@ -68,8 +67,6 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const [assistantTrace, setAssistantTrace] = useState<AssistantTrace | null>(null);
   const [assistantSession, setAssistantSession] = useState<ReportAssistantSessionResponse | null>(null);
   const [assistantEvaluation, setAssistantEvaluation] = useState<ReportAssistantEvaluationResponse | null>(null);
-  const [assistantOperations, setAssistantOperations] = useState<ReportAssistantOperationsSummaryResponse | null>(null);
-  const [assistantFailures, setAssistantFailures] = useState<readonly ReportAssistantEvaluationResponse[]>([]);
 
   const definitionsRef = useRef(definitions);
   const selectedDefinitionRef = useRef(selectedDefinition);
@@ -155,21 +152,6 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setDefinitionState(next.length ? "ready" : "empty");
     return next;
   }, [mutate, reportClient]);
-
-  const loadAssistantOperations = useCallback(async () => {
-    if (!isAdmin) return null;
-    const result = await mutate("assistant-operations", async () => {
-      const [summary, failures] = await Promise.all([
-        reportClient.getAssistantOperationsSummary(),
-        reportClient.getAssistantOperationFailures(),
-      ]);
-      return { summary, failures: failures.items };
-    });
-    if (!result) return null;
-    setAssistantOperations(result.summary);
-    setAssistantFailures(result.failures);
-    return result;
-  }, [isAdmin, mutate, reportClient]);
 
   const fetchDefinition = useCallback((definition: Pick<ReportDefinitionVersion, "definitionId" | "version">) => (
     mutate("definition", () => reportClient.getDefinition(definition.definitionId, definition.version))
@@ -539,8 +521,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     if (!autoLoad) return;
     void loadDefinitions();
     if (isAdmin) void loadSchedules();
-    if (isAdmin) void loadAssistantOperations();
-  }, [autoLoad, isAdmin, loadAssistantOperations, loadDefinitions, loadSchedules]);
+  }, [autoLoad, isAdmin, loadDefinitions, loadSchedules]);
 
   useEffect(() => {
     const session = assistantSession;
@@ -621,8 +602,6 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     assistantTrace,
     assistantSession,
     assistantEvaluation,
-    assistantOperations,
-    assistantFailures,
     setQuery,
     setStatusFilter,
     setCreateOpen,
@@ -641,7 +620,6 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     selectDefinition,
     upsertDefinition,
     loadDefinitions,
-    loadAssistantOperations,
     fetchDefinition,
     findLatestDraft,
     createDefinition,
@@ -665,10 +643,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     retryAssistantSession,
   }), [
     analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, assistantInstruction,
-    assistantEvaluation, assistantFailures, assistantOperations, assistantSession, assistantTrace, cadence,
+    assistantEvaluation, assistantSession, assistantTrace, cadence,
     clearAssistantTrace, clearFeedback, createDefinition, createNextDraft, createOpen, createSchedule,
     definitionState, definitions, error, fetchDefinition, filteredRuns, finalDocument,
-    finalDocumentState, findLatestDraft, loadAssistantOperations, loadDefinitions, loadFinalDocument, loadRuns,
+    finalDocumentState, findLatestDraft, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
     pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient, requestAssistantDraft,
     restoreAssistantSession, retryAssistantSession, runDefinition, runQuery,

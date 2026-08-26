@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 from functools import lru_cache
 from typing import Annotated, Any
@@ -42,7 +41,7 @@ from app.contracts import (
     SessionResponse,
     response_meta,
 )
-from app.auth import AuthenticationError, authenticate_credentials, issue_session_token, register_session, revoke_session
+from app.auth import AuthenticationError, create_authenticated_session, revoke_session
 from app.authorization import capabilities_for, has_capability
 from app.api.analysis_router_runtime import (
     active_analytics_context_release as _active_analytics_context_release,
@@ -168,11 +167,9 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
     정상 로그인으로 가장하지 않고 dependency 오류로 변환한다.
     """
     try:
-        principal = await asyncio.to_thread(
-            authenticate_credentials, payload.username, payload.password
+        principal, session_token = await create_authenticated_session(
+            payload.username, payload.password
         )
-        session_token = issue_session_token(principal)
-        await register_session(session_token, principal)
     except AuthenticationError as exc:
         code = ErrorCode.DEPENDENCY_UNAVAILABLE if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
@@ -252,7 +249,7 @@ async def analysis(
     ],
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> AnalysisResponse | JSONResponse:
-    """호텔 분석가의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.
+    """인증 사용자의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.
 
     진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로
     덮지 않으며 재시도 가능한 typed 503으로 반환한다.
@@ -260,7 +257,7 @@ async def analysis(
     if not has_capability(context.role, Capability.RUN_ANALYSIS):
         raise ContextValidationError(
             ErrorCode.ACCESS_DENIED,
-            "분석 Agent는 호텔 분석가 역할만 사용할 수 있습니다.",
+            "분석 실행 권한이 필요합니다.",
             403,
         )
     wait_seconds = float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))

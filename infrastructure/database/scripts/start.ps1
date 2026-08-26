@@ -1,4 +1,4 @@
-# 책임: 외부 deployment environment로 DB·Trino·DataHub를 두 단계로 기동한다.
+# 책임: repository의 고정 deployment environment로 DB·Trino·DataHub를 두 단계로 기동한다.
 # Core 단계는 인증/TLS와 운영자 UI를 준비하고, Catalog 단계는 DataHub가 발급한
 # publish service token으로 source/serving의 물리 metadata만 수집한다. 이 단계는
 # semantic check/publish/read-back 전이므로 catalog ready를 선언하지 않는다. embedding과
@@ -7,8 +7,7 @@
 param(
     [string]$EnvFilePath,
     [ValidateSet('Core', 'Catalog')]
-    [string]$Stage = 'Core',
-    [switch]$AllowRepositoryLocalDevelopment
+    [string]$Stage = 'Core'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,9 +18,8 @@ $dataHubComposeFile = Join-Path $databaseRoot 'datahub/compose.consumer.yml'
 $dataHubIngestionFile = Join-Path $databaseRoot 'datahub/compose.ingestion.yml'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExplicitDeploymentEnvFile `
-    -Path $EnvFilePath -RepositoryRoot $repoRoot `
-    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $deploymentEnvironment = Read-DeploymentEnvironment $resolvedEnvFile
 
@@ -71,8 +69,7 @@ foreach ($fileKey in @(
     'SERVING_CATALOG_TOKEN_PRIVATE_KEY_HOST_FILE'
 )) {
     Assert-ExplicitDeploymentFile -Values $deploymentEnvironment `
-        -Key $fileKey -RepositoryRoot $repoRoot `
-        -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment | Out-Null
+        -Key $fileKey -RepositoryRoot $repoRoot | Out-Null
 }
 
 $trinoIdentities = [ordered]@{
@@ -209,20 +206,11 @@ if ($Stage -eq 'Catalog') {
 # 멱등 구성한다. 발급 credential을 동일 env file에 원자적으로 결속한 다음에야 Trino
 # container를 생성하므로, bootstrap admin identity가 query runtime으로 새지 않는다.
 Invoke-Compose up --detach --wait --wait-timeout 300 serving-catalog
-if ($resolvedEnvFile) {
-    $initializerArguments = @(
-        (Join-Path $PSScriptRoot 'initialize_serving_catalog.py'),
-        '--env-file', $resolvedEnvFile
-    )
-    if ($AllowRepositoryLocalDevelopment) {
-        $initializerArguments += '--allow-repository-local-development'
-    }
-    & python @initializerArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Polaris serving catalog initialization failed.'
-    }
-    $deploymentEnvironment = Read-DeploymentEnvironment $resolvedEnvFile
+& python (Join-Path $PSScriptRoot 'initialize_serving_catalog.py')
+if ($LASTEXITCODE -ne 0) {
+    throw 'Polaris serving catalog initialization failed.'
 }
+$deploymentEnvironment = Read-DeploymentEnvironment $resolvedEnvFile
 Assert-DeploymentEnvironmentValues -Values $deploymentEnvironment -RequiredKeys @(
     'SERVING_CATALOG_TRINO_CLIENT_ID', 'SERVING_CATALOG_TRINO_CLIENT_SECRET'
 )

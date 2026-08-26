@@ -17,10 +17,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.adapters.analysis_repository import AnalysisRepositoryUnavailable, PostgresAnalysisRepository
 from app.auth import AuthenticationError, Principal
-from app.authorization import has_capability
+from app.authorization import has_capability, role_is_entitled
 from app.context import TokenAuthenticator, bearer_auth, token_authenticator
-from app.contracts import Capability
-from app.database import session_scope
+from app.contracts import Capability, Role
+from app.database import DatabaseConfigurationError, session_scope
 
 
 # 날짜처럼 보이는 값은 질문 기준일이 아니라 MCP wire protocol의 공개 version이다.
@@ -97,15 +97,42 @@ def _has_client_info(params: dict[str, Any]) -> bool:
     )
 
 
-async def _enabled_tool() -> bool:
+def _role_is_allowed(required_roles: object, role: Role) -> bool:
+    """Registry JSON이 canonical Role 배열일 때만 현재 주체의 entitlement를 허용한다."""
+
+    if (
+        not isinstance(required_roles, list)
+        or not required_roles
+        or any(not isinstance(item, str) for item in required_roles)
+    ):
+        return False
+    return role_is_entitled(role, required_roles)
+
+
+async def _tool_registry_access(role: Role) -> tuple[bool, bool]:
+    """고정 Tool 행의 활성 상태와 Role entitlement를 한 DB snapshot에서 반환한다.
+
+    누락되거나 잘못된 Role JSON은 비활성 성공값으로 보정하지 않고 entitlement 거부로
+    닫는다. DB 설정·접속 실패는 호출자가 재시도할 수 있는 503으로 구분한다.
+    """
+
     try:
         async with session_scope(_database_url()) as session:
             result = await session.execute(
-                text("SELECT is_enabled FROM tooling.tool_registry WHERE tool_id = :tool_id AND tool_code = :tool_code"),
+                text(
+                    "SELECT is_enabled, required_roles_json "
+                    "FROM tooling.tool_registry "
+                    "WHERE tool_id = :tool_id AND tool_code = :tool_code"
+                ),
                 {"tool_id": TOOL_ID, "tool_code": TOOL_NAME},
             )
-            return bool(result.scalar_one_or_none())
-    except SQLAlchemyError as error:
+            row = result.mappings().one_or_none()
+            if row is None:
+                return False, False
+            return bool(row["is_enabled"]), _role_is_allowed(
+                row["required_roles_json"], role
+            )
+    except (DatabaseConfigurationError, SQLAlchemyError) as error:
         raise HTTPException(status_code=503, detail="MCP Tool Registry를 사용할 수 없습니다.") from error
 
 
@@ -182,7 +209,12 @@ async def mcp_post(
         return _rpc_error(request_id, -32602, "MCP clientInfo is required")
     if method == "tools/list":
         tools = []
-        if has_capability(principal.role, Capability.READ_ANALYSIS) and await _enabled_tool():
+        enabled, role_allowed = await _tool_registry_access(principal.role)
+        if (
+            has_capability(principal.role, Capability.READ_ANALYSIS)
+            and enabled
+            and role_allowed
+        ):
             tools.append({
                 "name": TOOL_NAME,
                 "title": "Get Analysis Run",
@@ -197,14 +229,20 @@ async def mcp_post(
         return _rpc_error(request_id, -32601, "Method not found")
     if mcp_name != params.get("name"):
         return _rpc_error(request_id, -32600, "Mcp-Name header does not match the request")
-    if params.get("name") != TOOL_NAME or not await _enabled_tool():
+    if params.get("name") != TOOL_NAME:
+        return _rpc_error(request_id, -32602, "Unknown or disabled tool")
+    enabled, role_allowed = await _tool_registry_access(principal.role)
+    if not enabled:
         return _rpc_error(request_id, -32602, "Unknown or disabled tool")
     arguments = params.get("arguments") or {}
     if not isinstance(arguments, dict) or set(arguments) != {"request_id"}:
         return _rpc_error(request_id, -32602, "request_id is required and no additional arguments are allowed")
     started = time.perf_counter()
     trace_id = request.state.trace_id
-    if not has_capability(principal.role, Capability.READ_ANALYSIS):
+    if (
+        not has_capability(principal.role, Capability.READ_ANALYSIS)
+        or not role_allowed
+    ):
         await _record_run(principal, trace_id, arguments, "DENIED", started, {}, "ACCESS_DENIED")
         return _rpc_error(request_id, -32001, "Tool access denied")
     try:

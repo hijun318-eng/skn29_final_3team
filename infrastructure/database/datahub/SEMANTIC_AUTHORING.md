@@ -257,6 +257,39 @@ The Backend keeps the verified catalog snapshot and readiness receipt for the sh
 `PUBLISHED_AND_VERIFIED`, recreate the Backend before routing analysis traffic to that
 release so no process can retain the predecessor snapshot for the remainder of its TTL.
 
+## Human-role entitlement migration
+
+The only canonical human roles are `analyst` and `admin`; both may run analysis, while
+application Capabilities decide which management operations are available. Trino,
+DataHub, source-database, migration, and runtime principals are service identities and
+must not be renamed or merged with these roles.
+
+Existing live metadata is migrated as a new semantic release. Do not add runtime aliases
+for retired human roles and do not edit the predecessor release in place. In an
+authoring process populated only from the Git-ignored
+`infrastructure/database/.env`, first extract a review artifact to a new path outside
+the repository:
+
+```powershell
+python infrastructure/database/datahub/migrate_semantic_policy.py `
+  --serving-schema <selected-live-serving-schema> `
+  --source-catalog-version <verified-source-version> `
+  --target-catalog-version <new-target-version> `
+  --target-policy-version <new-policy-version> `
+  --target-schema-context-version <new-schema-context-version> `
+  --role analyst --role admin `
+  --output <new-absolute-review-artifact-outside-repository>
+if ($LASTEXITCODE -ne 0) { throw 'Role entitlement migration extraction failed.' }
+```
+
+Review the source checksum and the generated `policy`. Pass that policy through the
+normal `author_semantic_catalog.py --check` command above, then publish with the exact
+target and predecessor checksums returned by the check. A successful HTTP write is not
+enough: require `PUBLISHED_AND_VERIFIED`, rebuild the catalog from live DataHub and
+Trino, restart the Backend, and exercise analysis once as `analyst` and once as `admin`.
+Any partial read-back, schema drift, retired-role residue, or missing dependency keeps
+the new release inactive; no fixture or static policy file is a runtime fallback.
+
 Pinned DataHub v1.7 exposes different authoritative fields across its read APIs.
 GlossaryTerm status/lifecycle and editable field-term associations are verified from
 Rest.li aspects. GraphQL independently verifies entity identity, owner, domain, the

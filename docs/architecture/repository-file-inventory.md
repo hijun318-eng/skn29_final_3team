@@ -9,11 +9,11 @@
 |---|---:|
 | archive | 130 |
 | documentation | 148 |
-| production | 308 |
-| project-config | 38 |
-| runtime-config | 66 |
+| production | 313 |
+| project-config | 37 |
+| runtime-config | 68 |
 | runtime-contract | 10 |
-| test | 141 |
+| test | 146 |
 
 운영 무결성 위반: **0건**
 
@@ -42,6 +42,7 @@
 | `AGENTS.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/alembic.ini` | project-config | REVIEWED |
 | `app/backend/app/__init__.py` | production | REVIEWED |
+| `app/backend/app/adapters/admin_account_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_definition_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_evidence_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_repository.py` | production | REVIEWED |
@@ -82,7 +83,9 @@
 | `app/backend/app/adapters/report_schedule_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/trino_async.py` | production | REVIEWED |
 | `app/backend/app/adapters/trino_schema.py` | production | REVIEWED |
+| `app/backend/app/admin_contracts.py` | production | REVIEWED |
 | `app/backend/app/analysis_contracts.py` | production | REVIEWED |
+| `app/backend/app/api/admin_router.py` | production | REVIEWED |
 | `app/backend/app/api/analysis_router_runtime.py` | production | REVIEWED |
 | `app/backend/app/api/analysis_router_support.py` | production | REVIEWED |
 | `app/backend/app/api/mcp_router.py` | production | REVIEWED |
@@ -105,6 +108,7 @@
 | `app/backend/app/query_capability.py` | production | REVIEWED |
 | `app/backend/app/report_contracts.py` | production | REVIEWED |
 | `app/backend/app/services/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/admin_connections.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/evidence.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/logical_plan.py` | production | REVIEWED |
@@ -205,9 +209,11 @@
 | `app/backend/migrations/versions/20260820_27_canonical_analyst_role.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_28_analysis_transition_status_width.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260825_29_bounded_multi_turn_persistence.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_30_two_role_accounts.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
+| `app/backend/scripts/provision_accounts.py` | runtime-config | REVIEWED |
 | `app/backend/scripts/verify-container.ps1` | runtime-config | REVIEWED |
 | `app/frontend/.dockerignore` | project-config | REVIEWED |
 | `app/frontend/compose.fragment.yml` | project-config | REVIEWED |
@@ -216,6 +222,7 @@
 | `app/frontend/nginx.conf` | project-config | REVIEWED |
 | `app/frontend/package-lock.json` | runtime-contract | REVIEWED |
 | `app/frontend/package.json` | runtime-contract | REVIEWED |
+| `app/frontend/src/api/adminClient.ts` | production | REVIEWED |
 | `app/frontend/src/api/analysisClient.ts` | production | REVIEWED |
 | `app/frontend/src/api/reportClient.ts` | production | REVIEWED |
 | `app/frontend/src/App.jsx` | production | REVIEWED |
@@ -643,7 +650,6 @@
 | `infrastructure/database/security/provision-crm-mssql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-crm-mssql.sql` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-facility-clickhouse.sh` | project-config | REVIEWED |
-| `infrastructure/database/security/provision-local-platform-admin.ps1` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-pos-mysql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-release-principals.ps1` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-serving-catalog-secrets.ps1` | project-config | REVIEWED |
@@ -731,6 +737,7 @@
 | `tests/ai/test_model_contracts_live.py` | test | TEST_ONLY |
 | `tests/ai/test_model_decision.py` | test | TEST_ONLY |
 | `tests/ai/test_model_transport_policy_contract.py` | test | TEST_ONLY |
+| `tests/ai/test_nlu_live_node1.py` | test | TEST_ONLY |
 | `tests/ai/test_node1.py` | test | TEST_ONLY |
 | `tests/ai/test_node2.py` | test | TEST_ONLY |
 | `tests/ai/test_node3.py` | test | TEST_ONLY |
@@ -760,6 +767,9 @@
 | `tests/backend/fixtures/api/v0.1/success.json` | test | TEST_ONLY |
 | `tests/backend/fixtures/api/v0.1/timeout.json` | test | TEST_ONLY |
 | `tests/backend/fixtures/report-layout-canonical.json` | test | TEST_ONLY |
+| `tests/backend/test_account_provisioning.py` | test | TEST_ONLY |
+| `tests/backend/test_admin_connections.py` | test | TEST_ONLY |
+| `tests/backend/test_admin_control.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_persistence.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_pipeline.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_progress.py` | test | TEST_ONLY |
@@ -854,6 +864,7 @@
 | `tests/integration/test_ci_workflow.py` | test | TEST_ONLY |
 | `tests/integration/test_crm_healthcheck.py` | test | TEST_ONLY |
 | `tests/integration/test_datahub_runtime_upgrade_scripts.py` | test | TEST_ONLY |
+| `tests/integration/test_repository_env_policy.py` | test | TEST_ONLY |
 | `tests/report/test_domain.py` | test | TEST_ONLY |
 | `tests/report/test_router_contract.py` | test | TEST_ONLY |
 | `tests/support/__init__.py` | test | TEST_ONLY |

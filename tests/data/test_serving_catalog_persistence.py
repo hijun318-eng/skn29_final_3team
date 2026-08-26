@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from subprocess import CompletedProcess
+from unittest.mock import patch
 
 import pytest
 from sqlglot import parse
@@ -15,6 +17,10 @@ DATABASE = ROOT / "infrastructure" / "database"
 SCRIPTS = DATABASE / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from initialize_serving_catalog import (  # noqa: E402
+    _repository_env_path,
+    main as initialize_main,
+)
 from render_release_serving_sql import ViewCoercion, load_coercions, render  # noqa: E402
 
 
@@ -123,4 +129,40 @@ def test_core_start_initializes_scoped_catalog_identity_before_trino() -> None:
     full_start = script.index("Invoke-Compose up --detach --wait --wait-timeout 1800 @coreStartupServices")
 
     assert initializer < credential_gate < full_start
-    assert "AllowRepositoryLocalDevelopment" in script
+    initializer_window = script[initializer:credential_gate]
+    assert "--env-file" not in initializer_window
+    assert "--allow-repository-local-development" not in initializer_window
+
+
+def test_catalog_initializer_uses_only_fixed_gitignored_repository_env(tmp_path: Path) -> None:
+    """initializer는 호출자가 고른 dotenv 대신 저장소의 고정 `.env`만 읽는다."""
+
+    env_path = tmp_path / "infrastructure" / "database" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("SERVING_CATALOG_ADMIN_CLIENT_ID=test\n", encoding="utf-8")
+
+    with patch(
+        "initialize_serving_catalog.subprocess.run",
+        return_value=CompletedProcess(args=[], returncode=0),
+    ) as check_ignore:
+        resolved = _repository_env_path(tmp_path)
+
+    assert resolved == env_path.resolve()
+    assert check_ignore.call_args.args[0][-1] == str(env_path)
+
+    with patch(
+        "initialize_serving_catalog.subprocess.run",
+        return_value=CompletedProcess(args=[], returncode=1),
+    ):
+        with pytest.raises(ValueError, match="covered by .gitignore"):
+            _repository_env_path(tmp_path)
+
+
+def test_catalog_initializer_rejects_arbitrary_env_argument() -> None:
+    """삭제된 env 인자를 조용히 무시해 외부 파일을 사용했다고 오해하게 하지 않는다."""
+
+    with patch("sys.argv", ["initialize_serving_catalog.py", "--env-file", "outside.env"]):
+        with pytest.raises(SystemExit) as error:
+            initialize_main()
+
+    assert error.value.code == 2

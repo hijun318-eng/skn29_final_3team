@@ -13,7 +13,7 @@ $trinoProbeScriptPath = Join-Path ([IO.Path]::GetTempPath()) "trino-probe-$PID.s
 $trinoProbeScriptContainerPath = '/tmp/trino-probe.sh'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $values = Read-DeploymentEnvironment $resolvedEnvFile

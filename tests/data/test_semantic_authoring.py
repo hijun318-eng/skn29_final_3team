@@ -48,6 +48,7 @@ from semantic_authoring import (  # noqa: E402
     _previous_catalog_sha256,
 )
 from src.data.governance_contract import catalog_hash  # noqa: E402
+from src.data.entitlement_roles import CANONICAL_ENTITLEMENT_ROLES  # noqa: E402
 from test_datahub_metadata_publication import (  # noqa: E402
     arbitrary_bundle,
     arbitrary_ratio_bundle,
@@ -238,7 +239,7 @@ def test_compact_decisions_compile_without_copying_live_physical_fields():
 
 
 def test_policy_roles_accept_only_canonical_roles():
-    """발행기는 canonical analyst만 허용하고 임의 Role 문자열을 거부한다."""
+    """발행기는 analyst/admin만 허용하고 폐기·임의 Role 문자열을 거부한다."""
 
     expected = arbitrary_bundle()
     _scopes, inventory, datasets, _terms = _runtime(expected)
@@ -252,10 +253,18 @@ def test_policy_roles_accept_only_canonical_roles():
         "entitlements"
     ]["roles"] == ["analyst"]
 
-    invalid = deepcopy(canonical)
-    invalid["roles"] = ["unknown-role"]
-    with pytest.raises(SemanticMetadataError, match="unsupported role"):
-        compile_authoring_policy(invalid, bindings)
+    administrator = deepcopy(canonical)
+    administrator["roles"] = ["analyst", "admin"]
+    assert compile_authoring_policy(administrator, bindings)["assets"][0][
+        "entitlements"
+    ]["roles"] == ["analyst", "admin"]
+    assert CANONICAL_ENTITLEMENT_ROLES == frozenset({"analyst", "admin"})
+
+    for unsupported in ("report_admin", "data_admin", "platform_admin", "unknown-role"):
+        invalid = deepcopy(canonical)
+        invalid["roles"] = [unsupported]
+        with pytest.raises(SemanticMetadataError, match="unsupported role"):
+            compile_authoring_policy(invalid, bindings)
 
 
 def test_v2_decisions_compile_hidden_support_rules_without_publishing_terms():

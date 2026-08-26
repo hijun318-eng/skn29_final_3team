@@ -1,6 +1,153 @@
 {
   "components": {
     "schemas": {
+      "AccountData": {
+        "additionalProperties": false,
+        "description": "verifier와 세션 정보 없이 관리자 화면에 공개할 계정 상태를 표현한다.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "subject": {
+            "format": "uuid",
+            "title": "Subject",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "username",
+          "role",
+          "active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AccountData",
+        "type": "object"
+      },
+      "AccountListData": {
+        "additionalProperties": false,
+        "description": "계정 목록과 1-based pagination 위치 및 전체 건수를 함께 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "AccountListData",
+        "type": "object"
+      },
+      "AccountListResponse": {
+        "additionalProperties": false,
+        "description": "계정 목록 결과를 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccountListData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AccountListResponse",
+        "type": "object"
+      },
+      "AccountResponse": {
+        "additionalProperties": false,
+        "description": "단일 계정 변경 결과를 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccountData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AccountResponse",
+        "type": "object"
+      },
       "AnalysisData": {
         "additionalProperties": false,
         "description": "현재 상태, 전이 이력, 선택 경로, 게이트, 결과와 산출물 참조를 분석 응답 본문에 담는다.",
@@ -737,6 +884,126 @@
         "title": "ArtifactReference",
         "type": "object"
       },
+      "AuditEventData": {
+        "additionalProperties": false,
+        "description": "append-only 감사 이벤트에서 자격 증명을 제외한 관리 조회 필드만 투영한다.",
+        "properties": {
+          "action_code": {
+            "title": "Action Code",
+            "type": "string"
+          },
+          "actor_subject": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Subject"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "occurred_at",
+          "actor_subject",
+          "action_code",
+          "target_type",
+          "target_id",
+          "result",
+          "details"
+        ],
+        "title": "AuditEventData",
+        "type": "object"
+      },
+      "AuditEventListData": {
+        "additionalProperties": false,
+        "description": "감사 이벤트 목록과 1-based pagination 위치 및 전체 건수를 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "AuditEventListData",
+        "type": "object"
+      },
+      "AuditEventListResponse": {
+        "additionalProperties": false,
+        "description": "감사 이벤트 목록을 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuditEventListData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AuditEventListResponse",
+        "type": "object"
+      },
       "BlockFailureCode": {
         "description": "블록 재실행 실패를 인증·문맥·모델·SQL·쿼리·증거·계약 범주로 안정적으로 분류한다.",
         "enum": [
@@ -776,7 +1043,8 @@
           "analysis.read",
           "report.draft",
           "report.manage",
-          "data.manage"
+          "data.manage",
+          "system.manage"
         ],
         "title": "Capability",
         "type": "string"
@@ -817,6 +1085,123 @@
         ],
         "title": "ClarificationType",
         "type": "string"
+      },
+      "ConnectionData": {
+        "additionalProperties": false,
+        "description": "승인된 고정 dependency의 공개 이름·상태·지연시간만 노출한다.",
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "latency_ms": {
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "down"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "status",
+          "latency_ms",
+          "checked_at"
+        ],
+        "title": "ConnectionData",
+        "type": "object"
+      },
+      "ConnectionListData": {
+        "additionalProperties": false,
+        "description": "한 번의 관리자 점검에서 확인한 고정 dependency 상태 목록을 담는다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionData"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConnectionListData",
+        "type": "object"
+      },
+      "ConnectionListResponse": {
+        "additionalProperties": false,
+        "description": "연결 상태 목록을 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConnectionListData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ConnectionListResponse",
+        "type": "object"
+      },
+      "CreateAccountRequest": {
+        "additionalProperties": false,
+        "description": "정규화된 login ID, 초기 비밀번호와 두 Role 중 하나만 계정 생성에 허용한다.",
+        "properties": {
+          "password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "default": "analyst"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z0-9._-]+$",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "CreateAccountRequest",
+        "type": "object"
       },
       "CreateAnalysisDefinitionRequest": {
         "additionalProperties": false,
@@ -1201,6 +1586,7 @@
           "SCHEMA_VERSION_MISMATCH",
           "RESOURCE_NOT_FOUND",
           "RESOURCE_CONFLICT",
+          "LAST_ADMIN_REQUIRED",
           "DEPENDENCY_UNAVAILABLE",
           "INTERNAL_ERROR"
         ],
@@ -2892,6 +3278,25 @@
         "title": "RequiredAction",
         "type": "string"
       },
+      "ResetPasswordRequest": {
+        "additionalProperties": false,
+        "description": "관리자가 지정 계정에 발급할 새 비밀번호를 길이 제한과 함께 수신한다.",
+        "properties": {
+          "password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "ResetPasswordRequest",
+        "type": "object"
+      },
       "ResolvedSlots": {
         "additionalProperties": false,
         "description": "멀티턴 대화에서 이전 턴의 슬롯을 구조화된 형태로 상속할 때 사용한다.\n\nOrchestrator가 ConversationSlotResolver로 확정한 지표·차원·기간을\nMetricResolver의 pre-resolved fast-path에 전달하여 Node 1 LLM 호출을\n건너뛰되 거버넌스 대조 검증은 유지한다.",
@@ -3042,12 +3447,10 @@
         "type": "object"
       },
       "Role": {
-        "description": "인증 주체에게 부여할 수 있는 분석·보고서·데이터 관리 역할의 허용 집합이다.",
+        "description": "사람인 인증 주체에게 부여할 수 있는 일반 사용자·관리자 역할의 허용 집합이다.",
         "enum": [
           "analyst",
-          "report_admin",
-          "data_admin",
-          "platform_admin"
+          "admin"
         ],
         "title": "Role",
         "type": "string"
@@ -3310,6 +3713,49 @@
         "title": "TraceStep",
         "type": "object"
       },
+      "UpdateAccountRequest": {
+        "additionalProperties": false,
+        "description": "username·Role·활성 상태 중 명시적으로 전달된 필드만 변경한다.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 3,
+                "pattern": "^[a-z0-9._-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "title": "UpdateAccountRequest",
+        "type": "object"
+      },
       "UpdateReportScheduleRequest": {
         "additionalProperties": false,
         "description": "기존 스케줄의 활성화 여부만 변경하도록 제한된 입력을 받는다.",
@@ -3368,7 +3814,7 @@
     },
     "securitySchemes": {
       "BearerAuth": {
-        "description": "서버가 AUTH_PRINCIPALS_FILE의 SHA-256 digest로 검증하는 Bearer token",
+        "description": "서버가 HMAC·DB revocation·현재 계정 상태로 검증하는 session token",
         "scheme": "bearer",
         "type": "http"
       }
@@ -3380,9 +3826,389 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/accounts": {
+      "get": {
+        "description": "삭제되지 않은 analyst/admin 계정을 login ID로 검색해 페이지 단위로 반환한다.",
+        "operationId": "listAdminAccounts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 128,
+              "title": "Search",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Accounts",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "analyst/admin 계정을 생성하고 verifier 원문 없이 단일 계정 상태만 반환한다.",
+        "operationId": "createAdminAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Account",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/accounts/{subject}": {
+      "delete": {
+        "description": "마지막 활성 관리자 보호 후 계정을 soft-delete하고 모든 session을 폐기한다.",
+        "operationId": "deleteAdminAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete Account",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "username·Role·활성 상태를 변경하고 권한 변경 session을 즉시 폐기한다.",
+        "operationId": "updateAdminAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Update Account",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/accounts/{subject}/password": {
+      "post": {
+        "description": "새 PBKDF2 verifier로 비밀번호를 교체하고 대상의 모든 기존 session을 폐기한다.",
+        "operationId": "resetAdminAccountPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Reset Account Password",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit-events": {
+      "get": {
+        "description": "append-only 감사 로그를 action·대상·actor·결과로 검색해 최신순 반환한다.",
+        "operationId": "listAdminAuditEvents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 128,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^(|SUCCESS|SUCCEEDED|FAILED|DENIED|UNKNOWN)$",
+              "title": "Result",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Audit Events",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/connections": {
+      "get": {
+        "description": "서버 고정 dependency를 실제로 probe하고 URL 없는 결과를 감사한 뒤 반환한다.",
+        "operationId": "listAdminConnections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Connections",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/analysis": {
       "post": {
-        "description": "호텔 분석가의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.\n\n진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로\n덮지 않으며 재시도 가능한 typed 503으로 반환한다.",
+        "description": "인증 사용자의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.\n\n진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로\n덮지 않으며 재시도 가능한 typed 503으로 반환한다.",
         "operationId": "submitAnalysis",
         "parameters": [
           {

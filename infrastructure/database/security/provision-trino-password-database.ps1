@@ -1,8 +1,8 @@
-# 책임: 외부 deployment credential로 Trino 483 PBKDF2 password database를 원자
+# 책임: repository의 고정 deployment credential로 Trino 483 PBKDF2 password database를 원자
 # 생성한다. canonical identity·강도·외부 경로 검증 실패 시 기존 파일을 덮지 않는다.
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [Parameter(Mandatory)] [string]$EnvPath,
+    [string]$EnvPath,
     [Parameter(Mandatory)] [string]$PasswordDatabasePath
 )
 
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot '..\..\..'))
 . (Join-Path $scriptRoot '../scripts/deployment-environment.ps1')
-$resolvedEnvPath = Resolve-ExternalDeploymentEnvFile `
+$resolvedEnvPath = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvPath -RepositoryRoot $repoRoot
 $values = Read-DeploymentEnvironment $resolvedEnvPath
 $definitions = @(

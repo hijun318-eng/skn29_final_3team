@@ -26,6 +26,7 @@ from uuid import UUID, uuid4
 
 from app.adapters.conversation_repository import ConversationRepository
 from app.authorization import has_capability
+from app.context import ContextValidationError
 from app.contracts import AnalysisRequest, AnalysisStatus, Capability, ErrorCode, RequestContext, ResolvedSlots
 from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
 from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
@@ -446,6 +447,12 @@ class ConversationOrchestrator:
 
             elif slots.route == "REPORT_ACTION":
                 # 라우트 3: REPORT_ACTION (Trino 쿼리 0건 실행, 선행 Artifact들을 Report Draft에 연결)
+                if not has_capability(context.role, Capability.DRAFT_REPORT):
+                    raise ContextValidationError(
+                        ErrorCode.ACCESS_DENIED,
+                        "Report 초안 권한이 없습니다.",
+                        403,
+                    )
                 report_repo = self._get_report_repository(context)
                 report_def_id, artifact_id = await execute_report_action(report_repo, previous_turns)
 

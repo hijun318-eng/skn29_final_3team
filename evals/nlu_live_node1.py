@@ -7,12 +7,12 @@
 
 [비용과 승인]
 운영 model endpoint를 실제로 호출하므로 요금이 발생하고 질문 텍스트가 외부로 전송된다.
-따라서 `--confirm-paid-call` 없이는 어떤 호출도 하지 않는다. 자격증명은 저장소 밖 배포
-환경 파일에서만 읽고, 값은 출력·로그·argv 어디에도 남기지 않는다.
+따라서 `--confirm-paid-call` 없이는 어떤 호출도 하지 않는다. 자격증명은 Git에서 제외된
+저장소 `infrastructure/database/.env`에서만 읽고, 값은 출력·로그·argv 어디에도 남기지 않는다.
 
 [사용]
     python evals/nlu_live_node1.py --dry-run
-    python evals/nlu_live_node1.py --confirm-paid-call --env-file <절대경로>
+    python evals/nlu_live_node1.py --confirm-paid-call
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "app" / "backend"
+REPOSITORY_ENV = ROOT / "infrastructure" / "database" / ".env"
 for entry in (str(BACKEND), str(ROOT)):
     if entry not in sys.path:
         sys.path.insert(0, entry)
@@ -75,14 +76,13 @@ CASES: tuple[LiveCase, ...] = (
 )
 
 
-def read_secret(env_path: Path, key: str) -> str:
-    """배포 환경 파일에서 값 하나를 읽습니다.
+def read_secret(key: str) -> str:
+    """고정된 저장소 환경 파일에서 값 하나를 읽습니다.
 
-    값 자체는 반환만 하고 출력하지 않는다. 저장소 내부 경로는 운영 secret 저장소가
-    아니므로 호출자가 외부 절대 경로를 넘겨야 한다.
+    값 자체는 반환만 하고 출력하지 않으며 다른 dotenv나 process environment로
+    fallback하지 않는다.
 
     Args:
-        env_path: 배포 환경 파일 절대 경로
         key: 읽을 키 이름
 
     Returns:
@@ -91,12 +91,19 @@ def read_secret(env_path: Path, key: str) -> str:
     Raises:
         SystemExit: 파일이 없거나 키가 비어 있을 때
     """
-    if not env_path.is_file():
-        raise SystemExit(f"배포 환경 파일을 찾을 수 없습니다: {env_path}")
-    match = re.search(rf"^{re.escape(key)}=(.*)$", env_path.read_text(encoding="utf-8"), re.M)
+    if not REPOSITORY_ENV.is_file():
+        raise SystemExit(f"저장소 환경 파일을 찾을 수 없습니다: {REPOSITORY_ENV}")
+    resolved_env = REPOSITORY_ENV.resolve(strict=True)
+    if resolved_env != REPOSITORY_ENV.absolute():
+        raise SystemExit("저장소 환경 파일은 symbolic link일 수 없습니다.")
+    match = re.search(
+        rf"^{re.escape(key)}=(.*)$",
+        resolved_env.read_text(encoding="utf-8-sig"),
+        re.M,
+    )
     value = match.group(1).strip() if match else ""
     if not value:
-        raise SystemExit(f"배포 환경 파일에 {key} 값이 없습니다.")
+        raise SystemExit(f"저장소 환경 파일에 {key} 값이 없습니다.")
     return value
 
 
@@ -200,14 +207,13 @@ def judge(case: LiveCase, response: dict[str, object]) -> dict[str, object]:
     }
 
 
-async def run_live(env_file: Path, repeat: int = 1) -> list[dict[str, object]]:
+async def run_live(repeat: int = 1) -> list[dict[str, object]]:
     """운영 어댑터로 각 발화를 실제 모델에 보내고 판정 결과를 모읍니다.
 
     같은 발화를 여러 번 호출해 응답이 재현되는지도 함께 측정한다. 한 번의 호출로는
     디코딩 분산과 실제 품질 변화를 구분할 수 없기 때문이다.
 
     Args:
-        env_file: 자격증명을 담은 배포 환경 파일 절대 경로
         repeat: 발화당 호출 횟수
 
     Returns:
@@ -216,14 +222,14 @@ async def run_live(env_file: Path, repeat: int = 1) -> list[dict[str, object]]:
     from app.adapters.model_adapter import ContractModelAdapter
 
     adapter = ContractModelAdapter.from_endpoints(
-        openai_endpoint=read_secret(env_file, "OPENAI_ENDPOINT"),
-        openai_token=read_secret(env_file, "OPENAI_API_KEY"),
-        openai_model=read_secret(env_file, "OPENAI_MODEL"),
-        node2_endpoint=read_secret(env_file, "OPENAI_ENDPOINT"),
-        node2_token=read_secret(env_file, "OPENAI_API_KEY"),
-        node2_model=read_secret(env_file, "OPENAI_MODEL"),
+        openai_endpoint=read_secret("OPENAI_ENDPOINT"),
+        openai_token=read_secret("OPENAI_API_KEY"),
+        openai_model=read_secret("OPENAI_MODEL"),
+        node2_endpoint=read_secret("OPENAI_ENDPOINT"),
+        node2_token=read_secret("OPENAI_API_KEY"),
+        node2_model=read_secret("OPENAI_MODEL"),
         node2_provider="openai",
-        timeout_seconds=int(read_secret(env_file, "MODEL_TIMEOUT_SECONDS")),
+        timeout_seconds=int(read_secret("MODEL_TIMEOUT_SECONDS")),
     )
 
     results: list[dict[str, object]] = []
@@ -250,7 +256,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Node1 신호 계약 live 검증")
     parser.add_argument("--dry-run", action="store_true", help="호출 없이 보낼 요청만 검증·출력")
     parser.add_argument("--confirm-paid-call", action="store_true", help="유료 외부 호출을 승인")
-    parser.add_argument("--env-file", type=Path, help="자격증명이 있는 배포 환경 파일 절대 경로")
     parser.add_argument("--repeat", type=int, default=1, help="발화당 호출 횟수(재현성 측정)")
     args = parser.parse_args()
 
@@ -258,13 +263,10 @@ def main() -> int:
         for case in CASES:
             build_request(case)
         print(f"DRY_RUN_OK: {len(CASES)}건의 요청이 node1_request 계약을 만족합니다.")
-        print("실제 호출은 --confirm-paid-call 과 --env-file 이 함께 있어야 수행됩니다.")
+        print("실제 호출은 --confirm-paid-call 이 있어야 수행됩니다.")
         return 0
 
-    if args.env_file is None:
-        raise SystemExit("--confirm-paid-call 에는 --env-file 절대 경로가 필요합니다.")
-
-    results = asyncio.run(run_live(args.env_file, repeat=max(1, args.repeat)))
+    results = asyncio.run(run_live(repeat=max(1, args.repeat)))
     print(json.dumps(results, ensure_ascii=False, indent=2))
     ok = all(
         row.get("route_ok") and row.get("elliptical_ok") and row.get("anchor_ok")

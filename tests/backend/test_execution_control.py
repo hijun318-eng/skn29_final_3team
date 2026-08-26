@@ -91,14 +91,15 @@ class ExecutionControlTest(unittest.IsolatedAsyncioTestCase):
     async def test_cache_key_isolated_by_entitlement_and_mask_scope(self) -> None:
         await self.service.analyze(self.payload, self.context(user=2), self.decision)
         await self.service.analyze(self.payload, self.context(user=3), self.decision)
-        denied = await self.service.analyze(
+        management_run = await self.service.analyze(
             self.payload,
-            self.context(role=Role.DATA_ADMIN, user=2),
+            self.context(role=Role.ADMIN, user=2),
             self.decision,
         )
 
-        self.assertEqual("BLOCKED", denied.data.status.value)
-        self.assertEqual(2, self.adapter.execute_count)
+        self.assertEqual("SUCCEEDED", management_run.data.status.value)
+        self.assertFalse(management_run.data.result.evidence.cached)
+        self.assertEqual(3, self.adapter.execute_count)
 
     async def test_model_calls_never_exceed_budget(self) -> None:
         response = await self.service.analyze(

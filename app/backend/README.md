@@ -16,7 +16,7 @@
 
 ```powershell
 Set-Location app/backend
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --env-file ../../infrastructure/database/.env
 ```
 
 - OpenAPI: `http://127.0.0.1:8000/openapi.json`
@@ -24,9 +24,29 @@ uvicorn app.main:app --reload
 - Readiness: `GET /readiness`
 - Analysis: `POST /analysis`
 
-운영 인증은 서버가 소유한 외부 principal store만 사용한다. 파일은 JSON 배열이며 각 항목에는 `username`, `password_salt`, `password_hash`, `password_iterations`, `subject`, `role`, `active`만 기록한다. provisioning script가 PBKDF2-SHA256 hash를 만들며 raw password는 principal 파일이나 로그에 남기지 않는다. 로그인용 raw password와 session secret이 있는 deployment environment는 저장소 밖에서 별도 보안 채널로 관리한다. 로그인 성공 시 Backend가 HMAC 서명 session을 발급해 App DB에 등록하고 `HttpOnly` cookie로 전달한다. `AUTH_PRINCIPALS_FILE`에는 container 내부 read-only 경로를 지정하며 실제 secret mount는 배포 설정에서 구성한다. principal store나 signed-session 필수값이 없으면 기동하며 합성 계정으로 대체하지 않고 fail closed한다.
+사람 계정의 권위 원본은 App PostgreSQL `security.accounts`다. 계정에는 정규화된 고유
+username, PBKDF2-SHA256 verifier, 불변 subject, `analyst`/`admin` Role, 활성·soft-delete
+상태를 저장하며 raw password는 DB·응답·로그에 남기지 않는다. Git에서 제외된 repository
+`infrastructure/database/.env`는 최초 `analyst`/`admin` bootstrap과 명시적 비밀번호 회전
+입력일 뿐 Backend가 로그인 때 읽는 계정 저장소가 아니다. 외부 dotenv나 process
+environment fallback은 사용하지 않는다. 로그인 성공 시 Backend가 HMAC 서명 session을
+App DB에 등록하고 `HttpOnly` cookie로 전달한다. 계정 저장소·session secret·DB가
+불완전하면 합성 계정이나 principal JSON으로 대체하지 않고 fail closed한다.
 
-권한 판정은 사용자명이 아니라 서버가 검증한 Role과 중앙 Capability 정책을 사용한다. `platform_admin`은 통제된 인수환경에서 분석·보고서·데이터 관리의 현재 애플리케이션 Capability 전체를 가지지만, DataHub publish·Trino setup·Source DB 계정 같은 service identity를 상속하지 않는다. 외부 env의 `ANALYST_LOGIN_ROLE`로 계정 Role을 회전해도 provisioning은 기존 subject를 보존하므로 저장 Analysis·Report 소유권을 끊지 않는다.
+`infrastructure/database/security/provision-release-principals.ps1`은 비밀번호와 migration
+DB URL을 JSON stdin으로 `scripts/provision_accounts.py`에 전달한다. CLI는 Backend의
+`create_password_verifier`를 그대로 사용해 verifier 구현을 하나로 유지하고 성공 여부만
+stdout에 남긴다. 최초 JSON→DB 이관에서는 명시된 legacy 파일의 username→subject만 신규
+행 후보로 사용하며, 기존 DB username의 subject는 절대 갱신하지 않는다.
+
+사람 Role은 `analyst`, `admin` 두 개뿐이며 권한은 사용자명이 아니라 서버가 검증한
+Role과 중앙 Capability 정책으로 판정한다. `analyst`는 `analysis.run`, `analysis.read`,
+`report.draft`; `admin`은 여기에 `report.manage`, `data.manage`, `system.manage`를 더한
+현재 App Capability 전체를 가진다. DataHub publish·Trino setup·Source DB·App
+migration/runtime principal은 별도 service identity이며 사람 `admin` 권한을 상속하지
+않는다. provisioning과 관리자 API는 같은 username의 subject를 바꾸지 않으므로 저장된
+Analysis·Report 소유권을 끊지 않는다. password·Role·active·delete 변경은 기존 session을
+폐기하고 비밀 값이 제거된 감사 event를 남긴다.
 
 Backend는 실제 Trino·DataHub·OpenAI 호환 endpoint만 사용한다. 승인 Template은 DB에서 읽어 G1·G2·Trino·G3를 거치며, 일반 질문은 Node1·Node2·Node3 모델 계약을 실행한다. 테스트 대역을 선택하는 운영 환경 변수나 제품 fallback은 제공하지 않는다.
 
@@ -37,12 +57,9 @@ Backend의 DataHub 조회는 `DATAHUB_GMS_URL` HTTPS origin,
 사용하며 readiness도 공개 `/config`가 아니라 인증 actor의 bounded GraphQL 결과를
 검증한다.
 
-```powershell
-$env:OPENAI_ENDPOINT = "https://api.openai.com"
-$env:OPENAI_API_KEY = "..."
-$env:OPENAI_MODEL = "gpt-5.4-mini"
-$env:MODEL_TIMEOUT_SECONDS = "15"
-```
+모델 설정은 `infrastructure/database/.env`의 `OPENAI_ENDPOINT`, `OPENAI_API_KEY`,
+`OPENAI_MODEL`, `MODEL_TIMEOUT_SECONDS`에서만 읽는다. shell의 process environment나
+다른 dotenv 파일로 대체하지 않는다.
 
 Node2 전용 설정 네 개를 모두 비우면 Node2·Repair도 위 primary route를 공유한다.
 RunPod Qwen route를 사용할 때는 `NODE2_MODEL_PROVIDER`, `NODE2_MODEL_ENDPOINT`,
@@ -73,13 +90,18 @@ python app/backend/scripts/export_openapi.py --check
 - 명세 파일과 fixture는 직접 수정하지 않고 exporter로 다시 생성한다.
 - pagination·sorting·filter·idempotency는 현재 세 endpoint에 적용되지 않으며, 이를 사용하는 endpoint 구현 시 별도 version으로 추가한다.
 
-`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. root는 `20260729_01`, 현재 tracked head는 `20260820_28` 하나씩이다. Report와 Analysis endpoint는 application PostgreSQL에 정의·실행·Artifact·예약 이력을 영속화하며 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
+`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. root는 `20260729_01`, 현재 tracked head는 `20260826_30` 하나씩이다. Report와 Analysis endpoint는 application PostgreSQL에 정의·실행·Artifact·예약 이력을 영속화하며 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
 
 `CONTEXT-REGISTRY-v1.0.0-DRAFT`는 내부 service-only 계약이다. Context record, immutable release, request package binding을 application PostgreSQL에 저장하며 checksum은 정렬된 canonical JSON을 서버에서 SHA-256으로 계산한다. 같은 idempotency key와 같은 payload는 기존 결과를 반환하고, 다른 payload·중복 version·승인되지 않은 record·배포되지 않은 release는 도메인 충돌로 차단한다. 승인·배포 이후 payload와 package는 DB trigger로 변경을 거부한다. 이 단계에는 public router, OpenAPI, live DataHub 조립, Analysis 저장 연결을 추가하지 않는다.
 
 backend 기동 전 `alembic current` 결과가 위 지원 목록에 있는지 확인한다. 저장소에 존재하지 않는 `20260803_03`은 Alembic이 native non-zero로 거부하며 운영 판정 코드 `LEGACY_REVISION_UNSUPPORTED`로 기록한다. 이 상태를 우회하는 추정 migration, 자동 `stamp`, schema·data 변경, `drop`은 금지한다. 보존이 필요한 legacy DB는 변경하지 않고 별도 복구·변환 결정을 요청한다.
 
-Report HTTP는 분석가 소유 초안 작성·조회와 `report_admin`의 전체 정의 승인·수동 실행·예약 실행을 제공한다. 수동·예약 실행은 같은 `ReportExecutionService`를 사용하며, Block에 고정된 Analysis Definition/version을 현재 권한·정책과 공통 `as_of`로 재실행한다. 각 Block Run은 새 request/query/artifact 또는 typed failure를 기록하고 일부 Block만 성공하면 Report Run을 `partial`로 보존한다. 기존 Artifact checksum만 읽어 새 실행처럼 성공 처리하는 경로는 없다.
+Report HTTP는 `analyst`의 소유 초안 작성·조회와 `admin`의 전체 정의 관리·수동 실행·예약
+실행을 제공한다. 수동·예약 실행은 같은 `ReportExecutionService`를 사용하며, Block에
+고정된 Analysis Definition/version을 현재 권한·정책과 공통 `as_of`로 재실행한다. 각
+Block Run은 새 request/query/artifact 또는 typed failure를 기록하고 일부 Block만 성공하면
+Report Run을 `partial`로 보존한다. 기존 Artifact checksum만 읽어 새 실행처럼 성공 처리하는
+경로는 없다.
 
 브라우저 CORS는 설정된 exact origin과 credentials·필수 header를 유지하며, 기존 `GET`·`POST`·`OPTIONS`와 draft block 교체용 `PUT` preflight만 허용한다. origin·method·header wildcard는 사용하지 않는다.
 
@@ -88,15 +110,14 @@ Report HTTP는 분석가 소유 초안 작성·조회와 `report_admin`의 전�
 repository root에서 다음 명령을 실행하면 기존 database Compose와 backend service fragment를 결합해 `answervice-backend`를 기동한다. `/health`와 `/readiness`에서 application과 `app-postgres` 연결을 모두 검증하며, 성공한 container는 Docker Desktop에서 계속 확인할 수 있다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
-  -EnvFilePath C:\absolute\external\answervice.env
+powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1
 ```
 
 성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
-  -EnvFilePath C:\absolute\external\answervice.env -RemoveAfterVerification
+  -RemoveAfterVerification
 ```
 
 backend는 root Compose 기준 `http://127.0.0.1:28000`에서 접근한다.

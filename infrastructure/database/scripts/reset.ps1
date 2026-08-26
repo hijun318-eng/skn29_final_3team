@@ -12,7 +12,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 $composeFile = Join-Path $databaseRoot 'compose.yml'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 
@@ -30,5 +30,4 @@ if (-not $Force) {
 # Docker volume cleanup is used here.
 & docker compose @composeEnvArguments -f $composeFile down --volumes --remove-orphans
 if ($LASTEXITCODE -ne 0) { throw 'docker compose down failed.' }
-$startArguments = if ($resolvedEnvFile) { @('-EnvFilePath', $resolvedEnvFile) } else { @() }
-& (Join-Path $PSScriptRoot 'start.ps1') @startArguments
+& (Join-Path $PSScriptRoot 'start.ps1')

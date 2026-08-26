@@ -30,7 +30,7 @@ Answervice는 사용자가 일상적인 말로 질문하면 관련 데이터를 
 | 기준 확인 | 질문의 기간이나 매출 기준이 분명하지 않으면 사용자에게 다시 확인합니다. |
 | 결과와 출처 제공 | 표, 차트, 설명과 함께 사용한 데이터와 기간을 보여줍니다. |
 | 보고서 만들기 | 분석 결과를 불러와 보고서를 만들고 다시 실행할 수 있습니다. |
-| 사용자별 권한 | 분석 담당자와 보고서 관리자가 필요한 기능만 사용할 수 있습니다. |
+| 사용자별 권한 | 일반 사용자(`analyst`)와 관리자(`admin`)가 서버 Capability에 따라 기능을 사용합니다. |
 
 ## 이용 흐름
 
@@ -70,50 +70,45 @@ Answervice는 사용자가 일상적인 말로 질문하면 관련 데이터를 
 git clone https://github.com/hijun318-eng/skn29_final_3team.git
 Set-Location skn29_final_3team
 
-$deploymentDirectory = Join-Path $env:LOCALAPPDATA 'Answervice\deployment'
 $secretDirectory = Join-Path $env:LOCALAPPDATA 'Answervice\secrets'
-New-Item -ItemType Directory -Force -Path $deploymentDirectory,$secretDirectory | Out-Null
-$deploymentEnv = Join-Path $deploymentDirectory 'answervice.env'
-Copy-Item infrastructure/database/.env.example $deploymentEnv
+New-Item -ItemType Directory -Force -Path $secretDirectory | Out-Null
+Copy-Item infrastructure/database/.env.example infrastructure/database/.env
 ```
 
-외부 `$deploymentEnv`의 모든 `CHANGE_ME_`·`REQUIRED_` 값을 교체하고 `OPENAI_API_KEY`를
-설정한다. 운영 기본값은 저장소 내부 `.env`를 묵시적으로 읽지 않는다. 로컬 개발에서는
-gitignored `.env`를 `-AllowRepositoryLocalDevelopment`와 함께 명시할 수 있다. Trino server keystore와
+Git에서 제외된 `infrastructure/database/.env`의 모든 `CHANGE_ME_`·`REQUIRED_` 값을
+교체하고 `OPENAI_API_KEY`를 설정한다. 이것이 유일한 dotenv 원본이며 외부 dotenv 경로나
+deployment script의 process environment fallback은 사용하지 않는다. Trino server keystore와
 CA PEM은 운영 PKI에서 발급해 저장소 밖 절대 경로로 설정하며 인증서 SAN에는 `trino`와
 `127.0.0.1`을 포함한다. Node2 전용 변수 네 개가 모두 비면 Node 1·2·Repair·3과
 Report Assistant가 primary `gpt-5.4-mini` route를 공유한다. Node2를 별도 endpoint로
 분리할 때는 `NODE2_MODEL_PROVIDER`, `NODE2_MODEL_ENDPOINT`, `NODE2_MODEL_API_TOKEN`,
 `NODE2_MODEL`을 모두 설정하며 일부 설정은 fail-closed한다.
 
-다음 script는 deployment environment의 두 로그인 계정을 PBKDF2-SHA256으로
-해시하고 Trino의 세 역할을 별도 PBKDF2 verifier로 만든다. 인증
-principal은 운영에서는 저장소 밖의 명시적 경로에 생성한다. 로컬 개발 경로를 쓰는 경우
-명시적 switch와 `.gitignore` 검증을 통과해야 하며 정적 principal JSON으로 fallback하지 않는다.
+다음 script는 Trino의 세 기계 계정을 별도 PBKDF2 verifier로 만든다. App의 사람
+계정은 migration 뒤 `security.accounts`에 명시적으로 provision하며 principal JSON으로
+fallback하지 않는다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass `
-  -File infrastructure/database/security/provision-release-principals.ps1 `
-  -EnvPath $deploymentEnv `
-  -PrincipalPath (Join-Path $secretDirectory 'principals.json')
-powershell -ExecutionPolicy Bypass `
   -File infrastructure/database/security/provision-trino-password-database.ps1 `
-  -EnvPath $deploymentEnv `
   -PasswordDatabasePath (Join-Path $secretDirectory 'trino-password.db')
 powershell -ExecutionPolicy Bypass `
   -File infrastructure/database/security/provision-serving-catalog-secrets.ps1 `
-  -EnvPath $deploymentEnv `
   -CredentialsPath (Join-Path $secretDirectory 'serving-catalog-bootstrap.json') `
   -TokenPublicKeyPath (Join-Path $secretDirectory 'serving-catalog-token-public.pem') `
   -TokenPrivateKeyPath (Join-Path $secretDirectory 'serving-catalog-token-private.pem')
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File infrastructure/database/scripts/start.ps1 `
-  -EnvFilePath $deploymentEnv -Stage Core
+  -Stage Core
+docker compose --env-file infrastructure/database/.env --profile dev `
+  run --rm app-migrations upgrade head
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File infrastructure/database/security/provision-release-principals.ps1
 # loopback DataHub UI/OIDC에서 read 전용과 publish 전용 service actor·PAT를 각각
-# 발급하고 최소권한 정책을 연결한 뒤, 외부 $deploymentEnv에 네 값을 기록한다.
+# 발급하고 최소권한 정책을 연결한 뒤, infrastructure/database/.env에 네 값을 기록한다.
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File infrastructure/database/scripts/start.ps1 `
-  -EnvFilePath $deploymentEnv -Stage Catalog
+  -Stage Catalog
 ```
 
 `Core` 단계는 clean volume에서 schema와 source read-only 계정, 영속 serving catalog,
@@ -123,6 +118,34 @@ GMS/UI까지만 준비한다. `Catalog` 단계는 서로 다른 service actor·P
 업무 row나 특정 질문용 serving view는 생성하지 않으며, 발견·권한·semantic 계약 중
 하나라도 불완전하면 성공 marker와 Backend readiness가 fail-closed된다.
 
+사람에게 부여하는 App Role은 `analyst`와 `admin`뿐이다. `analyst`는 분석 Agent와 본인
+보고서 초안을 사용하고, `admin`은 그 권한에 보고서·데이터·시스템 관리를 더한다. Trino,
+DataHub, Source DB, App migration/runtime 계정은 사람이 로그인하는 Role이 아니라
+최소권한 service identity이므로 두 App Role과 통합하지 않는다. `.env`의 로그인 값을
+바꾸는 것만으로 기존 DB 계정은 바뀌지 않으며 위 provisioning을 다시 실행해야 한다.
+기존 principal JSON에서 처음 이관하는 환경은 같은 명령에 검증된 절대
+`-LegacyPrincipalPath`를 한 번만 지정한다. script는 두 username의 기존 subject UUID를
+신규 DB 행에 사용하므로 저장된 Analysis·Report 소유권을 보존한다. DB 로그인과 객체
+소유권을 확인한 뒤에는 해당 JSON mount를 제거하며 runtime fallback으로 남기지 않는다.
+
+기존 네 Role release를 운영 중인 환경은 일반 기동 순서로 in-place 전환하지 않는다.
+먼저 새 로그인·관리 API 트래픽을 maintenance 상태로 차단하고 구 Backend와 Frontend를
+완전히 중지해 구 Role session을 다시 만들 process가 없음을 확인한다. App PostgreSQL과
+DataHub는 유지한 채 다음 순서를 하나의 maintenance window에서 완료한다.
+
+1. 새 App DB migration을 `upgrade head`로 적용한다.
+2. 기존 principal JSON의 명시적 `-LegacyPrincipalPath`로 analyst/admin 두 계정을 DB에
+   provision하고 두 username의 기존 subject UUID가 보존됐는지 확인한다.
+3. DataHub entitlement 새 release를 `analyst`, `admin`으로 check/publish하고 전체 live
+   read-back이 `PUBLISHED_AND_VERIFIED`인지 확인한다.
+4. 새 Backend와 Frontend만 시작한 뒤 readiness, 두 Role 로그인, 소유 Analysis·Report,
+   analyst의 `/admin` 403과 admin의 관리 API를 검증하고 나서 트래픽을 다시 연다.
+
+migration과 계정 provision 사이에는 인증 가능한 release가 아니므로 로그인 트래픽을
+받지 않는다. 어느 단계든 실패하면 새 Backend를 열지 않고 maintenance를 유지한 채 DB와
+DataHub release의 검증된 복구 절차를 수행한다. 구 Backend와 새 Backend를 동시에 실행해
+영구 legacy Role alias로 이 간격을 메우는 방식은 허용하지 않는다.
+
 `full` 운영 경로는 위 semantic overlay를 항상 함께 사용한다. Overlay 없는 기동은
 OpenSearch 기반 rollback 경로이며 동적 schema linking 완료 근거로 사용할 수 없다.
 첫 semantic index 전환과 검증 순서는
@@ -130,13 +153,15 @@ OpenSearch 기반 rollback 경로이며 동적 schema linking 완료 근거로 �
 
 첫 기동은 DataHub와 Source DB 초기화 때문에 시간이 걸릴 수 있다. 준비 상태는 다음처럼 확인한다.
 
-- Frontend: `http://127.0.0.1:13000`
+- Frontend 개발 화면: `http://localhost:5173`
+- Frontend 컨테이너: `http://localhost:13000`
+- 통합 관리자 화면: `http://localhost:5173/admin` (`admin`만 접근)
 - Backend: `http://127.0.0.1:28000`
 - Trino: `https://127.0.0.1:18443` (외부 CA 검증과 Basic authentication 필수)
 - DataHub UI: `http://127.0.0.1:19002` (loopback 전용)
 - DataHub GMS API: `https://127.0.0.1:18081` (외부 CA 검증과 Bearer authentication 필수)
 
-Docker volume이나 외부 deployment env, principal·Trino secret을 다른 환경에 복사해 배포
+Docker volume이나 다른 환경의 `.env`, principal·Trino secret을 복사해 배포
 근거로 삼지 않는다. release evidence는 live discovery 결과와 승인된 bundle에서 다시
 생성한다.
 
@@ -177,14 +202,14 @@ Docker volume이나 외부 deployment env, principal·Trino secret을 다른 환
 
 다음 값은 저장소에 commit하지 않는다.
 
-- 저장소 밖 deployment env와 `TRINO_*_HOST_FILE`이 가리키는 PKI/password 파일
-- `AUTH_PRINCIPALS_HOST_FILE`이 가리키는 저장소 외부 principal secret
+- `infrastructure/database/.env`와 `TRINO_*_HOST_FILE`이 가리키는 PKI/password 파일
 - `OPENAI_API_KEY`와 사설 OpenAI-compatible endpoint 인증정보
-- 개인별 DB 비밀번호와 Analyst·Report Admin 로그인 비밀번호
+- 개인별 DB 비밀번호와 Analyst·Admin bootstrap 로그인 비밀번호
 
-팀원이 같은 외부 모델 endpoint를 사용해야 한다면 외부 deployment env 또는 `OPENAI_API_KEY`와,
-기본값이 아닌 경우 `OPENAI_ENDPOINT`를 별도 보안 채널로 전달한다. principal secret은
-각 환경에서 provisioning script로 새로 생성하며 Git이나 release archive에 포함하지 않는다.
+팀원이 같은 외부 모델 endpoint를 사용해야 한다면 `OPENAI_API_KEY`와 기본값이 아닌 경우
+`OPENAI_ENDPOINT` 값을 별도 보안 채널로 전달하고 각자의 저장소 `.env`에 기록한다. 사람
+계정 verifier는 각 환경의 App DB에서 provisioning으로 생성하며 Git이나 release archive에
+포함하지 않는다.
 
 ## 검증
 

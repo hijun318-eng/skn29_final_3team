@@ -32,6 +32,7 @@ from app.contracts import (
     RequestContext,
     Role,
 )
+from app.context import ContextValidationError
 from app.services.conversation.orchestrator import ConversationOrchestrator
 
 

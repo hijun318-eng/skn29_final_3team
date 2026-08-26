@@ -87,7 +87,7 @@ Answervice는 사용자의 자연어 질문을 승인된 업무 정의와 데이
 - Trino runtime은 HTTPS, password authentication, CA 검증, 명시적 service principal, 최소 ACL을 요구한다. `/v1/info`는 liveness일 뿐 readiness 증거가 아니며 실제 principal의 terminal `SELECT 1`로 인증·query 권한을 확인한다.
 - DataHub 운영 경계는 인증된 canonical token, 승인된 transport, native governance와 GraphQL capability 검증을 요구한다. 무인증 mutation이나 LAN 전체 포트 공개를 허용하지 않는다.
 - secret, 원문 비밀번호, 불필요한 개인정보를 argv, URL, log, trace, 문서, commit에 넣지 않는다.
-- repository 내부 `.env`를 운영 secret 저장소로 사용하지 않는다. 외부 absolute env/secret 경로를 요구하고 값은 process argument로 전달하지 않는다.
+- 환경 설정은 Git에서 제외된 repository `infrastructure/database/.env` 하나만 사용한다. 외부 dotenv 경로와 deployment script의 암묵적 process-environment fallback을 허용하지 않으며 값은 process argument로 전달하지 않는다.
 - source DB runtime 계정은 API가 실제 사용하는 table·operation만 허용한다. migration 계정과 runtime 계정을 분리한다.
 
 ## async·상태·영속성

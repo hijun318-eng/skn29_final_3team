@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.api.mcp_router import (
     MCP_PROTOCOL_VERSION,
@@ -11,10 +12,45 @@ from app.api.mcp_router import (
     TOOL_OUTPUT_SCHEMA,
     _has_client_info,
     _origin_allowed,
+    _role_is_allowed,
+    _tool_registry_access,
 )
+from app.contracts import Role
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class _RegistryResult:
+    def __init__(self, row: dict[str, object] | None) -> None:
+        self._row = row
+
+    def mappings(self) -> "_RegistryResult":
+        return self
+
+    def one_or_none(self) -> dict[str, object] | None:
+        return self._row
+
+
+class _RegistrySession:
+    def __init__(self, row: dict[str, object] | None) -> None:
+        self._row = row
+        self.statement = ""
+
+    async def execute(self, statement: object, _parameters: object) -> _RegistryResult:
+        self.statement = str(statement)
+        return _RegistryResult(self._row)
+
+
+class _RegistryScope:
+    def __init__(self, session: _RegistrySession) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> _RegistrySession:
+        return self._session
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
 
 
 class McpProtocolTest(unittest.TestCase):
@@ -34,6 +70,14 @@ class McpProtocolTest(unittest.TestCase):
         self.assertTrue(_origin_allowed(None))
         self.assertFalse(_origin_allowed("https://evil.example"))
 
+    def test_tool_entitlement_accepts_only_canonical_nonempty_role_arrays(self) -> None:
+        self.assertTrue(_role_is_allowed(["analyst"], Role.ANALYST))
+        self.assertTrue(_role_is_allowed(["analyst"], Role.ADMIN))
+        self.assertFalse(_role_is_allowed(["admin"], Role.ANALYST))
+        self.assertFalse(_role_is_allowed([], Role.ADMIN))
+        self.assertFalse(_role_is_allowed(["platform_admin"], Role.ADMIN))
+        self.assertFalse(_role_is_allowed("analyst", Role.ANALYST))
+
     def test_migration_is_additive_and_does_not_create_rag_or_ml(self) -> None:
         source = (ROOT / "app/backend/migrations/versions/20260812_12_mcp_tool.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -49,6 +93,34 @@ class McpProtocolTest(unittest.TestCase):
         self.assertIn("CREATE TABLE tooling.tool_runs", source)
         self.assertNotIn("CREATE TABLE rag.", source)
         self.assertNotIn("CREATE TABLE ml.", source)
+
+    def test_two_role_migration_constrains_tool_roles_and_preserves_prior_audit_grant(self) -> None:
+        source = (
+            ROOT / "app/backend/migrations/versions/20260826_30_two_role_accounts.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ck_tool_registry_required_roles", source)
+        self.assertIn(
+            "context.valid_analysis_template_roles(required_roles_json)", source
+        )
+        self.assertNotIn(
+            "REVOKE SELECT, INSERT ON governance.audit_events", source
+        )
+
+
+class McpRegistryAccessTest(unittest.IsolatedAsyncioTestCase):
+    async def test_registry_reads_enabled_and_roles_from_same_row(self) -> None:
+        session = _RegistrySession(
+            {"is_enabled": True, "required_roles_json": ["admin"]}
+        )
+        with (
+            patch(
+                "app.api.mcp_router.session_scope",
+                return_value=_RegistryScope(session),
+            ),
+            patch("app.api.mcp_router._database_url", return_value="postgresql+asyncpg://db"),
+        ):
+            self.assertEqual((True, False), await _tool_registry_access(Role.ANALYST))
+        self.assertIn("is_enabled, required_roles_json", session.statement)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ from app.api.report_router_support import (
     final_html_response as _final_html_response,
     final_pdf_response as _final_pdf_response,
     report_artifact_response as _report_artifact_response,
-    report_admin_context,
+    report_manage_context,
     report_draft_context,
 )
 from app.contracts import RequestContext
@@ -155,7 +155,7 @@ async def approve_version(
     definition_id: str,
     version: int,
     payload: ApproveReportVersionRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """관리자가 지정한 draft를 승인 시각에 불변 HTML·PDF 문서와 함께 확정한다.
 
@@ -299,7 +299,7 @@ async def replace_draft_blocks(
     response_model=ReportRunListResponse,
 )
 async def list_runs(
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
     definition_id: str | None = None,
 ) -> dict[str, Any]:
     """관리 권한 범위의 report run을 선택한 definition ID로 좁혀 생성 순서대로 반환한다."""
@@ -313,7 +313,7 @@ async def list_runs(
 )
 async def create_manual_run_command(
     payload: CreateManualRunRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """관리자의 definition version·멱등 키를 서버 기준일의 수동 실행 명령으로 등록한다.
 
@@ -349,7 +349,7 @@ async def create_manual_run_command(
 )
 async def get_run(
     run_id: str,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """관리 권한 범위에서 run ID에 해당하는 실행 상태와 block별 evidence를 반환한다.
 
@@ -365,7 +365,7 @@ async def get_run(
 )
 async def create_schedule(
     payload: CreateReportScheduleRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """관리자가 지정한 definition version·cadence·timezone·최초 실행 시각을 일정으로 저장한다.
 
@@ -391,7 +391,7 @@ async def create_schedule(
     response_model=ReportScheduleListResponse,
 )
 async def list_schedules(
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """관리 권한 범위의 report schedule과 next-run 상태를 생성 순서대로 반환한다."""
     repository = _router(context).repository
@@ -406,7 +406,7 @@ async def list_schedules(
 async def update_schedule(
     schedule_id: str,
     payload: UpdateReportScheduleRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """스케줄 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
     repository = _router(context).repository
@@ -422,7 +422,7 @@ async def update_schedule(
 )
 async def run_due_schedule(
     schedule_id: str,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """관리자가 지정한 schedule이 현재 DUE일 때만 한 번 실행하고 갱신 상태를 반환한다.
 
@@ -450,7 +450,7 @@ async def run_due_schedule(
 )
 async def create_assistant_draft(
     payload: CreateReportAssistantDraftRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_manage_context)],
 ) -> dict[str, Any]:
     """관리자 지시와 승인 artifact로 model 기반 보고서 draft를 생성하고 감사 trace를 반환한다.
 

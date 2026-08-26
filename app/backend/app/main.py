@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.router import _controller, execution_gate, router
+from app.api.admin_router import admin_router
 from app.api.report_router import report_router
 from app.api.mcp_router import mcp_router
 from app.context import ContextValidationError, request_context, valid_trace_id
@@ -85,7 +86,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Authorization",
         "Content-Type",
@@ -103,6 +104,7 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(report_router)
 app.include_router(mcp_router)
+app.include_router(admin_router)
 
 
 @app.middleware("http")

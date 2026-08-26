@@ -18,6 +18,7 @@ REALM = "ANSWERVICE"
 CATALOG = "answervice_serving"
 PRINCIPAL_ROLE = "answervice_trino_role"
 CATALOG_ROLE = "answervice_serving_admin"
+REPOSITORY_ENV = Path("infrastructure/database/.env")
 
 
 def _read_env(path: Path) -> dict[str, str]:
@@ -49,15 +50,18 @@ def _require(values: dict[str, str], names: tuple[str, ...]) -> None:
             raise ValueError(f"deployment key is missing or placeholder: {name}")
 
 
-def _assert_env_scope(path: Path, repository: Path, allow_local: bool) -> None:
-    """운영은 외부 env만, 명시적 local mode는 gitignored env만 허용한다."""
+def _repository_env_path(repository: Path) -> Path:
+    """gitignored 저장소 환경 파일의 고정 경로만 반환한다."""
 
+    path = repository / REPOSITORY_ENV
     try:
-        path.relative_to(repository)
-    except ValueError:
-        return
-    if not allow_local:
-        raise ValueError("repository-local env requires --allow-repository-local-development")
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError as error:
+        raise ValueError(
+            "repository environment file is required: infrastructure/database/.env"
+        ) from error
+    if resolved != path.absolute():
+        raise ValueError("repository environment file must not be a symbolic link")
     result = subprocess.run(
         ["git", "-C", str(repository), "check-ignore", "-q", "--", str(path)],
         check=False,
@@ -65,7 +69,8 @@ def _assert_env_scope(path: Path, repository: Path, allow_local: bool) -> None:
         text=True,
     )
     if result.returncode != 0:
-        raise ValueError("repository-local env must be covered by .gitignore")
+        raise ValueError("repository environment file must be covered by .gitignore")
+    return resolved
 
 
 def _set_env_values(path: Path, replacements: dict[str, str]) -> None:
@@ -330,15 +335,11 @@ async def _configure(values: dict[str, str], env_path: Path) -> dict[str, object
 
 
 def main() -> int:
-    """명시된 env scope를 검증하고 Polaris management 구성을 실행한다."""
+    """고정된 저장소 env를 검증하고 Polaris management 구성을 실행한다."""
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--env-file", required=True, type=Path)
-    parser.add_argument("--allow-repository-local-development", action="store_true")
-    args = parser.parse_args()
-    env_path = args.env_file.resolve(strict=True)
+    argparse.ArgumentParser(description="Polaris serving catalog 구성").parse_args()
     repository = Path(__file__).resolve().parents[3]
-    _assert_env_scope(env_path, repository, args.allow_repository_local_development)
+    env_path = _repository_env_path(repository)
     values = _read_env(env_path)
     _require(
         values,

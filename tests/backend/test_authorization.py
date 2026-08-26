@@ -1,4 +1,4 @@
-"""Role 이름이 아니라 중앙 Capability·entitlement 정책으로 서비스 권한을 검증한다."""
+"""두 사람 Role을 중앙 Capability·entitlement 정책으로 검증한다."""
 
 from __future__ import annotations
 
@@ -17,38 +17,34 @@ from app.authorization import (  # noqa: E402
 from app.contracts import Capability, Role, SessionData  # noqa: E402
 
 
-def test_platform_admin_has_all_current_application_capabilities() -> None:
-    assert set(capabilities_for(Role.PLATFORM_ADMIN)) == set(Capability)
-    assert all(
-        has_capability(Role.PLATFORM_ADMIN, capability)
-        for capability in Capability
-    )
+def test_role_contract_contains_only_analyst_and_admin() -> None:
+    assert {role.value for role in Role} == {"analyst", "admin"}
 
 
-def test_ordinary_roles_do_not_gain_cross_role_entitlements() -> None:
+def test_each_role_has_the_exact_capability_boundary() -> None:
+    assert set(capabilities_for(Role.ANALYST)) == {
+        Capability.RUN_ANALYSIS,
+        Capability.READ_ANALYSIS,
+        Capability.DRAFT_REPORT,
+    }
+    assert set(capabilities_for(Role.ADMIN)) == set(Capability)
+    assert all(has_capability(Role.ADMIN, capability) for capability in Capability)
+
+
+def test_admin_inherits_analyst_entitlement_and_legacy_roles_fail_closed() -> None:
     assert role_is_entitled(Role.ANALYST, [Role.ANALYST])
-    assert not role_is_entitled(Role.ANALYST, [Role.REPORT_ADMIN])
-    assert not role_is_entitled(Role.REPORT_ADMIN, [Role.ANALYST])
-    assert not role_is_entitled(Role.DATA_ADMIN, [Role.ANALYST])
+    assert role_is_entitled(Role.ADMIN, [Role.ANALYST])
+    assert role_is_entitled(Role.ADMIN, [Role.ADMIN])
+    assert not role_is_entitled(Role.ANALYST, [Role.ADMIN])
+    for legacy_role in ("report_admin", "data_admin", "platform_admin"):
+        assert not role_is_entitled(Role.ADMIN, [legacy_role])
 
 
-def test_platform_admin_satisfies_existing_external_role_contracts() -> None:
-    assert role_is_entitled(Role.PLATFORM_ADMIN, [Role.ANALYST])
-    assert role_is_entitled(Role.PLATFORM_ADMIN, [Role.REPORT_ADMIN])
-    assert role_is_entitled(Role.PLATFORM_ADMIN, [Role.DATA_ADMIN])
-    assert role_is_entitled(Role.PLATFORM_ADMIN, ["analyst"])
-    assert role_is_entitled(Role.ANALYST, ["analyst"])
-    assert not role_is_entitled(Role.PLATFORM_ADMIN, ["unknown-role"])
-    assert not role_is_entitled(
-        Role.PLATFORM_ADMIN, ["unknown-role", "analyst"]
-    )
-
-
-def test_session_data_exposes_server_owned_capabilities() -> None:
+def test_session_data_exposes_server_owned_admin_capabilities() -> None:
     session = SessionData(
-        role=Role.PLATFORM_ADMIN,
-        capabilities=capabilities_for(Role.PLATFORM_ADMIN),
+        role=Role.ADMIN,
+        capabilities=capabilities_for(Role.ADMIN),
     )
 
-    assert session.role is Role.PLATFORM_ADMIN
+    assert session.role is Role.ADMIN
     assert set(session.capabilities) == set(Capability)

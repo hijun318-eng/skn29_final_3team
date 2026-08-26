@@ -13,45 +13,90 @@ View metadata를 영속화하므로 Trino 재시작 후 복구용 View 재생성
 
 ```powershell
 cd infrastructure/database
-$deploymentDirectory = Join-Path $env:LOCALAPPDATA 'Answervice\deployment'
 $secretDirectory = Join-Path $env:LOCALAPPDATA 'Answervice\secrets'
-New-Item -ItemType Directory -Force -Path $deploymentDirectory,$secretDirectory | Out-Null
-$deploymentEnv = Join-Path $deploymentDirectory 'answervice.env'
-Copy-Item .env.example $deploymentEnv
-# $deploymentEnv의 CHANGE_ME_/REQUIRED_ 값을 교체하고 TLS PKI 파일의 절대 경로를 설정한다.
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File security/provision-release-principals.ps1 `
-  -EnvPath $deploymentEnv `
-  -PrincipalPath (Join-Path $secretDirectory 'principals.json')
+New-Item -ItemType Directory -Force -Path $secretDirectory | Out-Null
+Copy-Item .env.example .env
+# Git에서 제외된 .env의 CHANGE_ME_/REQUIRED_ 값을 교체하고 TLS PKI 파일의 절대 경로를 설정한다.
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File security/provision-trino-password-database.ps1 `
-  -EnvPath $deploymentEnv `
   -PasswordDatabasePath (Join-Path $secretDirectory 'trino-password.db')
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File security/provision-serving-catalog-secrets.ps1 `
-  -EnvPath $deploymentEnv `
   -CredentialsPath (Join-Path $secretDirectory 'serving-catalog-bootstrap.json') `
   -TokenPublicKeyPath (Join-Path $secretDirectory 'serving-catalog-token-public.pem') `
   -TokenPrivateKeyPath (Join-Path $secretDirectory 'serving-catalog-token-private.pem')
 powershell -NoProfile -ExecutionPolicy Bypass `
-  -File scripts/start.ps1 -EnvFilePath $deploymentEnv -Stage Core
-# loopback DataHub UI/OIDC에서 서로 다른 read/publish service actor와 PAT를 발급하고,
-# 최소권한 정책과 actor URN/token을 외부 $deploymentEnv에 기록한다.
+  -File scripts/start.ps1 -Stage Core
+Push-Location ../..
+docker compose --env-file infrastructure/database/.env --profile dev `
+  run --rm app-migrations upgrade head
 powershell -NoProfile -ExecutionPolicy Bypass `
-  -File scripts/start.ps1 -EnvFilePath $deploymentEnv -Stage Catalog
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -EnvFilePath $deploymentEnv
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1 -EnvFilePath $deploymentEnv
+  -File infrastructure/database/security/provision-release-principals.ps1
+Pop-Location
+# loopback DataHub UI/OIDC에서 서로 다른 read/publish service actor와 PAT를 발급하고,
+# 최소권한 정책과 actor URN/token을 .env에 기록한다.
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/start.ps1 -Stage Catalog
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 ```
 
 Core 기동은 object store와 Polaris를 먼저 준비하고, management API에서 Trino 전용
 principal·role·grant를 멱등 구성해 exact read-back한 뒤 Trino를 만든다. bootstrap admin
 credential을 Trino에 재사용하지 않는다. 저장소 로컬 `.env`와 secret은 개발 중에만
-`-AllowRepositoryLocalDevelopment`로 명시할 수 있으며 모두 `.gitignore` 대상이어야 한다.
+사용하며 `.env`는 반드시 `.gitignore` 대상이어야 한다. 외부 dotenv는 허용하지 않는다.
+
+App의 사람 Role은 `analyst`, `admin` 두 개뿐이다. `provision-release-principals.ps1`은
+두 bootstrap verifier를 migration이 만든 `security.accounts`에 upsert하고, 같은 username의
+기존 subject를 보존하며 해당 subject의 session을 폐기한다. `.env`를 직접 바꾸는 것만으로
+DB verifier가 변경되지는 않으므로 비밀번호·로그인 ID 변경 뒤 script를 명시적으로 다시
+실행한다. 이 통합 bootstrap은 두 계정 verifier를 함께 갱신하고 두 계정의 기존 session을
+폐기한다. admin 한 계정만 회전하는 작업은 로그인 후 관리자 API로 수행하며, 과거
+별도 로컬 진입점이나 제3의 사람 계정은 제공하지 않는다.
+
+기존 principal JSON을 사용하던 환경의 첫 이관은 검증된 절대 경로를
+`-LegacyPrincipalPath`로 명시한다. 두 bootstrap username이 모두 있어야 하며 그 subject를
+신규 DB INSERT 후보로 사용한다. 이미 같은 username의 DB 계정이 있으면 DB subject를
+변경하지 않는다. 로그인·Analysis/Report 소유권을 확인한 뒤 JSON mount와 파일을 운영
+경로에서 제거하고 이후 회전에는 이 인자를 사용하지 않는다.
+
+로컬의 구 관리자 key를 전환할 때는 migration 뒤 `-LegacyPrincipalPath`와
+`-AdminUsername admin -PromptAdminPassword`를 함께 사용한다. secure prompt 입력은 argv와
+log에 남지 않고, 성공 시 폐기된 Role 선택·관리자 dotenv key도 `.env`에서 제거된다.
+
+### 운영 중 release의 maintenance 전환 순서
+
+구 Backend가 실행되는 동안 새 migration을 적용하면 폐기된 Role로 session을 다시 쓰려는
+요청이 DB 제약에 막혀 로그인 503을 만들 수 있다. 따라서 트래픽 차단과 구 Backend·Frontend
+중지를 먼저 완료하고 old/new Backend가 동시에 실행되지 않게 한다. App PostgreSQL과
+DataHub를 유지한 maintenance 상태에서 아래 순서를 고정한다.
+
+1. `app-migrations upgrade head`
+2. one-time `-LegacyPrincipalPath`를 포함한 두 DB 계정 provision과 subject 보존 확인
+3. DataHub 새 Role 정책의 read-only check, checksum 고정 publish, 전체 live read-back
+4. 새 Backend·Frontend 시작, readiness와 analyst/admin 로그인·권한·기존 소유권 검증
+5. 검증 성공 뒤에만 트래픽 재개
+
+migration과 provision 사이에는 인증 트래픽을 받지 않는다. DB 또는 DataHub 검증이
+실패하면 새 Backend를 시작하지 않고 maintenance를 유지하며 검증된 predecessor/DB 복구
+절차를 따른다. 영구적인 legacy Role alias나 구 Backend 재기동으로 중간 상태를 운영하지
+않는다.
+
+## DataHub entitlement Role 전환
+
+live DataHub의 Dataset·Metric entitlement도 App Role과 같은 `analyst`, `admin` 집합을
+사용해야 한다. 과거 Role 문자열을 runtime alias로 허용하거나 로컬 JSON으로 덮어쓰지
+않는다. 승인된 live release를 `datahub/migrate_semantic_policy.py`로 읽어
+`--role analyst --role admin`인 다음 version 정책을 만들고,
+[`datahub/SEMANTIC_AUTHORING.md`](datahub/SEMANTIC_AUTHORING.md)의 read-only `--check` →
+predecessor/target checksum을 명시한 `--publish` → 전체 live read-back 순서로 전환한다.
+`PUBLISHED_AND_VERIFIED` 뒤 Backend를 재시작하고 두 Role의 실제 분석 경로를 확인하기
+전에는 새 entitlement release를 활성 상태로 선언하지 않는다.
 
 ## D0/D1 release 검증과 영속 serving 발행
 
 현재 source row를 다시 생성하지 않는 읽기 전용 D0 검증과 영속 catalog의 D1 View
-발행·검증은 release id와 deployment env를 명시해 실행한다. verifier는 release manifest
+발행·검증은 release id와 저장소 `.env`를 사용해 실행한다. verifier는 release manifest
 전체 checksum을 먼저 확인하며 evidence 경로에는 SQL 원문이나 credential 대신 file/query
 hash와 실행시간만 기록한다.
 
@@ -61,15 +106,15 @@ $evidence = Join-Path $PWD 'output\d0-d1\<base-sha>'
 
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File scripts/verify-release-sources.ps1 `
-  -EnvFilePath $deploymentEnv -ReleaseId $releaseId -EvidenceDirectory $evidence
+  -ReleaseId $releaseId -EvidenceDirectory $evidence
 
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File scripts/recreate-serving-views.ps1 `
-  -EnvFilePath $deploymentEnv -ReleaseId $releaseId -IncludeValidation
+  -ReleaseId $releaseId -IncludeValidation
 
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File scripts/verify-release-trino.ps1 `
-  -EnvFilePath $deploymentEnv -ReleaseId $releaseId -EvidenceDirectory $evidence
+  -ReleaseId $releaseId -EvidenceDirectory $evidence
 ```
 
 `recreate-serving-views.ps1`은 파일명 목록을 복제하지 않는다. manifest와 SQL metadata/AST에서
@@ -88,12 +133,13 @@ Trino 경로를 전제로 하므로 현재 runtime 재적재에 사용하지 않
 새로 만들려면 운영 볼륨을 건드리지 않는 빈 disposable 환경에서 release 전체를 replay하고
 그 receipt를 별도로 고정해야 한다.
 
-운영 배포 환경 파일, Trino password database, Trino/DataHub PKCS#12 server keystore,
-DataHub Java truststore, CA PEM과 Backend principal store는 repository 밖 절대 경로에
-둔다. 로컬 개발 secret은 명시적 switch와 gitignore 검증이 있을 때만 허용한다. Trino
+dotenv는 Git에서 제외된 `infrastructure/database/.env` 하나만 사용한다. Trino password
+database, Trino/DataHub PKCS#12 server keystore, DataHub Java truststore와 CA PEM은
+repository 밖 절대 경로에 둔다. 사람 계정의 권위 원본은 App PostgreSQL이며 별도
+principal JSON을 mount하지 않는다. Trino
 인증서는 container DNS `trino`, DataHub 인증서는 `datahub-gms`, host 접속 주소를 각각
-SAN으로 포함해야 한다. start script는 저장소 로컬 `.env`를 묵시적으로 읽거나 만들지
-않는다. `-EnvFilePath`를 생략하면 현재 process environment만 사용한다.
+SAN으로 포함해야 한다. deployment script는 고정된 저장소 `.env`가 없거나 Git ignore
+대상이 아니면 중단하며 외부 dotenv나 현재 process environment로 fallback하지 않는다.
 
 `scripts/reset.ps1 -Force`는 Compose project label로 확인한 현재 로컬 DB 볼륨만
 삭제하고 schema부터 다시 생성한다. 보존할 데이터가 없는 개발 환경인지 확인한 뒤에만
@@ -130,8 +176,8 @@ publish credential을 주입하지 않는다.
 업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
 
 실행 원본은 `sql/ddl`, `sql/app`, App DB migration, DataHub runtime recipe다.
-`security` script는 외부 principal secret을 생성하지만 저장소 안에 인증 JSON을 만들지
-않는다. `sql/data/`와 `releases/`는 checksum과 과거 재현성을 위한 불변 아카이브이며,
+`security` script는 기계 계정 secret과 App DB bootstrap verifier를 분리하며 저장소 안에
+사람 인증 JSON을 만들지 않는다. `sql/data/`와 `releases/`는 checksum과 과거 재현성을 위한 불변 아카이브이며,
 Compose 초기화·bootstrap·검증 경로에서 참조하지 않는다.
 
 PowerShell 실행 파일은 `scripts`에 모아 관리한다.

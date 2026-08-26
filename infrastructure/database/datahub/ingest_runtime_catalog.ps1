@@ -3,8 +3,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [switch]$Apply,
-    [string]$EnvFilePath,
-    [switch]$AllowRepositoryLocalDevelopment
+    [string]$EnvFilePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,9 +18,8 @@ $composeFiles = @(
 $repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 . (Join-Path $databaseRoot 'scripts/deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExplicitDeploymentEnvFile `
-    -Path $EnvFilePath -RepositoryRoot $repoRoot `
-    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $recipes = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'recipes') `
     -Filter '*.runtime.yml' -File | Sort-Object Name

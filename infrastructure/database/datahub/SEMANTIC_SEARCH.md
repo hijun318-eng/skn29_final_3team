@@ -55,14 +55,11 @@ mutation은 성공 경로가 아니다.
 [REST sink token/CA 전달](https://github.com/datahub-project/datahub/blob/7f81ccbfe27b9acc947f5f600fcf9ddb72138a80/metadata-ingestion/src/datahub/ingestion/sink/datahub_rest.py#L276-L290)을 따른다.
 
 ```powershell
-$deploymentDirectory = Join-Path $env:LOCALAPPDATA 'Answervice\deployment'
-New-Item -ItemType Directory -Force -Path $deploymentDirectory | Out-Null
-$deploymentEnv = Join-Path $deploymentDirectory 'answervice.env'
-Copy-Item infrastructure/database/.env.example $deploymentEnv
-# 외부 파일의 placeholder와 PKI/password database 절대 경로를 provisioning한다.
+Copy-Item infrastructure/database/.env.example infrastructure/database/.env
+# Git에서 제외된 고정 .env의 placeholder와 PKI/password database 절대 경로를 provisioning한다.
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File infrastructure/database/scripts/start.ps1 `
-  -EnvFilePath $deploymentEnv -Stage Core
+  -Stage Core
 ```
 
 `Core`는 source read-only 계정, Trino, 인증된 GMS와 loopback UI까지만 준비하고
@@ -71,12 +68,12 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 
 운영자는 DataHub UI/OIDC에서 서로 다른 read/publish service actor를 만들고, read actor에는
 catalog 조회만, publish actor에는 승인된 metadata mutation만 허용하는 정책을 연결한다.
-두 PAT와 actor URN을 외부 `$deploymentEnv`에 기록한 뒤 Catalog 단계를 실행한다.
+두 PAT와 actor URN을 `infrastructure/database/.env`에 기록한 뒤 Catalog 단계를 실행한다.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File infrastructure/database/scripts/start.ps1 `
-  -EnvFilePath $deploymentEnv -Stage Catalog
+  -Stage Catalog
 ```
 
 `Catalog`는 두 token이 서로 다르고 각 token의 실제 `me.corpUser.urn`이 선언 actor와
@@ -101,7 +98,7 @@ embedding을 같은 작업에서 갱신한다.
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File infrastructure/database/datahub/ingest_runtime_catalog.ps1 `
-  -EnvFilePath $deploymentEnv -Apply
+  -Apply
 ```
 
 이 스크립트는 모든 현재 `*.runtime.yml`을 실행한 다음

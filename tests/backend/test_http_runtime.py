@@ -106,8 +106,7 @@ class FastApiRuntimeTest(unittest.TestCase):
     def context_headers(role: str = "analyst") -> dict[str, str]:
         tokens = {
             "analyst": "runtime-test-token",
-            "report_admin": "runtime-report-admin-token",
-            "data_admin": "runtime-data-admin-token",
+            "admin": "runtime-admin-token",
         }
         return {
             "Authorization": f"Bearer {tokens[role]}",
@@ -264,7 +263,10 @@ class FastApiRuntimeTest(unittest.TestCase):
                     allowed_methods = {
                         item.strip() for item in response.headers["Access-Control-Allow-Methods"].split(",")
                     }
-                    self.assertEqual({"GET", "POST", "PUT", "OPTIONS"}, allowed_methods)
+                    self.assertEqual(
+                        {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+                        allowed_methods,
+                    )
                     allowed_headers = {
                         item.strip().lower()
                         for item in response.headers["Access-Control-Allow-Headers"].split(",")
@@ -338,7 +340,7 @@ class FastApiRuntimeTest(unittest.TestCase):
 
         status, _ = self.request(
             "/analysis/progress/runtime-progress-trace",
-            headers=self.context_headers("report_admin"),
+            headers=self.context_headers("admin"),
         )
         self.assertEqual(404, status)
 
@@ -484,20 +486,18 @@ class FastApiRuntimeTest(unittest.TestCase):
         self.assertEqual("CONTEXT_INCOMPLETE", response["error"]["code"])
         self.assertNotEqual("invalid trace with spaces", response["meta"]["trace_id"])
 
-    def test_non_analyst_role_is_rejected_before_question_routing(self) -> None:
-        for role in ("report_admin", "data_admin"):
-            with self.subTest(role=role):
-                status, response = self.request(
-                    "/analysis",
-                    method="POST",
-                    headers=self.context_headers(role),
-                    body={"question": "권한 경계 검증"},
-                )
-                self.assertEqual(403, status)
-                self.assertEqual("ACCESS_DENIED", response["error"]["code"])
+    def test_admin_can_submit_analysis(self) -> None:
+        status, response = self.request(
+            "/analysis",
+            method="POST",
+            headers=self.context_headers("admin"),
+            body={"question": "권한 경계 검증"},
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("SUCCEEDED", response["data"]["status"])
 
     def test_analysis_and_report_share_server_owned_principal(self) -> None:
-        headers = self.context_headers("report_admin")
+        headers = self.context_headers("admin")
         status, response = self.request("/reports/definitions", headers=headers)
         self.assertEqual(503, status)
         self.assertEqual("DEPENDENCY_UNAVAILABLE", response["error"]["code"])
@@ -535,7 +535,7 @@ class _TrinoHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         type(self).query_count += 1
-        partial = type(self).query_count > 1
+        partial = type(self).query_count > 3
         body = {
             "id": "real-query-partial" if partial else "real-query-positive",
             "stats": {"state": "FINISHED"},
@@ -664,17 +664,16 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
         self.assertIsNotNone(positive["data"]["artifact"]["artifact_id"])
 
         query_count = _TrinoHandler.query_count
-        for role in ("report_admin", "data_admin"):
-            headers = self.context_headers(role)
-            status, denied = self.request(
-                "/analysis",
-                method="POST",
-                headers=headers,
-                body=body,
-            )
-            self.assertEqual(403, status)
-            self.assertEqual("ACCESS_DENIED", denied["error"]["code"])
-        self.assertEqual(query_count, _TrinoHandler.query_count)
+        headers = self.context_headers("admin")
+        status, allowed = self.request(
+            "/analysis",
+            method="POST",
+            headers=headers,
+            body=body,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("SUCCEEDED", allowed["data"]["status"])
+        self.assertEqual(query_count + 1, _TrinoHandler.query_count)
 
         partial_body = {
             **body,

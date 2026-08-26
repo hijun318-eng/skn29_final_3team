@@ -1,11 +1,11 @@
-# 책임: 운영 script가 repository-local `.env`를 묵시적으로 읽지 못하게 막고,
-# 명시된 외부 env file 또는 현재 process environment만 Compose에 전달한다.
+# 책임: 모든 deployment script가 repository의 고정 `.env` 하나만 읽도록 강제하고,
+# 외부 env file이나 process environment fallback이 credential source가 되지 않게 한다.
 
 function Disable-ImplicitComposeEnvironment {
     <#
     Docker Compose의 현재 작업 directory 기반 `.env` 자동 탐색을 끈다.
-    호출자가 명시한 `--env-file`은 계속 허용되며, 값이 없으면 process environment만
-    사용하므로 ignored credential file이 우연히 운영 identity가 되지 않는다.
+    Compose의 묵시적 `.env` 탐색을 끄고 검증된 repository env를 `--env-file`로만
+    전달해 실행 directory에 따라 credential source가 달라지지 않게 한다.
     #>
     $env:COMPOSE_DISABLE_ENV_FILE = '1'
 }
@@ -25,104 +25,62 @@ function Test-FullyQualifiedFileSystemPath {
     return $Path.StartsWith('/', [StringComparison]::Ordinal)
 }
 
-function Resolve-ExternalDeploymentEnvFile {
+function Resolve-RepositoryDeploymentEnvFile {
     <#
-    선택된 env file을 canonical absolute path로 해석하고 repository 밖인지 검증한다.
-    빈 입력은 process environment 사용을 뜻하며, 상대 경로나 repository 내부 파일은
-    caller의 현재 directory에 따라 credential source가 달라질 수 있어 거절한다.
+    빈 입력은 `infrastructure/database/.env`로 해석한다. 명시된 path도 이 canonical
+    file과 정확히 같아야 하며, 외부·대체 env file과 commit 가능한 file은 거절한다.
     #>
     param(
         [AllowEmptyString()] [string]$Path,
         [Parameter(Mandatory)] [string]$RepositoryRoot
     )
 
-    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
-    if (-not (Test-FullyQualifiedFileSystemPath $Path)) {
-        throw 'EnvFilePath must be an absolute path outside the repository.'
-    }
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw 'EnvFilePath must reference an existing file.'
-    }
-
-    $resolvedPath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Path).Path)
     $resolvedRepository = [IO.Path]::GetFullPath(
         (Resolve-Path -LiteralPath $RepositoryRoot).Path
     ).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
-    $repositoryPrefix = $resolvedRepository + [IO.Path]::DirectorySeparatorChar
-    if ($resolvedPath.Equals($resolvedRepository, [StringComparison]::OrdinalIgnoreCase) -or
-        $resolvedPath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'EnvFilePath must remain outside the repository.'
-    }
-    return $resolvedPath
-}
-
-function Resolve-ExplicitDeploymentEnvFile {
-    <#
-    운영 기본값은 외부 env만 허용한다. 명시적 local-development switch가 있을 때만
-    repository 내부의 gitignored regular file을 허용해, local secret 사용이 묵시적
-    fallback이나 commit 가능한 설정으로 바뀌지 않게 한다.
-    #>
-    param(
-        [AllowEmptyString()] [string]$Path,
-        [Parameter(Mandatory)] [string]$RepositoryRoot,
-        [switch]$AllowRepositoryLocalDevelopment
+    $canonicalPath = [IO.Path]::GetFullPath(
+        (Join-Path $resolvedRepository 'infrastructure/database/.env')
     )
-
-    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
-    if (-not (Test-FullyQualifiedFileSystemPath $Path) -or
-        -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw 'EnvFilePath must reference an existing absolute file.'
+    $selectedPath = if ([string]::IsNullOrWhiteSpace($Path)) { $canonicalPath } else { $Path }
+    if (-not (Test-FullyQualifiedFileSystemPath $selectedPath) -or
+        -not (Test-Path -LiteralPath $selectedPath -PathType Leaf)) {
+        throw 'Deployment env must be the existing repository file infrastructure/database/.env.'
     }
-    $resolvedPath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Path).Path)
-    $resolvedRepository = [IO.Path]::GetFullPath(
-        (Resolve-Path -LiteralPath $RepositoryRoot).Path
-    ).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
-    $repositoryPrefix = $resolvedRepository + [IO.Path]::DirectorySeparatorChar
-    $isRepositoryLocal = $resolvedPath.StartsWith(
-        $repositoryPrefix,
-        [StringComparison]::OrdinalIgnoreCase
-    )
-    if (-not $isRepositoryLocal) { return $resolvedPath }
-    if (-not $AllowRepositoryLocalDevelopment) {
-        throw 'Repository-local env requires -AllowRepositoryLocalDevelopment.'
+    $resolvedPath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $selectedPath).Path)
+    if (-not $resolvedPath.Equals($canonicalPath, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'External or alternate deployment env files are not allowed.'
     }
-
+    $envFile = Get-Item -LiteralPath $resolvedPath -Force
+    if (($envFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'The repository deployment env must not be a symbolic link or reparse point.'
+    }
     & git -C $resolvedRepository check-ignore -q -- $resolvedPath
     if ($LASTEXITCODE -ne 0) {
-        throw 'Repository-local development env must be covered by .gitignore.'
+        throw 'The repository deployment env must be covered by .gitignore.'
     }
     return $resolvedPath
 }
 
 function Get-ComposeEnvironmentArguments {
     <#
-    검증된 env path만 Docker Compose CLI argument로 변환한다. path가 없으면 빈 배열을
-    반환해 process environment를 사용하며, implicit `.env` 차단은 별도 함수가 맡는다.
+    검증된 repository env path를 Docker Compose CLI argument로 변환한다.
     #>
-    param([AllowNull()] [string]$ResolvedEnvFile)
+    param([Parameter(Mandatory)] [string]$ResolvedEnvFile)
 
-    if ($ResolvedEnvFile) { return @('--env-file', $ResolvedEnvFile) }
-    return @()
+    return @('--env-file', $ResolvedEnvFile)
 }
 
 function Read-DeploymentEnvironment {
     <#
-    외부 dotenv 또는 process environment를 key/value map으로 읽는다. dotenv의 중복
-    key와 해석할 수 없는 행은 Compose와 검증 code의 값 불일치를 막기 위해 거절하며,
-    값 자체는 출력하거나 expression으로 재평가하지 않는다.
+    검증된 repository dotenv를 key/value map으로 읽는다. 중복 key와 해석할 수 없는
+    행은 Compose와 검증 code의 값 불일치를 막기 위해 거절하며, 값 자체는 출력하거나
+    expression으로 재평가하지 않는다.
     #>
-    param([AllowNull()] [string]$ResolvedEnvFile)
+    param([Parameter(Mandatory)] [string]$ResolvedEnvFile)
 
     $values = [Collections.Generic.Dictionary[string, string]]::new(
         [StringComparer]::OrdinalIgnoreCase
     )
-    if (-not $ResolvedEnvFile) {
-        foreach ($entry in [Environment]::GetEnvironmentVariables('Process').GetEnumerator()) {
-            $values[[string]$entry.Key] = [string]$entry.Value
-        }
-        return $values
-    }
-
     $lineNumber = 0
     foreach ($line in Get-Content -LiteralPath $ResolvedEnvFile -Encoding UTF8) {
         $lineNumber++
@@ -199,15 +157,14 @@ function Assert-ExternalDeploymentFile {
 
 function Assert-ExplicitDeploymentFile {
     <#
-    운영 기본값은 외부 file을 요구한다. local-development가 명시된 경우에만 repository
-    내부의 gitignored regular file을 허용해, 개발 secret도 추적 가능한 설정 파일이나
-    missing bind-mount directory로 바뀌지 않게 한다.
+    외부 regular file 또는 repository 내부의 gitignored regular file만 허용한다.
+    개발 secret이 commit 가능한 설정 파일이나 missing bind-mount directory로 바뀌지
+    않도록 실행 전에 검증한다.
     #>
     param(
         [Parameter(Mandatory)] $Values,
         [Parameter(Mandatory)] [string]$Key,
-        [Parameter(Mandatory)] [string]$RepositoryRoot,
-        [switch]$AllowRepositoryLocalDevelopment
+        [Parameter(Mandatory)] [string]$RepositoryRoot
     )
 
     Assert-DeploymentEnvironmentValues -Values $Values -RequiredKeys @($Key)
@@ -226,9 +183,6 @@ function Assert-ExplicitDeploymentFile {
         [StringComparison]::OrdinalIgnoreCase
     )
     if (-not $isRepositoryLocal) { return $resolved }
-    if (-not $AllowRepositoryLocalDevelopment) {
-        throw "Deployment environment key '$Key' must reference a file outside the repository."
-    }
     & git -C $repository check-ignore -q -- $resolved
     if ($LASTEXITCODE -ne 0) {
         throw "Repository-local deployment file '$Key' must be covered by .gitignore."

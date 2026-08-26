@@ -11,7 +11,6 @@ param(
     [Parameter(Mandatory)] [string]$ReleaseId,
     [string]$EnvFilePath,
     [string]$TargetSchema,
-    [switch]$AllowRepositoryLocalDevelopment,
     # 검증 SQL까지 함께 실행해 cross-source 무결성을 확인한다.
     [switch]$IncludeValidation
 )
@@ -103,9 +102,8 @@ if ([string]$recoveryPlan.release_id -cne $releaseId -or
 }
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExplicitDeploymentEnvFile `
-    -Path $EnvFilePath -RepositoryRoot $repoRoot `
-    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $values = Read-DeploymentEnvironment $resolvedEnvFile
 Assert-DeploymentEnvironmentValues -Values $values -RequiredKeys @(

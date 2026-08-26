@@ -98,7 +98,7 @@ class AnalysisPipeline:
                 PipelineStage.CONTROLLER,
                 AnalysisStatus.BLOCKED,
                 ErrorCode.ACCESS_DENIED,
-                "분석 Agent는 analyst 권한이 필요합니다.",
+                "분석 실행 권한이 필요합니다.",
                 decision,
             )
 

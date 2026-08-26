@@ -13,7 +13,7 @@ $composeFile = Join-Path $repoRoot 'compose.yml'
 $semanticComposeFile = Join-Path $databaseRoot 'datahub/compose.semantic-search.yml'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$envFile = Resolve-ExternalDeploymentEnvFile `
+$envFile = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $envFile)
 $services = @(

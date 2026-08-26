@@ -2,7 +2,7 @@
 # 전용으로 실행하고, checksum·실행시간·출력 hash가 결속된 receipt를 생성한다.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string]$EnvFilePath,
+    [string]$EnvFilePath,
     [Parameter(Mandatory)] [string]$ReleaseId,
     [Parameter(Mandatory)] [string]$EvidenceDirectory
 )
@@ -15,7 +15,7 @@ $composeFile = Join-Path $databaseRoot 'compose.yml'
 $readOnlyVerifier = Join-Path $PSScriptRoot 'verify_readonly_sql.py'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $values = Read-DeploymentEnvironment $resolvedEnvFile

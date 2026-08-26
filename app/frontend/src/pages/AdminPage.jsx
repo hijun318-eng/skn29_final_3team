@@ -1,115 +1,307 @@
-/** 관리자 화면의 프런트엔드 정보 구조와 향후 Backend 연결 경계를 소유한다. */
-import { Database, FileClock, RefreshCw, ShieldCheck, UserCog, UserPlus } from "lucide-react";
-import { useState } from "react";
+/** 관리자 계정·연결 상태·감사 로그를 실제 Backend API와 연결하는 운영 화면이다. */
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  FileClock,
+  KeyRound,
+  Pencil,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  UserCog,
+  UserPlus,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdminApiError, createAdminClient } from "../api/adminClient.ts";
 import { roleLabel } from "../authorization.ts";
 
 const ADMIN_SECTIONS = [
   { id: "connections", label: "연결 상태", icon: Database },
-  { id: "accounts", label: "권한 관리", icon: UserCog },
+  { id: "accounts", label: "계정 관리", icon: UserCog },
   { id: "audit", label: "감사 로그", icon: FileClock },
 ];
 
-const CONNECTION_TARGETS = [
-  { id: "pms", name: "PMS", technology: "PostgreSQL" },
-  { id: "pos", name: "POS", technology: "MySQL" },
-  { id: "crm", name: "CRM", technology: "SQL Server" },
-  { id: "facility", name: "Facility", technology: "ClickHouse" },
-  { id: "banquet", name: "Banquet", technology: "PostgreSQL" },
-  { id: "app_postgres", name: "App PostgreSQL", technology: "PostgreSQL" },
-  { id: "trino", name: "Trino", technology: "HTTPS" },
-  { id: "datahub", name: "DataHub", technology: "HTTPS" },
-  { id: "model_api", name: "Model API", technology: "HTTP" },
-];
+const STATUS_LABELS = { ready: "정상", down: "연결 실패" };
+const EMPTY_PAGE = { items: [], page: 1, page_size: 50, total: 0 };
 
-const STATUS_LABELS = {
-  ready: "정상",
-  down: "연결 실패",
-  checking: "확인 중",
-  unknown: "확인 전",
-};
+function adminErrorMessage(error) {
+  if (!(error instanceof AdminApiError)) return "관리자 API 응답을 확인할 수 없습니다.";
+  if (error.status === 401) return "로그인 세션이 만료되었습니다. 다시 로그인해 주세요.";
+  if (error.status === 403) return "관리자 권한이 없어 이 요청을 실행할 수 없습니다.";
+  if (error.status === 409) return error.message;
+  if (error.status >= 500) return "관리자 서버에서 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  return error.message;
+}
 
-/**
- * 관리자 운영 화면을 렌더링한다.
- * `data`가 없으면 가짜 운영값을 만들지 않고 Backend 연결 전 상태를 표시하며,
- * 추후 연결 시 연결 상태(`id/status/latencyMs`), 계정(`id/name/email/role/status/createdAt`),
- * 감사 로그(`id/occurredAt/actor/event/target/result/detail`)를 `data`로 전달한다.
- */
-export function AdminPage({ role, data, onRefreshConnections, onCreateAccount }) {
+function formatTimestamp(value) {
+  if (!value) return "-";
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+}
+
+/** 계정 생성·수정·비밀번호 초기화 입력을 native modal dialog로 수집한다. */
+function AccountDialog({ account, form, mode, pending, error, onChange, onClose, onSubmit }) {
+  const dialogRef = useRef(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    return () => { if (dialog?.open) dialog.close(); };
+  }, []);
+
+  const passwordMode = mode === "password";
+  const title = mode === "create" ? "계정 추가" : passwordMode ? "비밀번호 초기화" : "계정 수정";
+  return <dialog
+    ref={dialogRef}
+    className="admin-account-dialog"
+    aria-labelledby="admin-account-dialog-title"
+    onCancel={(event) => { if (pending) event.preventDefault(); else onClose(); }}
+  >
+    <form onSubmit={onSubmit}>
+      <header><div><small>ADMIN ACCOUNT</small><h2 id="admin-account-dialog-title">{title}</h2>{account && <p>{account.username}</p>}</div><button type="button" aria-label="닫기" onClick={onClose} disabled={pending}><X size={18} /></button></header>
+      <div className="admin-account-dialog__fields">
+        {!passwordMode && <>
+          <label><span>사용자 아이디</span><input required minLength={3} maxLength={64} pattern="[a-z0-9._-]+" autoComplete="off" value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value.toLowerCase() })} /></label>
+          <label><span>역할</span><select value={form.role} onChange={(event) => onChange({ ...form, role: event.target.value })}><option value="analyst">일반 사용자 (analyst)</option><option value="admin">관리자 (admin)</option></select></label>
+        </>}
+        {(mode === "create" || passwordMode) && <label><span>{passwordMode ? "새 비밀번호" : "초기 비밀번호"}</span><input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={form.password} onChange={(event) => onChange({ ...form, password: event.target.value })} /></label>}
+        {mode === "edit" && <label className="admin-account-dialog__check"><input type="checkbox" checked={form.active} onChange={(event) => onChange({ ...form, active: event.target.checked })} /><span>활성 계정</span></label>}
+        {error && <p className="admin-account-dialog__error" role="alert"><AlertTriangle size={16} />{error}</p>}
+      </div>
+      <footer><button type="button" onClick={onClose} disabled={pending}>취소</button><button className="primary" type="submit" disabled={pending}>{pending ? "저장 중…" : passwordMode ? "비밀번호 변경" : "저장"}</button></footer>
+    </form>
+  </dialog>;
+}
+
+/** `system.manage`로 보호된 관리자 기능을 실제 계정·상태·감사 API에 배선한다. */
+export function AdminPage({ role, client: suppliedClient }) {
+  const client = useMemo(() => suppliedClient ?? createAdminClient(undefined, fetch), [suppliedClient]);
+  const requestIds = useRef({ connections: 0, accounts: 0, audit: 0 });
   const [section, setSection] = useState("connections");
-  const connections = data?.connections ?? [];
-  const accounts = data?.accounts ?? [];
-  const auditLogs = data?.auditLogs ?? [];
-  const backendConnected = data?.backendConnected === true;
-  const connectionRows = CONNECTION_TARGETS.map((target) => ({
-    ...target,
-    status: "unknown",
-    ...connections.find((item) => item.id === target.id),
-  }));
+  const activeSectionRef = useRef(section);
+  activeSectionRef.current = section;
+  const [apiState, setApiState] = useState("checking");
+  const [loading, setLoading] = useState({ connections: false, accounts: false, audit: false });
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [connections, setConnections] = useState([]);
+  const [accounts, setAccounts] = useState(EMPTY_PAGE);
+  const [auditEvents, setAuditEvents] = useState(EMPTY_PAGE);
+  const [accountPage, setAccountPage] = useState(1);
+  const [accountSearch, setAccountSearch] = useState("");
+  const [accountSearchInput, setAccountSearchInput] = useState("");
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditSearch, setAuditSearch] = useState("");
+  const [auditSearchInput, setAuditSearchInput] = useState("");
+  const [auditResult, setAuditResult] = useState("");
+  const [modal, setModal] = useState(null);
+  const [accountForm, setAccountForm] = useState({ username: "", password: "", role: "analyst", active: true });
+  const [saving, setSaving] = useState(false);
+  const [dialogError, setDialogError] = useState("");
+
+  const loadConnections = useCallback(async () => {
+    const requestId = ++requestIds.current.connections;
+    setLoading((current) => ({ ...current, connections: true }));
+    setError("");
+    setApiState("checking");
+    try {
+      const items = await client.listConnections();
+      if (requestIds.current.connections !== requestId || activeSectionRef.current !== "connections") return;
+      setConnections(items);
+      setApiState("connected");
+    } catch (nextError) {
+      if (requestIds.current.connections !== requestId || activeSectionRef.current !== "connections") return;
+      setConnections([]);
+      setError(adminErrorMessage(nextError));
+      setApiState("error");
+    } finally {
+      if (requestIds.current.connections === requestId) setLoading((current) => ({ ...current, connections: false }));
+    }
+  }, [client]);
+
+  const loadAccounts = useCallback(async () => {
+    const requestId = ++requestIds.current.accounts;
+    setLoading((current) => ({ ...current, accounts: true }));
+    setError("");
+    setApiState("checking");
+    try {
+      const page = await client.listAccounts(accountPage, accountSearch);
+      if (requestIds.current.accounts !== requestId || activeSectionRef.current !== "accounts") return;
+      setAccounts(page);
+      setApiState("connected");
+    } catch (nextError) {
+      if (requestIds.current.accounts !== requestId || activeSectionRef.current !== "accounts") return;
+      setAccounts({ ...EMPTY_PAGE, page: accountPage });
+      setError(adminErrorMessage(nextError));
+      setApiState("error");
+    } finally {
+      if (requestIds.current.accounts === requestId) setLoading((current) => ({ ...current, accounts: false }));
+    }
+  }, [accountPage, accountSearch, client]);
+
+  const loadAuditEvents = useCallback(async () => {
+    const requestId = ++requestIds.current.audit;
+    setLoading((current) => ({ ...current, audit: true }));
+    setError("");
+    setApiState("checking");
+    try {
+      const page = await client.listAuditEvents(auditPage, auditSearch, auditResult);
+      if (requestIds.current.audit !== requestId || activeSectionRef.current !== "audit") return;
+      setAuditEvents(page);
+      setApiState("connected");
+    } catch (nextError) {
+      if (requestIds.current.audit !== requestId || activeSectionRef.current !== "audit") return;
+      setAuditEvents({ ...EMPTY_PAGE, page: auditPage });
+      setError(adminErrorMessage(nextError));
+      setApiState("error");
+    } finally {
+      if (requestIds.current.audit === requestId) setLoading((current) => ({ ...current, audit: false }));
+    }
+  }, [auditPage, auditResult, auditSearch, client]);
+
+  useEffect(() => {
+    for (const { id } of ADMIN_SECTIONS) {
+      if (id !== section) requestIds.current[id] += 1;
+    }
+    setLoading((current) => ({
+      connections: section === "connections" ? current.connections : false,
+      accounts: section === "accounts" ? current.accounts : false,
+      audit: section === "audit" ? current.audit : false,
+    }));
+  }, [section]);
+
+  useEffect(() => {
+    if (section === "connections") void loadConnections();
+    if (section === "accounts") void loadAccounts();
+    if (section === "audit") void loadAuditEvents();
+  }, [loadAccounts, loadAuditEvents, loadConnections, section]);
+
+  const openCreate = () => {
+    setAccountForm({ username: "", password: "", role: "analyst", active: true });
+    setDialogError("");
+    setModal({ mode: "create", account: null });
+  };
+  const openEdit = (account) => {
+    setAccountForm({ username: account.username, password: "", role: account.role, active: account.active });
+    setDialogError("");
+    setModal({ mode: "edit", account });
+  };
+  const openPassword = (account) => {
+    setAccountForm({ username: account.username, password: "", role: account.role, active: account.active });
+    setDialogError("");
+    setModal({ mode: "password", account });
+  };
+
+  const refreshAccountsAfterMutation = async () => {
+    const requestId = ++requestIds.current.accounts;
+    setLoading((current) => ({ ...current, accounts: true }));
+    try {
+      const page = await client.listAccounts(accountPage, accountSearch);
+      if (requestIds.current.accounts !== requestId) return;
+      setAccounts(page);
+    } catch (nextError) {
+      if (requestIds.current.accounts === requestId) setAccounts({ ...EMPTY_PAGE, page: accountPage });
+      throw nextError;
+    } finally {
+      if (requestIds.current.accounts === requestId) setLoading((current) => ({ ...current, accounts: false }));
+    }
+  };
+
+  const submitAccount = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setDialogError("");
+    try {
+      if (modal.mode === "create") {
+        await client.createAccount({ username: accountForm.username.trim(), password: accountForm.password, role: accountForm.role });
+        setNotice("계정을 추가했습니다.");
+      } else if (modal.mode === "edit") {
+        await client.updateAccount(modal.account.subject, { username: accountForm.username.trim(), role: accountForm.role, active: accountForm.active });
+        setNotice("계정 정보를 변경했습니다. 변경된 계정의 기존 세션은 종료됩니다.");
+      } else {
+        await client.resetPassword(modal.account.subject, accountForm.password);
+        setNotice("비밀번호를 변경했습니다. 해당 계정의 기존 세션은 종료됩니다.");
+      }
+      await refreshAccountsAfterMutation();
+      setApiState("connected");
+      setModal(null);
+    } catch (nextError) {
+      setDialogError(adminErrorMessage(nextError));
+      setApiState("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteAccount = async (account) => {
+    if (!window.confirm(`${account.username} 계정을 삭제할까요? 계정은 복구 가능한 비활성 상태로 보관됩니다.`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      await client.deleteAccount(account.subject);
+      await refreshAccountsAfterMutation();
+      setNotice("계정을 삭제했습니다.");
+      setApiState("connected");
+    } catch (nextError) {
+      setError(adminErrorMessage(nextError));
+      setApiState("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const checkedAt = connections[0]?.checked_at;
+  const accountPageCount = Math.max(1, Math.ceil(accounts.total / accounts.page_size));
+  const auditPageCount = Math.max(1, Math.ceil(auditEvents.total / auditEvents.page_size));
 
   return <div className="page-content admin-console">
     <section className="admin-console__status" aria-label="관리자 시스템 상태">
       <div><ShieldCheck size={18} /><span><b>{roleLabel(role)}</b><small>현재 세션 권한으로 접근 중</small></span></div>
-      <strong className={backendConnected ? "is-online" : "is-pending"}><i />{backendConnected ? "ADMIN API 연결됨" : "ADMIN API 연결 전"}</strong>
+      <strong className={apiState === "connected" ? "is-online" : "is-pending"}><i />{apiState === "connected" ? "ADMIN API 연결됨" : apiState === "error" ? "ADMIN API 응답 오류" : "ADMIN API 확인 중"}</strong>
     </section>
 
+    {error && <p className="admin-feedback admin-feedback--error" role="alert"><AlertTriangle size={17} />{error}</p>}
+    {notice && <p className="admin-feedback admin-feedback--notice" role="status"><Check size={17} />{notice}<button type="button" aria-label="알림 닫기" onClick={() => setNotice("")}><X size={14} /></button></p>}
+
     <nav className="admin-console__tabs" role="tablist" aria-label="관리자 기능">
-      {ADMIN_SECTIONS.map(({ id, label, icon: Icon }) => <button
-        key={id}
-        id={`admin-tab-${id}`}
-        type="button"
-        role="tab"
-        aria-selected={section === id}
-        aria-controls={`admin-panel-${id}`}
-        className={section === id ? "is-active" : ""}
-        onClick={() => setSection(id)}
-      ><Icon size={17} /><span>{label}</span></button>)}
+      {ADMIN_SECTIONS.map(({ id, label, icon: Icon }) => <button key={id} id={`admin-tab-${id}`} type="button" role="tab" aria-selected={section === id} aria-controls={`admin-panel-${id}`} className={section === id ? "is-active" : ""} disabled={saving} onClick={() => setSection(id)}><Icon size={17} /><span>{label}</span></button>)}
     </nav>
 
     {section === "connections" && <section className="admin-panel" id="admin-panel-connections" role="tabpanel" aria-labelledby="admin-tab-connections">
-      <header className="admin-panel__header">
-        <div><small>READ ONLY INFRASTRUCTURE</small><h2>데이터 연결 상태</h2><p>관리자 시스템이 사용하는 데이터 및 분석 서비스의 읽기 전용 상태를 확인합니다.</p></div>
-        <button className="secondary" type="button" disabled={!onRefreshConnections} onClick={onRefreshConnections}><RefreshCw size={15} />상태 새로고침</button>
-      </header>
+      <header className="admin-panel__header"><div><small>READ ONLY INFRASTRUCTURE</small><h2>데이터 연결 상태</h2><p>승인된 데이터 및 분석 서비스의 읽기 전용 상태를 확인합니다.</p></div><button className="secondary" type="button" disabled={loading.connections} onClick={() => void loadConnections()}><RefreshCw size={15} />{loading.connections ? "확인 중…" : "상태 새로고침"}</button></header>
       <div className="admin-connection-grid">
-        {connectionRows.map((connection, index) => <article className="admin-connection-card card" key={connection.id}>
-          <small>{String(index + 1).padStart(2, "0")}</small>
-          <h3>{connection.name}</h3>
-          <p>{connection.technology}{Number.isFinite(connection.latencyMs) ? ` · ${connection.latencyMs} ms` : " · 상태 확인 API 연결 전"}</p>
-          <span className={`admin-status admin-status--${connection.status}`}><i />{STATUS_LABELS[connection.status] ?? STATUS_LABELS.unknown}</span>
-        </article>)}
+        {connections.map((connection, index) => <article className="admin-connection-card card" key={connection.id}><small>{String(index + 1).padStart(2, "0")}</small><h3>{connection.name}</h3><p>{connection.kind}{Number.isFinite(connection.latency_ms) ? ` · ${connection.latency_ms} ms` : ""}</p><span className={`admin-status admin-status--${connection.status}`}><i />{STATUS_LABELS[connection.status] ?? connection.status}</span></article>)}
       </div>
-      <p className="admin-panel__receipt">{data?.checkedAt ? `마지막 확인 ${data.checkedAt}` : "Backend 상태 확인 API가 연결되면 마지막 확인 시각이 표시됩니다."}</p>
+      {!loading.connections && connections.length === 0 && !error && <div className="admin-empty card"><div><Database size={24} /><b>등록된 연결 점검 대상이 없습니다.</b><span>Backend에 승인된 연결 대상이 등록되면 이곳에 표시됩니다.</span></div></div>}
+      <p className="admin-panel__receipt">{checkedAt ? `마지막 확인 ${formatTimestamp(checkedAt)}` : loading.connections ? "연결 상태를 확인하고 있습니다." : "확인된 연결 상태가 없습니다."}</p>
     </section>}
 
     {section === "accounts" && <section className="admin-panel" id="admin-panel-accounts" role="tabpanel" aria-labelledby="admin-tab-accounts">
-      <header className="admin-panel__header">
-        <div><small>ADMIN SYSTEM ACCOUNTS</small><h2>권한 관리</h2><p>관리자 시스템 계정과 역할을 관리합니다. 분석 사용자 권한은 기존 인증 정책을 그대로 따릅니다.</p></div>
-        <button className="primary" type="button" disabled={!onCreateAccount} onClick={onCreateAccount}><UserPlus size={15} />관리자 추가</button>
-      </header>
-      <div className="admin-table-card card">
-        <div className="admin-data-table admin-data-table--accounts" role="table" aria-label="관리자 계정">
-          <div className="admin-data-table__head" role="row"><span role="columnheader">이름</span><span role="columnheader">이메일</span><span role="columnheader">역할</span><span role="columnheader">상태</span><span role="columnheader">등록일</span><span role="columnheader">관리</span></div>
-          {accounts.map((account) => <div className="admin-data-table__row" role="row" key={account.id}>
-            <b role="cell">{account.name}</b><span role="cell">{account.email}</span><span role="cell"><em>{account.role}</em></span><span role="cell"><strong className={`admin-status admin-status--${account.status === "active" ? "ready" : account.status === "inactive" ? "down" : "unknown"}`}><i />{account.status === "active" ? "활성" : account.status === "inactive" ? "비활성" : "확인 전"}</strong></span><span role="cell">{account.createdAt}</span><span role="cell">Backend 연결 후 제공</span>
-          </div>)}
-          {accounts.length === 0 && <div className="admin-empty" role="row"><div role="cell"><UserCog size={24} /><b>표시할 관리자 계정이 없습니다.</b><span>계정 관리 API가 연결되면 이름, 이메일, 역할, 상태와 등록일이 표시됩니다.</span></div></div>}
-        </div>
-      </div>
+      <header className="admin-panel__header"><div><small>USER ACCOUNTS</small><h2>계정 관리</h2><p>일반 사용자와 관리자 계정의 역할, 활성 상태와 비밀번호를 관리합니다.</p></div><button className="primary" type="button" disabled={saving} onClick={openCreate}><UserPlus size={15} />계정 추가</button></header>
+      <form className="admin-list-toolbar" onSubmit={(event) => { event.preventDefault(); setAccountPage(1); setAccountSearch(accountSearchInput.trim()); if (accountPage === 1 && accountSearch === accountSearchInput.trim()) void loadAccounts(); }}><label><Search size={15} /><input value={accountSearchInput} onChange={(event) => setAccountSearchInput(event.target.value)} placeholder="사용자 아이디 검색" aria-label="계정 검색" /></label><button type="submit">검색</button></form>
+      <div className="admin-table-card card"><div className="admin-data-table admin-data-table--accounts" role="table" aria-label="사용자 계정">
+        <div className="admin-data-table__head" role="row"><span role="columnheader">사용자 아이디</span><span role="columnheader">역할</span><span role="columnheader">상태</span><span role="columnheader">등록일</span><span role="columnheader">관리</span></div>
+        {accounts.items.map((account) => <div className="admin-data-table__row" role="row" key={account.subject}><b role="cell">{account.username}</b><span role="cell"><em>{roleLabel(account.role)}</em></span><span role="cell"><strong className={`admin-status admin-status--${account.active ? "ready" : "down"}`}><i />{account.active ? "활성" : "비활성"}</strong></span><span role="cell">{formatTimestamp(account.created_at)}</span><span className="admin-row-actions" role="cell"><button type="button" disabled={saving} onClick={() => openEdit(account)}><Pencil size={13} />수정</button><button type="button" disabled={saving} onClick={() => openPassword(account)}><KeyRound size={13} />비밀번호</button><button className="danger" type="button" disabled={saving} onClick={() => void deleteAccount(account)}><Trash2 size={13} />삭제</button></span></div>)}
+        {!loading.accounts && accounts.items.length === 0 && <div className="admin-empty" role="row"><div role="cell"><UserCog size={24} /><b>조건에 맞는 계정이 없습니다.</b><span>검색 조건을 변경하거나 계정을 추가해 주세요.</span></div></div>}
+      </div></div>
+      <div className="admin-pagination"><span>총 {accounts.total.toLocaleString()}개 · {accounts.page}/{accountPageCount} 페이지</span><div><button type="button" disabled={accountPage <= 1 || loading.accounts} onClick={() => setAccountPage((current) => current - 1)}><ChevronLeft size={15} />이전</button><button type="button" disabled={accountPage >= accountPageCount || loading.accounts} onClick={() => setAccountPage((current) => current + 1)}>다음<ChevronRight size={15} /></button></div></div>
     </section>}
 
     {section === "audit" && <section className="admin-panel" id="admin-panel-audit" role="tabpanel" aria-labelledby="admin-tab-audit">
-      <header className="admin-panel__header">
-        <div><small>ADMIN ACTIVITY HISTORY</small><h2>감사 로그</h2><p>관리자 로그인, 연결 확인, 계정 변경 등 운영 작업의 결과와 대상을 확인합니다.</p></div>
-      </header>
-      <div className="admin-table-card card">
-        <div className="admin-data-table admin-data-table--audit" role="table" aria-label="관리자 감사 로그">
-          <div className="admin-data-table__head" role="row"><span role="columnheader">일시</span><span role="columnheader">수행자</span><span role="columnheader">이벤트</span><span role="columnheader">대상</span><span role="columnheader">결과</span><span role="columnheader">상세</span></div>
-          {auditLogs.map((log) => <div className="admin-data-table__row" role="row" key={log.id}>
-            <span role="cell">{log.occurredAt}</span><span role="cell">{log.actor}</span><b role="cell">{log.event}</b><span role="cell">{log.target}</span><span role="cell"><strong className={`admin-status admin-status--${log.result === "SUCCESS" ? "ready" : "down"}`}><i />{log.result}</strong></span><code role="cell">{log.detail}</code>
-          </div>)}
-          {auditLogs.length === 0 && <div className="admin-empty" role="row"><div role="cell"><FileClock size={24} /><b>표시할 감사 로그가 없습니다.</b><span>감사 API가 연결되면 관리자 작업 이력이 시간순으로 표시됩니다.</span></div></div>}
-        </div>
-      </div>
+      <header className="admin-panel__header"><div><small>ADMIN ACTIVITY HISTORY</small><h2>감사 로그</h2><p>연결 확인과 계정 변경 등 운영 작업의 결과를 확인합니다.</p></div></header>
+      <form className="admin-list-toolbar" onSubmit={(event) => { event.preventDefault(); setAuditPage(1); setAuditSearch(auditSearchInput.trim()); if (auditPage === 1 && auditSearch === auditSearchInput.trim()) void loadAuditEvents(); }}><label><Search size={15} /><input value={auditSearchInput} onChange={(event) => setAuditSearchInput(event.target.value)} placeholder="수행자·이벤트·대상 검색" aria-label="감사 로그 검색" /></label><select aria-label="감사 결과" value={auditResult} onChange={(event) => { setAuditPage(1); setAuditResult(event.target.value); }}><option value="">전체 결과</option><option value="SUCCESS">성공</option><option value="FAILED">실패</option></select><button type="submit">검색</button></form>
+      <div className="admin-table-card card"><div className="admin-data-table admin-data-table--audit" role="table" aria-label="관리자 감사 로그">
+        <div className="admin-data-table__head" role="row"><span role="columnheader">일시</span><span role="columnheader">수행자</span><span role="columnheader">이벤트</span><span role="columnheader">대상</span><span role="columnheader">결과</span><span role="columnheader">상세</span></div>
+        {auditEvents.items.map((item) => <div className="admin-data-table__row" role="row" key={item.event_id}><span role="cell">{formatTimestamp(item.occurred_at)}</span><span role="cell" title={item.actor_subject ?? "시스템"}>{item.actor_subject ?? "시스템"}</span><b role="cell">{item.action_code}</b><span role="cell">{item.target_type} · {item.target_id}</span><span role="cell"><strong className={`admin-status admin-status--${["SUCCESS", "SUCCEEDED"].includes(item.result) ? "ready" : "down"}`}><i />{item.result}</strong></span><code role="cell" title={JSON.stringify(item.details)}>{JSON.stringify(item.details)}</code></div>)}
+        {!loading.audit && auditEvents.items.length === 0 && <div className="admin-empty" role="row"><div role="cell"><FileClock size={24} /><b>조건에 맞는 감사 로그가 없습니다.</b><span>검색 조건을 변경해 주세요.</span></div></div>}
+      </div></div>
+      <div className="admin-pagination"><span>총 {auditEvents.total.toLocaleString()}개 · {auditEvents.page}/{auditPageCount} 페이지</span><div><button type="button" disabled={auditPage <= 1 || loading.audit} onClick={() => setAuditPage((current) => current - 1)}><ChevronLeft size={15} />이전</button><button type="button" disabled={auditPage >= auditPageCount || loading.audit} onClick={() => setAuditPage((current) => current + 1)}>다음<ChevronRight size={15} /></button></div></div>
     </section>}
+
+    {modal && <AccountDialog account={modal.account} form={accountForm} mode={modal.mode} pending={saving} error={dialogError} onChange={setAccountForm} onClose={() => setModal(null)} onSubmit={submitAccount} />}
   </div>;
 }

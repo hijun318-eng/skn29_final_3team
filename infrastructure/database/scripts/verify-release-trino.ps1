@@ -1,8 +1,8 @@
-# 책임: 외부 deployment environment의 Trino principal을 process 환경으로만 전달하고,
+# 책임: repository deployment environment의 Trino principal을 process 환경으로만 전달하고,
 # Python live verifier가 release-bound D0/D1 receipt를 생성하도록 호출한다.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string]$EnvFilePath,
+    [string]$EnvFilePath,
     [Parameter(Mandatory)] [string]$ReleaseId,
     [Parameter(Mandatory)] [string]$EvidenceDirectory,
     [string[]]$RequiredRawCatalog = @('pms', 'crm', 'pos')
@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $databaseRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $databaseRoot '..\..')).Path
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvFilePath -RepositoryRoot $repoRoot
 $values = Read-DeploymentEnvironment $resolvedEnvFile
 Assert-DeploymentEnvironmentValues -Values $values -RequiredKeys @(

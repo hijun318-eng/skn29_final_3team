@@ -1,60 +1,33 @@
-# 책임: 운영 외부 또는 명시적 gitignored 개발 경로에 release principal의 PBKDF2
-# verifier를 생성·회전한다. 묵시적 local fallback과 약한 credential은 쓰기 전에 거절한다.
+# 책임: Git에서 제외된 repository `.env`의 analyst/admin bootstrap 자격증명을
+# PBKDF2 verifier로 변환해 App PostgreSQL의 권위 계정 저장소에 명시적으로 반영한다.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
     [string]$EnvPath,
-    [Parameter(Mandatory)]
-    [string]$PrincipalPath,
+    [string]$LegacyPrincipalPath,
     [string]$AnalystUsername,
-    [ValidateSet('analyst', 'report_admin', 'data_admin', 'platform_admin')]
-    [string]$AnalystRole,
+    [string]$AdminUsername,
     [int]$SessionTtlSeconds = 0,
     [switch]$PromptAnalystPassword,
-    [switch]$AllowRepositoryLocalDevelopment
+    [switch]$PromptAdminPassword
 )
 
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot '..\..\..'))
 . (Join-Path $scriptRoot '../scripts/deployment-environment.ps1')
-$resolvedEnvPath = Resolve-ExplicitDeploymentEnvFile `
-    -Path $EnvPath -RepositoryRoot $repoRoot `
-    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
-$resolvedPrincipalPath = [IO.Path]::GetFullPath($PrincipalPath)
-$principalParent = Split-Path -Parent $resolvedPrincipalPath
-if (-not (Test-FullyQualifiedFileSystemPath $PrincipalPath) -or
-    -not (Test-Path -LiteralPath $principalParent -PathType Container)) {
-    throw 'PrincipalPath must be an absolute path whose parent directory already exists.'
-}
-$repositoryPrefix = $repoRoot.TrimEnd(
-    [IO.Path]::DirectorySeparatorChar,
-    [IO.Path]::AltDirectorySeparatorChar
-) + [IO.Path]::DirectorySeparatorChar
-if ($resolvedPrincipalPath.StartsWith(
-    $repositoryPrefix,
-    [StringComparison]::OrdinalIgnoreCase
-)) {
-    if (-not $AllowRepositoryLocalDevelopment) {
-        throw 'Repository-local PrincipalPath requires -AllowRepositoryLocalDevelopment.'
-    }
-    & git -C $repoRoot check-ignore -q -- $resolvedPrincipalPath
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Repository-local PrincipalPath must be covered by .gitignore.'
-    }
-}
+$resolvedEnvPath = Resolve-RepositoryDeploymentEnvFile `
+    -Path $EnvPath -RepositoryRoot $repoRoot
 $envText = [IO.File]::ReadAllText($resolvedEnvPath)
 
-# Reads one exact dotenv key. Regex is limited to configuration syntax and is
-# never used for natural-language routing or SQL validation.
+# dotenv key는 설정 문법으로만 읽는다. 비밀번호 값은 출력·argv·log에 전달하지 않는다.
 function Read-EnvValue([string]$Name) {
-    $match = [regex]::Match($envText, "(?m)^$([regex]::Escape($Name))=(.*)$")
+    $match = [regex]::Match($script:envText, "(?m)^$([regex]::Escape($Name))=(.*)$")
     if ($match.Success) { return $match.Groups[1].Value.Trim() }
     return ''
 }
 
 # 동일 key의 모든 기존 entry를 같은 opaque value로 정규화한다. MatchEvaluator를
-# 사용하므로 password 안의 '$'도 정규식 replacement group으로 재해석되지 않는다.
+# 사용하므로 password 안의 '$'도 replacement group으로 재해석되지 않는다.
 function Set-EnvValue([string]$Name, [string]$Value) {
     $pattern = "(?m)^$([regex]::Escape($Name))=.*$"
     if ([regex]::IsMatch($script:envText, $pattern)) {
@@ -69,53 +42,33 @@ function Set-EnvValue([string]$Name, [string]$Value) {
     }
 }
 
-# Cryptographically secure random bytes are encoded without padding so the
-# resulting value is safe in both dotenv files and JSON secrets.
+# 폐기된 사람 Role 선택·별도 관리자 key는 새 bootstrap 성공 여부와 관계없이 다시
+# credential source가 되지 않게 최종 `.env`에서 제거한다.
+function Remove-EnvValue([string]$Name) {
+    $pattern = "(?m)^$([regex]::Escape($Name))=.*(?:\r?\n|$)"
+    $script:envText = [regex]::Replace($script:envText, $pattern, '')
+}
+
+# session secret은 CSPRNG 결과를 dotenv에 안전한 URL-safe base64 문자열로 바꾼다.
+# padding은 session secret 표현에 포함하지 않는다.
 function New-RandomValue([int]$ByteCount = 32) {
     $bytes = [byte[]]::new($ByteCount)
     $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
-    $generator.GetBytes($bytes)
-    $generator.Dispose()
+    try { $generator.GetBytes($bytes) } finally { $generator.Dispose() }
     return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
-# PBKDF2 parameters are persisted with the digest so iteration upgrades can be
-# performed account-by-account without accepting a plaintext fallback.
-function Get-PasswordHash([string]$Password, [byte[]]$Salt, [int]$Iterations) {
-    $derive = [Security.Cryptography.Rfc2898DeriveBytes]::new(
-        $Password,
-        $Salt,
-        $Iterations,
-        [Security.Cryptography.HashAlgorithmName]::SHA256
-    )
-    try { return ([BitConverter]::ToString($derive.GetBytes(32))).Replace('-', '').ToLowerInvariant() }
-    finally { $derive.Dispose() }
-}
-
-# 계정 회전 모드는 username·Role만 일반 parameter로 받고 password는 secure prompt로만
-# 입력한다. 원문 password가 argv, process 목록, script log에 남지 않게 한 뒤 외부 env와
-# verifier를 같은 실행에서 갱신한다. 기본 모드는 기존 외부 env만 읽는다.
-if ($AnalystUsername) {
-    Set-EnvValue 'ANALYST_LOGIN_ID' $AnalystUsername.ToLowerInvariant()
-}
-if ($AnalystRole) {
-    Set-EnvValue 'ANALYST_LOGIN_ROLE' $AnalystRole
-}
-if ($SessionTtlSeconds) {
-    if ($SessionTtlSeconds -lt 900 -or $SessionTtlSeconds -gt 86400) {
-        throw 'SessionTtlSeconds must be between 900 and 86400.'
-    }
-    Set-EnvValue 'AUTH_SESSION_TTL_SECONDS' ([string]$SessionTtlSeconds)
-}
-if ($PromptAnalystPassword) {
-    $securePassword = Read-Host 'Analyst password' -AsSecureString
+# 일반 command parameter로 password를 받지 않는다. secure prompt의 원문은 repository
+# `.env`를 갱신하는 동안에만 메모리에 두고 즉시 해제한다.
+function Set-PromptedPassword([string]$Name, [string]$Prompt, [string]$Label) {
+    $securePassword = Read-Host $Prompt -AsSecureString
     $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
     try {
         $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
         if ($plainPassword.Length -lt 12) {
-            throw 'Analyst password must contain at least 12 characters.'
+            throw "$Label password must contain at least 12 characters."
         }
-        Set-EnvValue 'ANALYST_LOGIN_PASSWORD' $plainPassword
+        Set-EnvValue $Name $plainPassword
     } finally {
         if ($passwordPointer -ne [IntPtr]::Zero) {
             [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
@@ -125,78 +78,200 @@ if ($PromptAnalystPassword) {
     }
 }
 
-# Login ID와 raw password를 일반 command parameter로 받지 않는다. 보호된 외부 env 또는
-# 위 secure prompt에서만 읽고 principal 파일에는 PBKDF2 verifier만 기록한다.
+if ($AnalystUsername) {
+    Set-EnvValue 'ANALYST_LOGIN_ID' $AnalystUsername.Trim().ToLowerInvariant()
+}
+if ($AdminUsername) {
+    Set-EnvValue 'ADMIN_LOGIN_ID' $AdminUsername.Trim().ToLowerInvariant()
+}
+if ($SessionTtlSeconds) {
+    if ($SessionTtlSeconds -lt 900 -or $SessionTtlSeconds -gt 86400) {
+        throw 'SessionTtlSeconds must be between 900 and 86400.'
+    }
+    Set-EnvValue 'AUTH_SESSION_TTL_SECONDS' ([string]$SessionTtlSeconds)
+}
+if ($PromptAnalystPassword) {
+    Set-PromptedPassword 'ANALYST_LOGIN_PASSWORD' 'Analyst password' 'Analyst'
+}
+if ($PromptAdminPassword) {
+    Set-PromptedPassword 'ADMIN_LOGIN_PASSWORD' 'Admin password' 'Admin'
+}
+
 $sessionSecret = Read-EnvValue 'AUTH_SESSION_SECRET'
 if (-not $sessionSecret -or $sessionSecret.StartsWith('CHANGE_ME_')) {
-    $sessionSecret = New-RandomValue
-    Set-EnvValue 'AUTH_SESSION_SECRET' $sessionSecret
+    Set-EnvValue 'AUTH_SESSION_SECRET' (New-RandomValue)
 }
-Set-EnvValue 'AUTH_PRINCIPALS_HOST_FILE' $resolvedPrincipalPath
+$legacyPrincipalSetting = Read-EnvValue 'AUTH_PRINCIPALS_HOST_FILE'
+if (-not [string]::IsNullOrWhiteSpace($legacyPrincipalSetting) -and
+    [string]::IsNullOrWhiteSpace($LegacyPrincipalPath)) {
+    throw 'Legacy principal migration is pending; pass the verified absolute path with -LegacyPrincipalPath.'
+}
+Remove-EnvValue 'ANALYST_LOGIN_ROLE'
+Remove-EnvValue 'REPORT_ADMIN_LOGIN_ID'
+Remove-EnvValue 'REPORT_ADMIN_LOGIN_PASSWORD'
 
+# 사람 bootstrap Role은 설정으로 선택하지 않는다. 두 고정 정의 외의 과거 Role이나
+# 추가 운영자 계정은 이 경계를 통해 만들 수 없다.
 $definitions = @(
     [ordered]@{
         username_env = 'ANALYST_LOGIN_ID'
         password_env = 'ANALYST_LOGIN_PASSWORD'
-        role_env = 'ANALYST_LOGIN_ROLE'
-        default_role = 'analyst'
+        role = 'analyst'
     },
     [ordered]@{
-        username_env = 'REPORT_ADMIN_LOGIN_ID'
-        password_env = 'REPORT_ADMIN_LOGIN_PASSWORD'
-        role_env = $null
-        default_role = 'report_admin'
+        username_env = 'ADMIN_LOGIN_ID'
+        password_env = 'ADMIN_LOGIN_PASSWORD'
+        role = 'admin'
     }
 )
-$allowedRoles = @('analyst', 'report_admin', 'data_admin', 'platform_admin')
-$existing = @()
-if (Test-Path -LiteralPath $resolvedPrincipalPath) {
-    try { $existing = @((Get-Content -Raw -LiteralPath $resolvedPrincipalPath | ConvertFrom-Json)) }
-    catch { $existing = @() }
-}
-$iterations = 210000
-$principals = foreach ($definition in $definitions) {
-    $username = (Read-EnvValue $definition.username_env).ToLowerInvariant()
-    $password = Read-EnvValue $definition.password_env
-    $configuredRole = if ($definition.role_env) { Read-EnvValue $definition.role_env } else { '' }
-    $role = if ($configuredRole) { $configuredRole } else { $definition.default_role }
-    if (-not $username -or $username.StartsWith('change_me_') -or -not $password -or $password.StartsWith('CHANGE_ME_')) {
-        throw "$($definition.username_env) and $($definition.password_env) must be set in the external deployment env file"
+# 최초 JSON→DB 전환에서 기존 subject를 가져올 수 있는 one-time 입력이다. runtime은 이
+# 파일을 읽지 않으며 명시하지 않은 경로를 자동 탐색하지 않는다.
+function Read-LegacySubjects([AllowEmptyString()] [string]$Path) {
+    $subjects = [Collections.Generic.Dictionary[string, string]]::new(
+        [StringComparer]::Ordinal
+    )
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $subjects }
+    if (-not (Test-FullyQualifiedFileSystemPath $Path) -or
+        -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw 'LegacyPrincipalPath must be an existing absolute file.'
     }
-    if ($role -notin $allowedRoles) {
-        throw "$($definition.role_env) must contain a supported authentication role"
+    $resolved = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Path).Path)
+    $item = Get-Item -LiteralPath $resolved -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'LegacyPrincipalPath must not be a symbolic link or reparse point.'
     }
-    if ($username -notmatch '^[a-z0-9._-]{3,64}$' -or $password.Length -lt 12) {
-        throw "$role login must use a valid username and a password of at least 12 characters"
+    if ($item.Length -gt 1MB) {
+        throw 'LegacyPrincipalPath must not exceed 1 MiB.'
     }
-    # Role 회전은 같은 사람의 저장 Analysis·Report 소유권을 끊지 않아야 한다. username은
-    # principal 파일에서 unique하므로 기존 subject를 Role과 무관하게 보존한다.
-    $matching = @($existing | Where-Object { $_.username -eq $username }) | Select-Object -First 1
-    $salt = [byte[]]::new(16)
-    $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
-    $generator.GetBytes($salt)
-    $generator.Dispose()
-    [ordered]@{
-        username = $username
-        password_salt = [Convert]::ToBase64String($salt).TrimEnd('=').Replace('+', '-').Replace('/', '_')
-        password_hash = Get-PasswordHash $password $salt $iterations
-        password_iterations = $iterations
-        subject = if ($matching) { $matching.subject } else { [guid]::NewGuid().ToString() }
-        role = $role
-        active = $true
+    $repositoryPrefix = $repoRoot.TrimEnd(
+        [IO.Path]::DirectorySeparatorChar,
+        [IO.Path]::AltDirectorySeparatorChar
+    ) + [IO.Path]::DirectorySeparatorChar
+    if ($resolved.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        & git -C $repoRoot check-ignore -q -- $resolved
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Repository-local LegacyPrincipalPath must be covered by .gitignore.'
+        }
     }
+    try { $document = [IO.File]::ReadAllText($resolved) | ConvertFrom-Json }
+    catch { throw 'LegacyPrincipalPath must contain a valid principal JSON array.' }
+    if ($document -isnot [array]) {
+        throw 'LegacyPrincipalPath must contain a principal JSON array.'
+    }
+    $records = @($document)
+    $observedSubjects = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($record in $records) {
+        $username = if ($null -ne $record.username) {
+            ([string]$record.username).Trim().ToLowerInvariant()
+        } else { '' }
+        $subject = if ($null -ne $record.subject) { [string]$record.subject } else { '' }
+        $parsedSubject = [guid]::Empty
+        if ($username -notmatch '^[a-z0-9._-]{3,64}$' -or
+            -not [guid]::TryParse($subject, [ref]$parsedSubject) -or
+            $subjects.ContainsKey($username) -or
+            -not $observedSubjects.Add($parsedSubject.ToString())) {
+            throw 'LegacyPrincipalPath contains an invalid or duplicate username/subject.'
+        }
+        $subjects[$username] = $parsedSubject.ToString()
+    }
+    $observedSubjects = $null
+    $document = $null
+    return $subjects
 }
 
+$legacySubjects = Read-LegacySubjects $LegacyPrincipalPath
+$bootstrapAccounts = foreach ($definition in $definitions) {
+    $username = (Read-EnvValue $definition.username_env).Trim().ToLowerInvariant()
+    $password = Read-EnvValue $definition.password_env
+    if (-not $username -or $username.StartsWith('change_me_') -or
+        -not $password -or $password.StartsWith('CHANGE_ME_')) {
+        throw "$($definition.username_env) and $($definition.password_env) must be set in infrastructure/database/.env"
+    }
+    if ($username -notmatch '^[a-z0-9._-]{3,64}$' -or $password.Length -lt 12) {
+        throw "$($definition.role) login must use a valid username and a password of at least 12 characters"
+    }
+    [ordered]@{
+        subject = if ($legacySubjects.ContainsKey($username)) {
+            $legacySubjects[$username]
+        } else {
+            [guid]::NewGuid().ToString()
+        }
+        username = $username
+        password = $password
+        role = $definition.role
+    }
+}
+if ([string]$bootstrapAccounts[0]['username'] -eq
+    [string]$bootstrapAccounts[1]['username']) {
+    throw 'ANALYST_LOGIN_ID and ADMIN_LOGIN_ID must be different usernames.'
+}
+if ($LegacyPrincipalPath -and
+    @($bootstrapAccounts | Where-Object { -not $legacySubjects.ContainsKey($_.username) }).Count -gt 0) {
+    throw 'LegacyPrincipalPath must contain both configured bootstrap usernames.'
+}
+
+# DB 반영 실패 뒤에도 같은 credential로 안전하게 재시도할 수 있도록 prompt 변경을 먼저
+# repository `.env`에 고정한다. `.env` 변경만으로 DB account가 바뀌지는 않는다.
 [IO.File]::WriteAllText($resolvedEnvPath, $envText, [Text.UTF8Encoding]::new($false))
-[IO.File]::WriteAllText(
-    $resolvedPrincipalPath,
-    (ConvertTo-Json @($principals) -Depth 5) + "`r`n",
-    [Text.UTF8Encoding]::new($false)
+
+$deploymentValues = Read-DeploymentEnvironment $resolvedEnvPath
+Assert-DeploymentEnvironmentValues -Values $deploymentValues -RequiredKeys @(
+    'APP_DB_NAME', 'APP_MIGRATION_USER', 'APP_MIGRATION_PASSWORD'
 )
+$databaseUrl = 'postgresql+psycopg://{0}:{1}@app-postgres:5432/{2}' -f @(
+    [Uri]::EscapeDataString([string]$deploymentValues['APP_MIGRATION_USER'])
+    [Uri]::EscapeDataString([string]$deploymentValues['APP_MIGRATION_PASSWORD'])
+    [Uri]::EscapeDataString([string]$deploymentValues['APP_DB_NAME'])
+)
+$requestJson = ConvertTo-Json ([ordered]@{
+    database_url = $databaseUrl
+    require_subject_match = -not [string]::IsNullOrWhiteSpace($LegacyPrincipalPath)
+    accounts = @($bootstrapAccounts)
+}) -Depth 4 -Compress
+$composeFile = Join-Path $repoRoot 'compose.yml'
+$composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvPath)
+Disable-ImplicitComposeEnvironment
+
+try {
+    $output = @($requestJson | & docker compose @composeEnvArguments `
+        --file $composeFile --profile dev run --rm --build --no-deps -T `
+        --entrypoint python app-migrations scripts/provision_accounts.py)
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Account provisioning failed; ensure app-postgres is running and the current migration is applied.'
+    }
+    $result = $output | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -Last 1 | ConvertFrom-Json
+    if ($result.status -ne 'ok' -or [int]$result.processed -ne 2) {
+        throw 'Account provisioning returned an invalid result.'
+    }
+    # 기존 subject 보존이 DB에 성공한 뒤에만 runtime principal 경로 key를 폐기한다.
+    # 실패 시 key를 남겨 다음 실행도 explicit legacy 이관 없이는 fail closed한다.
+    Remove-EnvValue 'AUTH_PRINCIPALS_HOST_FILE'
+    [IO.File]::WriteAllText(
+        $resolvedEnvPath,
+        $envText,
+        [Text.UTF8Encoding]::new($false)
+    )
+} finally {
+    $requestJson = $null
+    $databaseUrl = $null
+    $deploymentValues = $null
+    $output = $null
+    $result = $null
+    $envText = $null
+    $sessionSecret = $null
+    $legacyPrincipalSetting = $null
+    $legacySubjects = $null
+    $bootstrapAccounts = $null
+}
 
 [ordered]@{
     status = 'PROVISIONED'
-    principal_count = @($principals).Count
-    roles = @($principals.role)
-    password_storage = 'PBKDF2-SHA256'
+    account_count = 2
+    roles = @('analyst', 'admin')
+    authoritative_store = 'APP_POSTGRES_SECURITY_ACCOUNTS'
+    password_storage = 'BACKEND_CREATE_PASSWORD_VERIFIER'
+    sessions = 'REVOKED'
 } | ConvertTo-Json -Compress

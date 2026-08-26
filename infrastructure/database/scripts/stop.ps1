@@ -1,5 +1,5 @@
-# 책임: 선택된 Compose project의 service만 중지하고 volume은 보존한다. 명시적
-# deployment environment가 없거나 project 해석이 실패하면 아무것도 중지하지 않는다.
+# 책임: repository deployment environment가 선택한 Compose project의 service만
+# 중지하고 volume은 보존한다. project 해석이 실패하면 아무것도 중지하지 않는다.
 [CmdletBinding()]
 param([string]$EnvFilePath)
 
@@ -11,7 +11,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 $composeFile = Join-Path $databaseRoot 'compose.yml'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
+$resolvedEnvFile = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvFilePath -RepositoryRoot $repoRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 

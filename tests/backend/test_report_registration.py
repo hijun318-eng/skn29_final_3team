@@ -48,7 +48,7 @@ from src.report.domain import (  # noqa: E402
 )
 
 
-def context(role: Role = Role.REPORT_ADMIN) -> RequestContext:
+def context(role: Role = Role.ADMIN) -> RequestContext:
     return RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         role=role,
@@ -308,19 +308,18 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 "blocks": [], "currency_display_unit": "trillion"
             })
 
-    def test_report_routes_require_authentication_and_report_admin(self):
-        dependency = signature(report_api.report_admin_context).parameters["context"]
+    def test_report_routes_require_authentication_and_report_manage(self):
+        dependency = signature(report_api.report_manage_context).parameters["context"]
         self.assertIn("analysis_context", repr(dependency.annotation))
-        self.assertEqual(Role.REPORT_ADMIN, report_api.report_admin_context(context()).role)
-        for role in (Role.ANALYST, Role.DATA_ADMIN):
-            with self.assertRaises(HTTPException) as denied:
-                report_api.report_admin_context(context(role))
-            self.assertEqual(403, denied.exception.status_code)
+        self.assertEqual(Role.ADMIN, report_api.report_manage_context(context()).role)
+        with self.assertRaises(HTTPException) as denied:
+            report_api.report_manage_context(context(Role.ANALYST))
+        self.assertEqual(403, denied.exception.status_code)
 
     def test_report_repository_scope_follows_authenticated_role(self):
         for role, manage_all in (
             (Role.ANALYST, False),
-            (Role.REPORT_ADMIN, True),
+            (Role.ADMIN, True),
         ):
             with self.subTest(role=role), patch.dict(
                 os.environ, {"APP_RUNTIME_DATABASE_URL": "postgresql://report-db"}

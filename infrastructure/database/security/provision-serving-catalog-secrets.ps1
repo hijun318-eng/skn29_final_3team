@@ -2,21 +2,18 @@
 # plaintext가 argv나 출력에 노출되지 않는 bootstrap credential file을 원자적으로 쓴다.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string]$EnvPath,
+    [string]$EnvPath,
     [Parameter(Mandatory)] [string]$CredentialsPath,
     [Parameter(Mandatory)] [string]$TokenPublicKeyPath,
-    [Parameter(Mandatory)] [string]$TokenPrivateKeyPath,
-    [switch]$AllowRepositoryLocalDevelopment
+    [Parameter(Mandatory)] [string]$TokenPrivateKeyPath
 )
 
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot '..\..\..'))
 . (Join-Path $scriptRoot '../scripts/deployment-environment.ps1')
-$resolvedEnvPath = Resolve-ExplicitDeploymentEnvFile `
-    -Path $EnvPath -RepositoryRoot $repoRoot `
-    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
-if (-not $resolvedEnvPath) { throw 'EnvPath is required.' }
+$resolvedEnvPath = Resolve-RepositoryDeploymentEnvFile `
+    -Path $EnvPath -RepositoryRoot $repoRoot
 
 if (-not (Test-FullyQualifiedFileSystemPath $CredentialsPath)) {
     throw 'CredentialsPath must be an absolute path.'
@@ -35,9 +32,6 @@ $credentialsAreLocal = $resolvedCredentialsPath.StartsWith(
     [StringComparison]::OrdinalIgnoreCase
 )
 if ($credentialsAreLocal) {
-    if (-not $AllowRepositoryLocalDevelopment) {
-        throw 'Repository-local credentials require -AllowRepositoryLocalDevelopment.'
-    }
     & git -C $repoRoot check-ignore -q -- $resolvedCredentialsPath
     if ($LASTEXITCODE -ne 0) {
         throw 'Repository-local bootstrap credentials must be covered by .gitignore.'
@@ -53,9 +47,6 @@ foreach ($tokenPath in @($resolvedTokenPublicKeyPath, $resolvedTokenPrivateKeyPa
         throw 'Token key paths must be absolute and their parent directories must exist.'
     }
     if ($tokenPath.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-        if (-not $AllowRepositoryLocalDevelopment) {
-            throw 'Repository-local token keys require -AllowRepositoryLocalDevelopment.'
-        }
         & git -C $repoRoot check-ignore -q -- $tokenPath
         if ($LASTEXITCODE -ne 0) {
             throw 'Repository-local token keys must be covered by .gitignore.'

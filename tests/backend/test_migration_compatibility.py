@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import selectors
 import subprocess
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -11,10 +14,19 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "app" / "backend"
+sys.path.insert(0, str(BACKEND))
+
+from app.adapters.admin_account_repository import (  # noqa: E402
+    AdminAccountRepository,
+    LastActiveAdminConflict,
+)
+from app.contracts import CONTRACT_VERSION, RequestContext, Role  # noqa: E402
 KNOWN_REVISIONS = (
     "20260729_01",
     "20260730_02",
@@ -45,6 +57,7 @@ KNOWN_REVISIONS = (
     "20260820_27",
     "20260820_28",
     "20260825_29",
+    "20260826_30",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -70,7 +83,7 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260825_29"], script.get_heads())
+        self.assertEqual(["20260826_30"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
@@ -169,7 +182,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         result = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual("20260825_29", self.revision(self.empty_database))
+        self.assertEqual("20260826_30", self.revision(self.empty_database))
         engine = create_engine(self.base_url.set(database=self.empty_database))
         with engine.connect() as connection:
             widths = connection.execute(
@@ -224,7 +237,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260825_29", self.revision(self.known_database))
+        self.assertEqual("20260826_30", self.revision(self.known_database))
 
     def test_report_head_upgrades_to_analysis_persistence_head(self) -> None:
         database = self.create_database("migration_report")
@@ -235,7 +248,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260825_29", self.revision(database))
+        self.assertEqual("20260826_30", self.revision(database))
 
     def test_analysis_head_roundtrips_through_context_registry_and_run_parameters(self) -> None:
         database = self.create_database("migration_context")
@@ -245,13 +258,178 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
-        self.assertEqual("20260825_29", self.revision(database))
+        self.assertEqual("20260826_30", self.revision(database))
         downgrade = alembic("downgrade", "20260810_06", database_url=url)
         self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260810_06", self.revision(database))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260825_29", self.revision(database))
+        self.assertEqual("20260826_30", self.revision(database))
+
+    def test_two_role_head_enforces_accounts_tools_and_append_only_audit(self) -> None:
+        database = self.create_database("migration_two_role")
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        upgraded = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            account_columns = set(
+                connection.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'security' AND table_name = 'accounts'"
+                    )
+                ).scalars()
+            )
+            constraints = set(
+                connection.execute(
+                    text(
+                        "SELECT conname FROM pg_constraint "
+                        "WHERE conname IN ("
+                        "'ck_accounts_deactivated_state', "
+                        "'fk_auth_sessions_account', "
+                        "'ck_tool_registry_required_roles')"
+                    )
+                ).scalars()
+            )
+            triggers = set(
+                connection.execute(
+                    text(
+                        "SELECT trigger_name FROM information_schema.triggers "
+                        "WHERE event_object_schema = 'governance' "
+                        "AND event_object_table = 'audit_events'"
+                    )
+                ).scalars()
+            )
+        self.assertIn("deactivated_at", account_columns)
+        self.assertEqual(
+            {
+                "ck_accounts_deactivated_state",
+                "fk_auth_sessions_account",
+                "ck_tool_registry_required_roles",
+            },
+            constraints,
+        )
+        self.assertIn("audit_events_append_only", triggers)
+
+        with engine.connect() as connection:
+            with self.assertRaises(IntegrityError):
+                connection.execute(
+                    text(
+                        "UPDATE tooling.tool_registry "
+                        "SET required_roles_json = '[\"platform_admin\"]'::jsonb"
+                    )
+                )
+                connection.commit()
+            connection.rollback()
+
+        with engine.begin() as connection:
+            event_id = connection.execute(
+                text(
+                    "INSERT INTO governance.audit_events ("
+                    "actor_role, action_code, object_type, object_id, "
+                    "details_json_redacted) VALUES ("
+                    "'admin', 'MIGRATION.TEST', 'MIGRATION', 'two-role', '{}'::jsonb"
+                    ") RETURNING audit_event_id"
+                )
+            ).scalar_one()
+        with engine.connect() as connection:
+            with self.assertRaises(DBAPIError):
+                connection.execute(
+                    text(
+                        "UPDATE governance.audit_events SET object_id = 'mutated' "
+                        "WHERE audit_event_id = :event_id"
+                    ),
+                    {"event_id": event_id},
+                )
+                connection.commit()
+            connection.rollback()
+        engine.dispose()
+
+    def test_two_concurrent_admin_demotions_serialize_without_deadlock(self) -> None:
+        database = self.create_database("migration_admin_race")
+        sync_url = self.base_url.set(database=database)
+        rendered = sync_url.render_as_string(hide_password=False)
+        upgraded = alembic("upgrade", "head", database_url=rendered)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+
+        first, second = uuid4(), uuid4()
+        engine = create_engine(sync_url)
+        with engine.begin() as connection:
+            for subject, username in ((first, "admin-one"), (second, "admin-two")):
+                connection.execute(
+                    text(
+                        "INSERT INTO security.accounts ("
+                        "subject, username, password_salt, password_hash, "
+                        "password_iterations, role, active) VALUES ("
+                        ":subject, :username, :salt, :digest, 210000, 'admin', true)"
+                    ),
+                    {
+                        "subject": subject,
+                        "username": username,
+                        "salt": "A" * 22,
+                        "digest": "0" * 64,
+                    },
+                )
+        engine.dispose()
+
+        async def exercise() -> list[str]:
+            async_engine = create_async_engine(
+                sync_url.set(drivername="postgresql+psycopg")
+            )
+            factory = async_sessionmaker(async_engine, expire_on_commit=False)
+            gate = asyncio.Event()
+            actor = RequestContext(
+                user_id=first,
+                role=Role.ADMIN,
+                as_of=date(2026, 8, 26),
+                contract_version=CONTRACT_VERSION,
+            )
+
+            async def demote(subject) -> str:
+                await gate.wait()
+                try:
+                    async with factory.begin() as session:
+                        await AdminAccountRepository(session).update_account(
+                            subject,
+                            changes={"role": Role.ANALYST},
+                            actor=actor,
+                        )
+                    return "updated"
+                except LastActiveAdminConflict:
+                    return "protected"
+
+            tasks = [
+                asyncio.create_task(demote(first)),
+                asyncio.create_task(demote(second)),
+            ]
+            gate.set()
+            try:
+                return list(await asyncio.wait_for(asyncio.gather(*tasks), timeout=10))
+            finally:
+                await async_engine.dispose()
+
+        if sys.platform == "win32":
+            loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
+            try:
+                outcomes = loop.run_until_complete(exercise())
+            finally:
+                loop.close()
+        else:
+            outcomes = asyncio.run(exercise())
+        self.assertEqual(["protected", "updated"], sorted(outcomes))
+
+        engine = create_engine(sync_url)
+        with engine.connect() as connection:
+            remaining = connection.execute(
+                text(
+                    "SELECT count(*) FROM security.accounts "
+                    "WHERE role = 'admin' AND active AND deleted_at IS NULL"
+                )
+            ).scalar_one()
+        engine.dispose()
+        self.assertEqual(1, remaining)
 
 
 if __name__ == "__main__":

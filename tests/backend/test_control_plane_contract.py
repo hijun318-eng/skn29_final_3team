@@ -137,6 +137,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             "SCHEMA_VERSION_MISMATCH",
             "RESOURCE_NOT_FOUND",
             "RESOURCE_CONFLICT",
+            "LAST_ADMIN_REQUIRED",
             "DEPENDENCY_UNAVAILABLE",
             "INTERNAL_ERROR",
         }

@@ -1,5 +1,11 @@
 # Antigravity 실제 분석 E2E 실행 인수인계
 
+> **SUPERSEDED / 실행 금지**
+>
+> 이 문서는 2026-08-17 당시의 역사 자료이며 외부 env, principal JSON, 구 Role 절차를
+> 포함하므로 현재 환경에 실행하지 않는다. 현행 두 Role·repo-local env 절차는
+> [`docs/e2e_mvp/LOCAL_SETUP.md`](../e2e_mvp/LOCAL_SETUP.md)를 따른다.
+
 > 작성 기준 시각: 2026-08-17 KST
 >
 > 대상 저장소: `skn29_final_3team`

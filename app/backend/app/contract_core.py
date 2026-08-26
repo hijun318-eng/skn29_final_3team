@@ -54,11 +54,9 @@ class StageOutcome(str, Enum):
 
 
 class Role(str, Enum):
-    """인증 주체에게 부여할 수 있는 분석·보고서·데이터 관리 역할의 허용 집합이다."""
+    """사람인 인증 주체에게 부여할 수 있는 일반 사용자·관리자 역할의 허용 집합이다."""
     ANALYST = "analyst"
-    REPORT_ADMIN = "report_admin"
-    DATA_ADMIN = "data_admin"
-    PLATFORM_ADMIN = "platform_admin"
+    ADMIN = "admin"
 
 
 class Capability(str, Enum):
@@ -69,6 +67,7 @@ class Capability(str, Enum):
     DRAFT_REPORT = "report.draft"
     MANAGE_REPORT = "report.manage"
     MANAGE_DATA = "data.manage"
+    MANAGE_SYSTEM = "system.manage"
 
 
 class RouteType(str, Enum):
@@ -113,6 +112,7 @@ class ErrorCode(str, Enum):
     SCHEMA_VERSION_MISMATCH = "SCHEMA_VERSION_MISMATCH"
     RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
     RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
+    LAST_ADMIN_REQUIRED = "LAST_ADMIN_REQUIRED"
     DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -322,6 +322,7 @@ _REQUIRED_ACTION_BY_ERROR = {
     ErrorCode.SCHEMA_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
     ErrorCode.RESOURCE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,
     ErrorCode.RESOURCE_CONFLICT: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.LAST_ADMIN_REQUIRED: RequiredAction.MODIFY_REQUEST,
     ErrorCode.SQL_POLICY_BLOCKED: RequiredAction.MODIFY_REQUEST,
     ErrorCode.MODEL_TIMEOUT: RequiredAction.RETRY,
     ErrorCode.MODEL_ENDPOINT_UNAVAILABLE: RequiredAction.RETRY,

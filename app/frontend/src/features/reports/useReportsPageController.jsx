@@ -30,9 +30,8 @@ import { reportStatusLabel } from "./reportPageLabels";
 import { normalizeReportEditorScale } from "./reportEditorViewport";
 
 /** 보고서 lifecycle·artifact·draft·DND를 화면 계약으로 합성하고 stale open generation을 폐기한다. */
-export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEditorMode }) {
-  const isAdmin = suppliedIsAdmin ?? ["report_admin", "platform_admin"].includes(role);
-  const lifecycle = useReportLifecycleState({ role, isAdmin });
+export function useReportsPageController({ isAdmin = false, onEditorMode }) {
+  const lifecycle = useReportLifecycleState({ isAdmin });
   const [view, setView] = useState("list");
   const [toolPanelOpen, setToolPanelOpen] = useState(true);
   const [editorViewScale, setEditorViewScale] = useState("fit-width");

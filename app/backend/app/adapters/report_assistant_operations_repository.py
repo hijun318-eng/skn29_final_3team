@@ -68,8 +68,9 @@ class ReportAssistantOperationsRepositoryMixin:
                            r.prompt_id, r.prompt_version, r.model_version, :route,
                            CAST(:operation_types AS jsonb), COALESCE(:contract_valid, false),
                            COALESCE(r.phase, 'ready'), :model_attempts, :latency_ms,
-                           :input_tokens, :output_tokens, :estimated_cost,
-                           (:estimated_cost IS NOT NULL), :error_code
+                           :input_tokens, :output_tokens,
+                           CAST(:estimated_cost AS numeric(18,8)),
+                           (CAST(:estimated_cost AS numeric(18,8)) IS NOT NULL), :error_code
                     FROM report_v1.report_assistant_requests r
                     WHERE r.assistant_request_id = :request_id AND r.owner_id = :owner_id
                     ON CONFLICT (assistant_request_id) DO UPDATE SET

@@ -307,6 +307,7 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
         "ASSISTANT_EXECUTION_INTERRUPTED",
         "ASSISTANT_RATE_LIMITED",
         "REPORT_ASSISTANT_COMPOSE_FAILED",
+        "REPORT_ASSISTANT_PATCH_INVALID",
         "REPORT_ASSISTANT_TURN_MODEL_FAILED",
         "REPORT_ASSISTANT_TURN_MODEL_INVALID",
     }

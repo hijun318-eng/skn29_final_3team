@@ -1085,6 +1085,8 @@ async def submit_assistant_message(
             if str(error) == "REPORT_REVISION_CONFLICT"
             else "REPORT_ASSISTANT_PATCH_INVALID"
         )
+        if error_code != "REPORT_REVISION_CONFLICT":
+            await repository.fail_assistant_request(assistant_request_id, error_code)
         await _observe_assistant(
             repository,
             "upsert_assistant_evaluation",

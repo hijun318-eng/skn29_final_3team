@@ -96,6 +96,7 @@ class ReportAssistantOperationsTest(unittest.TestCase):
             "app/backend/app/adapters/report_assistant_operations_repository.py"
         ).read_text(encoding="utf-8")
         self.assertIn("error_code = EXCLUDED.error_code", source)
+        self.assertIn("CAST(:estimated_cost AS numeric(18,8))", source)
         self.assertNotIn(
             "error_code = COALESCE(EXCLUDED.error_code,\n"
             "                            report_assistant_evaluations.error_code)",
@@ -326,6 +327,9 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
                     object(),
                 )
         self.assertEqual("REPORT_ASSISTANT_PATCH_INVALID", raised.exception.detail["code"])
+        repository.fail_assistant_request.assert_awaited_once_with(
+            str(assistant_request_id), "REPORT_ASSISTANT_PATCH_INVALID"
+        )
         observed = repository.upsert_assistant_evaluation.await_args.kwargs
         self.assertEqual("existing_artifact", observed["route"])
         self.assertEqual("REPORT_ASSISTANT_PATCH_INVALID", observed["error_code"])

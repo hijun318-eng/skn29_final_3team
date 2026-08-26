@@ -361,6 +361,157 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             proposal["patch"]["operations"][0],
         )
 
+    async def test_immutable_block_text_update_becomes_adjacent_text_block(self):
+        """불변 evidence block 서술은 원본을 바꾸지 않고 인접 text block으로 정규화한다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            "op": "update_text",
+            "block_id": "block-one",
+            "artifact_ref": None,
+            "view": None,
+            "title": None,
+            "content": "승인된 근거를 세 문장으로 요약했습니다.",
+            "after_block_id": None,
+            "width": None,
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        with (
+            patch(
+                "app.adapters.report_assistant.resolve_active_model_routes",
+                return_value=object(),
+            ),
+            patch(
+                "app.adapters.report_assistant.active_route_for_node",
+                return_value=route,
+            ),
+            patch(
+                "app.adapters.report_assistant.openai_transport",
+                new=AsyncMock(return_value=response),
+            ),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual(
+            {
+                "op": "add_text",
+                "title": "현재 차트",
+                "content": "승인된 근거를 세 문장으로 요약했습니다.",
+                "placement": {"after_block_id": "block-one", "width": "full"},
+            },
+            proposal["patch"]["operations"][0],
+        )
+
+    async def test_existing_text_block_update_is_preserved(self):
+        """실제 text block에 대한 수정은 기존 update_text 의미를 유지한다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        request["report"]["blocks"][0]["type"] = "text"
+        request["report"]["blocks"][0]["artifact_ref"] = None
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            "op": "update_text",
+            "block_id": "block-one",
+            "artifact_ref": None,
+            "view": None,
+            "title": None,
+            "content": "기존 텍스트를 간결하게 수정했습니다.",
+            "after_block_id": None,
+            "width": None,
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        with (
+            patch(
+                "app.adapters.report_assistant.resolve_active_model_routes",
+                return_value=object(),
+            ),
+            patch(
+                "app.adapters.report_assistant.active_route_for_node",
+                return_value=route,
+            ),
+            patch(
+                "app.adapters.report_assistant.openai_transport",
+                new=AsyncMock(return_value=response),
+            ),
+        ):
+            proposal, _trace = await generate_report_change_proposal(request)
+
+        self.assertEqual(
+            {
+                "op": "update_text",
+                "block_id": "block-one",
+                "title": None,
+                "content": "기존 텍스트를 간결하게 수정했습니다.",
+            },
+            proposal["patch"]["operations"][0],
+        )
+
+    async def test_add_text_drops_unused_wire_union_fields(self):
+        """serving schema가 채운 타 operation 필드는 typed add_text 경계에서 제거한다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            "op": "add_text",
+            "block_id": "block-one",
+            "artifact_ref": "source_artifact",
+            "view": "artifact",
+            "title": "핵심 요약",
+            "content": "승인된 근거를 간결하게 요약했습니다.",
+            "after_block_id": "block-one",
+            "width": "full",
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        with (
+            patch(
+                "app.adapters.report_assistant.resolve_active_model_routes",
+                return_value=object(),
+            ),
+            patch(
+                "app.adapters.report_assistant.active_route_for_node",
+                return_value=route,
+            ),
+            patch(
+                "app.adapters.report_assistant.openai_transport",
+                new=AsyncMock(return_value=response),
+            ),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual(
+            {
+                "op": "add_text",
+                "title": "핵심 요약",
+                "content": "승인된 근거를 간결하게 요약했습니다.",
+                "placement": {"after_block_id": "block-one", "width": "full"},
+            },
+            proposal["patch"]["operations"][0],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

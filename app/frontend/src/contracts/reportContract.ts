@@ -45,6 +45,7 @@ export function seoulWallClockToIso(value: string): string {
   readonly title: string;
   readonly artifactId?: string;
   readonly queryId?: string;
+  readonly viewSpecId?: string;
   readonly question?: string;
   readonly sourceUrns?: readonly string[];
   readonly columns: number;
@@ -171,6 +172,7 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly title: string;
   readonly artifact_id: string | null;
   readonly query_id: string | null;
+  readonly view_spec_id: string | null;
   readonly columns: number;
   readonly type: ReportBlockType;
   readonly x: number;
@@ -381,6 +383,7 @@ export interface ReportAssistantFailureListResponse {
   readonly title: string;
   readonly artifact_id?: string;
   readonly query_id?: string;
+  readonly view_spec_id?: string;
   readonly columns: number;
   readonly type: ReportBlockType;
   readonly x: number;

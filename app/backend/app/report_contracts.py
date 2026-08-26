@@ -31,6 +31,7 @@ class ReportBlockRequest(ReportContractModel):
     title: str = Field(min_length=1)
     artifact_id: str | None = None
     query_id: str | None = None
+    view_spec_id: str | None = None
     columns: int | None = Field(default=None, ge=1, le=12)
     type: Literal["table", "chart", "artifact", "text"] = "table"
     x: int = Field(default=0, ge=0, le=11)
@@ -91,6 +92,7 @@ class ReportBlockResponse(ReportContractModel):
     artifact_id: str | None
     columns: int
     query_id: str | None
+    view_spec_id: str | None
     type: Literal["table", "chart", "artifact", "text"]
     x: int
     y: int

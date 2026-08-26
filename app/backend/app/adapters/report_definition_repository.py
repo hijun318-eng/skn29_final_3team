@@ -72,6 +72,30 @@ class ReportDefinitionRepositoryMixin:
             str(owned[4]) if owned[4] else None,
         )
 
+    async def _require_artifact_view_spec(
+        self,
+        session: AsyncSession,
+        view_spec_id: UUID,
+        artifact_id: UUID | None,
+    ) -> None:
+        """ViewSpec이 검증된 같은 Artifact에 결속됐는지 확인한다."""
+
+        if artifact_id is None:
+            raise KeyError("Report ViewSpec에 연결된 Analysis Artifact를 찾을 수 없습니다.")
+        matched = (await session.execute(
+            text(
+                """
+                SELECT 1
+                FROM artifact.view_specs
+                WHERE view_spec_id = :view_spec_id
+                  AND artifact_id = :artifact_id
+                """
+            ),
+            {"view_spec_id": view_spec_id, "artifact_id": artifact_id},
+        )).one_or_none()
+        if matched is None:
+            raise KeyError("Report ViewSpec이 Analysis Artifact와 일치하지 않습니다.")
+
     async def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         """draft 레코드를 저장소의 비동기 트랜잭션 안에서 영속화한다."""
         if draft.status is not DefinitionStatus.DRAFT:
@@ -149,6 +173,15 @@ class ReportDefinitionRepositoryMixin:
                             raise ValueError(
                                 "Report block Artifact release receipt does not match"
                             )
+                    view_spec_id = (
+                        _uuid(block.view_spec_id, "view_spec_id")
+                        if block.view_spec_id
+                        else None
+                    )
+                    if view_spec_id is not None:
+                        await self._require_artifact_view_spec(
+                            session, view_spec_id, block_artifact_id
+                        )
                     await session.execute(
                         text(
                             """
@@ -171,11 +204,7 @@ class ReportDefinitionRepositoryMixin:
                             "title": block.title,
                             "artifact_id": block_artifact_id,
                             "query_id": block.query_id,
-                            "view_spec_id": (
-                                _uuid(block.view_spec_id, "view_spec_id")
-                                if block.view_spec_id
-                                else None
-                            ),
+                            "view_spec_id": view_spec_id,
                             "columns": block.columns,
                             "block_type": block.type.value,
                             "x": block.x,
@@ -282,6 +311,15 @@ class ReportDefinitionRepositoryMixin:
                     raise ValueError(
                         "Report block Artifact release receipt does not match"
                     )
+            view_spec_id = (
+                _uuid(block.view_spec_id, "view_spec_id")
+                if block.view_spec_id
+                else None
+            )
+            if view_spec_id is not None:
+                await self._require_artifact_view_spec(
+                    session, view_spec_id, block_artifact_id
+                )
             await session.execute(
                 text(
                     """
@@ -303,11 +341,7 @@ class ReportDefinitionRepositoryMixin:
                     "title": block.title,
                     "artifact_id": block_artifact_id,
                     "query_id": block.query_id,
-                    "view_spec_id": (
-                        _uuid(block.view_spec_id, "view_spec_id")
-                        if block.view_spec_id
-                        else None
-                    ),
+                    "view_spec_id": view_spec_id,
                     "columns": block.columns,
                     "block_type": block.type.value,
                     "x": block.x,
@@ -630,6 +664,15 @@ class ReportDefinitionRepositoryMixin:
                     raise ValueError(
                         "Report block Artifact release receipt does not match"
                     )
+            view_spec_id = (
+                _uuid(block.view_spec_id, "view_spec_id")
+                if block.view_spec_id
+                else None
+            )
+            if view_spec_id is not None:
+                await self._require_artifact_view_spec(
+                    session, view_spec_id, block_artifact_id
+                )
             await session.execute(
                 text(
                     """
@@ -651,11 +694,7 @@ class ReportDefinitionRepositoryMixin:
                     "title": block.title,
                     "artifact_id": block_artifact_id,
                     "query_id": block.query_id,
-                    "view_spec_id": (
-                        _uuid(block.view_spec_id, "view_spec_id")
-                        if block.view_spec_id
-                        else None
-                    ),
+                    "view_spec_id": view_spec_id,
                     "columns": block.columns,
                     "block_type": block.type.value,
                     "x": block.x,
@@ -774,6 +813,15 @@ class ReportDefinitionRepositoryMixin:
                         raise ValueError(
                             "Report block Artifact release receipt does not match"
                         )
+                view_spec_id = (
+                    _uuid(block.view_spec_id, "view_spec_id")
+                    if block.view_spec_id
+                    else None
+                )
+                if view_spec_id is not None:
+                    await self._require_artifact_view_spec(
+                        session, view_spec_id, block_artifact_id
+                    )
                 await session.execute(
                     text(
                         """
@@ -796,11 +844,7 @@ class ReportDefinitionRepositoryMixin:
                         "title": block.title,
                         "artifact_id": block_artifact_id,
                         "query_id": block.query_id,
-                        "view_spec_id": (
-                            _uuid(block.view_spec_id, "view_spec_id")
-                            if block.view_spec_id
-                            else None
-                        ),
+                        "view_spec_id": view_spec_id,
                         "columns": block.columns,
                         "block_type": block.type.value,
                         "x": block.x,

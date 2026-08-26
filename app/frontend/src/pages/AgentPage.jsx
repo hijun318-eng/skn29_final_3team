@@ -10,7 +10,7 @@ import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
@@ -39,7 +39,9 @@ export function AgentPage({ onNavigate }) {
   const [savedRuns, setSavedRuns] = useState([]);
   const [visibleRunCount, setVisibleRunCount] = useState(RUN_HISTORY_PAGE_SIZE);
   const requestInFlight = useRef(false);
+  const requestGeneration = useRef(0);
   const activeTraceId = useRef("");
+  const activeCommandAbortController = useRef(null);
   const threadEndRef = useRef(null);
 
   const activeEvidenceRun = selectedEvidenceRun || turns.at(-1)?.run || transientRun("");
@@ -52,6 +54,10 @@ export function AgentPage({ onNavigate }) {
   const exampleQuestions = useMemo(() => exampleQuestionsFromDefinitions(definitions), [definitions]);
   const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
   const visibleRuns = savedRuns.slice(0, visibleRunCount);
+  const latestArtifactTurn = useMemo(
+    () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
+    [turns],
+  );
 
   const refreshSaved = async () => {
     const [nextDefs, nextRuns] = await Promise.all([analysisClient.listDefinitions(), analysisClient.listRuns()]);
@@ -81,13 +87,11 @@ export function AgentPage({ onNavigate }) {
   }, []);
 
   const handleCancelAnalysis = async (turnId) => {
-    if (activeTraceId.current) {
-      try {
-        await analysisClient.cancelAnalysis(activeTraceId.current);
-      } catch (err) {
-        console.warn("Cancel analysis error:", err);
-      }
-    }
+    const cancelledTraceId = activeTraceId.current;
+    activeCommandAbortController.current?.abort();
+    activeCommandAbortController.current = null;
+    requestGeneration.current += 1;
+    activeTraceId.current = "";
     requestInFlight.current = false;
     setSubmitting(false);
     setTurns((prev) =>
@@ -109,6 +113,13 @@ export function AgentPage({ onNavigate }) {
           : t
       )
     );
+    if (cancelledTraceId) {
+      try {
+        await analysisClient.cancelAnalysis(cancelledTraceId);
+      } catch (err) {
+        console.warn("Cancel analysis error:", err);
+      }
+    }
   };
 
   useEffect(() => {
@@ -116,8 +127,11 @@ export function AgentPage({ onNavigate }) {
     else window.sessionStorage.removeItem(QUESTION_DRAFT_KEY);
   }, [question]);
 
-  const initConversation = async () => {
+  useEffect(() => () => activeCommandAbortController.current?.abort(), []);
+
+  const initConversation = async (generation) => {
     const conv = await analysisClient.createConversation();
+    if (generation !== undefined && requestGeneration.current !== generation) return "";
     const nextId = conv.conversation_id;
     setConversationId(nextId);
     window.sessionStorage.setItem(CONVERSATION_KEY, nextId);
@@ -125,6 +139,12 @@ export function AgentPage({ onNavigate }) {
   };
 
   const handleNewChat = () => {
+    activeCommandAbortController.current?.abort();
+    activeCommandAbortController.current = null;
+    requestGeneration.current += 1;
+    requestInFlight.current = false;
+    activeTraceId.current = "";
+    setSubmitting(false);
     setQuestion("");
     setInputError("");
     setConversationId("");
@@ -139,10 +159,37 @@ export function AgentPage({ onNavigate }) {
   };
 
   // action은 UI가 이미 아는 동작을 자연어로 바꾸지 않고 전달하는 typed 신호다(서버가 재검증).
-  const analyzeQuestion = async (nextQuestion, action = null) => {
+  const analyzeQuestion = async (nextQuestion, action = null, sourceTurn = null) => {
     const normalized = nextQuestion.trim();
     if (!normalized) { setInputError("분석할 질문을 입력해 주세요."); return; }
     if (requestInFlight.current) return;
+    const isPresentationAction = action?.requested_route === "PRESENTATION";
+    const sourceRun = sourceTurn?.run || latestArtifactTurn?.run || null;
+    if (isPresentationAction && !hasReusablePresentationArtifact(sourceRun)) {
+      const unavailableTurn = {
+        turnId: `local-${Date.now()}`,
+        question: normalized,
+        run: {
+          ...transientRun(normalized, "blocked"),
+          error: {
+            code: "INSUFFICIENT_EVIDENCE",
+            message: "기존 분석 결과가 없어 해당 보기를 만들 수 없습니다.",
+            retryable: false,
+            required_action: "NONE",
+          },
+        },
+        resolvedSlots: null,
+        viewType: action.presentation_type,
+        isArtifactReuse: false,
+        reusePending: false,
+        viewSpecId: null,
+      };
+      setTurns((prev) => [...prev, unavailableTurn]);
+      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      return;
+    }
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
     requestInFlight.current = true;
     setInputError("");
     setQuestion("");
@@ -153,20 +200,40 @@ export function AgentPage({ onNavigate }) {
     const traceId = createUuid();
     const commandIdempotencyKey = createUuid();
     activeTraceId.current = traceId;
+    const commandAbortController = new AbortController();
+    activeCommandAbortController.current = commandAbortController;
+    const canReuseArtifact = Boolean(isPresentationAction);
 
     const optimisticTurn = {
       turnId: `temp-${Date.now()}`,
       question: normalized,
-      run: { ...transientRun(normalized, "running"), traceId },
+      run: canReuseArtifact
+        ? { ...sourceRun, question: normalized, status: "success", traceId, elapsedSeconds: 0 }
+        : { ...transientRun(normalized, "running"), traceId },
       resolvedSlots: null,
-      viewType: null,
+      viewType: canReuseArtifact ? action.presentation_type : null,
+      isArtifactReuse: canReuseArtifact,
+      reusePending: canReuseArtifact,
+      viewSpecId: null,
     };
     setTurns((prev) => [...prev, optimisticTurn]);
     window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
 
+    const commandOptions = {
+      traceId,
+      signal: commandAbortController.signal,
+      onProgress: (progress) => {
+        if (requestGeneration.current !== generation || progress?.traceId !== traceId) return;
+        setTurns((prev) => prev.map((turn) => turn.turnId === optimisticTurn.turnId
+          ? { ...turn, processViewModel: progress }
+          : turn));
+      },
+    };
+
     try {
       let activeConvId = conversationId;
-      if (!activeConvId) activeConvId = await initConversation();
+      if (!activeConvId) activeConvId = await initConversation(generation);
+      if (!activeConvId || requestGeneration.current !== generation) return;
       const headTurnId = turns.length > 0 ? turns.at(-1)?.turnId : undefined;
       let cmdResponse;
       try {
@@ -175,28 +242,31 @@ export function AgentPage({ onNavigate }) {
           user_message: normalized,
           expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : null,
           idempotency_key: commandIdempotencyKey,
-        }, traceId);
+        }, commandOptions);
       } catch (cmdErr) {
         if (cmdErr instanceof AnalysisApiError && cmdErr.status === 409) {
           // stale head는 서버 이력으로 복원만 한다. 새 head에 같은 명령을 자동
           // 재제출하면 사용자가 보지 못한 Turn 뒤에서 의도가 달라질 수 있다.
           const serverTurns = await analysisClient.getConversationTurns(activeConvId);
+          if (requestGeneration.current !== generation) return;
           setTurns(hydrateTurnsFromServer(serverTurns));
           setQuestion(normalized);
           window.sessionStorage.setItem(QUESTION_DRAFT_KEY, normalized);
           throw cmdErr;
         } else if (cmdErr instanceof AnalysisApiError && cmdErr.status === 404) {
-          activeConvId = await initConversation();
+          activeConvId = await initConversation(generation);
+          if (!activeConvId || requestGeneration.current !== generation) return;
           cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
             ...(action || {}),
             user_message: normalized,
             expected_head_turn_id: null,
             idempotency_key: commandIdempotencyKey,
-          }, traceId);
+          }, commandOptions);
         } else {
           throw cmdErr;
         }
       }
+      if (requestGeneration.current !== generation) return;
 
       const data = cmdResponse?.data || cmdResponse;
       const serverTurn = data?.turn;
@@ -205,11 +275,7 @@ export function AgentPage({ onNavigate }) {
       const isReportAction = serverTurn?.route === "REPORT_ACTION";
 
       let finalRun;
-      if (analysisRaw && analysisRaw.data) {
-        finalRun = normalizeApiResponse(analysisRaw, normalized);
-      } else if (["BLOCKED", "FAILED", "PARTIAL", "CANCELLED"].includes(data?.status)) {
-        finalRun = commandErrorRun(normalized, data);
-      } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
+      if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
         const clarType = commandClarificationType(data, serverTurn);
         finalRun = {
@@ -225,14 +291,60 @@ export function AgentPage({ onNavigate }) {
             required_action: "PROVIDE_CONTEXT",
           },
         };
+      } else if (["BLOCKED", "FAILED", "CANCELLED"].includes(data?.status)) {
+        finalRun = commandErrorRun(normalized, data);
       } else if (isPresentation) {
-        finalRun = {
-          ...(turns.at(-1)?.run || {}),
-          question: normalized,
-          status: "success",
-          summary: `Trino 원천 쿼리 재실행 없이 ${serverTurn?.view_type || "TABLE"} 뷰로 전환했습니다.`,
-          viewSpecId: serverTurn?.view_spec_id,
-        };
+        const sourceArtifactId = sourceRun?.artifact?.artifactId;
+        const sourceQueryId = sourceRun?.artifact?.queryId;
+        const responseArtifact = analysisRaw?.data?.artifact;
+        const responseEvidence = analysisRaw?.data?.result?.evidence || analysisRaw?.data?.evidence;
+        const turnEvidence = serverTurn?.evidence_json;
+        const responseArtifactMatches = !responseArtifact || (
+          responseArtifact.artifact_id === sourceArtifactId
+          && responseArtifact.query_id === sourceQueryId
+        );
+        const responseEvidenceMatches = !responseEvidence || (
+          responseEvidence.artifact_id === sourceArtifactId
+          && responseEvidence.query_id === sourceQueryId
+        );
+        const turnEvidenceMatches = !turnEvidence || (
+          turnEvidence.artifact_id === sourceArtifactId
+          && turnEvidence.query_id === sourceQueryId
+        );
+        if (
+          data?.status === "PARTIAL"
+          || !hasReusablePresentationArtifact(sourceRun)
+          || !serverTurn?.artifact_id
+          || sourceArtifactId !== serverTurn.artifact_id
+          || !responseArtifactMatches
+          || !responseEvidenceMatches
+          || !turnEvidenceMatches
+        ) {
+          finalRun = commandErrorRun(normalized, {
+            code: "INSUFFICIENT_EVIDENCE",
+            message: "기존 분석 결과의 연결 정보를 확인할 수 없어 보기를 추가하지 않았습니다.",
+            retryable: false,
+            required_action: "NONE",
+          });
+        } else {
+          finalRun = {
+            ...sourceRun,
+            question: normalized,
+            status: "success",
+            viewSpecId: serverTurn?.view_spec_id,
+          };
+        }
+      } else if (isPresentationAction) {
+        finalRun = commandErrorRun(normalized, {
+          code: "INSUFFICIENT_EVIDENCE",
+          message: "서버가 기존 분석 결과의 표현 요청을 확인하지 못해 보기를 추가하지 않았습니다.",
+          retryable: false,
+          required_action: "NONE",
+        });
+      } else if (analysisRaw && analysisRaw.data) {
+        finalRun = normalizeApiResponse(analysisRaw, normalized);
+      } else if (data?.status === "PARTIAL") {
+        finalRun = commandErrorRun(normalized, data);
       } else if (isReportAction) {
         finalRun = {
           ...transientRun(normalized, "success"),
@@ -248,18 +360,27 @@ export function AgentPage({ onNavigate }) {
         });
       }
 
+      if (requestGeneration.current !== generation) return;
       setTurns((prev) => prev.map((t) => t.turnId === optimisticTurn.turnId ? {
         turnId: serverTurn?.turn_id || optimisticTurn.turnId,
         question: normalized,
         run: finalRun,
         resolvedSlots: serverTurn?.resolved_slots || null,
-        viewType: serverTurn?.view_type || serverTurn?.resolved_slots?.target_chart_type || (isPresentation ? "CHART" : "SUMMARY"),
+        viewType: isPresentation
+          ? (serverTurn?.view_type || "TABLE")
+          : (serverTurn?.resolved_slots?.target_chart_type || "SUMMARY"),
+        isArtifactReuse: isPresentation && hasReusablePresentationArtifact(finalRun),
+        reusePending: false,
+        viewSpecId: isPresentation ? serverTurn?.view_spec_id : null,
       } : t));
 
       void refreshSaved();
     } catch (error) {
+      if (requestGeneration.current !== generation) return;
       setTurns((prev) => prev.map((t) => t.turnId === optimisticTurn.turnId ? {
         ...t,
+        isArtifactReuse: false,
+        reusePending: false,
         run: {
           ...transientRun(normalized, error instanceof AnalysisApiError && error.status === 403 ? "blocked" : "failed"),
           error: {
@@ -274,10 +395,13 @@ export function AgentPage({ onNavigate }) {
         },
       } : t));
     } finally {
-      if (activeTraceId.current === traceId) activeTraceId.current = "";
-      requestInFlight.current = false;
-      setSubmitting(false);
-      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      if (requestGeneration.current === generation) {
+        if (activeCommandAbortController.current === commandAbortController) activeCommandAbortController.current = null;
+        if (activeTraceId.current === traceId) activeTraceId.current = "";
+        requestInFlight.current = false;
+        setSubmitting(false);
+        window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      }
     }
   };
 
@@ -412,17 +536,23 @@ export function AgentPage({ onNavigate }) {
                     <AnalysisStatePanel
                       run={turnItem.run}
                       viewType={turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY"}
+                      artifactReuse={turnItem.isArtifactReuse ? {
+                        pending: Boolean(turnItem.reusePending),
+                        viewSpecId: turnItem.viewSpecId,
+                      } : null}
+                      processViewModel={turnItem.processViewModel}
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
-                      onQuickView={(mode) => {
-                        const quick = quickViewAction(mode, {
-                          hasChart: Boolean(turnItem.run.chart),
-                          hasTable: Boolean(turnItem.run.table?.rows?.length),
-                        });
-                        // 이미 응답에 포함된 차트·표 data는 재조회 없이 뷰만 전환한다.
-                        if (quick) void analyzeQuestion(quick.label, quick.action);
-                        else setTurns((prev) => prev.map((t) => t.turnId === turnItem.turnId ? { ...t, viewType: mode } : t));
-                      }}
+                      onQuickView={turnItem.turnId === latestArtifactTurn?.turnId ? (mode) => {
+                        if (mode === "SUMMARY" || mode === "KPI") {
+                          setTurns((prev) => prev.map((turn) => turn.turnId === turnItem.turnId
+                            ? { ...turn, viewType: mode }
+                            : turn));
+                          return;
+                        }
+                        const quick = quickViewAction(mode);
+                        if (quick) void analyzeQuestion(quick.label, quick.action, turnItem);
+                      } : undefined}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
                       onSave={["success", "partial"].includes(turnItem.run.status) ? () => void saveAnalysis(turnItem.run) : undefined}

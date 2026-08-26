@@ -22,6 +22,23 @@ export function transientRun(question, status = "idle") {
 }
 
 /**
+ * PRESENTATION이 재사용할 Artifact·query·근거가 같은 식별자로 연결됐는지 확인한다.
+ * @param {object|null|undefined} run - 기존 분석 결과 run.
+ * @returns {boolean} 세 식별자가 모두 존재하고 일치하면 true.
+ */
+export function hasReusablePresentationArtifact(run) {
+  const artifactId = run?.artifact?.artifactId;
+  const queryId = run?.artifact?.queryId;
+  return Boolean(
+    artifactId
+    && queryId
+    && run?.evidence
+    && run.evidence.artifactId === artifactId
+    && run.evidence.queryId === queryId,
+  );
+}
+
+/**
  * 사용자가 선택한 disambiguation 옵션을 원 질문 뒤에 붙여 재질의용 질문 문장을 만든다.
  * @param {string} question - 원 질문.
  * @param {string} suggestion - 사용자가 선택한 값.
@@ -142,23 +159,35 @@ export function hydrateTurnsFromServer(serverTurns) {
       let run;
 
       if (isPresentation && st.terminal_status === "SUCCEEDED") {
-        const tableData = st.data_snapshot_json || lastAnalysisRun?.table || null;
-        const chartSpec = st.chart_spec_json
-          ? normalizeAnalysisChart(st.chart_spec_json)
-          : lastAnalysisRun?.chart || null;
-        const evidence = st.evidence_json
-          ? normalizeAnalysisEvidence(st.evidence_json)
-          : lastAnalysisRun?.evidence;
-        run = {
-          ...(lastAnalysisRun || transientRun(userMessage, "success")),
-          question: userMessage,
-          status: "success",
-          summary: `Trino 원천 쿼리 재실행 없이 ${st.view_type || "TABLE"} 뷰로 전환했습니다.`,
-          table: tableData,
-          chart: chartSpec,
-          evidence,
-          viewSpecId: st.view_spec_id,
-        };
+        const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
+        const sourceQueryId = lastAnalysisRun?.artifact?.queryId;
+        const responseEvidence = st.evidence_json;
+        const responseEvidenceMatches = !responseEvidence || (
+          responseEvidence.artifact_id === sourceArtifactId
+          && responseEvidence.query_id === sourceQueryId
+        );
+        if (
+          !hasReusablePresentationArtifact(lastAnalysisRun)
+          || !st.artifact_id
+          || st.artifact_id !== sourceArtifactId
+          || !responseEvidenceMatches
+        ) {
+          run = commandErrorRun(userMessage, {
+            code: "INSUFFICIENT_EVIDENCE",
+            message: "기존 분석 결과의 연결 정보를 확인할 수 없어 보기를 복원하지 않았습니다.",
+            retryable: false,
+            required_action: "NONE",
+          });
+        } else {
+          run = {
+            ...lastAnalysisRun,
+            question: userMessage,
+            status: "success",
+            summary: lastAnalysisRun.summary || st.artifact_summary || "기존 분석 결과를 다시 표시했습니다.",
+            chart: st.chart_spec_json ? normalizeAnalysisChart(st.chart_spec_json) : lastAnalysisRun.chart,
+            viewSpecId: st.view_spec_id,
+          };
+        }
       } else if (isReportAction && st.terminal_status === "SUCCEEDED") {
         run = {
           ...(lastAnalysisRun || transientRun(userMessage, "success")),
@@ -244,7 +273,12 @@ export function hydrateTurnsFromServer(serverTurns) {
         question: userMessage,
         run,
         resolvedSlots: st.resolved_slots || null,
-        viewType: isPresentation ? (st.view_type || "TABLE") : null,
+        viewType: isPresentation
+          ? (st.view_type || "TABLE")
+          : (st.resolved_slots?.target_chart_type || "SUMMARY"),
+        isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
+        reusePending: false,
+        viewSpecId: isPresentation ? st.view_spec_id : null,
       });
     }
 
@@ -260,23 +294,20 @@ export function hydrateTurnsFromServer(serverTurns) {
  * 라우팅은 action이 결정하므로 label은 서버 분기에 관여하지 않는 표시용 문구다.
  */
 export const QUICK_ACTION = {
-  CHART: { label: "차트로 보기", action: { requested_route: "PRESENTATION", presentation_type: "BAR" } },
+  CHART: { label: "그래프로 보기", action: { requested_route: "PRESENTATION", presentation_type: "BAR" } },
   TABLE: { label: "표로 보기", action: { requested_route: "PRESENTATION", presentation_type: "TABLE" } },
   REPORT: { label: "보고서에 담기", action: { requested_route: "REPORT_ACTION" } },
 };
 
 /**
- * 빠른 동작이 서버 턴을 필요로 하는지 판정한다.
- * 이미 응답에 포함된 차트·표는 재조회 없이 로컬 뷰 전환으로 끝내야 하므로 null을 돌려준다.
- * @param {"CHART"|"TABLE"|"REPORT"|string} mode - 사용자가 누른 빠른 동작
- * @param {{hasChart: boolean, hasTable: boolean}} available - 현재 turn이 이미 가진 표현
- * @returns {{label: string, action: object}|null} 서버로 보낼 동작, 필요 없으면 null
+ * 빠른 동작을 대화에 남길 서버 typed action으로 변환한다.
+ * 서버가 지원하는 TABLE·CHART 표현과 REPORT action만 typed command로 변환한다.
+ * SUMMARY·KPI는 이미 받은 Artifact의 로컬 보기이므로 서버 command를 만들지 않는다.
+ * @param {"SUMMARY"|"CHART"|"TABLE"|"KPI"|"REPORT"|string} mode - 사용자가 누른 빠른 동작
+ * @returns {{label: string, action: object}|null} 서버로 보낼 동작, 지원하지 않으면 null
  */
-export function quickViewAction(mode, available) {
-  if (mode === "REPORT") return QUICK_ACTION.REPORT;
-  if (mode === "CHART" && !available.hasChart) return QUICK_ACTION.CHART;
-  if (mode === "TABLE" && !available.hasTable) return QUICK_ACTION.TABLE;
-  return null;
+export function quickViewAction(mode) {
+  return QUICK_ACTION[mode] || null;
 }
 
 /**

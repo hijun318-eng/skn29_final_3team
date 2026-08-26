@@ -206,7 +206,7 @@ const serverOnlyDefinition = normalizeReportDefinition({
   version: report.version,
   status: "draft",
   title: report.title,
-  blocks: [persistedAnalysisBlock],
+  blocks: [{ ...persistedAnalysisBlock, view_spec_id: "view-spec-1" }],
   orientation: "landscape",
   currency_display_unit: "million",
   approved_at: null,
@@ -215,6 +215,8 @@ assert.equal(loadFrontendDraft({ getItem: () => null }, report.definitionId, rep
 assert.equal(serverOnlyDefinition.blocks[0].type, "artifact");
 assert.equal(serverOnlyDefinition.blocks[0].artifactId, "artifact-revenue");
 assert.equal(serverOnlyDefinition.blocks[0].queryId, "query-revenue");
+assert.equal(serverOnlyDefinition.blocks[0].viewSpecId, "view-spec-1");
+assert.equal(toReportBlockRequest(serverOnlyDefinition.blocks[0]).view_spec_id, "view-spec-1");
 assert.equal(serverOnlyDefinition.orientation, "landscape");
 assert.equal(serverOnlyDefinition.currencyDisplayUnit, "million");
 assert.equal(reportArtifactLibrarySources(serverOnlyDefinition, [])[0].artifactRequestId, "request-revenue-new");

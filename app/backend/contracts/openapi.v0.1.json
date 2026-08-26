@@ -3244,6 +3244,17 @@
             "title": "Type",
             "type": "string"
           },
+          "view_spec_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Spec Id"
+          },
           "w": {
             "anyOf": [
               {
@@ -3334,6 +3345,17 @@
             "title": "Type",
             "type": "string"
           },
+          "view_spec_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Spec Id"
+          },
           "w": {
             "title": "W",
             "type": "integer"
@@ -3353,6 +3375,7 @@
           "artifact_id",
           "columns",
           "query_id",
+          "view_spec_id",
           "type",
           "x",
           "y",

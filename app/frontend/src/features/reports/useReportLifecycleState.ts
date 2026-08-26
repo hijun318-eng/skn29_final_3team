@@ -79,11 +79,13 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   selectedDefinitionRef.current = selectedDefinition;
   assistantSessionRef.current = assistantSession;
 
-  const beginOperation = useCallback((name: string) => {
+  const beginOperation = useCallback((name: string, resetFeedback = true) => {
     const operation = { id: createUuid(), name };
     setPendingOperations((current) => [...current, operation]);
-    setError("");
-    setNotice("");
+    if (resetFeedback) {
+      setError("");
+      setNotice("");
+    }
     return operation.id;
   }, []);
 
@@ -94,8 +96,9 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const mutate = useCallback(async <T,>(
     name: string,
     action: () => Promise<T> | T,
+    options: { preserveFeedback?: boolean } = {},
   ): Promise<T | null> => {
-    const operationId = beginOperation(name);
+    const operationId = beginOperation(name, !options.preserveFeedback);
     try {
       return await action();
     } catch (nextError) {
@@ -412,6 +415,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       const recovered = await mutate(
         "assistant-recover",
         () => reportClient.getAssistantSession(session.assistant_request_id),
+        { preserveFeedback: true },
       );
       if (recovered) setAssistantSession(recovered);
       return null;

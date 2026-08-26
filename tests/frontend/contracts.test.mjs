@@ -6,7 +6,7 @@ import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient } from
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
-import { commandErrorRun, hydrateTurnsFromServer } from "../../app/frontend/src/pages/agentPageHelpers.js";
+import { commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction } from "../../app/frontend/src/pages/agentPageHelpers.js";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
@@ -71,6 +71,30 @@ assert.match(source("App.jsx"), /answervice:clear-drafts/);
 
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
 assert.match(source("pages/AgentPage.jsx"), /analysisClient\.submitTurnCommand/);
+assert.equal(quickViewAction("SUMMARY"), null);
+assert.equal(quickViewAction("KPI"), null);
+assert.deepEqual(quickViewAction("CHART"), {
+  label: "그래프로 보기",
+  action: { requested_route: "PRESENTATION", presentation_type: "BAR" },
+});
+assert.deepEqual(quickViewAction("TABLE"), {
+  label: "표로 보기",
+  action: { requested_route: "PRESENTATION", presentation_type: "TABLE" },
+});
+assert.equal(quickViewAction("FULL"), null);
+assert.equal(quickViewAction("UNKNOWN"), null);
+assert.equal(hasReusablePresentationArtifact({
+  artifact: { artifactId: "artifact-1", queryId: "query-1" },
+  evidence: { artifactId: "artifact-1", queryId: "query-1" },
+}), true);
+assert.equal(hasReusablePresentationArtifact({
+  artifact: { artifactId: "artifact-1", queryId: "query-1" },
+  evidence: { artifactId: "artifact-1", queryId: "query-other" },
+}), false);
+assert.equal(hasReusablePresentationArtifact(null), false);
+assert.match(source("pages/AgentPage.jsx"), /setTurns\(\(prev\) => \[\.\.\.prev, optimisticTurn\]\)/);
+assert.match(source("pages/AgentPage.jsx"), /isPresentationAction && !hasReusablePresentationArtifact\(sourceRun\)/);
+assert.match(source("pages/AgentPage.jsx"), /requestGeneration\.current !== generation/);
 assert.match(source("pages/AgentPage.jsx"), /analysisClient\.replayDefinition\(definition\.definition_id, \{\}\)/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /onClick=\{\(\) => void analyzeQuestion\(d\.question\)\}/);
 assert.match(source("pages/AgentPage.jsx"), /stale head는 서버 이력으로 복원만 한다/);
@@ -149,6 +173,7 @@ assert.match(reportSources.lifecycle, /reportClient\.getAssistantEvaluation\(ses
 assert.match(reportSources.lifecycle, /reportClient\.retryAssistantSession\(current\.assistant_request_id\)/);
 assert.match(reportSources.lifecycle, /reportClient\.getAssistantSession\(session\.assistant_request_id\)/);
 assert.match(reportSources.lifecycle, /if \(recovered\) setAssistantSession\(recovered\)/);
+assert.match(reportSources.lifecycle, /\{ preserveFeedback: true \}/);
 assert.match(reportSources.lifecycle, /setAssistantEvaluation\(null\)/);
 assert.match(reportSources.page, /evaluation=\{lifecycle\.assistantEvaluation\}/);
 assert.match(reportSources.page, /onRetry=\{lifecycle\.retryAssistantSession\}/);
@@ -529,6 +554,7 @@ const hydratedSuccess = hydrateTurnsFromServer([{
   user_message: "임의 지표를 보여줘",
   route: "ANALYSIS",
   command_status: "COMPLETED",
+  view_type: "CHART",
   request_id: "persisted-request",
   artifact_id: "persisted-artifact",
   narrative_markdown: "임의 지표는 123입니다.",
@@ -564,6 +590,14 @@ const hydratedSuccess = hydrateTurnsFromServer([{
       synthetic: false,
     }],
   },
+}, {
+  turn_id: "turn-table-view",
+  user_message: "표로 보여줘",
+  route: "PRESENTATION",
+  terminal_status: "SUCCEEDED",
+  artifact_id: "persisted-artifact",
+  view_spec_id: "view-spec-table",
+  view_type: "TABLE",
 }]);
 assert.equal(hydratedSuccess[0].run.metrics[0].metricId, "generic_metric");
 assert.equal(hydratedSuccess[0].run.metrics[0].resultField, "generic_value");
@@ -571,6 +605,94 @@ assert.equal(hydratedSuccess[0].run.metrics[0].value, 123);
 assert.equal(hydratedSuccess[0].run.chart.chartType, "bar");
 assert.equal(hydratedSuccess[0].run.evidence.metrics[0].resultField, "generic_value");
 assert.equal(hydratedSuccess[0].run.sources[0].schemaVersion, "v1");
+assert.equal(hydratedSuccess.length, 2);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-table-view"]);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "표로 보여줘"]);
+assert.equal(hydratedSuccess[0].viewType, "SUMMARY");
+assert.equal(hydratedSuccess[1].viewType, "TABLE");
+assert.equal(hydratedSuccess[1].run.artifact.artifactId, hydratedSuccess[0].run.artifact.artifactId);
+assert.equal(hydratedSuccess[1].run.artifact.queryId, hydratedSuccess[0].run.artifact.queryId);
+assert.equal(hydratedSuccess[1].run.summary, hydratedSuccess[0].run.summary);
+assert.equal(hydratedSuccess[1].isArtifactReuse, true);
+assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-table");
+
+const mismatchedPresentation = hydrateTurnsFromServer([{
+  turn_id: "turn-source",
+  user_message: "원본 분석",
+  route: "ANALYSIS",
+  command_status: "COMPLETED",
+  artifact_id: "artifact-source",
+  data_snapshot_json: { columns: ["value"], rows: [{ value: 1 }] },
+  evidence_json: {
+    artifact_id: "artifact-source",
+    query_id: "query-source",
+    as_of: "2031-04-05",
+    filters: {},
+    metrics: [],
+    sources: [],
+  },
+}, {
+  turn_id: "turn-mismatch",
+  user_message: "표로 보여줘",
+  route: "PRESENTATION",
+  terminal_status: "SUCCEEDED",
+  artifact_id: "artifact-other",
+  view_spec_id: "view-spec-mismatch",
+  view_type: "TABLE",
+}]);
+assert.equal(mismatchedPresentation[1].run.status, "failed");
+assert.equal(mismatchedPresentation[1].run.error.code, "INSUFFICIENT_EVIDENCE");
+assert.equal(mismatchedPresentation[1].run.artifact, undefined);
+assert.equal(mismatchedPresentation[1].isArtifactReuse, false);
+
+let presentationRequest;
+const presentationClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
+  presentationRequest = { url, init };
+  return new Response(JSON.stringify({ status: "COMPLETED" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+});
+await presentationClient.submitTurnCommand("conversation-1", {
+  user_message: "표로 보여줘",
+  requested_route: "PRESENTATION",
+  presentation_type: "TABLE",
+});
+assert.equal(presentationRequest.url, "http://backend.test/conversations/conversation-1/commands");
+assert.equal(presentationRequest.url.includes("/analysis"), false);
+assert.equal(JSON.parse(presentationRequest.init.body).requested_route, "PRESENTATION");
+
+let commandProgressCalled = false;
+const commandAbortController = new AbortController();
+await presentationClient.submitTurnCommand("conversation-1", {
+  user_message: "요약으로 보여줘",
+  requested_route: "PRESENTATION",
+  presentation_type: "SUMMARY",
+}, {
+  traceId: "command-trace",
+  signal: commandAbortController.signal,
+  onProgress: () => { commandProgressCalled = true; },
+});
+assert.equal(presentationRequest.init.headers["X-Trace-Id"], "command-trace");
+assert.equal(presentationRequest.init.signal, commandAbortController.signal);
+assert.equal(commandProgressCalled, false);
+
+const abortingCommandClient = createHttpAnalysisClient("http://backend.test", async (_url, init) => new Promise((_resolve, reject) => {
+  init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+}));
+const abortingController = new AbortController();
+const abortedCommand = abortingCommandClient.submitTurnCommand("conversation-1", {
+  user_message: "분석해줘",
+  requested_route: "ANALYSIS",
+}, { signal: abortingController.signal });
+abortingController.abort();
+await assert.rejects(abortedCommand, (error) => error?.name === "AbortError");
+
+assert.match(source("api/analysisClient.ts"), /interface SubmitTurnCommandOptions[\s\S]*?signal\?: AbortSignal[\s\S]*?onProgress\?: \(progress: ConversationCommandProgress\)/);
+assert.match(source("contracts/analysis.ts"), /interface ConversationCommandProgress extends AnalysisProcessViewModel/);
+assert.match(source("pages/AgentPage.jsx"), /activeCommandAbortController\.current\?\.abort\(\)/);
+assert.match(source("pages/AgentPage.jsx"), /progress\?\.traceId !== traceId/);
+assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
@@ -614,7 +736,7 @@ await analysisClient.submitTurnCommand("conversation-1", {
   user_message: "question",
   expected_head_turn_id: null,
   idempotency_key: "command-1",
-}, "conversation-trace");
+}, { traceId: "conversation-trace" });
 assert.equal(analysisRequest.url, "http://backend.test/conversations/conversation-1/commands");
 assert.equal(analysisRequest.init.headers["X-Trace-Id"], "conversation-trace");
 

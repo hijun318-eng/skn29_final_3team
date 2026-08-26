@@ -1,13 +1,14 @@
-# Report Assistant V2 13·14차 반영 가이드
+# Report Assistant V2 10~14차 통합 반영 가이드
 
 기준일: 2026-08-26  
 공유 브랜치: `origin/seung`  
 변경 전 기준: `a116a4d4`  
+10~12차 누적 기준 커밋: `a116a4d4`  
 13·14차 구현 커밋: `d055cf20`  
 
 ## 1. 문서 목적
 
-이 문서는 다른 개발자가 오늘 작업한 Report Assistant 변경을 통합 브랜치에 반영할 때 관리자
+이 문서는 다른 개발자가 오늘 작업한 Report Assistant 10~14차 변경을 통합 브랜치에 반영할 때 관리자
 화면, Report Builder UI 또는 기존 Agent 흐름을 덮어쓰지 않도록 변경 범위와 충돌 처리 방법을
 정리한다.
 
@@ -15,6 +16,37 @@
 않는다. DB schema와 API 계약도 바꾸지 않았으므로 migration 적용은 필요하지 않다.
 
 ## 2. 오늘 반영된 기능
+
+### 10차: 부분 승인 operation 의존성 검증
+
+- 사용자가 일부 operation만 승인해도 최종 조합을 서버에서 다시 dry-run
+- 삭제할 block을 동시에 수정·이동·복제하거나 배치 anchor로 사용하는 모순 차단
+- 같은 제목·text·block을 한 patch에서 중복 변경하는 모호한 조합 차단
+- 잘못된 조합은 Revision 저장 전에 `REPORT_ASSISTANT_PATCH_INVALID`로 종료
+- 전체 승인과 동일 선택 중복 승인의 기존 멱등 동작 유지
+
+### 11차: 실패 복구 보강과 안전한 요청 취소
+
+- `new_data` 분석 성공 뒤 최종 typed patch와 model trace를 DB에 먼저 고정
+- `saving_revision` 복구 시 GPT와 `AnalysisController`를 다시 호출하지 않고 고정 patch만 사용
+- Report 공개 응답에서 실제 query ID와 Artifact checksum 제거
+- 비저장 품질 검토의 latency·attempt·token·비용을 기존 평가 레코드에 연결
+- `ready`, `waiting_patch_approval`, `waiting_approval` 전용 취소 API와 Client 동작 추가
+- 실행·Artifact 대기·Revision 저장 중에는 취소 완료로 가장하지 않고 상태 확인 안내
+
+### 12차: 실제 GPT·PostgreSQL·Browser 편집 E2E
+
+- 격리 PostgreSQL에 migration 단일 head `20260826_40` 적용
+- 실제 OpenAI strict proposal에서 두 개 operation 생성 확인
+- 승인 전에 Report version과 block이 바뀌지 않는 것 확인
+- 일부 operation만 승인해 새 Revision 한 건 생성
+- Backend 재시작 뒤 `saving_revision`을 GPT·AnalysisController 재호출 없이 복구
+- 중복 승인 시 Revision 추가 생성 없음 확인
+- Canvas와 새로고침 뒤 동일 Revision·block 복구
+- Browser DOM에서 query ID·checksum·SQL 미노출과 console error 없음 확인
+
+12차 결과는 기존 승인 Artifact 편집 E2E다. Trino·DataHub·Analysis Agent를 사용하는
+`new_data` live E2E는 포함하지 않는다.
 
 ### 13차: 승인 카드 접근성·모바일 대응
 
@@ -53,7 +85,13 @@
 실제 GPT 기준/후보 비교는 비용 승인 전이라 실행하지 않았다. 따라서 현재 prompt
 `PROMPT-v1.8.1`과 model release `MODEL-RELEASE-v1.33.0`은 그대로다.
 
-## 3. 변경 파일과 책임
+## 3. 10~14차 변경 경계
+
+10~12차까지의 누적 구현은 `a116a4d4`에 포함돼 있으며, 13·14차 증분은 `d055cf20`이다. 다른
+개발자의 브랜치가 이미 `a116a4d4`를 포함하면 `d055cf20`만 추가 반영한다. 포함하지 않았다면
+개별 파일을 임의 복사하기보다 `origin/seung`의 누적 commit history를 기준으로 통합한다.
+
+### 13·14차 증분 파일과 책임
 
 | 파일 | 변경 책임 | 충돌 가능성 |
 |---|---|---|
@@ -87,7 +125,7 @@
 1. 본인 dirty 변경을 먼저 별도 commit으로 보존한다.
 2. `origin/seung` 최신 상태를 fetch한다.
 3. 본인 브랜치에 merge하거나 rebase하기 전에 위 변경 파일과 겹치는지 확인한다.
-4. 충돌이 없으면 `d055cf20` 이후의 `origin/seung`을 통합한다.
+4. 충돌이 없으면 최신 `origin/seung`을 통합한다.
 5. 충돌이 있으면 아래 파일별 원칙에 따라 수동 병합한다.
 6. 필수 테스트를 실행한 뒤에만 통합 완료로 판단한다.
 
@@ -98,8 +136,9 @@ git fetch origin
 git cherry-pick d055cf20
 ```
 
-문서 커밋은 코드 실행에 필요하지 않다. 개발 문서까지 필요하면 `origin/seung`의 최신 문서 변경을
-별도로 반영한다. 이미 같은 변경이 포함된 브랜치에 `d055cf20`을 다시 cherry-pick하지 않는다.
+이 명령은 통합 브랜치가 `a116a4d4`를 이미 포함한 경우에만 사용한다. 10~12차가 없다면
+`d055cf20` 하나만 가져와서는 전체 기능이 연결되지 않으므로 최신 `origin/seung` 누적 history를
+병합한다. 이미 같은 변경이 포함된 브랜치에 커밋을 다시 cherry-pick하지 않는다.
 
 ## 5. 파일별 충돌 해결 원칙
 

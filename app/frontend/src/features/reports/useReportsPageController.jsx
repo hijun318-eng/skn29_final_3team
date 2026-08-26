@@ -421,7 +421,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       void saveDraft();
       return;
     }
-    if (textField && !event.target.closest?.(".notion-block")) return;
+    if (textField) return;
     if (key === "c") { event.preventDefault(); editorTools.copySelected(); }
     else if (key === "v" && canEdit) { event.preventDefault(); editorTools.pasteBlocks(); }
     else if (key === "z" && event.shiftKey) { event.preventDefault(); draft.redo(); }

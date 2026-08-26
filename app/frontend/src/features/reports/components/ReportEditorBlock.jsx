@@ -64,6 +64,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     setActivatorNodeRef,
     transform,
   } = useDraggable({ id: block.id, disabled: !isDraft || locked });
+  const blockNodeRef = useRef(null);
   const resizeStart = useRef(null);
   const resizePreviewRef = useRef(null);
   const [resizePreview, setResizePreview] = useState(null);
@@ -71,6 +72,11 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   const titleTransactionRef = useRef(false);
 
   useEffect(() => () => window.clearTimeout(titleTimerRef.current), []);
+
+  const setBlockNodeRef = useCallback((node) => {
+    blockNodeRef.current = node;
+    setNodeRef(node);
+  }, [setNodeRef]);
 
   const selectBlock = useCallback((event) => onSelect(block.id, event), [block.id, onSelect]);
   const selectBlockFromKeyboard = useCallback((event) => {
@@ -182,6 +188,21 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     );
   };
 
+  const resizeTableWithWheel = useCallback((event) => {
+    if (!event.altKey || event.deltaY === 0 || block.type !== "table" || !isDraft || locked) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.deltaY < 0 ? 1 : -1;
+    resizeBlock((block.w ?? block.columns) + step, (block.h ?? 5) + step);
+  }, [block.columns, block.h, block.type, block.w, isDraft, locked, resizeBlock]);
+
+  useEffect(() => {
+    const node = blockNodeRef.current;
+    if (!node || block.type !== "table" || !isDraft || locked) return undefined;
+    node.addEventListener("wheel", resizeTableWithWheel, { passive: false });
+    return () => node.removeEventListener("wheel", resizeTableWithWheel);
+  }, [block.type, isDraft, locked, resizeTableWithWheel]);
+
   const displayY = Math.max(0, (block.y ?? 0) - rowOffset);
   const displayWidth = resizePreview?.w ?? block.w ?? block.columns;
   const displayHeight = resizePreview?.h ?? block.h ?? 1;
@@ -246,7 +267,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
 
   return (
     <article
-      ref={setNodeRef}
+      ref={setBlockNodeRef}
       data-block-id={block.id}
       tabIndex={-1}
       className={`editor-block notion-block ${selected ? "selected" : ""} ${dragging ? "dragging is-dragging" : ""} ${locked ? "locked" : ""}`}

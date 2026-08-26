@@ -1,12 +1,12 @@
-/** 저장 대상과 분리된 화면 상태로 실제 보고서 페이지를 한 장씩 발표하는 overlay 모듈이다. */
+/** 저장 대상과 분리된 화면 상태로 실제 보고서 페이지를 현재 앱 테마에 맞춰 한 장씩 발표하는 overlay 모듈이다. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, MonitorPlay, X } from "lucide-react";
 
 import { ReportPageCanvas } from "../ReportPageCanvas";
 
-/** 실제 pagination과 renderer를 재사용하고 방향키·PageUp/PageDown으로 페이지를 탐색한다. */
-export function ReportPresentation({ orientation, pages, renderBlock, renderFooter, renderHeader, reportTitle }) {
+/** 실제 pagination과 renderer를 재사용하고 포털에도 테마를 전달해 방향키·PageUp/PageDown으로 탐색한다. */
+export function ReportPresentation({ orientation, pages, renderBlock, renderFooter, renderHeader, reportTitle, theme }) {
   const [open, setOpen] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const closeRef = useRef(null);
@@ -37,7 +37,8 @@ export function ReportPresentation({ orientation, pages, renderBlock, renderFoot
     };
   }, [close, move, open]);
 
-  const overlay = open && <div className="report-presentation" role="dialog" aria-modal="true" aria-label={`${reportTitle || "보고서"} 발표`}>
+  const overlayThemeClass = theme === "dark" ? "ppt-theme theme-dark" : "theme-light";
+  const overlay = open && <div className={`report-presentation ${overlayThemeClass}`} role="dialog" aria-modal="true" aria-label={`${reportTitle || "보고서"} 발표`}>
       <header><div><small>ANSWERVICE · GOVERNED REPORT</small><b>{reportTitle || "보고서"}</b></div><nav><span>{pageIndex + 1} / {pageCount}</span><button type="button" onClick={() => move(-1)} disabled={pageIndex === 0} aria-label="이전 페이지"><ChevronLeft size={18} /></button><button type="button" onClick={() => move(1)} disabled={pageIndex >= pageCount - 1} aria-label="다음 페이지"><ChevronRight size={18} /></button><button ref={closeRef} type="button" onClick={close} aria-label="발표 닫기"><X size={18} /></button></nav></header>
       <main>
         <ReportPageCanvas

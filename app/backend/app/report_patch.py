@@ -19,6 +19,10 @@ _DEFAULT_HEIGHT = {
 }
 
 
+class ReportPatchNoChangesError(ValueError):
+    """검증된 patch가 현재 Report와 의미상 같아 Revision이 불필요함을 나타낸다."""
+
+
 @dataclass(frozen=True, slots=True)
 class VerifiedArtifactBinding:
     """상류 repository가 owner·request·approval·query로 검증한 Artifact 참조를 고정한다."""
@@ -146,12 +150,15 @@ def apply_report_assistant_patch(
             or previous_definition.version != definition.version - 1
         ):
             raise ValueError("복원할 직전 Report revision을 찾을 수 없습니다.")
-        return definition.replace_blocks(
+        restored = definition.replace_blocks(
             previous_definition.blocks,
             title=previous_definition.title,
             orientation=previous_definition.orientation,
             currency_display_unit=previous_definition.currency_display_unit,
         )
+        if restored == definition:
+            raise ReportPatchNoChangesError("Report patch가 실제 변경을 만들지 않습니다.")
+        return restored
     blocks = list(definition.blocks)
     title = definition.title
     latest_insert_for_anchor: dict[str, str] = {}
@@ -203,8 +210,21 @@ def apply_report_assistant_patch(
             )
             if index is None:
                 raise ValueError("Report patch의 이동 대상 block을 찾을 수 없습니다.")
-            source = blocks.pop(index)
             width = 6 if operation.width == "half" else 12
+            source = blocks[index]
+            ordered_ids = [
+                item.block_id
+                for item in sorted(blocks, key=lambda item: (item.y, item.x, item.block_id))
+            ]
+            ordered_index = ordered_ids.index(source.block_id)
+            current_anchor = ordered_ids[ordered_index - 1] if ordered_index else None
+            already_at_end = ordered_index == len(ordered_ids) - 1
+            if source.w == width and (
+                (operation.after_block_id is None and already_at_end)
+                or operation.after_block_id == current_anchor
+            ):
+                continue
+            blocks.pop(index)
             _insert_block(
                 blocks,
                 ReportBlock(
@@ -288,4 +308,7 @@ def apply_report_assistant_patch(
         )
         if requested_anchor is not None:
             latest_insert_for_anchor[requested_anchor] = new_block_id
-    return definition.replace_blocks(tuple(blocks), title=title)
+    patched = definition.replace_blocks(tuple(blocks), title=title)
+    if patched == definition:
+        raise ReportPatchNoChangesError("Report patch가 실제 변경을 만들지 않습니다.")
+    return patched

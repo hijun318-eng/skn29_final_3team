@@ -42,6 +42,7 @@ const ASSISTANT_PHASES: readonly ReportAssistantPhase[] = [
 const ASSISTANT_REQUIRED_ACTIONS = [
   "NONE", "RETRY", "REFRESH", "REAUTHENTICATE", "REOPEN_LATEST_REPORT", "CONTACT_ADMIN",
 ] as const;
+const ASSISTANT_PATCH_IMPACT_CATEGORIES = ["CONTENT", "LAYOUT", "DESTRUCTIVE"] as const;
 
 function assertAssistantSession(
   session: ReportAssistantSessionResponse,
@@ -86,6 +87,12 @@ function assertAssistantSession(
       || item.operation !== session.patch_operations[index]
       || typeof item.target !== "string"
       || !item.target.trim()
+      || !ASSISTANT_PATCH_IMPACT_CATEGORIES.includes(item.impact_category)
+      || typeof item.evidence_required !== "boolean"
+      || !Number.isInteger(item.evidence_count)
+      || item.evidence_count < 0
+      || item.evidence_count > 16
+      || item.evidence_required !== (item.evidence_count > 0)
     ))
     || approvedOperationIndexes.some((index, position, indexes) => (
       !Number.isInteger(index)

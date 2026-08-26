@@ -97,6 +97,9 @@ class ReportBlock:
             raise ValueError("Report block은 block_id와 title이 필요합니다.")
         object.__setattr__(self, "type", BlockType(self.type))
         object.__setattr__(self, "w", self.columns if self.w is None else self.w)
+        # Evidence aliases are a set-like lineage binding; canonical order prevents
+        # the model from creating a no-op Revision by merely reordering aliases.
+        object.__setattr__(self, "evidence_refs", tuple(sorted(self.evidence_refs)))
         if not 1 <= self.columns <= 12:
             raise ValueError("Report block columns는 1~12 범위여야 합니다.")
         if self.columns != self.w:

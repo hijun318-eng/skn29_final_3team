@@ -46,7 +46,7 @@ assert.equal(templateBlock.type, "text");
 
 const resized = resizeDraftBlocks(sourceBlocks, "block-a", 6, 7, "landscape");
 assert.ok(resized);
-assert.equal(resized.blocks[0].w, 12);
+assert.equal(resized.blocks[0].w, 6);
 assert.equal(resized.blocks[0].h, 7);
 assert.match(resized.announcement, /높이 7단/);
 assert.deepEqual(readDraftBlockSettings({ ...sourceBlocks[0], type: "chart", content: "{" }), {});

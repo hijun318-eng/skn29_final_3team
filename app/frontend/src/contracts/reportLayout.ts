@@ -130,12 +130,6 @@ export function compactDraftLayout(blocks: readonly ReportBlock[]): readonly Dra
   let rowHeight = 0;
 
   const finishRow = () => {
-    if (row.length && rowX < 12) {
-      const lastIndex = row.length - 1;
-      const last = row[lastIndex];
-      const width = last.w + (12 - rowX);
-      row[lastIndex] = { ...last, columns: width, w: width };
-    }
     for (const block of row) resolved.set(block.id, { ...block, h: rowHeight });
     rowY += rowHeight;
     row = [];

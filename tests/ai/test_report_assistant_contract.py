@@ -3,6 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, schema_definition, validate_payload
 
 
@@ -422,6 +423,22 @@ class ReportAssistantContractTests(unittest.TestCase):
         too_long["history"] *= 7
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_request", too_long)
+
+    def test_turn_prompt_prioritizes_new_intent_and_whole_artifact_operation(self):
+        """현재 새 지시와 단일 Artifact 묶음은 과거 clarification·분해 operation보다 우선한다."""
+
+        prompt = get_prompt("report.assistant.turn")
+        self.assertEqual("PROMPT-v1.8.5", prompt.version)
+        self.assertIn("current instruction is authoritative", prompt.text)
+        self.assertIn("ignore any unresolved earlier clarification", prompt.text)
+        self.assertIn("exactly one add_artifact_view operation with view artifact", prompt.text)
+        self.assertIn("Account for every requested effect", prompt.text)
+        self.assertIn("never silently omit the unsupported part", prompt.text)
+        self.assertIn("a block is positioned relative to itself", prompt.text)
+        self.assertIn("preserve and remove the same report element", prompt.text)
+        self.assertIn("do not treat preserve or stay unchanged as a no-op", prompt.text)
+        self.assertIn("Evidence refs and their ordering are server-managed", prompt.text)
+        self.assertIn("never reinterpret it as block movement", prompt.text)
 
     def test_turn_serving_schema_keeps_analysis_plan_nullable(self):
         """OpenAI strict 변환 뒤에도 existing_artifact가 null 계획을 반환할 수 있어야 한다."""

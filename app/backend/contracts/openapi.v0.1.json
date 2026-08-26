@@ -2858,6 +2858,25 @@
             ],
             "title": "Before"
           },
+          "evidence_count": {
+            "maximum": 16.0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "impact_category": {
+            "enum": [
+              "CONTENT",
+              "LAYOUT",
+              "DESTRUCTIVE"
+            ],
+            "title": "Impact Category",
+            "type": "string"
+          },
           "index": {
             "maximum": 11.0,
             "minimum": 0.0,
@@ -2888,7 +2907,10 @@
         "required": [
           "index",
           "operation",
-          "target"
+          "target",
+          "impact_category",
+          "evidence_required",
+          "evidence_count"
         ],
         "title": "ReportAssistantPatchPreviewItem",
         "type": "object"

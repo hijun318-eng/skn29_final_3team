@@ -298,10 +298,10 @@ assert.deepEqual(reorderedBlocks.map((block) => [block.x, block.y]), [[0, 0], [6
 
 const compactlyPlacedBlocks = placeDraftBlock(reorderedBlocks, "right", 6, 3);
 assert.deepEqual(compactlyPlacedBlocks.find((block) => block.id === "right"), {
-  id: "right", title: "오른쪽", columns: 12, type: "text", content: "오른쪽", x: 0, y: 2, w: 12, h: 2,
+  id: "right", title: "오른쪽", columns: 6, type: "text", content: "오른쪽", x: 0, y: 2, w: 6, h: 2,
 });
 const collisionAvoidedBlocks = placeDraftBlock(compactlyPlacedBlocks, "left", 6, 3);
-assert.deepEqual(collisionAvoidedBlocks.map((block) => [block.x, block.y]), [[0, 0], [6, 0]]);
+assert.deepEqual(collisionAvoidedBlocks.map((block) => [block.x, block.y]), [[0, 0], [0, 2]]);
 
 const movedOutOfPair = placeDraftBlock([
   { id: "pair-left", title: "Left", columns: 6, type: "text", x: 0, y: 0, w: 6, h: 4 },
@@ -333,7 +333,7 @@ const filledRows = compactDraftLayout([
   { id: "summary", title: "요약", columns: 6, type: "text", x: 0, y: 0, w: 6, h: 4 },
   { id: "table", title: "표", columns: 12, type: "table", x: 0, y: 4, w: 12, h: 5 },
 ]);
-assert.deepEqual(filledRows.map((block) => [block.x, block.y, block.w]), [[0, 0, 12], [0, 4, 12]]);
+assert.deepEqual(filledRows.map((block) => [block.x, block.y, block.w]), [[0, 0, 6], [0, 4, 12]]);
 
 const invariantLayout = compactDraftLayout([
   { id: "a", title: "A", columns: 4, type: "text", x: 8, y: 30, w: 4, h: 4 },
@@ -653,6 +653,7 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     patch_preview: [{
       index: 0, operation: "set_report_title", target: "보고서 제목",
       before: "기존 제목", after: "새 제목",
+      impact_category: "CONTENT", evidence_required: false, evidence_count: 0,
     }],
     approved_operation_indexes: patchApproval.approved ? patchApproval.operation_indexes || [0] : [],
     result_revision: patchApproval.approved ? 3 : null,
@@ -684,6 +685,7 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
       patch_preview: [{
         index: 0, operation: "set_report_title", target: "보고서 제목",
         before: "기존 제목", after: "새 제목",
+        impact_category: "CONTENT", evidence_required: false, evidence_count: 0,
       }],
     },
   } : session)), { status: 200, headers: { "Content-Type": "application/json" } });

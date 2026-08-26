@@ -475,6 +475,17 @@ class ReportAssistantPatchPreviewItem(ReportContractModel):
     target: str = Field(min_length=1, max_length=255)
     before: str | None = Field(default=None, max_length=4000)
     after: str | None = Field(default=None, max_length=4000)
+    impact_category: Literal["CONTENT", "LAYOUT", "DESTRUCTIVE"]
+    evidence_required: bool
+    evidence_count: int = Field(ge=0, le=16)
+
+    @model_validator(mode="after")
+    def bind_evidence_requirement(self) -> "ReportAssistantPatchPreviewItem":
+        """근거 필요 operation은 하나 이상, 구조 operation은 0개의 공개 근거 개수만 허용한다."""
+
+        if self.evidence_required != (self.evidence_count > 0):
+            raise ValueError("patch 영향의 근거 필요 여부와 근거 개수가 일치하지 않습니다.")
+        return self
 
 
 class ReportAssistantSessionResponse(ReportContractModel):

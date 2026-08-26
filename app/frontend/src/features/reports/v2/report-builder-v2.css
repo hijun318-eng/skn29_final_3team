@@ -223,6 +223,10 @@
 [data-report-builder="v2"] .report-assistant-receipt span,[data-report-builder="v2"] .report-assistant-receipt b,[data-report-builder="v2"] .report-assistant-receipt small{display:block}
 [data-report-builder="v2"] .report-assistant-receipt b{font-size:9px}
 [data-report-builder="v2"] .report-assistant-receipt small{margin-top:3px;color:#5cae76;font-size:7px;line-height:1.4}
+[data-report-builder="v2"] .report-assistant-cancel{min-height:28px;padding:0 10px;display:inline-flex;align-items:center;align-self:flex-start;gap:5px;color:#9db0c6;border:1px solid #2b3d54;border-radius:14px;background:#0d1622;font-size:8px;font-weight:700}
+[data-report-builder="v2"] .report-assistant-cancel>svg{color:#d27f89}
+[data-report-builder="v2"] .report-assistant-cancel:hover:not(:disabled){color:#eaf3ff;border-color:#4f83c3;background:#142b49}
+[data-report-builder="v2"] .report-assistant-cancel:disabled{cursor:not-allowed;opacity:.38}
 [data-report-builder="v2"] .report-assistant-quick{padding:0 12px 10px;display:flex;gap:5px;overflow-x:auto;scrollbar-width:thin}
 [data-report-builder="v2"] .report-assistant-quick button{min-height:28px;padding:0 9px;flex:none;color:#9db0c6;border:1px solid #2b3d54;border-radius:14px;background:#0d1622;font-size:8px;white-space:nowrap}
 [data-report-builder="v2"] .report-assistant-quick button:hover:not(:disabled){color:#eaf3ff;border-color:#4f83c3;background:#142b49}
@@ -244,6 +248,9 @@
 [data-report-builder="v2"] .report-assistant-approval dl>div{padding:7px;border:1px solid rgba(239,189,92,.14);border-radius:5px;background:rgba(0,0,0,.13)}
 [data-report-builder="v2"] .report-assistant-approval dt{color:#a78d5b;font-size:7px}
 [data-report-builder="v2"] .report-assistant-approval dd{margin:3px 0 0;color:#e5d8be;font-size:8px;line-height:1.45}
+[data-report-builder="v2"] .report-assistant-patch-impact .warning{border-color:#8b4a3c;background:#291510}
+[data-report-builder="v2"] .report-assistant-patch-impact .warning dt{color:#ff9a82}
+[data-report-builder="v2"] .report-assistant-patch-impact .warning dd{color:#ffd0c4}
 [data-report-builder="v2"] .report-assistant-patch-selection{margin-top:8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px}
 [data-report-builder="v2"] .report-assistant-patch-selection>span{min-width:0;margin-right:auto;color:#b7985d;font-size:7px}
 [data-report-builder="v2"] .report-assistant-patch-selection>button{min-height:26px;padding:0 7px}
@@ -344,6 +351,9 @@
 .theme-light [data-report-builder="v2"] .report-assistant-message.user p{color:#fff;border-color:#176fe5;background:#176fe5}
 .theme-light [data-report-builder="v2"] .report-assistant-receipt{color:#187a3b;border-color:#b9dfc4;background:#eef9f1}
 .theme-light [data-report-builder="v2"] .report-assistant-receipt small{color:#4f8e62}
+.theme-light [data-report-builder="v2"] .report-assistant-cancel{color:#4d6680;border-color:#cdd9e5;background:#fff}
+.theme-light [data-report-builder="v2"] .report-assistant-cancel>svg{color:#b85b68}
+.theme-light [data-report-builder="v2"] .report-assistant-cancel:hover:not(:disabled){color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
 .theme-light [data-report-builder="v2"] .report-assistant-quick button{color:#4d6680;border-color:#cdd9e5;background:#fff}
 .theme-light [data-report-builder="v2"] .report-assistant-quick button:hover:not(:disabled){color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
 .theme-light [data-report-builder="v2"] .report-assistant-composer{border-color:#d8e2ed;background:#f2f6fa}
@@ -359,6 +369,9 @@
 .theme-light [data-report-builder="v2"] .report-assistant-patch-item{border-color:#eddbb5;background:#fffdf7}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-items b{color:#55472f}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-items small{color:#76654a}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-impact .warning{border-color:#dda998;background:#fff0eb}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-impact .warning dt{color:#a43a27}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-impact .warning dd{color:#733226}
 .theme-light [data-report-builder="v2"] .report-assistant-approval button{color:#735c31;border-color:#ddc390;background:#fff}
 
 [data-report-builder="v2"]:fullscreen{width:100vw;height:100vh;background:#070b11}

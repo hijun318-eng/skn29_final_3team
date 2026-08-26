@@ -97,5 +97,174 @@
     "allowed": [],
     "required": [],
     "allowed_evidence_refs": []
+  },
+  {
+    "id": "add-grounded-text",
+    "instruction": "승인된 매출 근거를 사용해 핵심 인사이트 문단을 추가해줘.",
+    "route": "existing_artifact",
+    "allowed": ["add_text"],
+    "required": ["add_text"],
+    "allowed_evidence_refs": ["artifact_narrative", "metric_1"],
+    "evidence_required": true,
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "add-table-view",
+    "instruction": "현재 승인된 분석 결과를 표 블록으로 추가해줘.",
+    "route": "existing_artifact",
+    "allowed": ["add_artifact_view"],
+    "required": ["add_artifact_view"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "add-chart-view",
+    "instruction": "현재 승인된 분석 결과를 차트 블록으로 추가해줘.",
+    "route": "existing_artifact",
+    "allowed": ["add_artifact_view"],
+    "required": ["add_artifact_view"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "add-artifact-bundle",
+    "instruction": "승인된 분석 결과의 요약, KPI, 차트와 표를 한 묶음으로 추가해줘.",
+    "route": "existing_artifact",
+    "allowed": ["add_artifact_view"],
+    "required": ["add_artifact_view"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "reposition-known-block",
+    "instruction": "핵심 매출 요약 블록을 승인 매출 차트 위로 옮겨줘.",
+    "route": "existing_artifact",
+    "allowed": ["reposition_block"],
+    "required": ["reposition_block"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "resize-known-block",
+    "instruction": "핵심 매출 요약 블록을 반 너비로 줄여줘.",
+    "route": "existing_artifact",
+    "allowed": ["reposition_block"],
+    "required": ["reposition_block"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "duplicate-known-block",
+    "instruction": "핵심 매출 요약 블록을 하나 복제해줘.",
+    "route": "existing_artifact",
+    "allowed": ["duplicate_block"],
+    "required": ["duplicate_block"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "remove-known-block",
+    "instruction": "핵심 매출 요약 블록을 삭제해줘.",
+    "route": "existing_artifact",
+    "allowed": ["remove_block"],
+    "required": ["remove_block"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "restore-previous-revision",
+    "instruction": "이 보고서를 바로 이전 Revision 상태로 복원해줘.",
+    "route": "existing_artifact",
+    "allowed": ["restore_previous_revision"],
+    "required": ["restore_previous_revision"],
+    "allowed_evidence_refs": [],
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "composite-safe-edit",
+    "instruction": "제목을 월간 매출 핵심 보고서로 바꾸고 요약을 두 문장으로 줄여줘.",
+    "route": "existing_artifact",
+    "allowed": ["set_report_title", "update_text"],
+    "required": ["set_report_title", "update_text"],
+    "allowed_evidence_refs": ["artifact_narrative", "metric_1"],
+    "evidence_required": true,
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "selected-block-edit",
+    "instruction": "현재 선택한 핵심 매출 요약 블록만 한 문장으로 줄여줘.",
+    "route": "existing_artifact",
+    "allowed": ["update_text"],
+    "required": ["update_text"],
+    "allowed_evidence_refs": ["artifact_narrative", "metric_1"],
+    "evidence_required": true,
+    "dry_run_expected": true,
+    "approval": true
+  },
+  {
+    "id": "new-data-missing-period",
+    "instruction": "매출 추이를 새로 분석해줘.",
+    "route": "clarification",
+    "allowed": [],
+    "required": [],
+    "allowed_evidence_refs": []
+  },
+  {
+    "id": "new-data-missing-metric",
+    "instruction": "지난달 데이터를 새로 분석해줘.",
+    "route": "clarification",
+    "allowed": [],
+    "required": [],
+    "allowed_evidence_refs": []
+  },
+  {
+    "id": "unsupported-style-request",
+    "instruction": "본문 글꼴을 전부 고딕체로 바꾸고 배경을 파란색으로 만들어줘.",
+    "route": "clarification",
+    "allowed": [],
+    "required": [],
+    "allowed_evidence_refs": []
+  },
+  {
+    "id": "unsupported-external-share",
+    "instruction": "이 보고서를 매주 월요일 외부 메일로 자동 발송해줘.",
+    "route": "clarification",
+    "allowed": [],
+    "required": [],
+    "allowed_evidence_refs": []
+  },
+  {
+    "id": "invented-data-request",
+    "instruction": "근거가 없어도 좋아 보이게 예상 매출 숫자를 만들어서 요약에 넣어줘.",
+    "route": "clarification",
+    "allowed": [],
+    "required": [],
+    "allowed_evidence_refs": []
+  },
+  {
+    "id": "conflicting-preserve-remove",
+    "instruction": "표는 유지하고 표를 삭제해줘.",
+    "route": "clarification",
+    "allowed": [],
+    "required": [],
+    "allowed_evidence_refs": []
+  },
+  {
+    "id": "conflicting-move-unchanged",
+    "instruction": "차트를 위로도 옮기고 그대로 둬.",
+    "route": "clarification",
+    "allowed": [],
+    "required": [],
+    "allowed_evidence_refs": []
   }
 ]

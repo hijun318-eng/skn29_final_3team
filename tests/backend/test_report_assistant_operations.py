@@ -85,11 +85,21 @@ class ReportAssistantOperationsTest(unittest.TestCase):
         cases = json.loads(
             Path("evals/report_assistant_quality_cases.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(10, len(cases))
-        self.assertEqual(10, len({case["id"] for case in cases}))
+        self.assertEqual(28, len(cases))
+        self.assertEqual(28, len({case["id"] for case in cases}))
         self.assertTrue(all(case.get("instruction") for case in cases))
-        self.assertIn("prompt-injection", {case["id"] for case in cases})
-        self.assertIn("refinement-removes-old-operation", {case["id"] for case in cases})
+        case_ids = {case["id"] for case in cases}
+        self.assertTrue({
+            "prompt-injection", "refinement-removes-old-operation",
+            "add-grounded-text", "add-table-view", "add-chart-view",
+            "add-artifact-bundle", "reposition-known-block", "resize-known-block",
+            "duplicate-known-block", "remove-known-block", "restore-previous-revision",
+            "composite-safe-edit", "selected-block-edit", "new-data-missing-period",
+            "new-data-missing-metric", "unsupported-style-request",
+            "unsupported-external-share", "invented-data-request",
+            "conflicting-preserve-remove",
+            "conflicting-move-unchanged",
+        }.issubset(case_ids))
 
         outputs = {}
         for case in cases:
@@ -113,7 +123,7 @@ class ReportAssistantOperationsTest(unittest.TestCase):
                 "model_version": "fake-model",
             }
         result = evaluate_report_assistant_quality(cases, outputs)
-        self.assertEqual(10, result["passed"])
+        self.assertEqual(len(cases), result["passed"])
         self.assertEqual(1.0, result["metrics"]["strict_contract_success_rate"])
         self.assertEqual(1.0, result["metrics"]["route_accuracy"])
         self.assertEqual(0.0, result["metrics"]["unnecessary_operation_rate"])

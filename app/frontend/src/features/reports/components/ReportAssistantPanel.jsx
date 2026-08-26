@@ -42,6 +42,12 @@ const PATCH_OPERATION_LABEL = {
   restore_previous_revision: "직전 Revision 복원",
 };
 
+const PATCH_IMPACT_LABEL = {
+  CONTENT: "내용 변경",
+  LAYOUT: "구성 변경",
+  DESTRUCTIVE: "삭제·복원 포함",
+};
+
 const REVIEW_CATEGORY_LABEL = {
   duplicate_text: "중복 문장",
   verbose_summary: "긴 요약",
@@ -84,7 +90,7 @@ function AssistantWorkflowStatus({ status, errorCode, requiredAction, retryable,
 function AssistantCancelAction({ status, onCancel, pending }) {
   if (["ready", "waiting_patch_approval", "waiting_approval"].includes(status)) {
     return <button type="button" className="report-assistant-cancel" onClick={onCancel} disabled={pending}>
-      <X size={12} aria-hidden="true" />Assistant 요청 취소
+      <X size={12} aria-hidden="true" />요청 취소
     </button>;
   }
   if (["running_data_agent", "waiting_artifact", "saving_revision"].includes(status)) {
@@ -161,6 +167,10 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
   if (!preview) return null;
   const waiting = status === "waiting_patch_approval";
   const allIndexes = preview.items.map((item) => item.index);
+  const selectedItems = preview.items.filter((item) => selectedIndexes.includes(item.index));
+  const impactCategories = [...new Set(selectedItems.map((item) => item.impact_category))];
+  const evidenceRequired = selectedItems.filter((item) => item.evidence_required).length;
+  const evidenceCited = selectedItems.filter((item) => item.evidence_required && item.evidence_count > 0).length;
   const toggleOperation = (index) => setSelectedIndexes((current) => (
     current.includes(index)
       ? current.filter((item) => item !== index)
@@ -173,6 +183,14 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
       <div><dt>적용 작업</dt><dd>{preview.operations.map((operation) => PATCH_OPERATION_LABEL[operation] || operation).join(" · ")}</dd></div>
       {preview.evidenceRefs?.length
         ? <div><dt>사용 근거</dt><dd>{preview.evidenceRefs.map(reportEvidenceLabel).join(" · ")}</dd></div>
+        : null}
+    </dl>
+    <dl className="report-assistant-patch-impact" aria-label="선택한 변경 영향">
+      <div><dt>변경 영향</dt><dd>{selectedItems.length}개 작업 · {impactCategories.map((category) => PATCH_IMPACT_LABEL[category]).join(" · ") || "선택 없음"}</dd></div>
+      <div><dt>근거 연결</dt><dd>{evidenceRequired ? `${evidenceCited}/${evidenceRequired}개 연결` : "필요 없음"}</dd></div>
+      <div><dt>복구</dt><dd>새 Revision으로 저장되어 이전 버전을 유지합니다.</dd></div>
+      {impactCategories.includes("DESTRUCTIVE")
+        ? <div className="warning"><dt>주의</dt><dd>선택 항목에 블록 삭제 또는 이전 Revision 복원이 포함됩니다.</dd></div>
         : null}
     </dl>
     <div className="report-assistant-patch-selection" role="group" aria-label="변경 선택 도구">

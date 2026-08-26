@@ -540,3 +540,87 @@ build, OpenAPI·문서화·아키텍처·repository integrity·compileall·`git 
 비교하지 않았으므로 prompt version과 model release는 올리지 않았다. 별도 비용 승인 후 bounded
 baseline/candidate 평가가 개선 기준을 만족할 때만 prompt release를 변경한다. 이 미실행 항목을
 fake 평가 통과 또는 live GPT 품질 개선 완료로 표현하지 않는다.
+
+## 2026-08-26 GPT 고도화 15차: 승인 전 변경 영향 설명
+
+- 기존 typed patch에서 operation별 영향을 `CONTENT`, `LAYOUT`, `DESTRUCTIVE`로 서버가 결정해
+  patch preview에 포함한다. 모델과 Client는 영향 분류의 권위가 아니다.
+- 근거가 필요한 본문 생성·수정 여부와 연결된 evidence ref 개수를 서버가 함께 반환한다. 필요
+  여부와 개수가 모순되면 Backend와 Client가 모두 fail-closed한다.
+- 승인 카드에서 현재 선택한 operation만 사용해 작업 수, 영향 종류, 근거 연결 비율을 즉시 다시
+  표시한다. 삭제 또는 이전 Revision 복원이 선택되면 별도 주의 문구를 표시한다.
+- 모든 승인은 새 CAS Revision으로 저장되어 이전 버전을 유지한다는 복구 경계를 함께 안내한다.
+- 기존 migration 40의 preview JSON에 새 필드가 없어도 저장된 typed patch에서 영향값을 재계산하므로
+  migration을 추가하거나 기존 row를 갱신하지 않는다.
+- 내부 block ID, Artifact ID, query ID, checksum, SQL은 영향 응답과 Browser에 추가하지 않았다.
+- 추가 GPT 호출, prompt/model release 변경, 관리자 운영 UI, AnalysisController, Trino와 DataHub
+  변경은 없다.
+
+이번 단계의 검증은 unit/contract와 Frontend build 범위다. 실제 GPT 승인 카드를 새로 생성하는
+유료 Browser E2E는 실행하지 않았으며, 14차 baseline/candidate 실제 모델 비교도 계속 별도 Gate다.
+
+## 2026-08-26 시나리오 발견 결함 수정
+
+- 단독 반 너비 block을 Frontend가 전체 너비로 다시 늘리던 layout compaction을 제거해 서버의
+  6/12 폭을 Canvas와 표 내부가 그대로 따르게 했다.
+- typed patch 적용 결과가 원본 definition과 같으면 승인 대기와 CAS Revision 전에 차단해 동일
+  제목·본문·복원이 의미 없는 새 Revision을 만들지 못하게 했다.
+- Artifact 전체를 하나의 block으로 요청하면 정확히 한 `add_artifact_view(view=artifact)`를
+  반환하고, 완전한 현재 지시는 과거 unresolved clarification보다 우선하도록 공통 prompt를
+  `PROMPT-v1.8.2`로 갱신했다.
+- prompt SHA-256을 release manifest에 다시 결속하고 model release를
+  `MODEL-RELEASE-v1.34.0`으로 올렸다.
+- 실제 GPT·격리 PostgreSQL·Browser에서 반 너비 `span 6`, Artifact 묶음 operation 한 개,
+  clarification 뒤 새 제목 변경안, no-op Revision 0건을 재확인했다.
+- Backend·AI 128개, 별도 model contract 포함 41개, Frontend 24개, production build와 전체 정적
+  검사가 통과했다. Trino·DataHub live `new_data` E2E는 이번 수정 범위가 아니며 계속 미완료다.
+
+## 2026-08-26 추가 결함 탐색과 보강
+
+- 실제 Browser에서 공백 입력, 중복 클릭, pending 변경안 새로고침 복구, 자기 자신 기준 이동,
+  복원과 일반 편집 혼합, 외부 발송 혼합, 내부 식별자 유도, 근거 메타데이터 직접 변경을 검증했다.
+- 근거 alias 순서만 달라 동일 본문이 새 변경으로 처리되는 문제를 `ReportBlock` 정규화로 차단했다.
+- 지원하지 않는 외부 작업을 조용히 생략한 채 일부 patch만 제안하지 못하도록 전체 지시 설명 의무를
+  prompt에 추가했다.
+- 자기 자신 기준 이동과 복원 혼합은 invalid patch/model failure 대신 clarification으로 닫는다.
+- prompt를 `PROMPT-v1.8.4`, release를 `MODEL-RELEASE-v1.36.0`으로 갱신했다.
+- 근거 메타데이터 순서 직접 변경은 승인·Revision 없이 닫혔지만 안내가 block 이동으로 표현되는
+  경미한 대화 UX는 남아 있다. 질문별 production 분기를 추가하지 않고 후속 eval 대상으로 남긴다.
+- Backend·AI·migration 134개, Frontend 24개, build와 전체 정적 검사가 통과했다. Report는 실제
+  Browser 검증 전후 v23으로 유지됐다.
+
+## 2026-08-26 시각적 no-op Revision과 오류 분류 보강
+
+- Backend가 비연속 원시 `y` 좌표를 재정돈하면서 화면상 같은 마지막 block 배치를 새 변경으로
+  판단하던 문제를 block 순서와 너비 기준의 의미 비교로 수정했다.
+- operation 미리보기는 Frontend 압축 layout과 어긋나는 원시 행 번호 대신 앞 block 기준 상대
+  위치를 표시한다.
+- 현재와 같은 제목·본문·배치 patch는 session 실패나 502가 아니라 `ready` clarification으로
+  기록해 이미 반영된 상태임을 안내한다.
+- 여러 operation 가운데 no-op 항목만 선택 승인하면 DB claim과 Revision 저장 전에 409로 차단해
+  기존 승인 대기 session을 보존한다.
+- 실제 GPT·격리 PostgreSQL·Browser에서 같은 반 너비와 같은 제목 요청이 승인 카드·Revision 없이
+  안내로 끝나는 것을 확인했다. 수정 전 재현 과정에서 격리 Report v24가 한 번 생성됐고 수정 후
+  추가 Revision은 없었다.
+- Backend·AI·migration 134개, Frontend 24개, production build와 전체 정적 검사가 통과했다.
+  Trino·DataHub `new_data` live E2E는 실행하지 않았다.
+
+## 2026-08-26 상충 지시·선택 승인 오류 분류 보강
+
+- 부분 승인 dry-run에서 사용자가 선택한 operation 조합이 충돌할 때 `502` 서버 장애가 아니라
+  `409 REPORT_ASSISTANT_PATCH_INVALID`로 반환하도록 수정했다. DB claim과 Revision 저장 전 차단은
+  그대로 유지한다.
+- 실제 GPT가 `유지+삭제`, `이동+그대로 유지` 같은 상충 지시에서 보존 효과를 no-op으로 버리고 반대
+  operation만 제안하는 문제를 Browser에서 재현했다.
+- 공통 prompt가 같은 report element의 보존과 제거를 함께 요구하거나 보존 지시를 no-op으로 해석해야
+  성립하는 요청을 partial patch로 만들지 않고 clarification으로 닫도록 보강했다.
+- 질문별 production 분기나 고정 응답은 추가하지 않았고 품질 평가셋에 일반 상충 사례 2개만 추가했다.
+- prompt를 `PROMPT-v1.8.5`, model release를 `MODEL-RELEASE-v1.37.0`으로 올리고 새 prompt hash를
+  active release manifest에 결속했다.
+- 실제 GPT는 9회 시도해 8회 성공·1회 typed model failure였다. 수정 후 실제 Browser에서 유지+삭제는
+  효과 선택을, 이동+그대로는 이동 기준을 다시 물었고 승인 카드·operation·Revision을 만들지 않았다.
+  session 취소와 새로고침 뒤 Report는 v24, 4개 block으로 복구됐다.
+- 360px에서 상단 편집 명령의 Preview·저장이 가로 scroll 뒤에 있으면서 영역 이름과 키보드 초점이
+  없던 P3 접근성 결함을 기존 container의 `region`·스크롤 안내 label·`tabIndex=0`으로 최소 수정했다.
+- 새 prompt의 deterministic contract·평가와 Backend·AI 134개, Frontend 24개, build 및 전체 정적
+  검사가 통과했다. Trino·DataHub `new_data` live E2E는 실행하지 않았다.

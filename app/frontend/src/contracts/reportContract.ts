@@ -299,6 +299,9 @@ export interface ReportAssistantPatchPreviewItem {
   readonly target: string;
   readonly before: string | null;
   readonly after: string | null;
+  readonly impact_category: "CONTENT" | "LAYOUT" | "DESTRUCTIVE";
+  readonly evidence_required: boolean;
+  readonly evidence_count: number;
 }
 
 /** 대화형 Assistant 세션의 서버 권위 상태 계약이다. */

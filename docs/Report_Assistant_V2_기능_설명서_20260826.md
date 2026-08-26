@@ -8,9 +8,9 @@
 
 - 저장소: `report-assistant-advanced`
 - 공유 브랜치: `seung`
-- 문서 확인 기준 커밋: `ed16f1fb` 이후 로컬 근거 영속화 변경
+- 문서 확인 기준: 공유 커밋 `1d4cf856`와 15차 변경 영향 표시 로컬 변경
 - 문서 기준일: 2026-08-26
-- 현재 작업 tree migration head: `20260826_39` (`seung` 마지막 공유 커밋은 `ed16f1fb`)
+- 현재 작업 tree migration head: `20260826_40`
 
 실제 구현 여부의 최종 권위는 현재 코드, OpenAPI, migration과 실행 결과다. 다른 브랜치에서
 migration 번호를 재배치했다면 번호가 아니라 revision graph와 실제 schema를 함께 확인한다.
@@ -44,6 +44,8 @@ Artifact와 현재 Report draft를 읽고 제한된 변경안을 생성하며, �
 19. 독립 patch operation 선택 승인과 동일 선택 멱등 처리
 20. `saving_revision` 새로고침 복구와 CAS Revision 저장 재개
 21. 부분 승인 operation의 삭제·수정·이동·anchor 충돌 검증
+22. 대기 session 취소와 실패 session의 새 session 안전 재시도
+23. 선택 operation의 내용·구성·삭제 영향, 근거 개수와 Revision 복구 안내
 
 ## 3. 구현 범위와 현재 판정
 
@@ -65,6 +67,8 @@ Artifact와 현재 Report draft를 읽고 제한된 변경안을 생성하며, �
 | patch 선택 승인 | 구현·contract/unit 확인 | 선택 인덱스 CAS·server dry-run·다른 중복 선택 차단 |
 | 중단된 Revision 저장 재개 | 구현·contract/unit 확인 | 기존 승인 API 재사용·선택 보존·CAS 중복 방지 |
 | operation 의존성 검증 | 구현·contract/unit 확인 | 삭제 target·anchor 충돌과 동일 대상 중복 변경 차단 |
+| 선택 변경 영향 표시 | 구현·contract/unit·로컬 Browser 확인 | 서버 분류를 선택 operation 기준으로 집계 |
+| 대기 요청 취소 | 구현·contract/unit·로컬 Browser 확인 | 실행·저장 전 phase만 취소하고 terminal 재호출 멱등 처리 |
 
 `model=ready`, 화면 렌더링 또는 fake 테스트만으로 전체 Agent E2E 완료라고 판정하지 않는다.
 
@@ -135,8 +139,8 @@ gateway, PostgreSQL repository와 `AnalysisController`를 서버 상태 머신�
 | `cancelled` | 취소 terminal 상태 | 입력을 자동 재실행하지 않음 |
 
 기존 Artifact 변경안과 새 데이터 계획을 사용자가 거절하면 감사 시각을 보존하고 `ready`로
-돌아간다. `cancelled` phase는 공개 계약에 존재하지만 현재 Report Assistant 전용 cancel API는
-없다.
+돌아간다. `ready`, `waiting_patch_approval`, `waiting_approval`에서는 전용 cancel API로 요청을
+종료할 수 있지만 분석 실행·Artifact 대기·Revision 저장 중인 작업을 강제로 중단하지 않는다.
 
 ## 7. 정상 사용자 흐름
 
@@ -229,6 +233,8 @@ new_data
 |---|---|---|---|
 | `POST` | `/reports/assistant/sessions` | definition/version/artifact | `ready` session |
 | `GET` | `/reports/assistant/sessions/{assistant_request_id}` | 없음 | 현재 서버 session |
+| `POST` | `/reports/assistant/sessions/{assistant_request_id}/cancel` | 없음 | 취소된 terminal session |
+| `POST` | `/reports/assistant/sessions/{assistant_request_id}/review` | 선택 block ID(선택) | 비저장 품질 검토 |
 | `POST` | `/reports/assistant/sessions/{assistant_request_id}/messages` | `instruction` | proposal + session |
 | `POST` | `/reports/assistant/sessions/{assistant_request_id}/patch-approval` | request ID + approved + 선택 operation | patch 결정 후 session |
 | `POST` | `/reports/assistant/sessions/{assistant_request_id}/approval` | request ID + approved | 분석 계획 결정 후 session |
@@ -298,14 +304,20 @@ new_data
       "operation": "update_text",
       "target": "핵심 요약",
       "before": "본문: 기존 요약",
-      "after": "본문: 두 문장 요약"
+      "after": "본문: 두 문장 요약",
+      "impact_category": "CONTENT",
+      "evidence_required": true,
+      "evidence_count": 1
     },
     {
       "index": 1,
       "operation": "reposition_block",
       "target": "매출 차트",
       "before": "12/12 폭 · 3행",
-      "after": "6/12 폭 · 보고서 끝"
+      "after": "6/12 폭 · 보고서 끝",
+      "impact_category": "LAYOUT",
+      "evidence_required": false,
+      "evidence_count": 0
     }
   ],
   "approved_operation_indexes": [],
@@ -421,6 +433,8 @@ Client 주요 파일:
 - `createAssistantSession`
 - `getAssistantSession`
 - `submitAssistantMessage`
+- `reviewAssistantReport`
+- `cancelAssistantSession`
 - `approveAssistantPatch` / `rejectAssistantPatch`
 - `approveAssistantPlan` / `rejectAssistantPlan`
 - `retryAssistantSession`
@@ -487,17 +501,16 @@ SQL, 사용자 지시 원문과 raw model response는 평가 레코드나 API에
 | `tests/frontend/contracts.test.mjs` | URL/body·phase·retry·UI 계약 |
 | `evals/report_assistant_quality_cases.json` | deterministic Assistant 품질 시나리오 |
 
-2026-08-26 현재 operation 의존성 검증까지 포함한 Backend·AI 관련 unittest 119개와
-Frontend test 24개 및 production build가 통과했다. 새 기능의 실제 GPT·PostgreSQL·Browser 검증은
-아직 실행하지 않았다. 이전
-기능의 실제 GPT와 격리 PostgreSQL 편집 E2E 및 Browser 승인·새로고침 복구는 확인한 상태다.
+2026-08-26 현재 15차 변경 영향 표시까지 포함한 Backend·AI 관련 unittest 131개와 Frontend test
+24개 및 production build가 통과했다. migration 40 기준 기존 Artifact 편집은 실제 GPT·격리
+PostgreSQL·Browser에서 부분 승인, CAS Revision, 저장 재개와 새로고침 복구까지 확인했다. 15차는
+신규 migration이나 GPT 호출 없이 기존 저장 patch를 서버가 분류하며 로컬 Browser에서 표시를
+확인했다. Trino·DataHub `new_data` live E2E는 이 결과에 포함하지 않는다.
 
 ## 17. 현재 제한과 다음 고도화
 
 ### 현재 제한
 
-- migration `20260826_39`·`20260826_40`의 실제 PostgreSQL 적용과 Canvas·부분 승인 새로고침 Browser
-  검증은 아직 남아 있다.
 - 대기 중인 session은 전용 API로 안전하게 취소할 수 있지만, 이미 실행·저장 중인 원격 작업을
   강제로 중단하는 worker-level cancellation은 지원하지 않는다.
 - `running_data_agent` 직후 process crash의 완전한 exactly-once 복구는 보장하지 않는다.
@@ -538,3 +551,130 @@ Frontend test 24개 및 production build가 통과했다. 새 기능의 실제 G
 Report Assistant V2는 GPT가 승인 Artifact와 현재 Report를 바탕으로 제한된 변경안을 만들고,
 서버가 owner·계약·Artifact lineage·Revision을 검증한 뒤 사용자가 승인한 경우에만 새 Report
 Revision으로 저장하며, 실패와 중복 요청도 서버 session 기준으로 안전하게 처리하는 기능이다.
+
+## 20. 사용자 요청 시나리오 카탈로그
+
+Report Assistant는 요청을 `clarification`, `existing_artifact`, `new_data` 중 하나로 분류한다.
+현재 로컬에서 끝까지 실행 가능한 범위는 승인된 기존 Artifact를 사용하는 편집이며, 새 데이터
+요청은 분석 계획과 승인 카드까지만 확인할 수 있다.
+
+### 20.1 기존 Artifact로 완료 가능한 편집
+
+| 사용자 의도 | 예시 요청 | 서버 operation 또는 결과 |
+|---|---|---|
+| 보고서 제목 변경 | `제목을 8월 매출 성과 보고서로 바꿔줘` | `set_report_title` |
+| 근거 기반 요약 추가 | `매출 핵심 내용을 두 문장으로 추가해줘` | `add_text` |
+| 기존 텍스트 수정 | `핵심 매출 요약을 한 문장으로 줄여줘` | `update_text` |
+| 텍스트 제목 수정 | `핵심 매출 요약 제목을 경영진 요약으로 바꿔줘` | `update_text` |
+| 표 추가 | `승인 매출 데이터를 표로 추가해줘` | `add_artifact_view(table)` |
+| 차트 추가 | `매출 결과를 차트로 추가해줘` | `add_artifact_view(chart)` |
+| Artifact 묶음 추가 | `분석 결과 전체를 보고서에 추가해줘` | `add_artifact_view(artifact)` |
+| 블록 이동 | `표를 차트 아래로 옮겨줘` | `reposition_block` |
+| 블록 폭 변경 | `표를 전체 너비로 바꿔줘` | `reposition_block(full)` |
+| 블록 복제 | `핵심 요약 블록을 복제해줘` | `duplicate_block` |
+| 블록 삭제 | `매출 표를 삭제해줘` | `remove_block` |
+| 직전 버전 복원 | `직전 저장 버전으로 되돌려줘` | `restore_previous_revision` 단독 실행 |
+| 복합 편집 | `제목을 바꾸고 요약을 줄인 뒤 표를 추가해줘` | 최대 12개 typed operation |
+| 선택 블록 편집 | 블록 선택 후 `이 내용을 두 문장으로 줄여줘` | 서버 검증 selected block 문맥 사용 |
+
+새 텍스트와 본문 변경은 현재 session의 승인 Artifact evidence alias를 하나 이상 인용해야 한다.
+배치 위치는 기존 block 뒤라는 상대 위치와 `half` 또는 `full` 폭만 허용하며 모델이 절대 grid
+좌표를 정하지 않는다.
+
+### 20.2 승인 전 변경안 재수정과 부분 승인
+
+`waiting_patch_approval`에서도 현재 `patch_request_id`를 함께 보내 변경안을 대화로 교체할 수
+있다. 예를 들어 `요약을 두 문장으로 줄이고 표를 추가해줘`라는 최초 제안 뒤 `표는 빼고 요약만
+한 문장으로 바꿔줘`라고 요청하면 이전 operation을 누적하지 않고 전체 대체 patch를 만든다.
+
+- 오래된 patch request ID는 GPT 호출 전에 `409`로 차단한다.
+- 각 operation의 변경 전·후와 `CONTENT`, `LAYOUT`, `DESTRUCTIVE` 영향을 표시한다.
+- 사용자는 여러 operation 중 일부만 선택해 승인할 수 있다.
+- 승인 전과 거절 시에는 Report definition과 Revision을 변경하지 않는다.
+- 동일 선택 승인을 다시 전송해도 Revision을 추가 생성하지 않는다.
+
+### 20.3 여러 승인 Artifact 종합
+
+대표 Artifact 한 개와 추가 Artifact 최대 네 개, 총 다섯 개를 한 session에 결속할 수 있다.
+모든 Artifact의 owner, 승인 상태, query lineage와 checksum을 서버가 확인하고 각각 안전한 alias를
+부여한다. GPT는 선택된 alias의 evidence만 사용해 종합 요약, 표·차트 또는 Artifact 묶음을 제안할
+수 있다. 하나라도 검증에 실패하면 전체 요청을 닫고 선택하지 않은 Artifact를 참조하지 않는다.
+
+### 20.4 비저장 품질 검토
+
+`보고서 품질 검토`는 Report와 Revision을 바꾸지 않고 최대 열 개의 finding을 반환한다.
+
+| Category | 검토 내용 |
+|---|---|
+| `duplicate_text` | 여러 블록의 중복 문장 |
+| `verbose_summary` | 지나치게 긴 요약 |
+| `title_mismatch` | 표·차트 내용과 맞지 않는 제목 |
+| `inconsistent_metric_expression` | 동일 지표의 불일치한 표현 |
+| `unsupported_claim` | Artifact 근거로 확인할 수 없는 단정 |
+
+finding의 수정 제안을 선택해 composer에 가져올 수 있지만 자동 실행·자동 승인·자동 저장은 하지
+않는다. 일반 변경안과 품질 검토 응답에는 현재 보고서 및 선택 block에 맞는 후속 요청을 최대 세
+개까지 포함할 수 있다.
+
+### 20.5 확인 질문으로 돌려보내는 요청
+
+기간, 지표, 차원, 대상 block 또는 표현 방식 중 필수 요소를 안전하게 하나로 정할 수 없으면
+`clarification`을 반환하고 `ready`를 유지한다.
+
+- `보기 좋게 바꿔줘`: 변경 대상과 방향이 불명확하다.
+- `매출을 추가해줘`: 요약·표·차트 중 원하는 표현이 불명확할 수 있다.
+- `이거 삭제해줘`: 선택 block이나 대화 문맥으로 대상을 확정할 수 없으면 확인한다.
+- `내용을 고쳐줘`: 어떤 내용과 방향인지 확인한다.
+
+### 20.6 새 데이터가 필요한 요청
+
+현재 Artifact에 없는 기간·지표·차원·비교·순위를 요구하면 patch를 만들지 않고 `new_data`
+analysis plan을 제안한다.
+
+- `9월 매출도 조회해서 8월과 비교해줘`
+- `고객 등급별 매출을 새로 분석해줘`
+- `객실과 식음 매출의 전년 대비 증감률을 계산해줘`
+
+서버는 질문, 필요한 이유, 기간, 지표와 선택 차원을 고정하고 사용자 승인 전 분석을 호출하지
+않는다. 현재 환경에서는 이 계획과 승인 카드까지 검증할 수 있지만 Analysis Agent·DataHub·Trino
+연결이 준비되지 않아 새 Artifact와 Report Revision까지의 live E2E는 완료되지 않았다.
+
+### 20.7 지원하지 않거나 차단하는 요청
+
+- 글꼴·색상·테두리 등 허용 operation에 없는 세부 디자인 변경
+- 임의 픽셀·grid 좌표 또는 `half`·`full` 이외의 폭 지정
+- 기존 차트 종류나 기존 비텍스트 block 제목의 직접 수정
+- Artifact에 없는 수치 계산·사실·원인 생성
+- SQL 작성·노출·직접 실행 또는 dataset·column 선택
+- 사용자 권한, Artifact 승인 상태 또는 Report 승인 상태 변경
+- 사용자 확인 없는 자동 승인·자동 Revision 저장
+- PDF 외부 전송, 공유, 스케줄 생성·변경
+- 타인 소유 Report·session·Artifact 조회 또는 편집
+- 실제 Artifact ID, query ID, checksum, raw prompt·model response 공개
+
+### 20.8 실패·취소·복구
+
+- 대기 phase의 session은 `요청 취소`로 terminal `cancelled` 처리한다.
+- retry 가능한 실패는 원본을 변경하지 않고 새 `ready` child session을 만든다.
+- 로그인·상태·Revision·Artifact 오류는 `REAUTHENTICATE`, `REFRESH`,
+  `REOPEN_LATEST_REPORT`, `CONTACT_ADMIN`으로 구분한다.
+- `saving_revision` 중 응답이 끊겨도 고정된 patch와 선택값으로 재개하며 GPT와 분석을 다시
+  호출하지 않는다.
+- `completed` 후 Client는 `result_revision`을 다시 조회해 Canvas를 교체하고 새로고침에서도 같은
+  Revision을 복구한다.
+
+### 20.9 현재 한도
+
+| 항목 | 한도 |
+|---|---:|
+| 사용자 지시 | 500자 |
+| patch operation | 최대 12개 |
+| session Artifact | 최대 5개 |
+| 품질 finding | 최대 10개 |
+| 후속 suggestion | 최대 3개 |
+| DB 원문 turn 보관 | 최근 6턴 |
+| 텍스트 evidence ref | operation당 최대 16개 |
+
+현재 Report Assistant를 설명할 때는 **기존 승인 Artifact를 근거로 보고서를 편집하는 GPT Agent는
+실제 동작하고, 신규 데이터 분석은 계획·승인 경계까지만 준비됐으며 Analysis Agent·DataHub·Trino
+live 연결은 남아 있다**고 구분한다.

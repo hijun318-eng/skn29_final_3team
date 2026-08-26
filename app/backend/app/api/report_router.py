@@ -93,6 +93,25 @@ _PATCH_OPERATION_LABELS = {
 }
 
 
+def _patch_operation_impact(operation: Any) -> dict[str, object]:
+    """typed operation을 내부 식별자 없는 영향 분류와 근거 개수로 변환한다."""
+
+    if operation.op in {"remove_block", "restore_previous_revision"}:
+        category = "DESTRUCTIVE"
+    elif operation.op in {"add_artifact_view", "reposition_block", "duplicate_block"}:
+        category = "LAYOUT"
+    else:
+        category = "CONTENT"
+    evidence_required = operation.op == "add_text" or (
+        operation.op == "update_text" and operation.content is not None
+    )
+    return {
+        "impact_category": category,
+        "evidence_required": evidence_required,
+        "evidence_count": len(getattr(operation, "evidence_refs", ())),
+    }
+
+
 def _legacy_patch_preview(patch: ReportAssistantPatch | None) -> tuple[dict[str, Any], ...]:
     """migration 이전 승인 대기 session도 식별자 노출 없이 조회 가능하게 한다."""
 
@@ -105,6 +124,7 @@ def _legacy_patch_preview(patch: ReportAssistantPatch | None) -> tuple[dict[str,
             "target": _PATCH_OPERATION_LABELS[operation.op],
             "before": None,
             "after": None,
+            **_patch_operation_impact(operation),
         }
         for index, operation in enumerate(patch.operations)
     )
@@ -143,6 +163,11 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
     patch_preview = tuple(session.get("patch_preview_json") or ())
     if patch and not patch_preview:
         patch_preview = _legacy_patch_preview(patch)
+    elif patch:
+        patch_preview = tuple(
+            {**item, **_patch_operation_impact(patch.operations[index])}
+            for index, item in enumerate(patch_preview)
+        )
     response = {
         "assistant_request_id": session["assistant_request_id"],
         "phase": session["phase"],
@@ -506,8 +531,21 @@ def _report_patch_preview(
         elif operation.op == "reposition_block":
             source = blocks[operation.block_id]
             anchor = blocks.get(operation.after_block_id) if operation.after_block_id else None
+            ordered_blocks = sorted(
+                definition.blocks,
+                key=lambda block: (block.y, block.x, block.block_id),
+            )
+            source_index = next(
+                index
+                for index, block in enumerate(ordered_blocks)
+                if block.block_id == source.block_id
+            )
+            current_anchor = ordered_blocks[source_index - 1] if source_index else None
             target = source.title
-            before = f"{source.w}/12 폭 · {source.y + 1}행"
+            before = (
+                f"{source.w}/12 폭 · "
+                f"{current_anchor.title + ' 뒤' if current_anchor else '보고서 처음'}"
+            )
             after = (
                 f"{'6/12' if operation.width == 'half' else '12/12'} 폭 · "
                 f"{anchor.title + ' 뒤' if anchor else '보고서 끝'}"
@@ -529,6 +567,7 @@ def _report_patch_preview(
                 "target": target,
                 "before": _patch_preview_text(before),
                 "after": _patch_preview_text(after),
+                **_patch_operation_impact(operation),
             }
         )
     return tuple(items)
@@ -1636,14 +1675,87 @@ async def submit_assistant_message(
             )
         else:
             patch = ReportAssistantPatch.model_validate(proposal["patch"])
-            await _apply_existing_artifact_patch(repository, definition, artifacts, patch)
-            patch_preview = _report_patch_preview(definition, patch)
-            patch_request_id = str(uuid4())
-            if refining_patch:
-                try:
-                    saved = await repository.replace_existing_assistant_patch_proposal(
+            from app.report_patch import ReportPatchNoChangesError
+
+            try:
+                await _apply_existing_artifact_patch(repository, definition, artifacts, patch)
+            except ReportPatchNoChangesError as error:
+                if refining_patch:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "REPORT_ASSISTANT_PATCH_INVALID",
+                            "assistant_request_id": assistant_request_id,
+                        },
+                    ) from error
+                no_change_message = (
+                    "요청하신 상태가 현재 보고서에 이미 반영되어 있습니다. "
+                    "다른 변경이 필요하면 알려 주세요."
+                )
+                proposal = {
+                    **proposal,
+                    "change_kind": "clarification",
+                    "message": no_change_message,
+                    "patch": None,
+                }
+                decision_hash = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "change_kind": "clarification",
+                            "message": no_change_message,
+                            "analysis_plan": None,
+                            "patch": None,
+                            "suggestions": suggestions,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest()
+                patch = None
+                saved = await repository.record_assistant_proposal(
+                    assistant_request_id,
+                    instruction_hash,
+                    decision_hash,
+                    str(trace["model_version"]),
+                    str(trace["prompt_id"]),
+                    str(trace["prompt_version"]),
+                    str(trace["prompt_hash"]),
+                    None,
+                    payload.instruction,
+                    no_change_message,
+                    "clarification",
+                )
+            else:
+                patch_preview = _report_patch_preview(definition, patch)
+                patch_request_id = str(uuid4())
+                if refining_patch:
+                    try:
+                        saved = await repository.replace_existing_assistant_patch_proposal(
+                            assistant_request_id,
+                            str(expected_patch_request_id),
+                            patch_request_id,
+                            instruction_hash,
+                            decision_hash,
+                            str(trace["model_version"]),
+                            str(trace["prompt_id"]),
+                            str(trace["prompt_version"]),
+                            str(trace["prompt_hash"]),
+                            patch.model_dump(mode="json"),
+                            patch_preview,
+                            payload.instruction,
+                            str(proposal["message"]),
+                        )
+                    except ValueError as error:
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "code": "ASSISTANT_STATE_CONFLICT",
+                                "assistant_request_id": assistant_request_id,
+                            },
+                        ) from error
+                else:
+                    saved = await repository.record_existing_assistant_patch_proposal(
                         assistant_request_id,
-                        str(expected_patch_request_id),
                         patch_request_id,
                         instruction_hash,
                         decision_hash,
@@ -1656,29 +1768,6 @@ async def submit_assistant_message(
                         payload.instruction,
                         str(proposal["message"]),
                     )
-                except ValueError as error:
-                    raise HTTPException(
-                        status_code=409,
-                        detail={
-                            "code": "ASSISTANT_STATE_CONFLICT",
-                            "assistant_request_id": assistant_request_id,
-                        },
-                    ) from error
-            else:
-                saved = await repository.record_existing_assistant_patch_proposal(
-                    assistant_request_id,
-                    patch_request_id,
-                    instruction_hash,
-                    decision_hash,
-                    str(trace["model_version"]),
-                    str(trace["prompt_id"]),
-                    str(trace["prompt_version"]),
-                    str(trace["prompt_hash"]),
-                    patch.model_dump(mode="json"),
-                    patch_preview,
-                    payload.instruction,
-                    str(proposal["message"]),
-                )
     except ValueError as error:
         error_code = (
             "REPORT_REVISION_CONFLICT"
@@ -1842,6 +1931,8 @@ async def decide_assistant_patch(
             detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
         )
     if payload.approved:
+        from app.report_patch import ReportPatchNoChangesError
+
         try:
             definition = await repository.get_version(
                 str(session["session_definition_id"]),
@@ -1851,6 +1942,14 @@ async def decide_assistant_patch(
             patched = await _apply_existing_artifact_patch(
                 repository, definition, artifacts, selected_patch
             )
+        except ReportPatchNoChangesError as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "REPORT_ASSISTANT_PATCH_INVALID",
+                    "assistant_request_id": assistant_request_id,
+                },
+            ) from error
         except (KeyError, TypeError, ValueError) as error:
             error_code = (
                 "REPORT_REVISION_CONFLICT"
@@ -1858,7 +1957,7 @@ async def decide_assistant_patch(
                 else "REPORT_ASSISTANT_PATCH_INVALID"
             )
             raise HTTPException(
-                status_code=409 if error_code == "REPORT_REVISION_CONFLICT" else 502,
+                status_code=409,
                 detail={"code": error_code, "assistant_request_id": assistant_request_id},
             ) from error
     try:

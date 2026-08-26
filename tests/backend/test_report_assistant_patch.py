@@ -123,6 +123,46 @@ class ReportAssistantPatchTest(unittest.TestCase):
         self.assertEqual("artifact-old", result.blocks[1].artifact_id)
         self.assertEqual("query-old", result.blocks[1].query_id)
 
+    def test_noop_title_and_text_patch_are_rejected_before_revision(self) -> None:
+        """제목·본문이 실제로 같으면 의미 없는 새 Revision을 만들 수 없다."""
+
+        for operation in (
+            {"op": "set_report_title", "title": self.definition.title},
+            {
+                "op": "update_text",
+                "block_id": "summary",
+                "content": "기존 요약",
+                "evidence_refs": [],
+            },
+        ):
+            patch = ReportAssistantPatch.model_validate({
+                "summary": "변경 없는 요청",
+                "operations": [operation],
+            })
+            with self.assertRaisesRegex(ValueError, "실제 변경"):
+                apply_report_assistant_patch(self.definition, patch, self.bindings)
+
+    def test_reordered_evidence_refs_do_not_create_a_revision(self) -> None:
+        """근거 alias 순서는 의미가 없으므로 순서만 바꾼 본문 patch를 no-op으로 차단한다."""
+
+        definition = self.definition.replace_blocks((
+            ReportBlock(
+                "summary", "운영 요약", None, 12, None, BlockType.TEXT,
+                0, 0, 12, 4, "기존 요약", ("metric_1", "artifact_narrative"),
+            ),
+            self.definition.blocks[1],
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "근거 순서만 변경",
+            "operations": [{
+                "op": "update_text", "block_id": "summary", "content": "기존 요약",
+                "evidence_refs": ["metric_1", "artifact_narrative"],
+            }],
+        })
+
+        with self.assertRaisesRegex(ValueError, "실제 변경"):
+            apply_report_assistant_patch(definition, patch, self.bindings)
+
     def test_repeated_anchor_preserves_patch_operation_order(self) -> None:
         """같은 기존 block 뒤에 여러 항목을 추가해도 모델의 operation 순서를 보존한다."""
 
@@ -180,6 +220,57 @@ class ReportAssistantPatchTest(unittest.TestCase):
         self.assertEqual(6, chart.w)
         self.assertEqual("artifact-old", chart.artifact_id)
         self.assertEqual("query-old", chart.query_id)
+
+    def test_reposition_to_current_end_with_same_width_is_rejected_as_noop(self) -> None:
+        """화면상 이미 마지막인 block은 원시 y에 간격이 있어도 같은 너비 이동을 거부한다."""
+
+        definition = self.definition.replace_blocks((
+            self.definition.blocks[0],
+            ReportBlock(
+                "current-chart", "현재 실적", "artifact-old", 6, "query-old",
+                BlockType.CHART, 0, 29, 6, 7,
+            ),
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "현재 실적을 현재 너비로 보고서 끝에 둡니다.",
+            "operations": [{
+                "op": "reposition_block", "block_id": "current-chart", "width": "half",
+            }],
+        })
+
+        with self.assertRaisesRegex(ValueError, "실제 변경"):
+            apply_report_assistant_patch(definition, patch, self.bindings)
+
+    def test_reposition_after_current_anchor_with_same_width_is_rejected_as_noop(self) -> None:
+        """현재 바로 앞 block을 anchor로 다시 지정해도 새 Revision을 만들지 않는다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "현재 순서를 유지합니다.",
+            "operations": [{
+                "op": "reposition_block", "block_id": "current-chart",
+                "after_block_id": "summary", "width": "full",
+            }],
+        })
+
+        with self.assertRaisesRegex(ValueError, "실제 변경"):
+            apply_report_assistant_patch(self.definition, patch, self.bindings)
+
+    def test_reposition_at_same_place_can_still_change_width(self) -> None:
+        """순서가 같더라도 실제 너비 변경은 유효한 patch로 적용한다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "현재 위치에서 너비를 줄입니다.",
+            "operations": [{
+                "op": "reposition_block", "block_id": "current-chart",
+                "after_block_id": "summary", "width": "half",
+            }],
+        })
+
+        result = apply_report_assistant_patch(self.definition, patch, self.bindings)
+
+        chart = next(block for block in result.blocks if block.block_id == "current-chart")
+        self.assertEqual(6, chart.w)
+        self.assertEqual(4, chart.y)
 
     def test_reposition_rejects_unknown_block_and_self_anchor(self) -> None:
         """존재하지 않는 이동 대상과 자기 자신을 기준으로 한 배치를 원자적으로 거부한다."""

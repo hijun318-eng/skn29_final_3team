@@ -1,6 +1,11 @@
-/** 관리자 계정·연결 상태·감사 이벤트 Backend 계약을 cookie 인증 HTTP 요청으로 제공한다. */
+/** 관리자 계정·연결 상태와 서버 grouping 감사 trail을 cookie 인증 HTTP 요청으로 제공한다. */
 import type { ServiceRole } from "../authorization.ts";
 import { OPENAPI_VERSION } from "../contracts/analysis.ts";
+import {
+  normalizeAuditTrailDetail,
+  normalizeAuditTrailPage,
+  type AuditTrailFilters,
+} from "../features/admin/audit/auditTrailTypes.ts";
 import { createUuid } from "../utils/createUuid.ts";
 
 type Fetch = typeof fetch;
@@ -25,18 +30,6 @@ export interface AdminConnection {
   status: "ready" | "down";
   latency_ms: number;
   checked_at: string;
-}
-
-/** 비밀정보를 제외한 append-only 관리자 작업 기록이다. */
-export interface AdminAuditEvent {
-  event_id: string;
-  occurred_at: string;
-  actor_subject: string | null;
-  action_code: string;
-  target_type: string;
-  target_id: string;
-  result: string;
-  details: Record<string, unknown>;
 }
 
 /** 서버가 확정한 페이지 번호와 전체 건수를 포함하는 목록 계약이다. */
@@ -92,6 +85,14 @@ function queryString(values: Record<string, string | number>): string {
   return new URLSearchParams(Object.entries(values).map(([key, value]) => [key, String(value)])).toString();
 }
 
+function sparseQueryString(values: Record<string, string | number>): string {
+  return new URLSearchParams(
+    Object.entries(values)
+      .filter(([, value]) => value !== "")
+      .map(([key, value]) => [key, String(value)]),
+  ).toString();
+}
+
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -134,21 +135,6 @@ function normalizeConnection(value: unknown): AdminConnection {
   return value as AdminConnection;
 }
 
-function normalizeAuditEvent(value: unknown): AdminAuditEvent {
-  if (!isRecord(value)
-    || typeof value.event_id !== "string"
-    || typeof value.occurred_at !== "string"
-    || !(value.actor_subject === null || typeof value.actor_subject === "string")
-    || typeof value.action_code !== "string"
-    || typeof value.target_type !== "string"
-    || typeof value.target_id !== "string"
-    || typeof value.result !== "string"
-    || !isRecord(value.details)) {
-    throw new Error("관리자 감사 API가 올바르지 않은 응답을 반환했습니다.");
-  }
-  return value as AdminAuditEvent;
-}
-
 /** 단일 Backend origin에만 관리자 요청을 보내고 모든 변경 요청에 현재 cookie 세션을 포함한다. */
 export function createAdminClient(baseUrl = env.VITE_BACKEND_BASE_URL, request: Fetch = fetch) {
   if (!baseUrl) throw new Error("VITE_BACKEND_BASE_URL is required");
@@ -181,8 +167,20 @@ export function createAdminClient(baseUrl = env.VITE_BACKEND_BASE_URL, request: 
       if (!isRecord(data) || !Array.isArray(data.items)) throw new Error("관리자 연결 API가 올바르지 않은 응답을 반환했습니다.");
       return data.items.map(normalizeConnection);
     },
-    async listAuditEvents(page = 1, search = "", result = ""): Promise<AdminPage<AdminAuditEvent>> {
-      return normalizePage(await parseData(await send(`/admin/audit-events?${queryString({ page, page_size: 50, search, result })}`)), normalizeAuditEvent);
+    async listAuditTrails(filters: AuditTrailFilters, cursor = "") {
+      const query = sparseQueryString({
+        cursor,
+        limit: 30,
+        query: filters.query,
+        outcome: filters.outcome,
+        action: filters.action,
+        from: filters.from,
+        to: filters.to,
+      });
+      return normalizeAuditTrailPage(await parseData(await send(`/admin/audit-trails?${query}`)));
+    },
+    async getAuditTrail(trailId: string) {
+      return normalizeAuditTrailDetail(await parseData(await send(`/admin/audit-trails/${encodeURIComponent(trailId)}`)));
     },
   };
 }

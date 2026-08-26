@@ -8,8 +8,8 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 130 |
-| documentation | 148 |
-| production | 313 |
+| documentation | 150 |
+| production | 317 |
 | project-config | 37 |
 | runtime-config | 68 |
 | runtime-contract | 10 |
@@ -248,6 +248,10 @@
 | `app/frontend/src/contracts/reportContract.ts` | production | REVIEWED |
 | `app/frontend/src/contracts/reportLayout.ts` | production | REVIEWED |
 | `app/frontend/src/contracts/reportNormalization.ts` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/audit-trail.css` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/AuditTrailDetail.tsx` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/AuditTrailPanel.tsx` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/auditTrailTypes.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/index.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/MarkdownBlockEditor.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportArtifactContent.jsx` | production | REVIEWED |
@@ -326,6 +330,8 @@
 | `docs/architecture/answervice_v3_4_report_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/canonical-semantic-release-migration.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/README.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/daesung/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/jaehong/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |

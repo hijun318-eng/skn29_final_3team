@@ -1,4 +1,4 @@
-/** 관리자 계정·연결 상태·감사 로그를 실제 Backend API와 연결하는 운영 화면이다. */
+/** 관리자 계정·연결 상태와 읽기 전용 감사 추적 화면의 탭·공통 상태를 조정한다. */
 import {
   AlertTriangle,
   Check,
@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdminApiError, createAdminClient } from "../api/adminClient.ts";
 import { roleLabel } from "../authorization.ts";
+import { AuditTrailPanel } from "../features/admin/audit/AuditTrailPanel.tsx";
 
 const ADMIN_SECTIONS = [
   { id: "connections", label: "연결 상태", icon: Database },
@@ -80,24 +81,19 @@ function AccountDialog({ account, form, mode, pending, error, onChange, onClose,
 /** `system.manage`로 보호된 관리자 기능을 실제 계정·상태·감사 API에 배선한다. */
 export function AdminPage({ role, client: suppliedClient }) {
   const client = useMemo(() => suppliedClient ?? createAdminClient(undefined, fetch), [suppliedClient]);
-  const requestIds = useRef({ connections: 0, accounts: 0, audit: 0 });
+  const requestIds = useRef({ connections: 0, accounts: 0 });
   const [section, setSection] = useState("connections");
   const activeSectionRef = useRef(section);
   activeSectionRef.current = section;
   const [apiState, setApiState] = useState("checking");
-  const [loading, setLoading] = useState({ connections: false, accounts: false, audit: false });
+  const [loading, setLoading] = useState({ connections: false, accounts: false });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [connections, setConnections] = useState([]);
   const [accounts, setAccounts] = useState(EMPTY_PAGE);
-  const [auditEvents, setAuditEvents] = useState(EMPTY_PAGE);
   const [accountPage, setAccountPage] = useState(1);
   const [accountSearch, setAccountSearch] = useState("");
   const [accountSearchInput, setAccountSearchInput] = useState("");
-  const [auditPage, setAuditPage] = useState(1);
-  const [auditSearch, setAuditSearch] = useState("");
-  const [auditSearchInput, setAuditSearchInput] = useState("");
-  const [auditResult, setAuditResult] = useState("");
   const [modal, setModal] = useState(null);
   const [accountForm, setAccountForm] = useState({ username: "", password: "", role: "analyst", active: true });
   const [saving, setSaving] = useState(false);
@@ -143,42 +139,20 @@ export function AdminPage({ role, client: suppliedClient }) {
     }
   }, [accountPage, accountSearch, client]);
 
-  const loadAuditEvents = useCallback(async () => {
-    const requestId = ++requestIds.current.audit;
-    setLoading((current) => ({ ...current, audit: true }));
-    setError("");
-    setApiState("checking");
-    try {
-      const page = await client.listAuditEvents(auditPage, auditSearch, auditResult);
-      if (requestIds.current.audit !== requestId || activeSectionRef.current !== "audit") return;
-      setAuditEvents(page);
-      setApiState("connected");
-    } catch (nextError) {
-      if (requestIds.current.audit !== requestId || activeSectionRef.current !== "audit") return;
-      setAuditEvents({ ...EMPTY_PAGE, page: auditPage });
-      setError(adminErrorMessage(nextError));
-      setApiState("error");
-    } finally {
-      if (requestIds.current.audit === requestId) setLoading((current) => ({ ...current, audit: false }));
-    }
-  }, [auditPage, auditResult, auditSearch, client]);
-
   useEffect(() => {
-    for (const { id } of ADMIN_SECTIONS) {
+    for (const id of ["connections", "accounts"]) {
       if (id !== section) requestIds.current[id] += 1;
     }
     setLoading((current) => ({
       connections: section === "connections" ? current.connections : false,
       accounts: section === "accounts" ? current.accounts : false,
-      audit: section === "audit" ? current.audit : false,
     }));
   }, [section]);
 
   useEffect(() => {
     if (section === "connections") void loadConnections();
     if (section === "accounts") void loadAccounts();
-    if (section === "audit") void loadAuditEvents();
-  }, [loadAccounts, loadAuditEvents, loadConnections, section]);
+  }, [loadAccounts, loadConnections, section]);
 
   const openCreate = () => {
     setAccountForm({ username: "", password: "", role: "analyst", active: true });
@@ -256,7 +230,6 @@ export function AdminPage({ role, client: suppliedClient }) {
 
   const checkedAt = connections[0]?.checked_at;
   const accountPageCount = Math.max(1, Math.ceil(accounts.total / accounts.page_size));
-  const auditPageCount = Math.max(1, Math.ceil(auditEvents.total / auditEvents.page_size));
 
   return <div className="page-content admin-console">
     <section className="admin-console__status" aria-label="관리자 시스템 상태">
@@ -291,16 +264,7 @@ export function AdminPage({ role, client: suppliedClient }) {
       <div className="admin-pagination"><span>총 {accounts.total.toLocaleString()}개 · {accounts.page}/{accountPageCount} 페이지</span><div><button type="button" disabled={accountPage <= 1 || loading.accounts} onClick={() => setAccountPage((current) => current - 1)}><ChevronLeft size={15} />이전</button><button type="button" disabled={accountPage >= accountPageCount || loading.accounts} onClick={() => setAccountPage((current) => current + 1)}>다음<ChevronRight size={15} /></button></div></div>
     </section>}
 
-    {section === "audit" && <section className="admin-panel" id="admin-panel-audit" role="tabpanel" aria-labelledby="admin-tab-audit">
-      <header className="admin-panel__header"><div><small>ADMIN ACTIVITY HISTORY</small><h2>감사 로그</h2><p>연결 확인과 계정 변경 등 운영 작업의 결과를 확인합니다.</p></div></header>
-      <form className="admin-list-toolbar" onSubmit={(event) => { event.preventDefault(); setAuditPage(1); setAuditSearch(auditSearchInput.trim()); if (auditPage === 1 && auditSearch === auditSearchInput.trim()) void loadAuditEvents(); }}><label><Search size={15} /><input value={auditSearchInput} onChange={(event) => setAuditSearchInput(event.target.value)} placeholder="수행자·이벤트·대상 검색" aria-label="감사 로그 검색" /></label><select aria-label="감사 결과" value={auditResult} onChange={(event) => { setAuditPage(1); setAuditResult(event.target.value); }}><option value="">전체 결과</option><option value="SUCCESS">성공</option><option value="FAILED">실패</option></select><button type="submit">검색</button></form>
-      <div className="admin-table-card card"><div className="admin-data-table admin-data-table--audit" role="table" aria-label="관리자 감사 로그">
-        <div className="admin-data-table__head" role="row"><span role="columnheader">일시</span><span role="columnheader">수행자</span><span role="columnheader">이벤트</span><span role="columnheader">대상</span><span role="columnheader">결과</span><span role="columnheader">상세</span></div>
-        {auditEvents.items.map((item) => <div className="admin-data-table__row" role="row" key={item.event_id}><span role="cell">{formatTimestamp(item.occurred_at)}</span><span role="cell" title={item.actor_subject ?? "시스템"}>{item.actor_subject ?? "시스템"}</span><b role="cell">{item.action_code}</b><span role="cell">{item.target_type} · {item.target_id}</span><span role="cell"><strong className={`admin-status admin-status--${["SUCCESS", "SUCCEEDED"].includes(item.result) ? "ready" : "down"}`}><i />{item.result}</strong></span><code role="cell" title={JSON.stringify(item.details)}>{JSON.stringify(item.details)}</code></div>)}
-        {!loading.audit && auditEvents.items.length === 0 && <div className="admin-empty" role="row"><div role="cell"><FileClock size={24} /><b>조건에 맞는 감사 로그가 없습니다.</b><span>검색 조건을 변경해 주세요.</span></div></div>}
-      </div></div>
-      <div className="admin-pagination"><span>총 {auditEvents.total.toLocaleString()}개 · {auditEvents.page}/{auditPageCount} 페이지</span><div><button type="button" disabled={auditPage <= 1 || loading.audit} onClick={() => setAuditPage((current) => current - 1)}><ChevronLeft size={15} />이전</button><button type="button" disabled={auditPage >= auditPageCount || loading.audit} onClick={() => setAuditPage((current) => current + 1)}>다음<ChevronRight size={15} /></button></div></div>
-    </section>}
+    {section === "audit" && <AuditTrailPanel client={client} onApiStateChange={setApiState} />}
 
     {modal && <AccountDialog account={modal.account} form={accountForm} mode={modal.mode} pending={saving} error={dialogError} onChange={setAccountForm} onClose={() => setModal(null)} onSubmit={submitAccount} />}
   </div>;

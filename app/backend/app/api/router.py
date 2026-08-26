@@ -359,7 +359,7 @@ async def analysis(
                 try:
                     await repository.fail_run(
                         context.request_id,
-                        ErrorCode.ARTIFACT_PERSIST_FAILED.value,
+                        "PERSISTENCE",
                     )
                 except Exception:
                     pass
@@ -452,7 +452,7 @@ async def replay_analysis_definition(
     if not await execution_gate.acquire(
         float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
     ):
-        await _repository_call(lambda: repository.fail_run(request_id, "UNSUPPORTED"))
+        await _repository_call(lambda: repository.fail_run(request_id, "RECOVERY"))
         raise HTTPException(status_code=429, detail="동시 분석은 최대 2건까지 실행할 수 있습니다.")
     execution: dict[str, Any] = {}
 

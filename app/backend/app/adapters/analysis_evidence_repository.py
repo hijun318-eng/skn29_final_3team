@@ -19,6 +19,16 @@ from app.contracts import AnalysisResponse, AnalysisStatus
 
 logger = logging.getLogger("uvicorn.error")
 
+_FAILURE_TERMINALS = {
+    "AMBIGUOUS": ("DENIED", "ANALYSIS_DENIED"),
+    "UNSUPPORTED": ("DENIED", "ANALYSIS_DENIED"),
+    "PERMISSION": ("DENIED", "ANALYSIS_DENIED"),
+    "QUERY": ("FAILED", "ANALYSIS_FAILED"),
+    "INSUFFICIENT_EVIDENCE": ("FAILED", "ANALYSIS_FAILED"),
+    "PERSISTENCE": ("FAILED", "ANALYSIS_FAILED"),
+    "RECOVERY": ("FAILED", "ANALYSIS_FAILED"),
+}
+
 
 class AnalysisEvidenceRepositoryMixin:
     """분석 run의 terminal 상태와 query·artifact·audit evidence를 원자적으로 기록한다.
@@ -125,12 +135,11 @@ class AnalysisEvidenceRepositoryMixin:
             artifact_id,
         )
 
-    async def fail_run(self, request_id: UUID, error_type: str = "UNSUPPORTED") -> None:
-        """아직 ``RECEIVED``인 request를 거부 또는 영속화 실패 상태로 종결하고 감사한다.
+    async def fail_run(self, request_id: UUID, error_type: str = "RECOVERY") -> None:
+        """nonterminal request를 승인된 영속 실패 유형으로 종결하고 감사한다.
 
-        ``ARTIFACT_PERSIST_FAILED``는 ``FAILED/PERSISTENCE``로, 나머지는
-        ``DENIED/<error_type>``으로 저장한다. 동일 action audit는 중복 삽입하지 않으며 두
-        쓰기는 한 transaction으로 처리된다. DB 오류는
+        거부 유형은 ``DENIED``, 실행·복구 실패 유형은 ``FAILED``로 저장한다. 동일 action
+        audit는 중복 삽입하지 않으며 두 쓰기는 한 transaction으로 처리된다. DB 오류는
         :class:`AnalysisRepositoryUnavailable`로 변환하고 성공하면 ``None``을 반환한다.
         """
         try:
@@ -143,14 +152,17 @@ class AnalysisEvidenceRepositoryMixin:
         self,
         session: AsyncSession,
         request_id: UUID,
-        error_type: str = "UNSUPPORTED",
+        error_type: str = "RECOVERY",
     ) -> None:
         """호출자 transaction 안에서 nonterminal run과 audit를 실패 상태로 함께 닫는다."""
 
-        persistence_failure = error_type == "ARTIFACT_PERSIST_FAILED"
-        stored_status = "FAILED" if persistence_failure else "DENIED"
-        stored_error_type = "PERSISTENCE" if persistence_failure else error_type
-        action_code = "ANALYSIS_FAILED" if persistence_failure else "ANALYSIS_DENIED"
+        try:
+            stored_status, action_code = _FAILURE_TERMINALS[error_type]
+        except KeyError as error:
+            raise ValueError(
+                f"Analysis Run 영속 실패 유형이 유효하지 않습니다: {error_type}"
+            ) from error
+        stored_error_type = error_type
         await session.execute(
             text(
                 """

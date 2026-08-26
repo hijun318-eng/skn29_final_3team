@@ -190,7 +190,7 @@ class AnalysisDefinitionReplay:
             if not created:
                 return await self._existing_outcome(repository, request_id)
             if not await self._execution_gate.acquire(self._queue_wait_seconds):
-                await repository.fail_run(request_id, ErrorCode.RATE_LIMITED.value)
+                await repository.fail_run(request_id, "RECOVERY")
                 return _failure(
                     BlockFailureCode.RATE_LIMITED,
                     "The analysis execution limit was reached.",
@@ -267,7 +267,7 @@ class AnalysisDefinitionReplay:
             if request_id is not None:
                 try:
                     await repository.fail_run(
-                        request_id, ErrorCode.ARTIFACT_PERSIST_FAILED.value
+                        request_id, "PERSISTENCE"
                     )
                 except Exception:
                     pass

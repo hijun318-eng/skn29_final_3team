@@ -83,6 +83,7 @@ class FakeAnalysisRepository:
         self.request_id: UUID | None = None
         self.run_context: RequestContext | None = None
         self.finished = None
+        self.context_receipts = []
         self.definition = {
             "contract_version": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
             "definition_id": self.definition_id,
@@ -107,6 +108,10 @@ class FakeAnalysisRepository:
         self.request_id = request_context.request_id
         self.run_context = request_context
         return self.request_id
+
+    async def persist_context_receipt(self, request_context, package):
+        self.context_receipts.append((request_context, package))
+        return uuid4()
 
     async def create_definition_from_run(self, source_request_id, title):
         self.definition.update(title=title)
@@ -256,6 +261,8 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert repository.run_context.permission_snapshot_id
     assert repository.run_context.semantic_release_id == "fixture-context-v1"
     assert repository.run_context.require_fresh_query is True
+    assert len(repository.context_receipts) == 1
+    assert repository.context_receipts[0][0].request_id == first_context.request_id
     assert "result" not in first
     assert "sql" not in first
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
@@ -374,6 +381,8 @@ async def test_direct_analysis_persists_request_query_and_artifact_when_database
     assert repository.run_context.product_release_id == "fixture-product-release"
     assert repository.run_context.semantic_release_id == "fixture-context-v1"
     assert repository.run_context.permission_snapshot_id
+    assert len(repository.context_receipts) == 1
+    assert repository.context_receipts[0][0].request_id == request_context.request_id
     assert repository.finished[0] is response
     assert set(repository.finished[1]) == {"plan", "query", "package"}
 

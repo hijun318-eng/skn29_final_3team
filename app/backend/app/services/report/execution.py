@@ -198,6 +198,13 @@ class AnalysisDefinitionReplay:
                 )
 
             execution: dict[str, object] = {}
+
+            async def _persist_context_receipt(
+                receipt_context: RequestContext,
+                package: object,
+            ) -> None:
+                await repository.persist_context_receipt(receipt_context, package)
+
             try:
                 response = await self._controller.submit(
                     AnalysisRequest(
@@ -206,6 +213,7 @@ class AnalysisDefinitionReplay:
                     ),
                     context,
                     execution.update,
+                    context_receipt_sink=_persist_context_receipt,
                 )
             except ContextValidationError as error:
                 await repository.fail_run(

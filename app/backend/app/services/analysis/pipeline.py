@@ -65,6 +65,9 @@ class AnalysisPipeline:
         progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
         run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None,
+        context_receipt_sink: (
+            Callable[[RequestContext, Any], Awaitable[None]] | None
+        ) = None,
         model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """분석 요청을 받아 전체 파이프라인을 구동하고 최종 AnalysisResponse를 반환합니다."""
@@ -78,6 +81,7 @@ class AnalysisPipeline:
             progress_sink=progress_sink,
             cancel_check=cancel_check,
             run_admission_sink=run_admission_sink,
+            context_receipt_sink=context_receipt_sink,
             budget=model_budget or ModelCallBudget(),
         )
         state.machine.transition(AnalysisStatus.ROUTED)

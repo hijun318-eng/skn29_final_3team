@@ -35,6 +35,7 @@ class AnalysisController:
         progress_sink: Callable[[object, object], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
         run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None,
+        context_receipt_sink: Callable[[RequestContext, Any], Awaitable[None]] | None = None,
         model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """권한별 route 결정을 먼저 확정한 뒤 동일 결정을 분석 pipeline에 전달한다.
@@ -58,6 +59,7 @@ class AnalysisController:
             progress_sink=progress_sink,
             cancel_check=cancel_check,
             run_admission_sink=run_admission_sink,
+            context_receipt_sink=context_receipt_sink,
             model_budget=model_budget,
         )
 

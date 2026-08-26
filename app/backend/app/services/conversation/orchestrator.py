@@ -1264,6 +1264,7 @@ class ConversationOrchestrator:
                 analysis_gate_acquired = False
                 lifecycle_bound = False
                 bind_query_lifecycle = None
+                analysis_repo = None
 
                 if analysis_gate is not None:
                     analysis_gate_acquired = await analysis_gate.acquire(
@@ -1305,6 +1306,17 @@ class ConversationOrchestrator:
                     bind_query_lifecycle(_record_query_lifecycle)
                     lifecycle_bound = True
 
+                async def _persist_context_receipt(
+                    receipt_context: RequestContext,
+                    package: Any,
+                ) -> None:
+                    if analysis_repo is None or not analysis_started:
+                        raise RuntimeError("Analysis Run admission이 완료되지 않았습니다.")
+                    await analysis_repo.persist_context_receipt(
+                        receipt_context,
+                        package,
+                    )
+
                 try:
                     analysis_req = build_structured_analysis_request(
                         user_message,
@@ -1333,7 +1345,12 @@ class ConversationOrchestrator:
                             raise RuntimeError(
                                 "analysis submitter must support deferred Run admission"
                             )
+                        if "context_receipt_sink" not in submit_parameters:
+                            raise RuntimeError(
+                                "analysis submitter must support runtime Context receipts"
+                            )
                         submit_options["run_admission_sink"] = _admit_analysis_run
+                        submit_options["context_receipt_sink"] = _persist_context_receipt
                     analysis_resp = await self._submit_analysis(
                         analysis_req,
                         context,

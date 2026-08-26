@@ -497,6 +497,50 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("context-v3", admitted_context.semantic_release_id)
         self.assertTrue(admitted_context.permission_snapshot_id)
 
+    async def test_runtime_context_receipt_is_saved_after_admission_before_query(self):
+        adapter = AsyncRuntimeDataPlatform()
+        events = []
+
+        async def admit_run(_context):
+            events.append("admitted")
+
+        async def persist_context(receipt_context, package):
+            self.assertEqual(["admitted"], events)
+            self.assertEqual(0, adapter.execute_count)
+            self.assertEqual(receipt_context.semantic_release_id, package.context_release)
+            self.assertEqual(receipt_context.product_release_id, package.product_release_id)
+            events.append("context-receipt")
+
+        response, adapter, _model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+            context_receipt_sink=persist_context,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(["admitted", "context-receipt"], events)
+        self.assertEqual(1, adapter.execute_count)
+
+    async def test_runtime_context_receipt_failure_submits_no_query(self):
+        adapter = AsyncRuntimeDataPlatform()
+
+        async def admit_run(_context):
+            return None
+
+        async def fail_context_receipt(_context, _package):
+            raise RuntimeError("context receipt store unavailable")
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+            context_receipt_sink=fail_context_receipt,
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.ARTIFACT_PERSIST_FAILED, response.error.code)
+        self.assertEqual(0, adapter.execute_count)
+        self.assertEqual(["node1"], [node for node, _payload in model.calls])
+
     async def test_empty_result_is_blocked_without_artifact(self):
         execution = {}
         empty_result = copy.deepcopy(QUERY_RESULT)

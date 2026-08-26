@@ -389,7 +389,31 @@ class AnalysisContextStage:
                 code=model_failure_code(error),
             )
 
-        # 3. Context 및 G1 완료 상태 기록
+        cancelled = state.cancelled(PipelineStage.CONTEXT)
+        if cancelled is not None:
+            return cancelled
+        if state.context_receipt_sink is not None:
+            try:
+                await state.context_receipt_sink(context, package)
+            except Exception as error:
+                logger.error(
+                    "runtime context receipt persistence failed: type=%s",
+                    type(error).__name__,
+                    exc_info=True,
+                )
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.CONTEXT,
+                    AnalysisStatus.FAILED,
+                    ErrorCode.ARTIFACT_PERSIST_FAILED,
+                    "실행 Context 영수증을 저장하지 못해 데이터 조회를 시작하지 않았습니다.",
+                    decision,
+                    retryable=True,
+                )
+
+        # 3. Context 영수증 저장 및 G1 완료 상태 기록
         state.assets = assets
         state.normalized_question = normalized_question
         state.structured_request = structured_request

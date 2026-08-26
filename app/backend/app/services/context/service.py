@@ -426,16 +426,22 @@ class PipelineContextService:
         if (
             len(releases) != 1
             or not next(iter(releases), "")
+            or releases != {context.semantic_release_id}
             or len(policies) != 1
             or not next(iter(policies), "")
+            or context.product_release_id is None
             or len(product_releases) > 1
+            or (
+                bool(product_releases)
+                and product_releases != {context.product_release_id}
+            )
             or len(evidence_cutoffs) > 1
             or (any(product_receipt_presence) and not all(product_receipt_presence))
             or (any(evidence_cutoff_presence) and not all(evidence_cutoff_presence))
             # evidence_cutoff은 data watermark가 release manifest에 있을 때만
             # 선택적으로 제공한다. 반대로 cutoff가 release receipt 없이 단독으로
             # 전달되는 것은 출처를 증명할 수 없으므로 거부한다.
-            or (bool(evidence_cutoffs) and not bool(product_releases))
+            or (bool(evidence_cutoffs) and context.product_release_id is None)
         ):
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METADATA,
@@ -515,7 +521,7 @@ class PipelineContextService:
             assets=items,
             token_count=max(1, estimate_token_count(payload.question)),
             model_context_tokens=24_000,
-            product_release_id=(next(iter(product_releases)) if product_releases else None),
+            product_release_id=context.product_release_id,
             evidence_cutoff=evidence_cutoff,
             parameter_bindings=parameter_bindings,
             metric_terms=tuple(

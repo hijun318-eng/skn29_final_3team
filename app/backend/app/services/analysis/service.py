@@ -84,6 +84,7 @@ class AnalysisService:
         progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
         run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None,
+        context_receipt_sink: Callable[[RequestContext, Any], Awaitable[None]] | None = None,
         model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """분석 요청을 새 AnalysisPipeline 인스턴스에 위임하여 실행합니다."""
@@ -102,6 +103,7 @@ class AnalysisService:
             progress_sink=progress_sink,
             cancel_check=cancel_check,
             run_admission_sink=run_admission_sink,
+            context_receipt_sink=context_receipt_sink,
             model_budget=model_budget,
         )
 

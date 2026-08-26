@@ -967,6 +967,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             def __init__(self) -> None:
                 self.begun: list[UUID] = []
                 self.events: list[dict[str, Any]] = []
+                self.context_receipts: list[tuple[RequestContext, Any]] = []
                 self.finished = 0
 
             async def begin_request(self, _question, _parameters, context) -> None:
@@ -974,6 +975,9 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
             async def record_query_lifecycle(self, _request_id, event) -> None:
                 self.events.append(dict(event))
+
+            async def persist_context_receipt(self, context, package) -> None:
+                self.context_receipts.append((context, package))
 
             async def finish_run_in_session(
                 self,
@@ -994,9 +998,11 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             _context,
             execution_sink,
             run_admission_sink,
+            context_receipt_sink,
         ):
             self.submitted_requests.append(req)
             await run_admission_sink(_context)
+            await context_receipt_sink(_context, {"package_hash": "context-receipt"})
             sink = self.data_platform.query_lifecycle_sink
             self.assertIsNotNone(sink)
             await sink(
@@ -1057,6 +1063,11 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             "TERMINAL",
         ])
         self.assertEqual(analysis_repository.finished, 1)
+        self.assertEqual(len(analysis_repository.context_receipts), 1)
+        self.assertEqual(
+            analysis_repository.context_receipts[0][0].request_id,
+            self.context.request_id,
+        )
         self.assertEqual(self.data_platform.lifecycle_bindings[-2:], [True, False])
         self.assertIsNone(self.data_platform.query_lifecycle_sink)
 
@@ -1082,8 +1093,10 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             _request,
             _context,
             run_admission_sink,
+            context_receipt_sink,
         ):
             self.assertTrue(callable(run_admission_sink))
+            self.assertTrue(callable(context_receipt_sink))
 
             class FakeClarificationResp:
                 data = AnalysisData(

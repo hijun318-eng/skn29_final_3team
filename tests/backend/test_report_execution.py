@@ -83,6 +83,7 @@ class _AnalysisRepository:
     def __init__(self) -> None:
         self.request_id = uuid4()
         self.finished = None
+        self.context_receipts = []
 
     async def get_definition_for_report(self, definition_id, version):
         return {
@@ -97,6 +98,7 @@ class _AnalysisRepository:
         }
 
     async def begin_run(self, definition, context, as_of, idempotency_key, parameters):
+        self.request_id = context.request_id
         self.context = context
         self.as_of = as_of
         self.idempotency_key = idempotency_key
@@ -105,6 +107,9 @@ class _AnalysisRepository:
 
     async def finish_run(self, request_id, response, execution):
         self.finished = (request_id, response, execution)
+
+    async def persist_context_receipt(self, context, package):
+        self.context_receipts.append((context, package))
 
     async def fail_run(self, request_id, error_type="UNSUPPORTED"):
         self.finished = (request_id, error_type)
@@ -119,9 +124,10 @@ class _AnalysisRepository:
 
 
 class _Controller:
-    async def submit(self, payload, context, execution_sink):
+    async def submit(self, payload, context, execution_sink, *, context_receipt_sink):
         self.payload = payload
         self.context = context
+        await context_receipt_sink(context, {"package_hash": "report-context"})
         execution_sink({"plan": {}, "query": {}, "package": {}})
         return SimpleNamespace(
             data=SimpleNamespace(status=AnalysisStatus.SUCCEEDED),
@@ -155,6 +161,8 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
         )
 
     assert outcome.status is BlockRunStatus.SUCCESS
+    assert len(repository.context_receipts) == 1
+    assert repository.context_receipts[0][0].request_id == repository.request_id
     assert outcome.query_id == "query-new"
     assert outcome.snapshot_checksum == "a" * 64
     assert outcome.policy_version == "policy-current"

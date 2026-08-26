@@ -66,6 +66,7 @@ class AnalysisEvidenceRepositoryMixin:
             "SQL_POLICY_BLOCKED": "UNSUPPORTED",
             "PARTIAL_FAILURE": "PARTIAL",
             "RESULT_EVIDENCE_MISSING": "INSUFFICIENT_EVIDENCE",
+            "ARTIFACT_PERSIST_FAILED": "PERSISTENCE",
         }.get(response.error.code.value if response.error else "")
         result = await session.execute(
             text(

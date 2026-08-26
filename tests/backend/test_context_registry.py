@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,6 +24,8 @@ from app.adapters.context_registry_repository import (
     PostgresContextRegistryRepository,
     canonical_checksum,
 )
+from app.adapters.analysis_repository import PostgresAnalysisRepository
+from app.contracts import RequestContext, Role
 from app.database import dispose_database
 from app.context_registry_contracts import (
     CreateContextPackage,
@@ -42,6 +44,14 @@ from app.capability_contracts import (
     SourceReceipt,
 )
 from app.services.context.registry_service import ContextRegistryService
+from app.services.context.builder import (
+    ContextAsset,
+    ContextBuildRequest,
+    ContextMetric,
+    ContextMetricTerm,
+    ContextPackageBuilder,
+)
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 class CanonicalChecksumTest(unittest.TestCase):
@@ -241,6 +251,107 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
             await self.repository.create_package(
                 draft_command.model_copy(update={"assets": [{"urn": "different"}]})
             )
+
+    async def test_runtime_context_receipt_links_one_run_idempotently(self) -> None:
+        owner_id = uuid4()
+        request_id = uuid4()
+        context = RequestContext(
+            request_id=request_id,
+            trace_id=f"runtime-context-{request_id}",
+            user_id=owner_id,
+            role=Role.ANALYST,
+            as_of=date(2026, 8, 26),
+            product_release_id=self.product_release_id,
+            permission_snapshot_id=self.permission_snapshot_id,
+            semantic_release_id=self.semantic_release_id,
+        )
+        repository = PostgresAnalysisRepository(self.url, owner_id)
+        await repository.begin_request("2026년 8월 객실 매출", {}, context)
+        metric = ContextMetric(
+            id="room_revenue",
+            asset_fqn="serving.analytics.room_daily",
+            field="room_revenue",
+            aggregation="sum",
+            time_field="business_date",
+            required_filters=(),
+            governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+            allowed_roles=(Role.ANALYST.value,),
+            query_strategies=("VIEW_REUSE",),
+        )
+        package = ContextPackageBuilder().build(
+            ContextBuildRequest(
+                context_release=self.semantic_release_id,
+                policy_version="policy-v1",
+                time_version=context.as_of.isoformat(),
+                entitlement_hash="e" * 64,
+                assets=(
+                    ContextAsset(
+                        urn="urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.room_daily,PROD)",
+                        fqn="serving.analytics.room_daily",
+                        columns=("business_date", "room_revenue"),
+                        metrics=(metric,),
+                        metric_registry_required=True,
+                    ),
+                ),
+                token_count=120,
+                model_context_tokens=24_000,
+                product_release_id=self.product_release_id,
+                metric_terms=(
+                    ContextMetricTerm(
+                        id="room_revenue",
+                        urn="urn:li:glossaryTerm:room_revenue",
+                        label="객실 매출",
+                        aliases=("객실 매출",),
+                        definition="승인된 객실 매출 합계",
+                        unit="KRW",
+                        version="v1",
+                        checksum="f" * 64,
+                    ),
+                ),
+            ),
+            frozenset(
+                {
+                    "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.room_daily,PROD)"
+                }
+            ),
+        )
+
+        first = await repository.persist_context_receipt(context, package)
+        repeated = await repository.persist_context_receipt(context, package)
+
+        self.assertEqual(first, repeated)
+        engine = create_engine(self.url)
+        with engine.connect() as connection:
+            receipt = connection.execute(
+                text(
+                    """
+                    SELECT request.context_package_id, package.context_package_id,
+                           package.context_release_id,
+                           package.product_release_id,
+                           package.permission_snapshot_id,
+                           package.semantic_release_id,
+                           count(binding.object_id) AS binding_count
+                    FROM chat.analysis_requests request
+                    JOIN context.context_packages package
+                      ON package.context_package_id = request.context_package_id
+                    LEFT JOIN governance.product_release_bindings binding
+                      ON binding.object_kind = 'CONTEXT'
+                     AND binding.object_id = package.context_package_id::text
+                    WHERE request.request_id = :request_id
+                    GROUP BY request.context_package_id, package.context_package_id,
+                             package.context_release_id, package.product_release_id,
+                             package.permission_snapshot_id, package.semantic_release_id
+                    """
+                ),
+                {"request_id": request_id},
+            ).mappings().one()
+        engine.dispose()
+        self.assertEqual(first, receipt["context_package_id"])
+        self.assertIsNone(receipt["context_release_id"])
+        self.assertEqual(self.product_release_id, receipt["product_release_id"])
+        self.assertEqual(self.permission_snapshot_id, receipt["permission_snapshot_id"])
+        self.assertEqual(self.semantic_release_id, receipt["semantic_release_id"])
+        self.assertEqual(1, receipt["binding_count"])
 
     def _package_command(self, request_id, release_id) -> CreateContextPackage:
         return CreateContextPackage(

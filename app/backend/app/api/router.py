@@ -325,6 +325,14 @@ async def analysis(
             )
             run_admitted = True
 
+        async def _persist_context_receipt(
+            receipt_context: RequestContext,
+            package: Any,
+        ) -> None:
+            if repository is None or not run_admitted:
+                raise RuntimeError("Analysis Run admission이 완료되지 않았습니다.")
+            await repository.persist_context_receipt(receipt_context, package)
+
         response = await _controller().submit(
             payload,
             context,
@@ -335,6 +343,9 @@ async def analysis(
             cancel_check=lambda: analysis_progress.cancelled(context.request_id),
             run_admission_sink=(
                 _admit_analysis_run if repository is not None else None
+            ),
+            context_receipt_sink=(
+                _persist_context_receipt if repository is not None else None
             ),
         )
         final_status = response.data.status
@@ -446,6 +457,13 @@ async def replay_analysis_definition(
         await _repository_call(lambda: repository.fail_run(request_id, "UNSUPPORTED"))
         raise HTTPException(status_code=429, detail="동시 분석은 최대 2건까지 실행할 수 있습니다.")
     execution: dict[str, Any] = {}
+
+    async def _persist_context_receipt(
+        receipt_context: RequestContext,
+        package: Any,
+    ) -> None:
+        await repository.persist_context_receipt(receipt_context, package)
+
     try:
         response = await _controller().submit(
             AnalysisRequest(
@@ -454,6 +472,7 @@ async def replay_analysis_definition(
             ),
             replay_context,
             execution.update,
+            context_receipt_sink=_persist_context_receipt,
         )
     except ContextValidationError as error:
         await _repository_call(

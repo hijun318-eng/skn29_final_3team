@@ -11,6 +11,7 @@ param(
     [string]$AnalystRole,
     [int]$SessionTtlSeconds = 0,
     [switch]$PromptAnalystPassword,
+    [switch]$PromptReportAdminPassword,
     [switch]$AllowRepositoryLocalDevelopment
 )
 
@@ -107,22 +108,31 @@ if ($SessionTtlSeconds) {
     }
     Set-EnvValue 'AUTH_SESSION_TTL_SECONDS' ([string]$SessionTtlSeconds)
 }
-if ($PromptAnalystPassword) {
-    $securePassword = Read-Host 'Analyst password' -AsSecureString
-    $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-    try {
-        $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
-        if ($plainPassword.Length -lt 12) {
-            throw 'Analyst password must contain at least 12 characters.'
+function Read-PasswordIntoEnvironment([string]$Prompt, [string]$EnvironmentKey) {
+    while ($true) {
+        $securePassword = Read-Host $Prompt -AsSecureString
+        $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+        try {
+            $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
+            if ($plainPassword -and $plainPassword.Length -ge 12) {
+                Set-EnvValue $EnvironmentKey $plainPassword
+                return
+            }
+            Write-Warning "$Prompt must contain at least 12 characters; try again."
+        } finally {
+            if ($passwordPointer -ne [IntPtr]::Zero) {
+                [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
+            }
+            $plainPassword = $null
+            $securePassword = $null
         }
-        Set-EnvValue 'ANALYST_LOGIN_PASSWORD' $plainPassword
-    } finally {
-        if ($passwordPointer -ne [IntPtr]::Zero) {
-            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
-        }
-        $plainPassword = $null
-        $securePassword = $null
     }
+}
+if ($PromptAnalystPassword) {
+    Read-PasswordIntoEnvironment 'Analyst password' 'ANALYST_LOGIN_PASSWORD'
+}
+if ($PromptReportAdminPassword) {
+    Read-PasswordIntoEnvironment 'Report admin password' 'REPORT_ADMIN_LOGIN_PASSWORD'
 }
 
 # Login ID와 raw password를 일반 command parameter로 받지 않는다. 보호된 외부 env 또는

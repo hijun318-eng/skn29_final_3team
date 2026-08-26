@@ -234,6 +234,19 @@
 [data-report-builder="v2"] .report-assistant-composer button{width:32px;height:32px;display:grid;place-items:center;color:#fff;border:0;border-radius:7px;background:#176fe5}
 [data-report-builder="v2"] .report-assistant-composer button:disabled,[data-report-builder="v2"] .report-assistant-quick button:disabled{cursor:not-allowed;opacity:.38}
 [data-report-builder="v2"] .report-assistant-composer>small{display:block;margin-top:6px;color:#687b91;font-size:7px;line-height:1.4}
+[data-report-builder="v2"] .report-assistant-approval{padding:11px;color:#d8e6f5;border:1px solid #6f511a;border-radius:8px;background:#211b0e}
+[data-report-builder="v2"] .report-assistant-approval>header{display:flex;align-items:flex-start;gap:7px;color:#efbd5c}
+[data-report-builder="v2"] .report-assistant-approval>header>svg{margin-top:1px;flex:none}
+[data-report-builder="v2"] .report-assistant-approval header span,[data-report-builder="v2"] .report-assistant-approval header b,[data-report-builder="v2"] .report-assistant-approval header small{display:block}
+[data-report-builder="v2"] .report-assistant-approval header b{font-size:9px}
+[data-report-builder="v2"] .report-assistant-approval header small{margin-top:3px;color:#b7985d;font-size:7px;line-height:1.45}
+[data-report-builder="v2"] .report-assistant-approval dl{margin:9px 0 0;display:grid;gap:6px}
+[data-report-builder="v2"] .report-assistant-approval dl>div{padding:7px;border:1px solid rgba(239,189,92,.14);border-radius:5px;background:rgba(0,0,0,.13)}
+[data-report-builder="v2"] .report-assistant-approval dt{color:#a78d5b;font-size:7px}
+[data-report-builder="v2"] .report-assistant-approval dd{margin:3px 0 0;color:#e5d8be;font-size:8px;line-height:1.45}
+[data-report-builder="v2"] .report-assistant-approval nav{margin-top:9px;display:grid;grid-template-columns:1fr 1.4fr;gap:5px}
+[data-report-builder="v2"] .report-assistant-approval button{min-height:30px;display:flex;align-items:center;justify-content:center;gap:4px;color:#bea978;border:1px solid #5b4822;border-radius:5px;background:#17140d;font-size:8px}
+[data-report-builder="v2"] .report-assistant-approval button.primary{color:#fff;border-color:#176fe5;background:#176fe5}
 @keyframes report-assistant-spin{to{transform:rotate(360deg)}}
 
 /* 라이트 모드는 흰 A4와 경쟁하지 않는 청회색 작업면·종이색 패널·짙은 잉크 계층을 사용한다. */
@@ -320,6 +333,11 @@
 .theme-light [data-report-builder="v2"] .report-assistant-composer textarea{color:#213a55}
 .theme-light [data-report-builder="v2"] .report-assistant-composer textarea::placeholder{color:#8999aa}
 .theme-light [data-report-builder="v2"] .report-assistant-composer>small{color:#718399}
+.theme-light [data-report-builder="v2"] .report-assistant-approval{color:#5d4a26;border-color:#e6ca8f;background:#fff8e8}
+.theme-light [data-report-builder="v2"] .report-assistant-approval header small{color:#8c7040}
+.theme-light [data-report-builder="v2"] .report-assistant-approval dl>div{border-color:#eddbb5;background:#fffdf7}
+.theme-light [data-report-builder="v2"] .report-assistant-approval dd{color:#55472f}
+.theme-light [data-report-builder="v2"] .report-assistant-approval button{color:#735c31;border-color:#ddc390;background:#fff}
 
 [data-report-builder="v2"]:fullscreen{width:100vw;height:100vh;background:#070b11}
 [data-report-builder="v2"]:fullscreen .report-builder-v2-layout{height:calc(100vh - var(--builder-header))}

@@ -208,14 +208,28 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     pageCount={page.reportPages.length}
   />;
   const assistant = <ReportAssistantPanel
+    approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(lifecycle.assistantSession?.phase)
+      ? lifecycle.assistantSession?.analysis_plan && {
+          ...lifecycle.assistantSession.analysis_plan,
+          scope: [
+            lifecycle.assistantSession.analysis_plan.scope.period,
+            ...lifecycle.assistantSession.analysis_plan.scope.metrics,
+            ...lifecycle.assistantSession.analysis_plan.scope.dimensions,
+          ].join(" · "),
+        }
+      : null}
     artifact={page.selectedArtifact}
     canEdit={page.canEdit}
     instruction={lifecycle.assistantInstruction}
     onInstructionChange={lifecycle.setAssistantInstruction}
+    onApproveDataRequest={page.approveAssistantDataRequest}
+    onRejectDataRequest={page.rejectAssistantDataRequest}
     onSubmit={page.createAssistantDraft}
     pending={lifecycle.pending}
     selectedBlock={page.editorTools.primaryBlock}
     trace={lifecycle.assistantTrace}
+    workflowStatus={lifecycle.assistantSession?.phase || ""}
+    workflowError={lifecycle.assistantSession?.error_code || ""}
   />;
   const editor = page.builderV2 ? <ReportBuilderV2
     assistant={assistant}

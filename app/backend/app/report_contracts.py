@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.contracts import ChartSpec, Evidence, MetricValue, TableResult
 from src.report.domain import BlockFailureCode
@@ -260,6 +260,299 @@ class ReportAssistantDraftResponse(ReportContractModel):
     status: Literal["success"]
     definition: ReportDefinitionResponse
     trace: ReportAssistantTraceResponse
+
+
+ReportAssistantPhase = Literal[
+    "ready",
+    "waiting_approval",
+    "running_data_agent",
+    "waiting_artifact",
+    "saving_revision",
+    "completed",
+    "failed",
+    "cancelled",
+]
+
+
+class CreateReportAssistantSessionRequest(ReportContractModel):
+    """보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다."""
+
+    definition_id: UUID
+    definition_version: int = Field(ge=1)
+    artifact_id: UUID
+
+
+class ReportAssistantMessageRequest(ReportContractModel):
+    """ready 세션에 500자 이하의 보고서 변경 지시를 제출한다."""
+
+    instruction: str = Field(min_length=1, max_length=500)
+
+    @field_validator("instruction")
+    @classmethod
+    def reject_blank_instruction(cls, value: str) -> str:
+        """변경 지시의 양끝 공백을 제거하고 공백뿐인 입력을 모델 호출 전에 거부한다."""
+
+        if not value.strip():
+            raise ValueError("instruction은 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantAnalysisScope(ReportContractModel):
+    """승인 전에 사용자에게 공개할 조회 기간·지표·분석 범위를 제한된 문자열로 표현한다."""
+
+    period: str = Field(min_length=1, max_length=255)
+    metrics: tuple[str, ...] = Field(min_length=1, max_length=10)
+    dimensions: tuple[str, ...] = Field(default=(), max_length=10)
+
+    @field_validator("period")
+    @classmethod
+    def normalize_period(cls, value: str) -> str:
+        """사용자 승인 카드에 의미 없는 공백 기간이 표시되지 않도록 정규화한다."""
+
+        if not value.strip():
+            raise ValueError("period는 비어 있을 수 없습니다.")
+        return value.strip()
+
+    @field_validator("metrics", "dimensions")
+    @classmethod
+    def normalize_scope_items(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        """지표·차원 표시값의 공백과 중복을 거부해 승인 범위를 명확하게 유지한다."""
+
+        normalized = tuple(value.strip() for value in values)
+        if any(not value for value in normalized):
+            raise ValueError("scope 항목은 비어 있을 수 없습니다.")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("scope 항목은 중복될 수 없습니다.")
+        return normalized
+
+
+class ReportAssistantAnalysisPlan(ReportContractModel):
+    """새 데이터 실행 전에 질문·이유·범위를 request ID와 함께 고정한다."""
+
+    request_id: UUID
+    question: str = Field(min_length=1, max_length=1000)
+    reason: str = Field(min_length=1, max_length=500)
+    scope: ReportAssistantAnalysisScope
+
+    @field_validator("question", "reason")
+    @classmethod
+    def normalize_plan_text(cls, value: str) -> str:
+        """모델 계획의 질문·이유를 정규화하고 공백뿐인 출력을 승인 전에 거부한다."""
+
+        if not value.strip():
+            raise ValueError("analysis plan 문구는 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantSessionResponse(ReportContractModel):
+    """서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다."""
+
+    assistant_request_id: UUID
+    phase: ReportAssistantPhase
+    definition_id: UUID
+    definition_version: int
+    base_revision: int
+    artifact_id: UUID
+    analysis_plan: ReportAssistantAnalysisPlan | None = None
+    result_artifact_id: UUID | None = None
+    result_revision: int | None = None
+    error_code: str | None = None
+
+    @model_validator(mode="after")
+    def require_plan_during_data_flow(self) -> "ReportAssistantSessionResponse":
+        """데이터 실행 관련 phase가 승인된 계획 없이 노출되는 상태를 거부한다."""
+
+        if self.phase in {
+            "waiting_approval",
+            "running_data_agent",
+            "waiting_artifact",
+            "saving_revision",
+        } and self.analysis_plan is None:
+            raise ValueError("데이터 실행 phase에는 analysis_plan이 필요합니다.")
+        return self
+
+
+class ReportAssistantApprovalRequest(ReportContractModel):
+    """현재 승인 대기 계획에 대한 사용자의 승인 또는 거절 한 번만 입력받는다."""
+
+    request_id: UUID
+    approved: bool
+
+
+class ReportAssistantProposalResponse(ReportContractModel):
+    """검증된 변경 종류·사용자 메시지와 저장된 서버 세션 상태를 함께 반환한다."""
+
+    change_kind: Literal["clarification", "existing_artifact", "new_data"]
+    message: str = Field(min_length=1, max_length=1000)
+    session: ReportAssistantSessionResponse
+
+
+class ReportAssistantPatchPlacement(ReportContractModel):
+    """새 블록의 상대 위치와 폭 의도만 받아 실제 grid 좌표는 서버가 계산하게 한다."""
+
+    after_block_id: str | None = Field(default=None, min_length=1)
+    width: Literal["half", "full"] = "full"
+
+
+class ReportAssistantSetTitleOperation(ReportContractModel):
+    """현재 draft 제목을 근거와 무관한 다른 필드 변경 없이 교체한다."""
+
+    op: Literal["set_report_title"]
+    title: str = Field(min_length=1, max_length=255)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        """공백 제목을 거부하고 저장될 제목의 바깥 공백을 제거한다."""
+
+        if not value.strip():
+            raise ValueError("보고서 제목은 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantAddTextOperation(ReportContractModel):
+    """모델이 제안한 근거 기반 문구를 새 text block으로 추가한다."""
+
+    op: Literal["add_text"]
+    title: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1, max_length=4000)
+    placement: ReportAssistantPatchPlacement = Field(
+        default_factory=ReportAssistantPatchPlacement
+    )
+
+    @field_validator("title", "content")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        """빈 제목·본문을 patch 적용 전에 거부하고 바깥 공백을 제거한다."""
+
+        if not value.strip():
+            raise ValueError("text block 제목과 내용은 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantUpdateTextOperation(ReportContractModel):
+    """현재 보고서에 존재하는 text block 하나의 제목 또는 내용을 수정한다."""
+
+    op: Literal["update_text"]
+    block_id: str = Field(min_length=1)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ReportAssistantUpdateTextOperation":
+        """실제 변경값이 없거나 공백뿐인 text 수정 요청을 거부한다."""
+
+        if self.title is None and self.content is None:
+            raise ValueError("update_text에는 title 또는 content가 필요합니다.")
+        if self.title is not None and not self.title.strip():
+            raise ValueError("text block 제목은 비어 있을 수 없습니다.")
+        if self.content is not None and not self.content.strip():
+            raise ValueError("text block 내용은 비어 있을 수 없습니다.")
+        self.title = self.title.strip() if self.title is not None else None
+        self.content = self.content.strip() if self.content is not None else None
+        return self
+
+
+class ReportAssistantAddArtifactViewOperation(ReportContractModel):
+    """서버가 제공한 별칭의 검증 Artifact만 chart·table·bundle 블록으로 추가한다."""
+
+    op: Literal["add_artifact_view"]
+    artifact_ref: str = Field(min_length=1, max_length=128)
+    view: Literal["chart", "table", "artifact"]
+    title: str = Field(min_length=1, max_length=255)
+    placement: ReportAssistantPatchPlacement = Field(
+        default_factory=ReportAssistantPatchPlacement
+    )
+
+    @field_validator("artifact_ref", "title")
+    @classmethod
+    def normalize_artifact_view_text(cls, value: str) -> str:
+        """빈 Artifact 별칭과 block 제목을 적용기 진입 전에 거부한다."""
+
+        if not value.strip():
+            raise ValueError("Artifact 별칭과 block 제목은 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantRepositionBlockOperation(ReportContractModel):
+    """기존 block을 서버 계산 상대 위치로 옮기고 12열 기준 폭만 조정한다."""
+
+    op: Literal["reposition_block"]
+    block_id: str = Field(min_length=1)
+    after_block_id: str | None = Field(default=None, min_length=1)
+    width: Literal["half", "full"] = "full"
+
+    @model_validator(mode="after")
+    def reject_self_anchor(self) -> "ReportAssistantRepositionBlockOperation":
+        """이동 대상 자신을 기준 위치로 지정한 순환 배치를 적용 전에 거부한다."""
+
+        if self.after_block_id == self.block_id:
+            raise ValueError("이동 block은 자기 자신 뒤에 배치할 수 없습니다.")
+        return self
+
+
+class ReportAssistantRemoveBlockOperation(ReportContractModel):
+    """현재 draft의 기존 block 하나를 서버 검증 뒤 제거한다."""
+
+    op: Literal["remove_block"]
+    block_id: str = Field(min_length=1)
+
+
+class ReportAssistantDuplicateBlockOperation(ReportContractModel):
+    """기존 block의 내용과 lineage를 보존하고 서버 ID로 바로 뒤에 복제한다."""
+
+    op: Literal["duplicate_block"]
+    block_id: str = Field(min_length=1)
+
+
+class ReportAssistantRestorePreviousRevisionOperation(ReportContractModel):
+    """직전 저장 version의 스냅샷을 새 CAS revision으로 복원하도록 요청한다."""
+
+    op: Literal["restore_previous_revision"]
+
+
+ReportAssistantPatchOperation = Annotated[
+    ReportAssistantSetTitleOperation
+    | ReportAssistantAddTextOperation
+    | ReportAssistantUpdateTextOperation
+    | ReportAssistantAddArtifactViewOperation
+    | ReportAssistantRepositionBlockOperation
+    | ReportAssistantRemoveBlockOperation
+    | ReportAssistantDuplicateBlockOperation
+    | ReportAssistantRestorePreviousRevisionOperation,
+    Field(discriminator="op"),
+]
+
+
+class ReportAssistantPatch(ReportContractModel):
+    """모델의 보고서 변경 의도를 서버가 허용한 최소 연산 목록으로 제한한다."""
+
+    summary: str = Field(min_length=1, max_length=1000)
+    operations: tuple[ReportAssistantPatchOperation, ...] = Field(
+        min_length=1,
+        max_length=12,
+    )
+
+    @field_validator("summary")
+    @classmethod
+    def normalize_summary(cls, value: str) -> str:
+        """사용자에게 공개할 patch 요약의 빈 값을 거부하고 공백을 정규화한다."""
+
+        if not value.strip():
+            raise ValueError("Report patch 요약은 비어 있을 수 없습니다.")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def isolate_revision_restore(self) -> "ReportAssistantPatch":
+        """전체 snapshot 복원과 부분 변경을 한 patch에서 섞어 적용 순서가 모호해지는 것을 막는다."""
+
+        restore_count = sum(
+            operation.op == "restore_previous_revision"
+            for operation in self.operations
+        )
+        if restore_count and (restore_count != 1 or len(self.operations) != 1):
+            raise ValueError("이전 revision 복원은 단독 연산이어야 합니다.")
+        return self
 
 
 class ManualRunCommandResponse(ReportContractModel):

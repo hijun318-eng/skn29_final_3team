@@ -6,6 +6,7 @@ import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
+import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
 import { MetaStrip } from "../components/common/EnterpriseUi";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
@@ -681,6 +682,8 @@ export function AgentPage({ onNavigate }) {
           </details>
         )}
       </main>
+
+      <MLPredictionWorkspace conversationId={conversationId || null} />
 
       {/* 우측 슬라이드: 분석 근거 서랍 */}
       <TurnEvidenceDrawer

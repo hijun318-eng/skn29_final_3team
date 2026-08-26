@@ -1,0 +1,27 @@
+{
+  "freeze_status": "FROZEN_CANDIDATE",
+  "model_version": "room-demand-timeseries-hgbr-v2.2.0",
+  "frozen_at_utc": "2026-08-26T06:16:06.855776+00:00",
+  "dataset_version": "room-demand-timeseries-d1-d10-v2.0.0",
+  "dataset_source_sha256": "f0660c7d94429e0dbfacbce87bb436335f76a698436f341656f4dec9d8827ae6",
+  "dataset_file_sha256": {
+    "train": "74d617cc15b0565eddfa86777722a0bcc9b8af6f7da405d9027be6e023181796",
+    "validation": "ba392ca0594d7e4910526e6a097d15b284cbc591901e680c56d46a61bb2940b0",
+    "test_a_features": "0b8348f9b12810723bdaf108036c3bd67f6162b49f8aed15c0a2b254c99d3913",
+    "test_a_labels": "42a7f35934401e4ddec71990231952c646d8ddcc80f6e1de0985a45ec7c3f71b",
+    "test_b_features": "3f6f1e009cb7241dea8574980a4ca6bca0183e613f5080df16da45d72182d50a",
+    "test_b_labels": "17ea830ee813fff327ec5e66d68d394bf4d8adcd662dc71f560c7abbc15b4557",
+    "inference": "0614333017b0c6efd27f564800dec1b22ad7ba3a6a0c20a40e1e229badd27c28"
+  },
+  "artifact_files_sha256": {
+    "model.joblib": "5b0a8a896bf87dd2516129d52599bf183c05dd7bc154e17b570851ca1e1564fa",
+    "model_manifest.json": "07766acc7d4cf2857b19a3dc6309ff2ba6fc01f080784328d689659fb230f321",
+    "selection_trials.json": "bf7e9efddc909adca9a939ae9a8cee15a2cb4d80f39c2676c26f84d3c2ef5c17",
+    "feature_contract.json": "09089d55a6a330f54bd67548a5c6ce656d7b12948be18f5971bd4b7c12b44c79",
+    "runtime_feature_contract.json": "8178d8d25bdc9e7dc03a07fd10bb754502e964f225f8c2f9a643d55e18dd99bb",
+    "model_card.md": "d4c21b9f5ea64feeb296e7eed6d609f0fcf5aaecf5119a84f8242bcf154e135f"
+  },
+  "test_seen_by_trainer": false,
+  "hidden_test_evaluated": false,
+  "code_revision": "NOT_COLLECTED"
+}

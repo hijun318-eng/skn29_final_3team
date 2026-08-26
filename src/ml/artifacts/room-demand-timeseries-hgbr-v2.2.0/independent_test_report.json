@@ -1,0 +1,104 @@
+{
+  "test_a": {
+    "metrics": {
+      "rows": 31950,
+      "actual_total": 1872175.0,
+      "actual_mean": 58.59702660406886,
+      "wape": 0.16211694542319402,
+      "mae": 9.49957096393328,
+      "rmse": 17.53812613139886,
+      "bias": -0.003034869125706281,
+      "mase": 0.8952435644342501,
+      "r2": 0.9519648233678273
+    },
+    "baseline_metrics": {
+      "rows": 31950,
+      "actual_total": 1872175.0,
+      "actual_mean": 58.59702660406886,
+      "wape": 0.18108697103636145,
+      "mae": 10.611158059467918,
+      "rmse": 19.361947216124726,
+      "bias": -1.3353452535152964e-05,
+      "mase": 1.0,
+      "r2": 0.9414548291926307
+    },
+    "baseline_improvement": 0.10475643556574998,
+    "worst_room_type_wape": 0.7582099625443232,
+    "worst_high_volume_room_type_wape": 0.24161171346670446,
+    "worst_low_volume_room_type_mae": 2.871257139707264,
+    "horizon_10_wape": 0.16108730775953262,
+    "raw_negative": 0,
+    "raw_above_capacity": 0,
+    "clipped_negative": 0,
+    "clipped_above_capacity": 0
+  },
+  "test_b": {
+    "metrics": {
+      "rows": 20970,
+      "actual_total": 1248389.0,
+      "actual_mean": 59.53214115402957,
+      "wape": 0.16331432477465,
+      "mae": 9.72245143495949,
+      "rmse": 17.742391247666983,
+      "bias": -0.015968086432132014,
+      "mase": 0.888394202821881,
+      "r2": 0.9519163855178836
+    },
+    "baseline_metrics": {
+      "rows": 20970,
+      "actual_total": 1248389.0,
+      "actual_mean": 59.53214115402957,
+      "wape": 0.1838309212913603,
+      "mae": 10.94384835479256,
+      "rmse": 19.991389121521966,
+      "bias": -0.003099194241538495,
+      "mase": 1.0,
+      "r2": 0.9389537841727236
+    },
+    "baseline_improvement": 0.11160579717811903,
+    "worst_room_type_wape": 0.7031661666064898,
+    "worst_high_volume_room_type_wape": 0.26027592470229405,
+    "worst_low_volume_room_type_mae": 2.949923100157316,
+    "horizon_10_wape": 0.16476733894246545,
+    "raw_negative": 0,
+    "raw_above_capacity": 0,
+    "clipped_negative": 0,
+    "clipped_above_capacity": 0
+  },
+  "approval": {
+    "decision": "PASS",
+    "split_gates": {
+      "test_a": {
+        "status": "PASS",
+        "hard_checks": {
+          "wape_lte_18pct": true,
+          "baseline_improvement_gte_8pct": true,
+          "high_volume_room_type_wape_lte_30pct": true,
+          "low_volume_room_type_mae_lte_3_rooms": true,
+          "horizon_10_wape_lte_20pct": true,
+          "absolute_bias_lte_5pct": true,
+          "clipped_negative_zero": true,
+          "clipped_above_capacity_zero": true
+        },
+        "raw_range_pass": true
+      },
+      "test_b": {
+        "status": "PASS",
+        "hard_checks": {
+          "wape_lte_18pct": true,
+          "baseline_improvement_gte_8pct": true,
+          "high_volume_room_type_wape_lte_30pct": true,
+          "low_volume_room_type_mae_lte_3_rooms": true,
+          "horizon_10_wape_lte_20pct": true,
+          "absolute_bias_lte_5pct": true,
+          "clipped_negative_zero": true,
+          "clipped_above_capacity_zero": true
+        },
+        "raw_range_pass": true
+      }
+    },
+    "test_b_relative_wape_degradation": 0.007385898792567902,
+    "test_seen_by_trainer": false,
+    "september_observed_values_used": false
+  }
+}

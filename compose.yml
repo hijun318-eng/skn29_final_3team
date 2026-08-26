@@ -6,6 +6,7 @@ name: ${COMPOSE_PROJECT_NAME:-answervice}
 include:
   - path:
       - infrastructure/database/compose.yml
+      - infrastructure/ml/compose.fragment.yml
       - app/backend/compose.fragment.yml
       - app/frontend/compose.fragment.yml
       - infrastructure/database/datahub/compose.consumer.yml

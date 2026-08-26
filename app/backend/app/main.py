@@ -16,6 +16,7 @@ from app.api.router import _controller, execution_gate, router
 from app.api.report_router import report_router
 from app.api.mcp_router import mcp_router
 from app.api.rag_router import rag_router
+from app.api.ml_router import router as ml_router
 from app.context import ContextValidationError, request_context, valid_trace_id
 from app.database import dispose_database
 from app.contracts import (
@@ -119,6 +120,7 @@ app.include_router(router)
 app.include_router(report_router)
 app.include_router(mcp_router)
 app.include_router(rag_router)
+app.include_router(ml_router)
 
 
 @app.middleware("http")

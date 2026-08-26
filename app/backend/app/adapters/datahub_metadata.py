@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import unicodedata
 
 from app.adapters.datahub_contract_values import (
     dataset_governed_properties as _dataset_governed_properties,
@@ -22,7 +23,11 @@ from app.adapters.datahub_metric_governance import (
     parse_release_metric_rules,
     parse_runtime_metrics,
 )
-from app.adapters.datahub_metadata_types import GlossaryMetricTerm, GovernedDataset
+from app.adapters.datahub_metadata_types import (
+    GlossaryDimensionMemberTerm,
+    GlossaryMetricTerm,
+    GovernedDataset,
+)
 from app.adapters.datahub_metadata_values import (
     GovernedMetadataError,
     checksum,
@@ -35,6 +40,7 @@ from app.adapters.datahub_metadata_values import (
     term_urns,
 )
 from src.data.governance_contract import (
+    DIMENSION_MEMBER_TERM_RUNTIME_PROPERTY_KEYS,
     MANIFEST_DATASET_KEYS,
     TERM_RUNTIME_PROPERTY_KEYS,
     datahub_schema_readback_sha1,
@@ -85,6 +91,71 @@ def parse_glossary_term(value: object) -> GlossaryMetricTerm:
         checksum=checksum(properties["glossary_sha256"]),
         catalog_checksum=checksum(properties["catalog_sha256"]),
         metric_rule=metric_rule,
+        owner_urns=owner_urns,
+        domain_urn=domain_urn,
+        lifecycle_urn=lifecycle_urn,
+    )
+
+
+def parse_dimension_member_term(value: object) -> GlossaryDimensionMemberTerm:
+    """Glossary Term을 승인 Dimension Member의 불변 runtime identity로 검증한다."""
+
+    if not isinstance(value, dict) or value.get("exists") is not True:
+        raise GovernedMetadataError("DataHub dimension member term does not exist")
+    owner_urns, domain_urn, lifecycle_urn = native_governance(
+        value, "dimension member term"
+    )
+    urn = required_text(value.get("urn"), "dimension member term urn")
+    info = value.get("glossaryTermInfo")
+    if not isinstance(info, dict):
+        raise GovernedMetadataError("DataHub dimension member info is missing")
+    properties = _governed_properties(
+        info.get("customProperties"),
+        DIMENSION_MEMBER_TERM_RUNTIME_PROPERTY_KEYS,
+    )
+    if (
+        properties["term_kind"] != "DIMENSION_MEMBER"
+        or properties["approval_status"] != "APPROVED"
+    ):
+        raise GovernedMetadataError("DataHub dimension member is not approved")
+    label = required_text(info.get("name"), "dimension member label")
+    canonical_value = required_text(
+        properties["canonical_value"], "dimension member canonical value"
+    )
+    version = required_text(
+        properties["glossary_version"], "dimension member glossary version"
+    )
+    if info.get("sourceRef") != version or info.get("termSource") != "INTERNAL":
+        raise GovernedMetadataError(
+            "DataHub dimension member source identity is invalid"
+        )
+    aliases = tuple(
+        required_text(item, "dimension member alias")
+        for item in _json_array(properties["aliases"], "dimension member aliases")
+    )
+    normalized = {
+        unicodedata.normalize("NFKC", item).casefold() for item in aliases
+    }
+    if (
+        not aliases
+        or len(aliases) != len(normalized)
+        or unicodedata.normalize("NFKC", label).casefold() not in normalized
+        or unicodedata.normalize("NFKC", canonical_value).casefold() not in normalized
+    ):
+        raise GovernedMetadataError(
+            "DataHub dimension member aliases are incomplete or duplicate"
+        )
+    return GlossaryDimensionMemberTerm(
+        id=identifier(properties["member_id"], "dimension member id"),
+        dimension_id=identifier(properties["dimension_id"], "dimension id"),
+        urn=urn,
+        label=label,
+        aliases=aliases,
+        definition=required_text(info.get("description"), "dimension member definition"),
+        canonical_value=canonical_value,
+        version=version,
+        checksum=checksum(properties["glossary_sha256"]),
+        catalog_checksum=checksum(properties["catalog_sha256"]),
         owner_urns=owner_urns,
         domain_urn=domain_urn,
         lifecycle_urn=lifecycle_urn,
@@ -429,7 +500,10 @@ def _dimensions(values):
     ids = set()
     for item in values:
         required = {"id", "aliases", "definition", "asset_fqn", "column"}
-        if not isinstance(item, dict) or set(item) != required:
+        if not isinstance(item, dict) or set(item) not in {
+            frozenset(required),
+            frozenset(required | {"members"}),
+        }:
             raise GovernedMetadataError("DataHub dimension fields are invalid")
         dimension_id = identifier(item["id"], "dimension id")
         raw_aliases = item["aliases"]
@@ -442,23 +516,81 @@ def _dimensions(values):
         ):
             raise GovernedMetadataError("DataHub dimensions are duplicate or incomplete")
         ids.add(dimension_id)
-        result.append(
-            {
+        dimension = {
                 "id": dimension_id,
                 "aliases": list(raw_aliases),
                 "definition": required_text(item["definition"], "dimension definition"),
                 "asset_fqn": fqn(item["asset_fqn"]),
                 "column": required_text(item["column"], "dimension column"),
             }
-        )
+        if "members" in item:
+            dimension["members"] = _dimension_members(
+                item["members"],
+                dimension_id,
+            )
+        result.append(dimension)
     return tuple(result)
+
+
+def _dimension_members(value: object, dimension_id: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not value or len(value) > 64:
+        raise GovernedMetadataError("DataHub dimension members must be bounded")
+    required = {
+        "id", "urn", "name", "definition", "aliases", "canonical_value",
+        "version", "approval_status", "owner_urn", "domain_urn",
+        "approved_lifecycle_urn",
+    }
+    result = []
+    ids: set[str] = set()
+    urns: set[str] = set()
+    normalized_aliases: set[str] = set()
+    for raw in value:
+        if not isinstance(raw, dict) or set(raw) != required:
+            raise GovernedMetadataError("DataHub dimension member fields are invalid")
+        member_id = identifier(raw["id"], "dimension member id")
+        urn = required_text(raw["urn"], "dimension member urn")
+        aliases = raw["aliases"]
+        alias_set = string_set(aliases, "dimension member aliases")
+        normalized = {
+            unicodedata.normalize("NFKC", alias).casefold() for alias in alias_set
+        }
+        if (
+            member_id in ids
+            or urn in urns
+            or not urn.startswith("urn:li:glossaryTerm:")
+            or not alias_set
+            or len(normalized) != len(alias_set)
+            or normalized & normalized_aliases
+            or raw["approval_status"] != "APPROVED"
+            or unicodedata.normalize("NFKC", str(raw["name"])).casefold()
+            not in normalized
+            or unicodedata.normalize(
+                "NFKC", str(raw["canonical_value"])
+            ).casefold()
+            not in normalized
+        ):
+            raise GovernedMetadataError(
+                "DataHub dimension members are duplicate or incomplete"
+            )
+        for field in (
+            "name", "definition", "canonical_value", "version", "owner_urn",
+            "domain_urn", "approved_lifecycle_urn",
+        ):
+            required_text(raw[field], f"dimension member {field}")
+        ids.add(member_id)
+        urns.add(urn)
+        normalized_aliases.update(normalized)
+        result.append(dict(raw))
+    return result
 
 
 __all__ = [
     "GlossaryMetricTerm",
+    "GlossaryDimensionMemberTerm",
     "GovernedDataset",
     "GovernedMetadataError",
     "dataset_has_runtime_governance",
     "parse_dataset",
+    "parse_dimension_member_term",
     "parse_glossary_term",
 ]

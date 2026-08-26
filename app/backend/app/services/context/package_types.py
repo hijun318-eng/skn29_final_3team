@@ -193,6 +193,40 @@ class ContextMetricTerm:
 
 
 @dataclass(frozen=True)
+class ContextDimensionMemberReceipt:
+    """실행 필터가 참조한 승인 Dimension Member와 Glossary identity 영수증이다."""
+
+    dimension_id: str
+    member_id: str
+    term_urn: str
+    canonical_value: str
+    version: str
+    semantic_sha256: str
+    asset_fqn: str
+    column: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_identifier(self.dimension_id)
+            or not _is_identifier(self.member_id)
+            or not self.term_urn.startswith("urn:li:glossaryTerm:")
+            or not self.canonical_value.strip()
+            or not self.version.strip()
+            or len(self.semantic_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.semantic_sha256
+            )
+            or len(self.asset_fqn.split(".")) != 3
+            or not self.column.strip()
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt 계약이 유효하지 않습니다.",
+            )
+
+
+@dataclass(frozen=True)
 class ContextAsset:
     """권한 검사를 통과한 DataHub 데이터셋의 URN, Trino FQN, 컬럼 및 조인 메타데이터 데이터 클래스."""
 
@@ -241,6 +275,7 @@ class ContextBuildRequest:
     evidence_cutoff: date | None = None
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
     metric_terms: tuple[ContextMetricTerm, ...] = ()
+    dimension_member_receipts: tuple[ContextDimensionMemberReceipt, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -264,3 +299,4 @@ class ContextPackage:
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
     required_filters: tuple[ContextRequiredFilter, ...] = ()
     metric_terms: tuple[ContextMetricTerm, ...] = ()
+    dimension_member_receipts: tuple[ContextDimensionMemberReceipt, ...] = ()

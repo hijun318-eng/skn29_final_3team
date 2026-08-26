@@ -20,7 +20,15 @@ from app.services.context.filter_value_resolver import (
     discover_dimension_values,
     resolve_filter_value,
 )
-from app.services.context.metric_resolver import MetricResolver
+from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+from app.services.context.metric_resolver import (
+    MetricResolver,
+    _reconcile_filter_only_dimensions,
+)
+from app.services.context.filter_candidate_resolver import (
+    dimension_member_receipts,
+    resolve_filter_candidates,
+)
 from app.services.context.service import _inject_turn_filters
 
 
@@ -120,11 +128,264 @@ async def test_metric_resolver_caches_bounded_dimension_domains_for_its_ttl():
     adapter = _FakeAdapter(rows=[{"candidate_value": "VISTA"}])
     resolver = MetricResolver(adapter, object())
 
-    first = await resolver._dimension_values("serving.operations_daily", "hotel_code")
-    second = await resolver._dimension_values("serving.operations_daily", "hotel_code")
+    first = await resolver._dimension_values(
+        "release-a", "serving.operations_daily", "hotel_code"
+    )
+    second = await resolver._dimension_values(
+        "release-a", "serving.operations_daily", "hotel_code"
+    )
 
     assert first == second == ("VISTA",)
     assert adapter.execute_count == 1
+
+
+@async_test
+async def test_metric_resolver_dimension_cache_is_release_bound_and_single_flight():
+    adapter = _FakeAdapter(rows=[{"candidate_value": "VISTA"}])
+    resolver = MetricResolver(adapter, object())
+
+    same_release = await asyncio.gather(
+        resolver._dimension_values(
+            "release-a", "serving.operations_daily", "hotel_code"
+        ),
+        resolver._dimension_values(
+            "release-a", "serving.operations_daily", "hotel_code"
+        ),
+    )
+    next_release = await resolver._dimension_values(
+        "release-b", "serving.operations_daily", "hotel_code"
+    )
+
+    assert same_release == [("VISTA",), ("VISTA",)]
+    assert next_release == ("VISTA",)
+    assert adapter.execute_count == 2
+
+
+def _governed_metric_family():
+    base_field = lambda column: {
+        "asset_fqn": "serving.science.general_yields",
+        "column": column,
+    }
+    segment_field = lambda column: {
+        "asset_fqn": "serving.science.segment_yields",
+        "column": column,
+    }
+    candidates = [
+        {
+            "id": "helium_yield",
+            "dimensions": [base_field("station_id")],
+            "candidate_rank": 1,
+        },
+        {
+            "id": "argon_yield",
+            "dimensions": [base_field("station_id")],
+            "candidate_rank": 2,
+        },
+        {
+            "id": "segment_helium_yield",
+            "dimensions": [
+                segment_field("station_id"),
+                segment_field("observation_segment"),
+            ],
+            "candidate_rank": 3,
+        },
+        {
+            "id": "segment_argon_yield",
+            "dimensions": [
+                segment_field("station_id"),
+                segment_field("observation_segment"),
+            ],
+            "candidate_rank": 4,
+        },
+    ]
+    glossary = {
+        "helium_yield": ("Helium Yield",),
+        "argon_yield": ("Argon Yield",),
+        "segment_helium_yield": ("Segment Helium Yield",),
+        "segment_argon_yield": ("Segment Argon Yield",),
+    }
+    dimension_terms = {
+        "observation_segment": {
+            "kind": "dimension",
+            "aliases": ["Observation Segment"],
+            "field": segment_field("observation_segment"),
+        }
+    }
+    normalized = {
+        "metric_resolution": "selected",
+        "selected_metric_ids": ["helium_yield", "argon_yield"],
+        "filter_candidates": [],
+    }
+    return candidates, glossary, dimension_terms, normalized
+
+
+def test_filter_dimension_is_not_duplicated_as_a_period_comparison_group():
+    normalized = {
+        "analysis_operation": "period_comparison",
+        "dimension_candidates": ["observation_segment"],
+        "filter_candidates": [
+            {
+                "dimension_id": "observation_segment",
+                "value_text": "OMEGA",
+                "exclude": False,
+            }
+        ],
+    }
+
+    reconciled = _reconcile_filter_only_dimensions(normalized)
+
+    assert reconciled["dimension_candidates"] == []
+    assert reconciled["filter_candidates"] == normalized["filter_candidates"]
+    assert _reconcile_filter_only_dimensions(
+        {**normalized, "analysis_operation": "breakdown"}
+    )["dimension_candidates"] == ["observation_segment"]
+
+
+@async_test
+async def test_metric_resolver_rechecks_one_omitted_governed_value_for_the_metric_family():
+    adapter = _FakeAdapter(
+        rows=[{"candidate_value": "OMEGA"}, {"candidate_value": "SIGMA"}]
+    )
+    resolver = MetricResolver(adapter, object())
+    candidates, glossary, dimension_terms, normalized = _governed_metric_family()
+    business_terms = {
+        "observation_segment": {
+            "kind": "dimension",
+            "aliases": ["Observation Segment"],
+        }
+    }
+
+    async def normalize():
+        assert business_terms["observation_segment"]["value_candidates"] == [
+            "OMEGA",
+            "SIGMA",
+        ]
+        return {
+            **normalized,
+            "selected_metric_ids": [
+                "segment_helium_yield",
+                "segment_argon_yield",
+            ],
+            "filter_candidates": [
+                {
+                    "dimension_id": "observation_segment",
+                    "value_text": "OMEGA",
+                    "exclude": False,
+                }
+            ],
+        }
+
+    rechecked = await resolver._recheck_omitted_filter(
+        normalized=normalized,
+        question="Compare OMEGA Helium Yield and Argon Yield",
+        candidates=candidates,
+        glossary=glossary,
+        dimension_terms=dimension_terms,
+        business_terms=business_terms,
+        cache_namespace="release-a",
+        normalize=normalize,
+    )
+
+    assert rechecked["selected_metric_ids"] == [
+        "segment_helium_yield",
+        "segment_argon_yield",
+    ]
+    assert adapter.execute_count == 1
+
+
+@async_test
+async def test_approved_dimension_member_avoids_domain_distinct_and_keeps_receipt():
+    adapter = _FakeAdapter(rows=[])
+    resolver = MetricResolver(adapter, object())
+    candidates, glossary, dimension_terms, normalized = _governed_metric_family()
+    dimension_terms["observation_segment"]["members"] = [
+        {
+            "id": "omega",
+            "term_urn": "urn:li:glossaryTerm:observation_segment_omega",
+            "canonical_value": "OMEGA",
+            "aliases": ["OMEGA", "오메가"],
+            "version": "glossary-r4",
+            "semantic_sha256": "a" * 64,
+        }
+    ]
+    business_terms = {
+        "observation_segment": {
+            "kind": "dimension",
+            "aliases": ["Observation Segment"],
+        }
+    }
+
+    async def normalize():
+        assert business_terms["observation_segment"]["value_candidates"] == [
+            "OMEGA"
+        ]
+        return {
+            **normalized,
+            "selected_metric_ids": [
+                "segment_helium_yield",
+                "segment_argon_yield",
+            ],
+            "filter_candidates": [
+                {
+                    "dimension_id": "observation_segment",
+                    "value_text": "OMEGA",
+                    "exclude": False,
+                }
+            ],
+        }
+
+    rechecked = await resolver._recheck_omitted_filter(
+        normalized=normalized,
+        question="오메가 Helium Yield와 Argon Yield를 비교해줘",
+        candidates=candidates,
+        glossary=glossary,
+        dimension_terms=dimension_terms,
+        business_terms=business_terms,
+        cache_namespace="release-a",
+        normalize=normalize,
+    )
+    filters = resolve_filter_candidates(
+        rechecked["filter_candidates"],
+        {"observation_segment"},
+        dimension_terms,
+    )
+    receipts = dimension_member_receipts(filters, dimension_terms)
+
+    assert adapter.execute_count == 0
+    assert filters[0]["value_text"] == "OMEGA"
+    assert receipts[0]["term_urn"] == (
+        "urn:li:glossaryTerm:observation_segment_omega"
+    )
+
+
+@async_test
+async def test_metric_resolver_fails_closed_when_recheck_still_drops_the_governed_filter():
+    adapter = _FakeAdapter(rows=[{"candidate_value": "OMEGA"}])
+    resolver = MetricResolver(adapter, object())
+    candidates, glossary, dimension_terms, normalized = _governed_metric_family()
+    business_terms = {
+        "observation_segment": {
+            "kind": "dimension",
+            "aliases": ["Observation Segment"],
+        }
+    }
+
+    async def normalize():
+        return dict(normalized)
+
+    with pytest.raises(ContextBuildError) as raised:
+        await resolver._recheck_omitted_filter(
+            normalized=normalized,
+            question="Compare OMEGA Helium Yield and Argon Yield",
+            candidates=candidates,
+            glossary=glossary,
+            dimension_terms=dimension_terms,
+            business_terms=business_terms,
+            cache_namespace="release-a",
+            normalize=normalize,
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED
 
 
 @async_test

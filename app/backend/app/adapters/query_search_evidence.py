@@ -151,6 +151,7 @@ def compact_candidate_assets(
     search_metric_ranks: Mapping[str, int] | None = None,
     require_search_metric: bool = False,
     governed_phrases: tuple[str, ...] = (),
+    governed_specialization_ids: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     """release Glossary·DataHub 검색 증거가 강한 Metric만 선택 후보로 남긴다."""
 
@@ -167,6 +168,7 @@ def compact_candidate_assets(
         for value in governed_phrases
         if (normalized := _normalized_phrase(value))
     )
+    specialization_ids = frozenset(governed_specialization_ids)
     dimension_tokens = _candidate_dimension_tokens(assets)
     exact_dimension_query = normalized_query in _candidate_dimension_phrases(assets)
     metric_query_tokens = frozenset(
@@ -188,7 +190,8 @@ def compact_candidate_assets(
                     )
                 ),
                 int(
-                    any(
+                    str(metric["id"]) in specialization_ids
+                    or any(
                         phrase.replace(" ", "") in governed_phrase_forms
                         for phrase in exact_phrases
                     )
@@ -368,6 +371,66 @@ def compact_candidate_assets(
         ]
         result.append(item)
     return result
+
+
+def governed_metric_specialization_ids(
+    terms: Mapping[str, GlossaryMetricTerm],
+    governed_phrases: tuple[str, ...],
+    max_metric_count: int,
+) -> tuple[str, ...]:
+    """일반 승인 문구를 포함하는 더 구체적인 Glossary Metric을 bounded 후보로 찾는다.
+
+    질문 어휘나 값 목록을 별도 사전에 넣지 않는다. 먼저 질문에서 실제로 매치된 승인
+    label/alias와 정확히 같은 Glossary 문구를 anchor로 복원한 뒤, 그 anchor가 완전한
+    token 연속열로 들어 있는 다른 승인 label/alias만 specialization으로 인정한다.
+    단일 token은 지나치게 넓은 family를 만들 수 있어 확장하지 않는다.
+    """
+
+    if max_metric_count < 1:
+        raise ValueError("governed metric specialization bound must be positive")
+    normalized_by_id = {
+        metric_id: tuple(
+            dict.fromkeys(
+                normalized
+                for value in (term.label, *term.aliases)
+                if (normalized := _normalized_phrase(value))
+            )
+        )
+        for metric_id, term in terms.items()
+    }
+    hint_forms = {
+        normalized.replace(" ", "")
+        for value in governed_phrases
+        if (normalized := _normalized_phrase(value))
+    }
+    anchors = {
+        tuple(phrase.split())
+        for phrases in normalized_by_id.values()
+        for phrase in phrases
+        if phrase.replace(" ", "") in hint_forms and len(phrase.split()) >= 2
+    }
+    if not anchors:
+        return ()
+
+    ranked: list[tuple[int, str]] = []
+    for metric_id, phrases in normalized_by_id.items():
+        added_token_counts = [
+            len(tokens) - len(anchor)
+            for phrase in phrases
+            for tokens in (tuple(phrase.split()),)
+            for anchor in anchors
+            if len(tokens) >= len(anchor)
+            and any(
+                tokens[index : index + len(anchor)] == anchor
+                for index in range(len(tokens) - len(anchor) + 1)
+            )
+        ]
+        if added_token_counts:
+            ranked.append((min(added_token_counts), metric_id))
+    return tuple(
+        metric_id
+        for _added_tokens, metric_id in sorted(ranked)[:max_metric_count]
+    )
 
 
 def _candidate_dimension_tokens(assets: list[dict[str, Any]]) -> frozenset[str]:

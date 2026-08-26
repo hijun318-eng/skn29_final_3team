@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -36,6 +37,7 @@ from app.adapters.query_governance import (  # noqa: E402
 )
 from app.adapters.query_search_evidence import (  # noqa: E402
     compact_candidate_assets,
+    governed_metric_specialization_ids,
     unicode_tokens,
 )
 from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
@@ -50,6 +52,7 @@ from tests.backend.test_governed_data_platform import (  # noqa: E402
     _bundle,
     _candidate_assets,
 )
+from src.data.governance_contract import datahub_schema_sha1  # noqa: E402
 
 
 class KoreanQueryPlanTests(unittest.TestCase):
@@ -150,6 +153,17 @@ class KoreanQueryPlanTests(unittest.TestCase):
 
 
 class CandidateRankingTests(unittest.TestCase):
+    def test_single_token_metric_name_does_not_create_a_broad_specialization_family(self) -> None:
+        terms = {
+            "base": SimpleNamespace(label="Yield", aliases=()),
+            "qualified": SimpleNamespace(label="Segment Yield", aliases=()),
+        }
+
+        self.assertEqual(
+            (),
+            governed_metric_specialization_ids(terms, ("yield",), 10),
+        )
+
     def test_release_phrase_evidence_outranks_definition_token_density(self) -> None:
         """승인 alias hit을 긴 질문의 공통 definition token보다 강하게 보존한다."""
 
@@ -750,6 +764,91 @@ class SearchModeRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual({"helium_yield"}, selectable)
         self.assertNotIn("argon_yield", selectable)
+
+    async def test_datahub_anchor_adds_only_reviewed_metric_specializations_and_their_dimensions(self) -> None:
+        """검색된 일반 measure의 승인된 구체화만 후보로 닫고 값·도메인 분기는 만들지 않는다."""
+
+        bundle = deepcopy(_bundle())
+        qualified_asset = next(
+            item
+            for item in bundle["schema_context"]["assets"]
+            if item["fqn"] == "orbit.lake.argon_fact"
+        )
+        qualified_asset["columns"].append(
+            {
+                "name": "segment_code",
+                "native_type": "varchar",
+                "logical_type": "string",
+                "ordinal_position": 4,
+                "nullable": False,
+                "is_part_of_key": False,
+                "role": "dimension",
+                "description": "Approved observation segment.",
+            }
+        )
+        qualified_asset["datahub_schema_hash"] = datahub_schema_sha1(
+            qualified_asset
+        )
+        qualified_rule = next(
+            item for item in bundle["metric_rules"] if item["id"] == "argon_yield"
+        )
+        qualified_term = next(
+            item for item in bundle["metric_terms"] if item["id"] == "argon_yield"
+        )
+        aliases = ["Segment Helium yield", "Qualified Helium yield"]
+        definition = "Approved Helium yield attributed to an observation segment."
+        qualified_rule["dimensions"] = [
+            {"asset_fqn": qualified_asset["fqn"], "column": "segment_code"}
+        ]
+        qualified_rule["governance"]["semantic"] = {
+            "name": aliases[0],
+            "definition": definition,
+            "aliases": aliases,
+        }
+        qualified_rule["governance"]["grain"]["dimensions"] = ["segment_code"]
+        qualified_term.update(
+            {"name": aliases[0], "definition": definition, "aliases": aliases}
+        )
+        bundle["dimensions"].append(
+            {
+                "id": "observation_segment",
+                "aliases": ["Observation segment", "Segment category"],
+                "definition": "Approved segment observed with the measurement.",
+                "asset_fqn": qualified_asset["fqn"],
+                "column": "segment_code",
+            }
+        )
+
+        self.transport = RuntimeTransport(bundle)
+        adapter = self._adapter(search_mode="datahub_lexical")
+        helium_term_urn = next(
+            item["urn"]
+            for item in bundle["metric_terms"]
+            if item["id"] == "helium_yield"
+        )
+        self.transport.candidate_hits = [(helium_term_urn, "GLOSSARY_TERM")]
+
+        assets = await _candidate_assets(adapter, "Helium yield", self.context)
+        ranked = sorted(
+            (
+                int(metric["candidate_rank"]),
+                str(metric["id"]),
+            )
+            for asset in assets
+            for metric in asset["metrics"]
+            if metric["candidate_selectable"] is True
+        )
+        dimensions = {
+            str(dimension["id"])
+            for asset in assets
+            for dimension in asset["dimensions"]
+        }
+
+        self.assertEqual(
+            ["helium_yield", "argon_yield"],
+            [metric_id for _rank, metric_id in ranked],
+        )
+        self.assertEqual({"observation_segment"}, dimensions)
 
     async def test_search_hits_outside_the_release_never_reach_candidates(self) -> None:
         """검색 결과는 snapshot 멤버십·권한 검증을 통과한 뒤에만 후보가 된다."""

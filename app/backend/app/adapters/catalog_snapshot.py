@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import monotonic
 
 from app.adapters.datahub_catalog import DataHubCatalogClient
 from app.adapters.datahub_metadata import (
+    GlossaryDimensionMemberTerm,
     GlossaryMetricTerm,
     GovernedDataset,
     parse_dataset,
+    parse_dimension_member_term,
     parse_glossary_term,
 )
 from app.adapters.datahub_metadata_values import (
     GovernedMetadataError,
     dataset_has_runtime_governance,
+    dimension_member_term_record,
     required_text,
     term_has_runtime_governance,
 )
@@ -37,6 +40,9 @@ class CatalogSnapshot:
     terms_by_urn: dict[str, GlossaryMetricTerm]
     terms_by_id: dict[str, GlossaryMetricTerm]
     governance_entities: dict[str, tuple[dict[str, str], ...]]
+    dimension_member_terms_by_urn: dict[
+        str, GlossaryDimensionMemberTerm
+    ] = field(default_factory=dict)
 
 
 class CatalogSnapshotLoader:
@@ -121,19 +127,32 @@ class CatalogSnapshotLoader:
         # Soft-deleted historical Term은 search 결과나 customProperties가 남아 있을 수
         # 있다. 현재 release membership에서 제외하되, 활성 dataset manifest가 여전히
         # 그 Term을 참조하면 아래 release 검증이 누락으로 fail-closed한다.
+        active_term_records = _active_term_records(raw_terms)
         parsed_terms = tuple(
-            parse_glossary_term(item) for item in _active_term_records(raw_terms)
+            parse_glossary_term(item)
+            for item in active_term_records
+            if not dimension_member_term_record(item)
+        )
+        parsed_members = tuple(
+            parse_dimension_member_term(item)
+            for item in active_term_records
+            if dimension_member_term_record(item)
         )
         terms = tuple(
             term
             for term in parsed_terms
             if not active_checksums or term.catalog_checksum in active_checksums
         )
+        members = tuple(
+            term
+            for term in parsed_members
+            if not active_checksums or term.catalog_checksum in active_checksums
+        )
         if not datasets:
             raise GovernedMetadataError(
                 "DataHub has no approved runtime-governed datasets"
             )
-        declared = _declared_governance(datasets, terms)
+        declared = _declared_governance(datasets, terms, members)
         raw_owners, raw_domains = await asyncio.gather(
             self._fetch_all(
                 tuple(sorted(declared["owners"])), self._client.get_corp_group
@@ -151,6 +170,11 @@ class CatalogSnapshotLoader:
             terms_by_urn=_unique_index(terms, "urn", "glossary term URN"),
             terms_by_id=_unique_index(terms, "id", "metric id"),
             governance_entities=governance_entities,
+            dimension_member_terms_by_urn=_unique_index(
+                members,
+                "urn",
+                "dimension member term URN",
+            ),
         )
 
     async def _fetch_all(self, urns, fetch):
@@ -227,7 +251,7 @@ def _unique_index(values, attribute: str, label: str):
     return result
 
 
-def _declared_governance(datasets, terms) -> dict[str, set[str]]:
+def _declared_governance(datasets, terms, members=()) -> dict[str, set[str]]:
     result = {
         "owners": set(),
         "domains": set(),
@@ -236,7 +260,7 @@ def _declared_governance(datasets, terms) -> dict[str, set[str]]:
     for dataset in datasets:
         for name in result:
             result[name].update(dataset.governance_urns[name])
-    for term in terms:
+    for term in (*terms, *members):
         result["owners"].update(term.owner_urns)
         result["domains"].add(term.domain_urn)
         result["approved_lifecycles"].add(term.lifecycle_urn)

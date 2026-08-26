@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 import os
@@ -34,6 +35,7 @@ from app.services.context.metric_execution_scope import (
     synthetic_ratio_metric as _synthetic_ratio_metric,
 )
 from app.services.context.filter_candidate_resolver import (
+    dimension_member_receipts,
     dimension_terms as _resolve_dimension_terms,
     resolve_filter_candidates,
     validated_pre_filters,
@@ -73,6 +75,7 @@ _ANALYSIS_OPERATIONS = frozenset(
     }
 )
 _ANALYSIS_TIME_BUCKETS = frozenset({"day", "week", "month", "quarter", "year"})
+_MAX_OMITTED_FILTER_DIMENSION_PROBES = 4
 _KOREAN_CALENDAR_UNITS = {
     "분기": "quarter",
     "연도": "year",
@@ -172,6 +175,41 @@ def _reconcile_comparison_axis(
     return reconciled, "single", [reconciled]
 
 
+def _reconcile_filter_only_dimensions(
+    normalized: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep equality predicates while removing their duplicate output grouping.
+
+    Aggregate, time-trend and period-comparison shapes do not request a categorical
+    breakdown. A dimension that is already an explicit filter must not become a
+    constant result column solely because Node 1 returned it in both lists.
+    """
+
+    if normalized.get("analysis_operation") not in {
+        "aggregate",
+        "time_trend",
+        "period_comparison",
+    }:
+        return normalized
+    dimensions = normalized.get("dimension_candidates")
+    filters = normalized.get("filter_candidates")
+    if not isinstance(dimensions, list) or not isinstance(filters, list):
+        return normalized
+    filtered_dimensions = {
+        str(candidate.get("dimension_id"))
+        for candidate in filters
+        if isinstance(candidate, dict) and candidate.get("dimension_id")
+    }
+    reconciled_dimensions = [
+        identifier
+        for identifier in dimensions
+        if identifier not in filtered_dimensions
+    ]
+    if reconciled_dimensions == dimensions:
+        return normalized
+    return {**normalized, "dimension_candidates": reconciled_dimensions}
+
+
 def _suggestions(
     metric_ids: list[str],
     glossary: dict[str, tuple[str, ...]],
@@ -195,6 +233,229 @@ def _candidate_metric_rank(metric: dict[str, object]) -> tuple[bool, int]:
     value = metric.get("candidate_rank")
     valid = isinstance(value, int) and not isinstance(value, bool) and value > 0
     return (not valid, value if valid else 0)
+
+
+def _semantic_tokens(value: object) -> tuple[str, ...]:
+    """Return Unicode word tokens for metadata-to-metadata alias comparison."""
+
+    normalized = unicodedata.normalize("NFKC", str(value)).casefold()
+    return tuple(re.findall(r"[^\W_]+", normalized, flags=re.UNICODE))
+
+
+def _contains_token_sequence(
+    container: tuple[str, ...],
+    sequence: tuple[str, ...],
+) -> bool:
+    if not sequence or len(sequence) > len(container):
+        return False
+    return any(
+        container[index : index + len(sequence)] == sequence
+        for index in range(len(container) - len(sequence) + 1)
+    )
+
+
+def _metric_aliases_specialize(
+    specific_aliases: tuple[str, ...],
+    base_aliases: tuple[str, ...],
+) -> bool:
+    """Match a reviewed specialization using only multi-token DataHub aliases."""
+
+    specific_tokens = tuple(
+        tokens for alias in specific_aliases if (tokens := _semantic_tokens(alias))
+    )
+    base_tokens = tuple(
+        tokens
+        for alias in base_aliases
+        if len(tokens := _semantic_tokens(alias)) >= 2
+    )
+    return any(
+        len(specific) > len(base)
+        and _contains_token_sequence(specific, base)
+        for specific in specific_tokens
+        for base in base_tokens
+    )
+
+
+def _metric_dimension_keys(metric: dict[str, object]) -> set[tuple[str, str]]:
+    dimensions = metric.get("dimensions")
+    if not isinstance(dimensions, (list, tuple)):
+        return set()
+    return {
+        (str(item.get("asset_fqn") or ""), str(item.get("column") or ""))
+        for item in dimensions
+        if isinstance(item, dict)
+        and item.get("asset_fqn")
+        and item.get("column")
+    }
+
+
+def _metric_family_dimension_ids(
+    normalized: dict[str, Any],
+    candidates: list[dict[str, object]],
+    glossary: dict[str, tuple[str, ...]],
+    dimension_terms: dict[str, dict[str, object]],
+    *,
+    omitted_only: bool = False,
+) -> tuple[str, ...]:
+    """Find bounded extra dimensions shared by every selected metric family.
+
+    The relationship is derived from reviewed DataHub aliases and governed metric
+    dimensions. It does not infer a filter value or select a metric itself.
+    """
+
+    if (
+        normalized.get("metric_resolution") != "selected"
+        or (
+            omitted_only
+            and normalized.get("filter_candidates") not in ([], ())
+        )
+    ):
+        return ()
+    raw_selected = normalized.get("selected_metric_ids")
+    if not isinstance(raw_selected, list) or not raw_selected:
+        return ()
+    selected_ids = tuple(
+        item for item in raw_selected if isinstance(item, str) and item in glossary
+    )
+    if len(selected_ids) != len(raw_selected):
+        return ()
+
+    metrics = {
+        str(metric["id"]): metric
+        for metric in candidates
+        if isinstance(metric.get("id"), str)
+    }
+    field_identifiers: dict[tuple[str, str], list[str]] = {}
+    for identifier, term in dimension_terms.items():
+        field = term.get("field")
+        if not isinstance(field, dict):
+            continue
+        key = (str(field.get("asset_fqn") or ""), str(field.get("column") or ""))
+        if all(key):
+            field_identifiers.setdefault(key, []).append(identifier)
+
+    eligible_by_selected: list[set[str]] = []
+    dimension_rank: dict[str, tuple[bool, int]] = {}
+    for selected_id in selected_ids:
+        selected_metric = metrics.get(selected_id)
+        if selected_metric is None:
+            return ()
+        selected_dimensions = {
+            column for _asset_fqn, column in _metric_dimension_keys(selected_metric)
+        }
+        eligible: set[str] = set()
+        for other_id, other_metric in metrics.items():
+            if other_id == selected_id or other_id not in glossary:
+                continue
+            other_dimensions = {
+                column for _asset_fqn, column in _metric_dimension_keys(other_metric)
+            }
+            extra_columns: set[str] = set()
+            specializing_metric: dict[str, object] | None = None
+            if (
+                _metric_aliases_specialize(glossary[other_id], glossary[selected_id])
+                and other_dimensions > selected_dimensions
+            ):
+                extra_columns = other_dimensions - selected_dimensions
+                specializing_metric = other_metric
+            elif (
+                _metric_aliases_specialize(glossary[selected_id], glossary[other_id])
+                and selected_dimensions > other_dimensions
+            ):
+                extra_columns = selected_dimensions - other_dimensions
+                specializing_metric = selected_metric
+            if specializing_metric is None:
+                continue
+            for key in _metric_dimension_keys(specializing_metric):
+                if key[1] not in extra_columns:
+                    continue
+                identifiers = field_identifiers.get(key, ())
+                if len(identifiers) != 1:
+                    continue
+                identifier = identifiers[0]
+                eligible.add(identifier)
+                rank = _candidate_metric_rank(specializing_metric)
+                dimension_rank[identifier] = min(
+                    dimension_rank.get(identifier, rank),
+                    rank,
+                )
+        if not eligible:
+            return ()
+        eligible_by_selected.append(eligible)
+
+    shared = set.intersection(*eligible_by_selected)
+    return tuple(
+        sorted(shared, key=lambda item: (dimension_rank[item], item))[
+            :_MAX_OMITTED_FILTER_DIMENSION_PROBES
+        ]
+    )
+
+
+def _canonical_value_in_question(question: str, value: str) -> bool:
+    """Require one literal canonical value with Unicode identifier boundaries."""
+
+    haystack = unicodedata.normalize("NFKC", question).casefold()
+    needle = unicodedata.normalize("NFKC", value).casefold().strip()
+    if not needle:
+        return False
+    for match in re.finditer(re.escape(needle), haystack):
+        left = haystack[match.start() - 1] if match.start() else ""
+        right = haystack[match.end()] if match.end() < len(haystack) else ""
+        if not (left and (left.isalnum() or left == "_")) and not (
+            right and (right.isalnum() or right == "_")
+        ):
+            return True
+    return False
+
+
+def _approved_member_matches(
+    question: str,
+    term: dict[str, object],
+) -> tuple[dict[str, object], ...]:
+    """질문에 경계가 맞는 승인 member alias를 canonical member로만 반환한다."""
+
+    members = term.get("members")
+    if not isinstance(members, list):
+        return ()
+    matches = []
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        aliases = member.get("aliases")
+        if isinstance(aliases, list) and any(
+            isinstance(alias, str)
+            and _canonical_value_in_question(question, alias)
+            for alias in aliases
+        ):
+            matches.append(member)
+    return tuple(matches)
+
+
+def _selected_metrics_bind_dimension(
+    normalized: dict[str, Any],
+    candidates: list[dict[str, object]],
+    dimension_terms: dict[str, dict[str, object]],
+    identifier: str,
+) -> bool:
+    raw_selected = normalized.get("selected_metric_ids")
+    if not isinstance(raw_selected, list) or not raw_selected:
+        return False
+    selected_metrics = {
+        str(metric["id"]): metric
+        for metric in candidates
+        if isinstance(metric.get("id"), str)
+    }
+    field = dimension_terms[identifier].get("field")
+    field_key = (
+        str(field.get("asset_fqn") or ""),
+        str(field.get("column") or ""),
+    ) if isinstance(field, dict) else ("", "")
+    return all(
+        isinstance(metric_id, str)
+        and metric_id in selected_metrics
+        and field_key in _metric_dimension_keys(selected_metrics[metric_id])
+        for metric_id in raw_selected
+    )
 
 
 def _period_boundary(value: object) -> date:
@@ -678,6 +939,10 @@ def _structured_request(
             dimension_terms[item]["field"] for item in selected_dimensions
         ],
         "filter_fields": filter_fields,
+        "dimension_member_receipts": dimension_member_receipts(
+            filter_fields,
+            dimension_terms,
+        ),
         "period_candidates": periods,
         "period_relationship": relationship,
         "time_mode": analysis_time_mode,
@@ -755,29 +1020,170 @@ class MetricResolver:
             configured_ttl = 300.0
         self._dimension_value_cache_ttl = min(3_600.0, max(30.0, configured_ttl))
         self._dimension_value_cache: dict[
-            tuple[str, str], tuple[float, tuple[str, ...]]
+            tuple[str, str, str], tuple[float, tuple[str, ...]]
+        ] = {}
+        self._dimension_value_inflight: dict[
+            tuple[str, str, str], asyncio.Task[tuple[str, ...]]
         ] = {}
 
-    async def _dimension_values(self, asset_fqn: str, column: str) -> tuple[str, ...]:
-        """Return one bounded live value domain with a short process-local TTL."""
+    async def _load_dimension_values(
+        self,
+        key: tuple[str, str, str],
+        asset_fqn: str,
+        column: str,
+    ) -> tuple[str, ...]:
+        """Load and cache one release-bound value domain for all concurrent waiters."""
 
-        key = (asset_fqn, column)
+        try:
+            values = await discover_dimension_values(self._adapter, asset_fqn, column)
+            now = monotonic()
+            if len(self._dimension_value_cache) >= 256:
+                expired = [
+                    item
+                    for item, entry in self._dimension_value_cache.items()
+                    if now >= entry[0]
+                ]
+                for item in expired:
+                    self._dimension_value_cache.pop(item, None)
+                if len(self._dimension_value_cache) >= 256:
+                    self._dimension_value_cache.pop(
+                        next(iter(self._dimension_value_cache))
+                    )
+            self._dimension_value_cache[key] = (
+                now + self._dimension_value_cache_ttl,
+                values,
+            )
+            return values
+        finally:
+            current = asyncio.current_task()
+            if self._dimension_value_inflight.get(key) is current:
+                self._dimension_value_inflight.pop(key, None)
+
+    async def _dimension_values(
+        self,
+        cache_namespace: str | None,
+        asset_fqn: str,
+        column: str,
+    ) -> tuple[str, ...]:
+        """Return one bounded live domain cached only inside an exact release."""
+
+        if not cache_namespace:
+            return await discover_dimension_values(self._adapter, asset_fqn, column)
+        key = (cache_namespace, asset_fqn, column)
         now = monotonic()
         cached = self._dimension_value_cache.get(key)
         if cached is not None and now < cached[0]:
             return cached[1]
-        values = await discover_dimension_values(self._adapter, asset_fqn, column)
-        if len(self._dimension_value_cache) >= 256:
-            expired = [item for item, entry in self._dimension_value_cache.items() if now >= entry[0]]
-            for item in expired:
-                self._dimension_value_cache.pop(item, None)
-            if len(self._dimension_value_cache) >= 256:
-                self._dimension_value_cache.pop(next(iter(self._dimension_value_cache)))
-        self._dimension_value_cache[key] = (
-            now + self._dimension_value_cache_ttl,
-            values,
+        task = self._dimension_value_inflight.get(key)
+        if task is None:
+            task = asyncio.create_task(
+                self._load_dimension_values(key, asset_fqn, column)
+            )
+            self._dimension_value_inflight[key] = task
+        return await asyncio.shield(task)
+
+    async def _recheck_omitted_filter(
+        self,
+        *,
+        normalized: dict[str, Any],
+        question: str,
+        candidates: list[dict[str, object]],
+        glossary: dict[str, tuple[str, ...]],
+        dimension_terms: dict[str, dict[str, object]],
+        business_terms: dict[str, dict[str, object]],
+        cache_namespace: str | None,
+        normalize: Any,
+    ) -> dict[str, Any]:
+        """Recheck one explicit governed value that Node 1 omitted.
+
+        Only extra dimensions shared by the selected metric families are probed.
+        The model remains responsible for semantic selection; the server only
+        supplies a complete bounded value domain and verifies the second output.
+        """
+
+        dimension_ids = _metric_family_dimension_ids(
+            normalized,
+            candidates,
+            glossary,
+            dimension_terms,
+            omitted_only=True,
         )
-        return values
+        if not dimension_ids:
+            return normalized
+
+        matches: list[tuple[str, str, tuple[str, ...]]] = []
+        for identifier in dimension_ids:
+            term = dimension_terms[identifier]
+            field = term.get("field")
+            if not isinstance(field, dict):
+                continue
+            governed_matches = _approved_member_matches(question, term)
+            members = term.get("members")
+            if isinstance(members, list) and members:
+                if len(governed_matches) > 1:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                        "질문에 명시된 승인 차원값이 둘 이상이라 단일 필터로 확정할 수 없습니다.",
+                    )
+                if governed_matches:
+                    canonical = str(governed_matches[0]["canonical_value"])
+                    matches.append((identifier, canonical, (canonical,)))
+                # 승인 member가 완전한 controlled domain이면 live DISTINCT로 우회하지 않는다.
+                continue
+            try:
+                values = await self._dimension_values(
+                    cache_namespace,
+                    str(field["asset_fqn"]),
+                    str(field["column"]),
+                )
+            except (KeyError, OSError, TypeError, ValueError):
+                values = ()
+            for value in values:
+                if _canonical_value_in_question(question, value):
+                    matches.append((identifier, value, values))
+
+        if not matches:
+            return normalized
+        if len(matches) != 1:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "질문에 명시된 승인 차원값을 단일 필터로 확정하지 못했습니다.",
+            )
+
+        identifier, canonical_value, values = matches[0]
+        business_terms[identifier]["value_candidates"] = list(values)
+        rechecked = await normalize()
+        if not isinstance(rechecked, dict):
+            raise ValueError("Node1 필터 재해석 응답은 객체여야 합니다.")
+
+        raw_filters = rechecked.get("filter_candidates")
+        expected_value = unicodedata.normalize(
+            "NFKC", canonical_value
+        ).casefold()
+        filter_is_bound = (
+            isinstance(raw_filters, list)
+            and len(raw_filters) == 1
+            and isinstance(raw_filters[0], dict)
+            and raw_filters[0].get("dimension_id") == identifier
+            and isinstance(raw_filters[0].get("value_text"), str)
+            and unicodedata.normalize(
+                "NFKC", str(raw_filters[0]["value_text"])
+            ).casefold().strip()
+            == expected_value
+            and isinstance(raw_filters[0].get("exclude"), bool)
+        )
+        metrics_are_bound = _selected_metrics_bind_dimension(
+            rechecked,
+            candidates,
+            dimension_terms,
+            identifier,
+        )
+        if not filter_is_bound or not metrics_are_bound:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "질문에 명시된 승인 필터를 선택 지표와 결속하지 못했습니다.",
+            )
+        return rechecked
 
     async def resolve(
         self,
@@ -897,6 +1303,17 @@ class MetricResolver:
                 for identifier, term in dimension_terms.items()
             }
         )
+        for identifier, term in dimension_terms.items():
+            matches = _approved_member_matches(payload.question, term)
+            if len(matches) > 1:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "질문에 같은 차원의 승인 값이 둘 이상 포함되어 단일 필터로 확정할 수 없습니다.",
+                )
+            if matches:
+                business_terms[identifier]["value_candidates"] = [
+                    str(matches[0]["canonical_value"])
+                ]
         allowed_dimensions = {
             identifier
             for identifier, term in business_terms.items()
@@ -1181,6 +1598,19 @@ class MetricResolver:
                 consume_budget()
             return await normalizer(node1_input)
 
+        cache_namespace = (
+            ":".join(
+                (
+                    candidate_set.product_release_id,
+                    candidate_set.runtime_projection_checksum,
+                    candidate_set.canonical_checksum,
+                )
+            )
+            if candidate_set is not None
+            and candidate_set.product_release_id is not None
+            and candidate_set.runtime_projection_checksum is not None
+            else None
+        )
         normalized = await normalize()
         if not isinstance(normalized, dict):
             raise ValueError("Node1 응답은 객체여야 합니다.")
@@ -1190,13 +1620,27 @@ class MetricResolver:
         # turns and ordinary metric questions from touching Trino. When a bounded
         # domain is available, one constrained re-interpretation may select its
         # exact canonical value; the server still verifies that value afterward.
-        detected_filters = normalized.get("filter_candidates")
         requested_route = enum_signal(
             normalized.get("requested_route"), CONVERSATION_ROUTES
         )
         can_discover_values = callable(
             getattr(self._adapter, "execute_query", None)
         ) and callable(getattr(self._adapter, "get_query_status", None))
+        if (
+            can_discover_values
+            and requested_route not in {"PRESENTATION", "REPORT_ACTION"}
+        ):
+            normalized = await self._recheck_omitted_filter(
+                normalized=normalized,
+                question=payload.question,
+                candidates=candidates,
+                glossary=glossary,
+                dimension_terms=dimension_terms,
+                business_terms=business_terms,
+                cache_namespace=cache_namespace,
+                normalize=normalize,
+            )
+        detected_filters = normalized.get("filter_candidates")
         relevant_dimensions = {
             str(candidate.get("dimension_id"))
             for candidate in detected_filters
@@ -1205,29 +1649,82 @@ class MetricResolver:
             and isinstance(candidate.get("value_text"), str)
             and str(candidate["value_text"]).strip()
         } if isinstance(detected_filters, (list, tuple)) else set()
+        family_dimensions = set(
+            _metric_family_dimension_ids(
+                normalized,
+                candidates,
+                glossary,
+                dimension_terms,
+            )
+        )
+        required_family_values: dict[str, str] = {}
         should_reinterpret = False
         if can_discover_values and requested_route not in {"PRESENTATION", "REPORT_ACTION"}:
             for identifier in sorted(relevant_dimensions):
-                field = dimension_terms[identifier].get("field")
+                term = dimension_terms[identifier]
+                field = term.get("field")
                 if not isinstance(field, dict):
                     continue
-                try:
-                    values = await self._dimension_values(
-                        str(field["asset_fqn"]),
-                        str(field["column"]),
+                members = term.get("members")
+                governed_matches = _approved_member_matches(payload.question, term)
+                if isinstance(members, list) and members:
+                    values = tuple(
+                        str(member["canonical_value"])
+                        for member in members
+                        if isinstance(member, dict)
                     )
-                except (KeyError, OSError, TypeError, ValueError):
-                    values = ()
+                else:
+                    try:
+                        values = await self._dimension_values(
+                            cache_namespace,
+                            str(field["asset_fqn"]),
+                            str(field["column"]),
+                        )
+                    except (KeyError, OSError, TypeError, ValueError):
+                        values = ()
                 if not values:
                     continue
                 business_terms[identifier]["value_candidates"] = list(values)
                 raw_values = {
-                    str(candidate["value_text"]).strip().casefold()
+                    unicodedata.normalize(
+                        "NFKC", str(candidate["value_text"])
+                    ).casefold().strip()
                     for candidate in detected_filters
                     if isinstance(candidate, dict)
                     and candidate.get("dimension_id") == identifier
                 }
-                if not raw_values.issubset({value.casefold() for value in values}):
+                canonical_values = {
+                    unicodedata.normalize("NFKC", value).casefold(): value
+                    for value in values
+                }
+                explicit_values = (
+                    [str(member["canonical_value"]) for member in governed_matches]
+                    if isinstance(members, list) and members
+                    else [
+                        value
+                        for value in values
+                        if _canonical_value_in_question(payload.question, value)
+                    ]
+                ) if identifier in family_dimensions else []
+                if len(explicit_values) > 1:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                        "질문에 명시된 승인 차원값을 단일 필터로 확정하지 못했습니다.",
+                    )
+                if explicit_values:
+                    required_family_values[identifier] = explicit_values[0]
+                if (
+                    not raw_values.issubset(canonical_values)
+                    or (
+                        identifier in required_family_values
+                        and not _selected_metrics_bind_dimension(
+                            normalized,
+                            candidates,
+                            dimension_terms,
+                            identifier,
+                        )
+                    )
+                ):
                     should_reinterpret = True
         if should_reinterpret:
             normalized = await normalize()
@@ -1274,6 +1771,34 @@ class MetricResolver:
             payload.question,
         )
         normalized = _reconcile_analysis_bucket_signal(normalized)
+        normalized = _reconcile_filter_only_dimensions(normalized)
+        final_filters = normalized.get("filter_candidates")
+        for identifier, expected in required_family_values.items():
+            matching_filters = [
+                candidate
+                for candidate in final_filters
+                if isinstance(candidate, dict)
+                and candidate.get("dimension_id") == identifier
+                and isinstance(candidate.get("value_text"), str)
+                and unicodedata.normalize(
+                    "NFKC", str(candidate["value_text"])
+                ).casefold().strip()
+                == unicodedata.normalize("NFKC", expected).casefold()
+                and isinstance(candidate.get("exclude"), bool)
+            ] if isinstance(final_filters, list) else []
+            if (
+                len(matching_filters) != 1
+                or not _selected_metrics_bind_dimension(
+                    normalized,
+                    candidates,
+                    dimension_terms,
+                    identifier,
+                )
+            ):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "질문에 명시된 승인 필터를 선택 지표와 결속하지 못했습니다.",
+                )
         periods = _complete_periods_before_as_of(
             _model_periods(normalized.get("period_candidates"), timezone),
             as_of_datetime,

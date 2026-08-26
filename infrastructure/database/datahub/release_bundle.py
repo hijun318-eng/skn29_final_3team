@@ -13,9 +13,12 @@ from release_datahub import DataHubDataset, DataHubTerm, NativeEntity, dataset_k
 from release_scope import ReleaseScope
 from release_trino import PhysicalColumn, PhysicalRelation
 from src.data.governance_contract import (
+    DIMENSION_MEMBER_TERM_RUNTIME_PROPERTY_KEYS,
     TERM_RUNTIME_PROPERTY_KEYS,
     canonical_sha256,
     dataset_runtime_property_projection,
+    dimension_member_term_runtime_property_projection,
+    dimension_members,
     release_manifest,
     term_runtime_property_projection,
     trino_schema_sha256,
@@ -208,6 +211,25 @@ def release_term_urns(bindings: tuple[ReleaseBinding, ...]) -> tuple[str, ...]:
         if not isinstance(urn, str) or not urn.startswith("urn:li:glossaryTerm:"):
             raise SemanticBundleError("release manifest term URN is invalid")
         urns.append(urn)
+    raw_members = manifest.get("dimension_member_terms", [])
+    if not isinstance(raw_members, list):
+        raise SemanticBundleError("release manifest dimension members are invalid")
+    for item in raw_members:
+        if not isinstance(item, dict) or set(item) != {
+            "dimension_id",
+            "member_id",
+            "urn",
+            "semantic_sha256",
+        }:
+            raise SemanticBundleError(
+                "release manifest dimension member entry is invalid"
+            )
+        urn = item.get("urn")
+        if not isinstance(urn, str) or not urn.startswith("urn:li:glossaryTerm:"):
+            raise SemanticBundleError(
+                "release manifest dimension member URN is invalid"
+            )
+        urns.append(urn)
     if len(urns) != len(set(urns)):
         raise SemanticBundleError("release manifest term URNs are duplicated")
     return tuple(sorted(urns))
@@ -242,9 +264,16 @@ def _reconstruct_release_bundle(
     anchor = _anchor_properties(bindings)
     manifest = _json_object(anchor["release_manifest"], "release manifest")
     assets = [_asset(binding) for binding in sorted(bindings, key=lambda item: item.relation.fqn)]
-    metric_terms, term_metric_rules = _terms(terms)
+    dimensions = _json_array(anchor["dimensions"], "dimensions")
+    metric_terms, term_metric_rules = _terms(terms, dimensions)
     metric_rules = _release_metric_rules(anchor, term_metric_rules)
-    governance = _governance_entities(assets, metric_terms, bindings, terms)
+    governance = _governance_entities(
+        assets,
+        metric_terms,
+        dimension_members({"dimensions": dimensions}),
+        bindings,
+        terms,
+    )
     return (
         {
             "catalog_version": anchor["catalog_version"],
@@ -256,7 +285,7 @@ def _reconstruct_release_bundle(
             },
             "metric_rules": metric_rules,
             "metric_terms": metric_terms,
-            "dimensions": _json_array(anchor["dimensions"], "dimensions"),
+            "dimensions": dimensions,
             "join_graph": _json_object(anchor["join_graph"], "join graph"),
             "time_rules": _json_object(anchor["time_rules"], "time rules"),
             "parameter_contract": _json_object(
@@ -412,20 +441,29 @@ def _verify_columns(binding: ReleaseBinding, columns: list[Any]) -> None:
 
 def _terms(
     terms: tuple[DataHubTerm, ...],
+    dimensions: list[Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     metric_terms: list[dict[str, Any]] = []
     metric_rules: list[dict[str, Any]] = []
+    members = {
+        str(item["urn"]): item
+        for item in dimension_members({"dimensions": dimensions})
+    }
+    observed_members: set[str] = set()
     for term in sorted(terms, key=lambda item: item.urn):
         properties = _governed_properties(term)
+        if properties.get("term_kind") == "DIMENSION_MEMBER":
+            expected = members.get(term.urn)
+            if expected is None:
+                raise SemanticBundleError(
+                    f"undeclared dimension member term: {term.urn}"
+                )
+            _validate_dimension_member_term(term, properties, expected)
+            observed_members.add(term.urn)
+            continue
         if (
             set(properties) != TERM_RUNTIME_PROPERTY_KEYS
-            or term.exists is not True
-            or term.removed is not False
-            or len(term.owners) != 1
-            or term.owners[0].entity_type != "CorpGroup"
-            or term.domain is None
-            or term.lifecycle is None
-            or term.lifecycle.name != "APPROVED"
+            or not _approved_term(term)
         ):
             raise SemanticBundleError(f"glossary term governance is incomplete: {term.urn}")
         rule = _json_object(properties["metric_rule"], "metric rule")
@@ -450,7 +488,47 @@ def _terms(
         )
     if len({item["id"] for item in metric_rules}) != len(metric_rules):
         raise SemanticBundleError("glossary metric ids are duplicated")
+    if observed_members != set(members):
+        raise SemanticBundleError("dimension member glossary membership is incomplete")
     return metric_terms, sorted(metric_rules, key=lambda item: item["id"])
+
+
+def _approved_term(term: DataHubTerm) -> bool:
+    return (
+        term.exists is True
+        and term.removed is False
+        and len(term.owners) == 1
+        and term.owners[0].entity_type == "CorpGroup"
+        and term.domain is not None
+        and term.lifecycle is not None
+        and term.lifecycle.name == "APPROVED"
+    )
+
+
+def _validate_dimension_member_term(
+    term: DataHubTerm,
+    properties: Mapping[str, str],
+    expected: Mapping[str, Any],
+) -> None:
+    if (
+        set(properties) != DIMENSION_MEMBER_TERM_RUNTIME_PROPERTY_KEYS
+        or not _approved_term(term)
+        or properties["dimension_id"] != expected["dimension_id"]
+        or properties["member_id"] != expected["id"]
+        or properties["canonical_value"] != expected["canonical_value"]
+        or _json_array(properties["aliases"], "dimension member aliases")
+        != expected["aliases"]
+        or properties["approval_status"] != expected["approval_status"]
+        or properties["glossary_version"] != expected["version"]
+        or term.name != expected["name"]
+        or term.description != expected["definition"]
+        or term.owners[0].urn != expected["owner_urn"]
+        or term.domain.urn != expected["domain_urn"]
+        or term.lifecycle.urn != expected["approved_lifecycle_urn"]
+    ):
+        raise SemanticBundleError(
+            f"dimension member glossary term differs: {term.urn}"
+        )
 
 
 def _release_metric_rules(
@@ -478,6 +556,7 @@ def _release_metric_rules(
 def _governance_entities(
     assets: list[dict[str, Any]],
     metric_terms: list[dict[str, Any]],
+    member_terms: list[dict[str, Any]],
     bindings: tuple[ReleaseBinding, ...],
     terms: tuple[DataHubTerm, ...],
 ) -> dict[str, list[dict[str, str]]]:
@@ -495,7 +574,7 @@ def _governance_entities(
             lifecycles, "urn:li:lifecycleStageType:", "LifecycleStage", approved=True
         ),
     }
-    referenced = [*assets, *metric_terms]
+    referenced = [*assets, *metric_terms, *member_terms]
     for key, field in (
         ("owners", "owner_urn"),
         ("domains", "domain_urn"),
@@ -561,12 +640,26 @@ def _verify_term_readback(
     manifest: Mapping[str, Any],
 ) -> None:
     definitions = {item["urn"]: item for item in bundle["metric_terms"]}
+    member_definitions = {
+        item["urn"]: item for item in dimension_members(bundle)
+    }
     metrics = {item["id"]: item for item in bundle["metric_rules"]}
     for term in terms:
-        definition = definitions[term.urn]
-        expected = term_runtime_property_projection(
-            definition, metrics[definition["id"]], manifest
-        )
+        definition = definitions.get(term.urn)
+        if definition is not None:
+            expected = term_runtime_property_projection(
+                definition, metrics[definition["id"]], manifest
+            )
+        else:
+            member = member_definitions.get(term.urn)
+            if member is None:
+                raise SemanticBundleError(
+                    f"undeclared glossary readback term: {term.urn}"
+                )
+            expected = dimension_member_term_runtime_property_projection(
+                member,
+                manifest,
+            )
         if _governed_properties(term) != expected:
             raise SemanticBundleError(f"glossary semantic readback differs: {term.urn}")
 

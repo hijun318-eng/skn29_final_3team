@@ -31,6 +31,7 @@ from app.adapters.datahub_metadata_types import GlossaryMetricTerm, metric_rule_
 from app.adapters.legacy_semantic_release import compile_legacy_semantic_release
 from app.adapters.query_search_evidence import (
     compact_candidate_assets as _compact_candidate_assets,
+    governed_metric_specialization_ids as _governed_metric_specialization_ids,
     ranked_matches as _ranked_matches,
     unicode_tokens as _unicode_tokens,
     with_ratio_metrics as _with_ratio_metrics,
@@ -201,6 +202,7 @@ class QueryGovernanceEngine:
             asset_priorities,
             search_metric_ranks,
             governed_phrases,
+            governed_specialization_ids,
             active_projection,
         ) = await self._search_selection(query, context, for_interpretation=True)
         preferred_metric_ids = self._preferred_metric_ids(context)
@@ -232,6 +234,7 @@ class QueryGovernanceEngine:
                 search_metric_ranks,
                 self._search_mode == "datahub_lexical",
                 governed_phrases=governed_phrases,
+                governed_specialization_ids=governed_specialization_ids,
             )
             if active_projection is not None:
                 source_by_metric = {
@@ -433,6 +436,7 @@ class QueryGovernanceEngine:
         dict[str, int],
         dict[str, int],
         tuple[str, ...],
+        tuple[str, ...],
         ActiveRuntimeCatalogProjection | None,
     ]:
         """질문 증거로 bounded 후보 scope를 고르고 검증된 release 객체와 함께 반환한다."""
@@ -453,6 +457,11 @@ class QueryGovernanceEngine:
                 snapshot,
                 terms,
                 query,
+            )
+            governed_specialization_ids = _governed_metric_specialization_ids(
+                terms,
+                governed_phrases,
+                self._max_candidate_metrics,
             )
             semantic_hits = await self._load_search_evidence(
                 query,
@@ -479,8 +488,27 @@ class QueryGovernanceEngine:
                 datasets,
                 terms,
             )
+            specialization_datasets = self._preferred_metric_datasets(
+                governed_specialization_ids,
+                datasets,
+                terms,
+            )
+            ranked_datasets = tuple(entry[1] for entry in ranked)
+            # DataHub lexical mode에서도 local 전체 snapshot fallback은 허용하지 않는다.
+            # specialization은 그 family의 anchor Dataset/Term이 실제 검색 결과에 연결된
+            # 경우에만 승인 metadata closure로 추가한다.
+            if not (
+                {item.fqn for item in specialization_datasets}
+                & {item.fqn for item in ranked_datasets}
+            ):
+                specialization_datasets = ()
+                governed_specialization_ids = ()
             ordered_by_fqn: dict[str, GovernedDataset] = {}
-            for item in (*preferred_datasets, *(entry[1] for entry in ranked)):
+            for item in (
+                *preferred_datasets,
+                *specialization_datasets,
+                *ranked_datasets,
+            ):
                 ordered_by_fqn.setdefault(item.fqn, item)
             ordered_datasets = tuple(ordered_by_fqn.values())
             if not ordered_datasets:
@@ -559,6 +587,7 @@ class QueryGovernanceEngine:
             asset_priorities,
             search_metric_ranks,
             governed_phrases,
+            governed_specialization_ids,
             active_projection,
         )
 

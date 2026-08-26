@@ -14,7 +14,11 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from app.adapters.catalog_snapshot import CatalogSnapshot
-from app.adapters.datahub_metadata_types import GlossaryMetricTerm, GovernedDataset
+from app.adapters.datahub_metadata_types import (
+    GlossaryDimensionMemberTerm,
+    GlossaryMetricTerm,
+    GovernedDataset,
+)
 from app.adapters.datahub_metadata_values import GovernedMetadataError
 from app.adapters.legacy_semantic_release import compile_legacy_semantic_release
 from app.services.context.semantic_release import CanonicalSemanticRelease
@@ -484,7 +488,7 @@ def _validate_snapshot_release(
 
 
 def _serialize_snapshot(snapshot: CatalogSnapshot) -> dict[str, Any]:
-    return {
+    result = {
         "datasets": [
             _json_safe(asdict(item))
             for item in sorted(snapshot.datasets_by_urn.values(), key=lambda row: row.urn)
@@ -498,13 +502,22 @@ def _serialize_snapshot(snapshot: CatalogSnapshot) -> dict[str, Any]:
             for name, values in sorted(snapshot.governance_entities.items())
         },
     }
+    if snapshot.dimension_member_terms_by_urn:
+        result["dimension_member_terms"] = [
+            _json_safe(asdict(item))
+            for item in sorted(
+                snapshot.dimension_member_terms_by_urn.values(),
+                key=lambda row: row.urn,
+            )
+        ]
+    return result
 
 
 def _deserialize_snapshot(value: object) -> CatalogSnapshot:
-    if not isinstance(value, Mapping) or set(value) != {
-        "datasets",
-        "terms",
-        "governance_entities",
+    base_keys = {"datasets", "terms", "governance_entities"}
+    if not isinstance(value, Mapping) or set(value) not in {
+        frozenset(base_keys),
+        frozenset(base_keys | {"dimension_member_terms"}),
     }:
         raise RuntimeCatalogProjectionError("runtime snapshot fields differ")
     raw_datasets, raw_terms, raw_governance = (
@@ -525,6 +538,10 @@ def _deserialize_snapshot(value: object) -> CatalogSnapshot:
             str(name): tuple(dict(item) for item in values)
             for name, values in raw_governance.items()
         }
+        members = tuple(
+            _dimension_member_term_from_json(item)
+            for item in value.get("dimension_member_terms", ())
+        )
     except (TypeError, ValueError, KeyError) as error:
         raise RuntimeCatalogProjectionError("runtime snapshot values are invalid") from error
     return CatalogSnapshot(
@@ -533,6 +550,7 @@ def _deserialize_snapshot(value: object) -> CatalogSnapshot:
         terms_by_urn=_unique_objects(terms, "urn"),
         terms_by_id=_unique_objects(terms, "id"),
         governance_entities=governance,
+        dimension_member_terms_by_urn=_optional_unique_objects(members, "urn"),
     )
 
 
@@ -586,6 +604,19 @@ def _term_from_json(value: object) -> GlossaryMetricTerm:
     return GlossaryMetricTerm(**data)
 
 
+def _dimension_member_term_from_json(
+    value: object,
+) -> GlossaryDimensionMemberTerm:
+    if not isinstance(value, Mapping):
+        raise RuntimeCatalogProjectionError(
+            "runtime dimension member term projection is invalid"
+        )
+    data = dict(value)
+    data["aliases"] = tuple(data["aliases"])
+    data["owner_urns"] = frozenset(data["owner_urns"])
+    return GlossaryDimensionMemberTerm(**data)
+
+
 def _membership_projection(
     snapshot: CatalogSnapshot,
     selection: Mapping[str, Any],
@@ -596,11 +627,16 @@ def _membership_projection(
         if item["source"] == DATAHUB_NATIVE_METRIC_SOURCE
         for urn in item["source_urns"]
     )
-    return {
+    result = {
         "dataset_urns": sorted(snapshot.datasets_by_urn),
         "glossary_term_urns": sorted(snapshot.terms_by_urn),
         "native_metric_urns": native_urns,
     }
+    if snapshot.dimension_member_terms_by_urn:
+        result["dimension_member_term_urns"] = sorted(
+            snapshot.dimension_member_terms_by_urn
+        )
+    return result
 
 
 def _metric_source_assets(
@@ -623,6 +659,15 @@ def _unique_objects(values: tuple[Any, ...], attribute: str) -> dict[str, Any]:
     if not result:
         raise RuntimeCatalogProjectionError("runtime projection membership is empty")
     return result
+
+
+def _optional_unique_objects(
+    values: tuple[Any, ...],
+    attribute: str,
+) -> dict[str, Any]:
+    if not values:
+        return {}
+    return _unique_objects(values, attribute)
 
 
 def _json_safe(value: object) -> Any:

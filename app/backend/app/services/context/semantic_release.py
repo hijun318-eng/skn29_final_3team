@@ -95,6 +95,19 @@ class CanonicalMetric:
 
 
 @dataclass(frozen=True)
+class CanonicalDimensionMember:
+    """승인된 Dimension 값과 Glossary Term identity를 release 안에 고정한다."""
+
+    id: str
+    urn: str
+    name: str
+    aliases: tuple[str, ...]
+    definition: str
+    canonical_value: str
+    version: str
+
+
+@dataclass(frozen=True)
 class CanonicalDimension:
     """업무 차원 ID를 한 asset의 실제 컬럼에 결속한 release 단위 Dimension 계약이다."""
 
@@ -103,6 +116,7 @@ class CanonicalDimension:
     definition: str
     asset_fqn: str
     column: str
+    members: tuple[CanonicalDimensionMember, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -657,6 +671,33 @@ def _compile_dimensions(
                 definition=_text(raw.get("definition"), f"{dimension_id} definition"),
                 asset_fqn=asset_fqn,
                 column=column,
+                members=tuple(
+                    CanonicalDimensionMember(
+                        id=_text(member.get("id"), f"{dimension_id} member id"),
+                        urn=_text(member.get("urn"), f"{dimension_id} member urn"),
+                        name=_text(member.get("name"), f"{dimension_id} member name"),
+                        aliases=_texts(
+                            member.get("aliases"),
+                            f"{dimension_id} member aliases",
+                        ),
+                        definition=_text(
+                            member.get("definition"),
+                            f"{dimension_id} member definition",
+                        ),
+                        canonical_value=_text(
+                            member.get("canonical_value"),
+                            f"{dimension_id} canonical value",
+                        ),
+                        version=_text(
+                            member.get("version"),
+                            f"{dimension_id} member version",
+                        ),
+                    )
+                    for member in _array(
+                        raw.get("members", []),
+                        f"{dimension_id} members",
+                    )
+                ),
             )
         )
     return tuple(sorted(result, key=lambda item: item.id))

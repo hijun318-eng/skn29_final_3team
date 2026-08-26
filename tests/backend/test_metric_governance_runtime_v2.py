@@ -27,7 +27,11 @@ from app.adapters.catalog_snapshot import (  # noqa: E402
     _active_term_records,
 )
 from app.adapters.datahub_metric_governance import runtime_metric_permitted  # noqa: E402
-from app.adapters.datahub_metadata import parse_dataset, parse_glossary_term  # noqa: E402
+from app.adapters.datahub_metadata import (  # noqa: E402
+    parse_dataset,
+    parse_dimension_member_term,
+    parse_glossary_term,
+)
 from app.adapters.datahub_metadata_values import GovernedMetadataError  # noqa: E402
 from app.adapters.legacy_semantic_release import compile_legacy_semantic_release  # noqa: E402
 from app.adapters.runtime_catalog_candidate_publisher import (  # noqa: E402
@@ -93,6 +97,10 @@ from test_datahub_metadata_publication import (  # noqa: E402
     _graphql_term,
 )
 from test_metric_governance_v2 import _v2_bundle  # noqa: E402
+from src.data.governance_contract import (  # noqa: E402
+    datahub_schema_sha1,
+    dimension_members,
+)
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V1  # noqa: E402
 
 
@@ -137,6 +145,17 @@ def _snapshot(bundle: dict) -> CatalogSnapshot:
             },
         }
         terms.append(parse_glossary_term(raw))
+    member_terms = []
+    for definition in dimension_members(bundle):
+        raw = _graphql_term(definition, aspect_index)
+        raw["status"] = {
+            "removed": False,
+            "lifecycleStage": {
+                "urn": definition["approved_lifecycle_urn"],
+                "name": "APPROVED",
+            },
+        }
+        member_terms.append(parse_dimension_member_term(raw))
     return CatalogSnapshot(
         datasets_by_urn={item.urn: item for item in datasets},
         datasets_by_fqn={item.fqn: item for item in datasets},
@@ -145,6 +164,9 @@ def _snapshot(bundle: dict) -> CatalogSnapshot:
         governance_entities={
             name: tuple(deepcopy(values))
             for name, values in bundle["governance_entities"].items()
+        },
+        dimension_member_terms_by_urn={
+            item.urn: item for item in member_terms
         },
     )
 
@@ -774,6 +796,42 @@ def test_execution_resolution_derives_ratio_dimensions_from_operands() -> None:
     )
 
     assert {asset["fqn"] for asset in assets} == {"quartz.core.events"}
+
+
+def test_metric_dimension_can_use_a_governed_identifier_grain_key() -> None:
+    """명시적 Metric dimension인 grain key는 단일 column role 때문에 거부되지 않는다."""
+
+    bundle = _runtime_bundle()
+    asset = next(
+        item
+        for item in bundle["schema_context"]["assets"]
+        if item["fqn"] == "quartz.core.events"
+    )
+    account = next(item for item in asset["columns"] if item["name"] == "account_id")
+    account["role"] = "identifier"
+    account["is_part_of_key"] = True
+    asset["grain"]["keys"].append("account_id")
+    for metric in bundle["metric_rules"]:
+        metric_grain = metric["governance"]["grain"]
+        if "event_id" in metric_grain["keys"]:
+            metric_grain["keys"].append("account_id")
+    asset["datahub_schema_hash"] = datahub_schema_sha1(asset)
+    validate_bundle(bundle)
+
+    candidates = asyncio.run(
+        _engine(bundle).search_asset_candidates(
+            "Amount per Event by account",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+
+    assert any(
+        dimension["asset_fqn"] == "quartz.core.events"
+        and dimension["column"] == "account_id"
+        and dimension["id"].startswith("derived_")
+        for candidate in candidates.assets
+        for dimension in candidate.get("dimensions", ())
+    )
 
 
 def test_execution_resolution_does_not_derive_unbound_typed_attributes() -> None:

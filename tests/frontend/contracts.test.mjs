@@ -4,6 +4,7 @@ import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VE
 import { compactDraftLayout, placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks, seoulWallClockToIso } from "../../app/frontend/src/contracts/report.ts";
 import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient } from "../../app/frontend/src/api/analysisClient.ts";
 import { AdminApiError, createAdminClient } from "../../app/frontend/src/api/adminClient.ts";
+import { normalizeAuditTrailDetail, normalizeAuditTrailPage } from "../../app/frontend/src/features/admin/audit/auditTrailTypes.ts";
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
@@ -19,6 +20,8 @@ const viteConfig = readFileSync(new URL("../../app/frontend/vite.config.js", imp
 const productSources = [
   "App.jsx", "routing.js", "api/analysisClient.ts", "api/adminClient.ts", "api/reportClient.ts",
   "pages/AgentPage.jsx", "pages/AdminPage.jsx",
+  "features/admin/audit/AuditTrailPanel.tsx", "features/admin/audit/AuditTrailDetail.tsx",
+  "features/admin/audit/auditTrailTypes.ts",
   "components/analysis/AnalysisStatePanel.tsx", "components/analysis/AnalysisStatePanelParts.tsx",
   "components/analysis/AnalysisFailureState.tsx",
   "components/layout/AppHeader.jsx", "components/layout/AppSidebar.jsx",
@@ -168,23 +171,27 @@ assert.match(source("pages/AdminPage.jsx"), /계정 관리/);
 assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(\)/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
-assert.match(source("pages/AdminPage.jsx"), /client\.listAuditEvents\(auditPage, auditSearch, auditResult\)/);
+assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\} onApiStateChange=\{setApiState\}/);
+assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.listAuditTrails\(filters, cursor\)/);
+assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.getAuditTrail\(selectedTrailId\)/);
 assert.match(source("pages/AdminPage.jsx"), /client\.resetPassword/);
 assert.match(source("pages/AdminPage.jsx"), /client\.deleteAccount/);
 assert.match(source("pages/AdminPage.jsx"), /refreshAccountsAfterMutation = async \(\) => \{[\s\S]*?\+\+requestIds\.current\.accounts[\s\S]*?requestIds\.current\.accounts !== requestId/);
-assert.match(source("pages/AdminPage.jsx"), /for \(const \{ id \} of ADMIN_SECTIONS\)[\s\S]*?id !== section\) requestIds\.current\[id\] \+= 1/);
-for (const sectionId of ["connections", "accounts", "audit"]) {
+assert.match(source("pages/AdminPage.jsx"), /for \(const id of \["connections", "accounts"\]\)[\s\S]*?id !== section\) requestIds\.current\[id\] \+= 1/);
+for (const sectionId of ["connections", "accounts"]) {
   assert.match(source("pages/AdminPage.jsx"), new RegExp(`requestIds\\.current\\.${sectionId} !== requestId \\|\\| activeSectionRef\\.current !== "${sectionId}"`));
 }
+assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /listGeneration\.current !== generation/);
+assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /detailGeneration\.current === generation && nextDetail\.trail_id === selectedTrailId/);
 assert.match(source("pages/AdminPage.jsx"), /role="tab"[\s\S]*?disabled=\{saving\}/);
-assert.match(source("pages/AdminPage.jsx"), /setConnections\(\[\]\);[\s\S]*?setAccounts\(\{ \.\.\.EMPTY_PAGE, page: accountPage \}\);[\s\S]*?setAuditEvents\(\{ \.\.\.EMPTY_PAGE, page: auditPage \}\)/);
+assert.match(source("pages/AdminPage.jsx"), /setConnections\(\[\]\);[\s\S]*?setAccounts\(\{ \.\.\.EMPTY_PAGE, page: accountPage \}\)/);
 assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{openCreate\}/);
 assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{\(\) => openEdit\(account\)\}/);
 assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{\(\) => openPassword\(account\)\}/);
 assert.match(source("pages/AdminPage.jsx"), /error\.status === 401/);
 assert.match(source("pages/AdminPage.jsx"), /error\.status === 403/);
 assert.match(source("pages/AdminPage.jsx"), /if \(error\.status === 409\) return error\.message/);
-assert.doesNotMatch(source("pages/AdminPage.jsx"), /admin@gmail\.com|SUCCESS.*CONNECTION\.CHECK|CONNECTION_TARGETS/);
+assert.doesNotMatch(productSources, /admin@gmail\.com|SUCCESS.*CONNECTION\.CHECK|CONNECTION_TARGETS|ANALYSIS_RECEIVED.*분석 요청 접수/);
 assert.match(source("App.jsx"), /<AgentPage canDraftReport=\{canDraftReport\}/);
 assert.match(source("pages/AgentPage.jsx"), /canDraftReport && turnItem\.run\.artifact/);
 assert.match(source("pages/AgentPage.jsx"), /\{canDraftReport && <TurnReportModal/);
@@ -725,15 +732,61 @@ await assert.rejects(() => protectedAdminClient.deleteAccount(account.subject), 
   && nextError.message === "마지막 활성 관리자는 변경할 수 없습니다.");
 
 let adminQueryUrl;
+const auditTrailSummary = {
+  trail_id: "request:00000000-0000-0000-0000-000000000002",
+  headline: "분석 요청 실행",
+  started_at: "2030-01-01T00:00:00Z",
+  ended_at: "2030-01-01T00:00:03Z",
+  outcome: "DENIED",
+  event_count: 1,
+  actor: { subject: account.subject, display_name: "분석 사용자", role: "analyst" },
+  primary_object: { type: "ANALYSIS_REQUEST", id: "00000000-0000-0000-0000-000000000002" },
+  correlation: { type: "REQUEST", id: "00000000-0000-0000-0000-000000000002" },
+};
+const auditTrailDetail = {
+  trail_id: auditTrailSummary.trail_id,
+  headline: auditTrailSummary.headline,
+  started_at: auditTrailSummary.started_at,
+  ended_at: auditTrailSummary.ended_at,
+  outcome: "DENIED",
+  events: [{
+    event_id: "00000000-0000-0000-0000-000000000003",
+    occurred_at: "2030-01-01T00:00:01Z",
+    sequence: 1,
+    action_code: "ANALYSIS_DENIED",
+    action_label: "분석 요청 거부",
+    summary: "정책 검증에서 요청을 거부했습니다.",
+    outcome: "DENIED",
+    actor: auditTrailSummary.actor,
+    object: auditTrailSummary.primary_object,
+    evidence: {
+      request_id: "00000000-0000-0000-0000-000000000002", trace_id: "trace-1",
+      query_execution_id: null, query_id: null, artifact_id: null, report_run_id: null,
+      context_release_id: null, model_version_id: null, sql_policy_version: "policy-v1",
+    },
+    details_redacted: { reason: "PERMISSION" },
+  }],
+};
 const adminQueryClient = createAdminClient("http://backend.test", async (url) => {
   adminQueryUrl = url;
   if (url.endsWith("/connections")) return new Response(JSON.stringify({ data: { items: [{ id: "app_db", name: "App DB", kind: "PostgreSQL", status: "ready", latency_ms: 8, checked_at: "2030-01-01T00:00:00Z" }] } }), { status: 200 });
-  return new Response(JSON.stringify({ data: { items: [{ event_id: "00000000-0000-0000-0000-000000000002", occurred_at: "2030-01-01T00:00:00Z", actor_subject: null, action_code: "ADMIN.ACCOUNT.UPDATE", target_type: "account", target_id: account.subject, result: "FAILED", details: {} }], page: 3, page_size: 50, total: 101 } }), { status: 200 });
+  if (url.includes("/admin/audit-trails?")) return new Response(JSON.stringify({ data: { items: [auditTrailSummary], next_cursor: "cursor-2" } }), { status: 200 });
+  return new Response(JSON.stringify({ data: auditTrailDetail }), { status: 200 });
 });
 assert.equal((await adminQueryClient.listConnections())[0].status, "ready");
 assert.equal(adminQueryUrl, "http://backend.test/admin/connections");
-assert.equal((await adminQueryClient.listAuditEvents(3, "account", "FAILED")).items[0].actor_subject, null);
-assert.equal(adminQueryUrl, "http://backend.test/admin/audit-events?page=3&page_size=50&search=account&result=FAILED");
+assert.equal((await adminQueryClient.listAuditTrails({ query: "kim hong", outcome: "DENIED", action: "ANALYSIS", from: "2030-01-01", to: "2030-01-02" }, "opaque cursor")).items[0].outcome, "DENIED");
+assert.equal(adminQueryUrl, "http://backend.test/admin/audit-trails?cursor=opaque+cursor&limit=30&query=kim+hong&outcome=DENIED&action=ANALYSIS&from=2030-01-01&to=2030-01-02");
+assert.equal((await adminQueryClient.getAuditTrail(auditTrailSummary.trail_id)).events[0].details_redacted.reason, "PERMISSION");
+assert.equal(adminQueryUrl, "http://backend.test/admin/audit-trails/request%3A00000000-0000-0000-0000-000000000002");
+assert.equal(normalizeAuditTrailPage({ items: [auditTrailSummary], next_cursor: null }).items[0].event_count, 1);
+assert.equal(normalizeAuditTrailDetail(auditTrailDetail).events[0].event_id, auditTrailDetail.events[0].event_id);
+assert.throws(() => normalizeAuditTrailPage({ items: [{ ...auditTrailSummary, outcome: "SUCCESS" }], next_cursor: null }), /지원하지 않는 결과 상태/);
+assert.throws(() => normalizeAuditTrailDetail({ ...auditTrailDetail, events: [{ ...auditTrailDetail.events[0], event_id: undefined }] }), /올바르지 않은 이벤트/);
+assert.throws(() => normalizeAuditTrailDetail({ ...auditTrailDetail, events: {} }), /올바르지 않은 응답/);
+assert.match(source("features/admin/audit/AuditTrailDetail.tsx"), /JSON\.stringify\(event\.details_redacted, null, 2\)/);
+assert.doesNotMatch(source("features/admin/audit/AuditTrailDetail.tsx"), /dangerouslySetInnerHTML/);
+assert.doesNotMatch(productSources, /trail_id:\s*"request:|details_redacted:\s*\{/);
 
 const legacyRoleClient = createAdminClient("http://backend.test", async () => new Response(JSON.stringify({ data: { items: [{ ...account, role: "report_admin" }], page: 1, page_size: 50, total: 1 } }), { status: 200 }));
 await assert.rejects(() => legacyRoleClient.listAccounts(), /관리자 계정 API가 올바르지 않은 응답/);

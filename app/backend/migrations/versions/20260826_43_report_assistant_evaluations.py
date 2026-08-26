@@ -6,8 +6,8 @@ import re
 from alembic import op
 
 
-revision = "20260826_44"
-down_revision = "20260826_43"
+revision = "20260826_43"
+down_revision = "20260826_42"
 branch_labels = None
 depends_on = None
 

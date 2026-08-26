@@ -13,8 +13,8 @@
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
-      "prompt_version": "PROMPT-v1.28.0",
-      "prompt_sha256": "9b4310122b0e6b74d1eb6fd4089ccab0cbd5207726ac90d93a3685e4445671f6",
+      "prompt_version": "PROMPT-v1.27.0",
+      "prompt_sha256": "2d2fbb7231a7bd7662796ee55940cc13f8c7ab73838dd35a89c3858dbd2c6237",
       "request_definition": "node1_request",
       "response_definition": "node1_response"
     },

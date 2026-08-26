@@ -108,7 +108,14 @@ assert.match(builderStyles, /\.report-presentation\.theme-light>main\{[^}]*radia
 assert.match(builderStyles, /\.report-api-state,[^\n]*overflow-wrap:anywhere/);
 assert.match(builderStyles, /\.report-property-evidence code\{[^}]*white-space:normal[^}]*overflow-wrap:anywhere/);
 assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 이동`\}/);
-assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 크기 조절`\}/);
+assert.match(editorBlock, /const RESIZE_DIRECTIONS = \[/);
+assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 \$\{label\} 크기 조절`\}/);
+assert.match(editorBlock, /RESIZE_DIRECTIONS\.map/);
+assert.match(blockControls, /report-template-minimap/);
+assert.match(properties, /unifySelectedSize\("width"\)/);
+assert.match(properties, /unifySelectedSize\("height"\)/);
+assert.match(page, /onSelectBlocks=\{page\.editorTools\.selectBlocks\}/);
+assert.match(builderStyles, /\.report-marquee-selection/);
 assert.match(editorBlock, /!event\.altKey \|\| event\.deltaY === 0 \|\| block\.type !== "table" \|\| !isDraft \|\| locked/);
 assert.match(editorBlock, /const step = event\.deltaY < 0 \? 1 : -1/);
 assert.match(editorBlock, /addEventListener\("wheel", resizeTableWithWheel, \{ passive: false \}\)/);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { computeReportAlignmentGuides } from "../../app/frontend/src/features/reports/useReportDragAndDrop.js";
+import { computeReportAlignmentGuides, moveReportBlockGroup } from "../../app/frontend/src/features/reports/useReportDragAndDrop.js";
 import { copyReportBlocks, reportSizePresets, searchReportBlocks } from "../../app/frontend/src/features/reports/useReportEditorTools.js";
 
 const blocks = [
@@ -33,6 +33,16 @@ test("alignment guides compare 12-column edges and centers", () => {
   assert.equal(guides.pageId, "page-1");
   assert.deepEqual(guides.vertical, [0, 3, 6]);
   assert.ok(guides.horizontal.includes(8));
+});
+
+test("selected blocks move as one 12-column group only into empty coordinates", () => {
+  const moved = moveReportBlockGroup(blocks, new Set(["text-1", "chart-1"]), "text-1", { x: 0, y: 10 });
+  assert.deepEqual(moved.map((block) => [block.id, block.x, block.y]), [
+    ["text-1", 0, 10],
+    ["chart-1", 6, 10],
+  ]);
+  const occupied = [...blocks, { id: "wide", type: "text", x: 0, y: 10, w: 12, h: 4 }];
+  assert.equal(moveReportBlockGroup(occupied, new Set(["text-1", "chart-1"]), "text-1", { x: 0, y: 10 }), null);
 });
 
 test("session copies preserve artifact lineage without sharing source arrays", () => {

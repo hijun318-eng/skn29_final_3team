@@ -33,8 +33,13 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
     <header><div><p>REPORT SETTINGS</p><h2>속성</h2></div><span>{selectedCount ? `${selectedCount}개 선택` : "선택 없음"}</span></header>
 
     {selectedCount > 1 && <section className="report-batch-actions">
-      <h3>일괄 작업</h3>
-      <div>
+      <h3>선택 블록 정렬</h3>
+      <div className="report-batch-sizing">
+        <button type="button" onClick={() => editorTools.unifySelectedSize("width")} disabled={!canEdit || lockedSelectedCount > 0}>너비 통일</button>
+        <button type="button" onClick={() => editorTools.unifySelectedSize("height")} disabled={!canEdit || lockedSelectedCount > 0}>높이 통일</button>
+      </div>
+      <small className="report-properties-help">기준 블록의 크기로 맞추며 한 번의 Undo 단계로 기록합니다.</small>
+      <div className="report-batch-locks">
         <button type="button" onClick={() => editorTools.setSelectedLocks(true)} disabled={!canEdit}><Lock size={14} />잠금</button>
         <button type="button" onClick={() => editorTools.setSelectedLocks(false)} disabled={!canEdit || !lockedSelectedCount}><Unlock size={14} />해제</button>
         <button type="button" className="danger" onClick={editorTools.deleteSelected} disabled={!canEdit || lockedSelectedCount > 0}><Trash2 size={14} />삭제</button>
@@ -71,7 +76,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
     <section>
       <h3><Clipboard size={14} />클립보드</h3>
       <div className="report-clipboard-actions"><button type="button" onClick={editorTools.copySelected} disabled={!selectedCount}><Copy size={14} />복사</button><button type="button" onClick={editorTools.pasteBlocks} disabled={!canEdit}><Clipboard size={14} />붙여넣기</button></div>
-      <small className="report-properties-help">Shift+클릭으로 여러 블록을 선택할 수 있습니다.</small>
+      <small className="report-properties-help">Shift+클릭하거나 A4의 빈 영역을 드래그해 여러 블록을 선택할 수 있습니다.</small>
     </section>
   </aside>;
 });

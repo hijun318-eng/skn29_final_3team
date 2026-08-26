@@ -97,6 +97,19 @@ export function useReportEditorTools({
     if (!next.has(primaryBlockId)) selectPrimary([...next][0] ?? "");
   }, [primaryBlockId, selectPrimary, selectedBlockIds]);
 
+  const selectBlocks = useCallback((blockIds, { additive = false } = {}) => {
+    const validIds = new Set(blocks.map((block) => block.id));
+    const next = additive ? new Set(selectedBlockIds) : new Set();
+    blockIds.forEach((id) => { if (validIds.has(id)) next.add(id); });
+    setSelectedBlockIds(next);
+    selectPrimary([...next][0] ?? "");
+  }, [blocks, selectPrimary, selectedBlockIds]);
+
+  const selectDraggedBlock = useCallback((blockId) => {
+    if (!selectedBlockIds.has(blockId)) setSelectedBlockIds(new Set([blockId]));
+    selectPrimary(blockId);
+  }, [selectPrimary, selectedBlockIds]);
+
   const toggleBlockLock = useCallback((blockId) => {
     setLockedBlockIds((current) => {
       const next = new Set(current);
@@ -208,6 +221,20 @@ export function useReportEditorTools({
     (preset) => primaryBlock && resizeBlock(primaryBlock.id, preset.width, preset.height),
     [primaryBlock, resizeBlock],
   );
+  const unifySelectedSize = useCallback((dimension) => {
+    if (!primaryBlock || selectedBlockIds.size < 2) return false;
+    const selected = blocks.filter((block) => selectedBlockIds.has(block.id));
+    const targetWidth = Math.max(
+      primaryBlock.w ?? primaryBlock.columns,
+      selected.some((block) => block.type !== "text") ? 6 : 4,
+    );
+    const targetHeight = primaryBlock.h ?? 4;
+    return commitBlocks(compactDraftLayout(blocks.map((block) => {
+      if (!selectedBlockIds.has(block.id)) return block;
+      if (dimension === "width") return { ...block, columns: targetWidth, w: targetWidth };
+      return { ...block, h: targetHeight };
+    })));
+  }, [blocks, commitBlocks, primaryBlock, selectedBlockIds]);
 
   return {
     copySelected,
@@ -223,12 +250,15 @@ export function useReportEditorTools({
     searchQuery,
     searchResults,
     selectBlock,
+    selectBlocks,
+    selectDraggedBlock,
     selectedBlockIds,
     setSearchQuery,
     setSelectedLocks,
     sizePresets,
     snapshots,
     toggleBlockLock,
+    unifySelectedSize,
     resizePrimary,
   };
 }

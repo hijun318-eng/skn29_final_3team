@@ -130,10 +130,12 @@ export function useReportsPageController({ isAdmin = false, onEditorMode }) {
     blocksRef: draft.blocksRef,
     commitBlocks: draft.commitBlocks,
     frontendReportContext,
+    selectedBlockIds: editorTools.selectedBlockIds,
+    lockedBlockIds: editorTools.lockedBlockIds,
     reportPages,
     reportTemplateMap: REPORT_TEMPLATE_MAP,
     setEditorAnnouncement: draft.announce,
-    setSelectedBlockId: editorTools.selectBlock,
+    selectDraggedBlock: editorTools.selectDraggedBlock,
     viewArtifactTemplateFor,
     wholeArtifactTemplateFor,
   });
@@ -434,10 +436,11 @@ export function useReportsPageController({ isAdmin = false, onEditorMode }) {
   } = draft;
   const renderEditorBlock = useCallback((layoutBlock, context) => {
     const block = layoutBlock.sourceBlock || layoutBlock;
-    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} isDraft={canEdit} selected={editorTools.selectedBlockIds.has(block.id)} dragging={dnd.draggedBlockId === block.id} locked={editorTools.lockedBlockIds.has(block.id)} onSelect={editorTools.selectBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={editorTools.deleteBlock} onToggleLock={editorTools.toggleBlockLock} onRetryArtifact={artifacts.retryArtifact} />;
+    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} isDraft={canEdit} selected={editorTools.selectedBlockIds.has(block.id)} primary={draft.selectedBlockId === block.id} dragging={dnd.draggedBlockIds.has(block.id)} groupTransform={dnd.draggedBlockId !== block.id && dnd.draggedBlockIds.has(block.id) ? dnd.dragDelta : null} locked={editorTools.lockedBlockIds.has(block.id)} onSelect={editorTools.selectBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={editorTools.deleteBlock} onToggleLock={editorTools.toggleBlockLock} onRetryArtifact={artifacts.retryArtifact} />;
   }, [
     artifactStateFor, artifacts.artifacts, artifacts.retryArtifact, canEdit,
-    dnd.draggedBlockId, duplicateDraftBlock, editorTools, moveDraftBlock, reportCurrency,
+    dnd.dragDelta, dnd.draggedBlockId, dnd.draggedBlockIds, draft.selectedBlockId,
+    duplicateDraftBlock, editorTools, moveDraftBlock, reportCurrency,
     resizeDraftBlock, setDraftBlockSetting, updateDraftBlock,
   ]);
 

@@ -191,7 +191,15 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
         title={`${template.title} 블록 바로 추가`}
       >
         <Icon size={15} />
-        <span><b>{template.title}</b><small>{template.description}</small></span>
+        <span className="report-template-copy"><b>{template.title}</b><small>{template.description}</small></span>
+        <div
+          className="report-template-minimap"
+          style={{
+            "--template-width": `${Math.min(12, template.w) / 12 * 100}%`,
+            "--template-height": `${13 + Math.min(8, template.h) * 2}px`,
+          }}
+          aria-hidden="true"
+        ><i><span /><span /><span /></i></div>
       </button>
       <button
         ref={setActivatorNodeRef}

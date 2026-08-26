@@ -49,6 +49,10 @@ assert.ok(resized);
 assert.equal(resized.blocks[0].w, 12);
 assert.equal(resized.blocks[0].h, 7);
 assert.match(resized.announcement, /높이 7단/);
+const boundedResize = resizeDraftBlocks(sourceBlocks, "block-a", 6, 7, "landscape", { x: 6, y: 2 });
+assert.equal(boundedResize.blocks[0].x, 6);
+assert.equal(boundedResize.blocks[0].y, 2);
+assert.equal(boundedResize.blocks[0].w, 6);
 assert.deepEqual(readDraftBlockSettings({ ...sourceBlocks[0], type: "chart", content: "{" }), {});
 
 let state;

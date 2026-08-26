@@ -165,6 +165,7 @@ export function ReportsPage({ isAdmin, onEditorMode, theme, onToggleTheme }) {
       dropPosition={dnd.dropPosition}
       onAddText={page.addTextBlock}
       onRegisterCanvas={dnd.registerPageCanvas}
+      onSelectBlocks={page.editorTools.selectBlocks}
       orientation={draft.reportOrientation}
       orderedBlocks={draft.orderedBlocks}
       pages={page.reportPages}

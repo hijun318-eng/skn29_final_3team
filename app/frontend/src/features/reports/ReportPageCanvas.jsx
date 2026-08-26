@@ -42,7 +42,8 @@ function scaledPagePropsEqual(previous, next) {
   const scalarKeys = [
     "mode", "orientation", "pageIndex", "pageCount", "renderBlock", "renderHeader",
     "renderFooter", "renderGridOverlay", "gridClassName", "getGridRef", "viewScale",
-    "pageNumberOffset", "pageCountOverride",
+    "pageNumberOffset", "pageCountOverride", "onGridPointerDown", "onGridPointerMove",
+    "onGridPointerUp", "onGridPointerCancel",
   ];
   if (!scalarKeys.every((key) => Object.is(previous[key], next[key]))) return false;
   if (!shallowRecordEqual(
@@ -69,6 +70,10 @@ const ScaledPage = memo(function ScaledPage({
   renderGridOverlay,
   gridClassName,
   getGridRef,
+  onGridPointerDown,
+  onGridPointerMove,
+  onGridPointerUp,
+  onGridPointerCancel,
   viewScale,
 }) {
   const viewportRef = useRef(null);
@@ -159,6 +164,10 @@ const ScaledPage = memo(function ScaledPage({
           <div
             ref={(element) => getGridRef?.(element, context)}
             className={`answer-report-page__grid ${gridClassName || ""}`.trim()}
+            onPointerDown={(event) => onGridPointerDown?.(event, context)}
+            onPointerMove={(event) => onGridPointerMove?.(event, context)}
+            onPointerUp={(event) => onGridPointerUp?.(event, context)}
+            onPointerCancel={(event) => onGridPointerCancel?.(event, context)}
           >
             {renderGridOverlay?.(context)}
             {(page.blocks || []).map((block, blockIndex) => (
@@ -195,6 +204,10 @@ export function ReportPageCanvas({
   renderGridOverlay,
   gridClassName = "",
   getGridRef,
+  onGridPointerDown,
+  onGridPointerMove,
+  onGridPointerUp,
+  onGridPointerCancel,
   ariaLabel = "보고서 페이지",
   className = "",
   viewScale = "fit-width",
@@ -230,6 +243,10 @@ export function ReportPageCanvas({
             renderGridOverlay={renderGridOverlay}
             gridClassName={gridClassName}
             getGridRef={getGridRef}
+            onGridPointerDown={onGridPointerDown}
+            onGridPointerMove={onGridPointerMove}
+            onGridPointerUp={onGridPointerUp}
+            onGridPointerCancel={onGridPointerCancel}
             viewScale={viewScale}
             key={page.id || pageIndex}
           />

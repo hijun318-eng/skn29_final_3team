@@ -32,9 +32,16 @@ function editorBlockPropsEqual(previous, next) {
     && previous.currency === next.currency
     && previous.isDraft === next.isDraft
     && previous.selected === next.selected
+    && previous.primary === next.primary
     && previous.dragging === next.dragging
+    && previous.groupTransform === next.groupTransform
     && previous.locked === next.locked;
 }
+
+const RESIZE_DIRECTIONS = [
+  ["nw", "왼쪽 위"], ["n", "위"], ["ne", "오른쪽 위"], ["e", "오른쪽"],
+  ["se", "오른쪽 아래"], ["s", "아래"], ["sw", "왼쪽 아래"], ["w", "왼쪽"],
+];
 
 /** 단일 편집 블록과 제어기를 렌더링하며 custom comparator가 변경된 block field만 다시 그린다. */
 export const ReportEditorBlock = memo(function ReportEditorBlock({
@@ -45,7 +52,9 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   currency,
   isDraft,
   selected,
+  primary,
   dragging,
+  groupTransform,
   locked = false,
   onSelect,
   onUpdate,
@@ -91,7 +100,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     [block.id, onMove],
   );
   const resizeBlock = useCallback(
-    (width, height) => onResize(block.id, width, height),
+    (width, height, position) => onResize(block.id, width, height, position),
     [block.id, onResize],
   );
   const setBlockSetting = useCallback(
@@ -117,18 +126,24 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     const padding = (Number.parseFloat(styles?.paddingLeft || "0") || 0)
       + (Number.parseFloat(styles?.paddingRight || "0") || 0);
     resizeStart.current = {
-      x: event.clientX,
-      y: event.clientY,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      blockX: block.x ?? 0,
+      blockY: block.y ?? 0,
       w: block.w ?? block.columns,
       h: block.h ?? 4,
-      columnStep: bounds
-        ? Math.max(1, (bounds.width - padding - gap * 11) / 12 + gap)
+      direction: event.currentTarget.dataset.direction,
+      scale: bounds && canvas?.offsetWidth ? bounds.width / canvas.offsetWidth : 1,
+      columnStep: canvas
+        ? Math.max(1, (canvas.offsetWidth - padding - gap * 11) / 12 + gap)
         : 72,
       rowStep: (Number.parseFloat(
         styles?.getPropertyValue("--report-grid-row") || "56",
       ) || 56) + (Number.parseFloat(styles?.rowGap || "0") || 0),
     };
     resizePreviewRef.current = {
+      x: block.x ?? 0,
+      y: block.y ?? 0,
       w: block.w ?? block.columns,
       h: block.h ?? 4,
     };
@@ -141,15 +156,27 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     const start = resizeStart.current;
     const minimumWidth = block.type === "text" ? 4 : 6;
     const maximumHeight = ["artifact", "chart", "table"].includes(block.type) ? 18 : 14;
+    const deltaX = Math.round((event.clientX - start.clientX) / (start.columnStep * start.scale));
+    const deltaY = Math.round((event.clientY - start.clientY) / (start.rowStep * start.scale));
+    const initialRight = start.blockX + start.w;
+    const initialBottom = start.blockY + start.h;
+    const left = start.direction.includes("w")
+      ? Math.max(0, Math.min(initialRight - minimumWidth, start.blockX + deltaX))
+      : start.blockX;
+    const right = start.direction.includes("e")
+      ? Math.max(start.blockX + minimumWidth, Math.min(12, initialRight + deltaX))
+      : initialRight;
+    const top = start.direction.includes("n")
+      ? Math.max(0, initialBottom - maximumHeight, Math.min(initialBottom - blockMinimumHeight(block.type), start.blockY + deltaY))
+      : start.blockY;
+    const bottom = start.direction.includes("s")
+      ? Math.max(start.blockY + blockMinimumHeight(block.type), Math.min(start.blockY + maximumHeight, initialBottom + deltaY))
+      : initialBottom;
     const next = {
-      w: Math.max(
-        minimumWidth,
-        Math.min(12, start.w + Math.round((event.clientX - start.x) / start.columnStep)),
-      ),
-      h: Math.max(
-        blockMinimumHeight(block.type),
-        Math.min(maximumHeight, start.h + Math.round((event.clientY - start.y) / start.rowStep)),
-      ),
+      x: left,
+      y: top,
+      w: right - left,
+      h: bottom - top,
     };
     resizePreviewRef.current = next;
     setResizePreview(next);
@@ -162,7 +189,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     resizePreviewRef.current = null;
     setResizePreview(null);
     if (next && start && (next.w !== start.w || next.h !== start.h)) {
-      resizeBlock(next.w, next.h);
+      resizeBlock(next.w, next.h, { x: next.x, y: next.y });
     }
   };
 
@@ -172,7 +199,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     setResizePreview(null);
   };
 
-  const resizeWithKeyboard = (event) => {
+  const resizeWithKeyboard = (event, direction) => {
     const movement = {
       ArrowRight: [1, 0],
       ArrowLeft: [-1, 0],
@@ -182,9 +209,15 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     if (!movement) return;
     event.preventDefault();
     event.stopPropagation();
+    const horizontal = direction.includes("w") ? -movement[0] : direction.includes("e") ? movement[0] : 0;
+    const vertical = direction.includes("n") ? -movement[1] : direction.includes("s") ? movement[1] : 0;
     resizeBlock(
-      (block.w ?? block.columns) + movement[0],
-      (block.h ?? 4) + movement[1],
+      (block.w ?? block.columns) + horizontal,
+      (block.h ?? 4) + vertical,
+      {
+        x: (block.x ?? 0) + (direction.includes("w") ? movement[0] : 0),
+        y: (block.y ?? 0) + (direction.includes("n") ? movement[1] : 0),
+      },
     );
   };
 
@@ -204,18 +237,27 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   }, [block.type, isDraft, locked, resizeTableWithWheel]);
 
   const displayY = Math.max(0, (block.y ?? 0) - rowOffset);
+  const previewX = resizePreview?.x ?? block.x ?? 0;
+  const previewY = resizePreview?.y ?? block.y ?? 0;
   const displayWidth = resizePreview?.w ?? block.w ?? block.columns;
   const displayHeight = resizePreview?.h ?? block.h ?? 1;
+  const dragTransform = transform || groupTransform;
   const style = {
-    "--block-x": (block.x ?? 0) + 1,
-    "--block-y": displayY + 1,
+    "--block-x": previewX + 1,
+    "--block-y": Math.max(0, previewY - rowOffset) + 1,
     "--block-w": displayWidth,
     "--block-h": displayHeight,
     "--block-order": displayY * 12 + (block.x ?? 0),
     gridRow: `${displayY + 1} / span ${displayHeight}`,
-    transform: transform
-      ? `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)`
-      : undefined,
+    ...(resizePreview ? {
+      inlineSize: `calc(100% + ${(displayWidth - (block.w ?? block.columns)) * resizeStart.current.columnStep}px)`,
+      blockSize: `calc(100% + ${(displayHeight - (block.h ?? 1)) * resizeStart.current.rowStep}px)`,
+    } : {}),
+    transform: resizePreview
+      ? `translate3d(${(previewX - (block.x ?? 0)) * resizeStart.current.columnStep}px, ${(previewY - (block.y ?? 0)) * resizeStart.current.rowStep}px, 0)`
+      : dragTransform
+        ? `translate3d(${Math.round(dragTransform.x)}px, ${Math.round(dragTransform.y)}px, 0)`
+        : undefined,
   };
 
   let body;
@@ -328,12 +370,13 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
         />
       ) : <h2>{block.title}</h2>}
       {body}
-      {isDraft && !locked && (
+      {isDraft && !locked && primary && RESIZE_DIRECTIONS.map(([direction, label]) => (
         <button
           type="button"
           className="report-resize-handle"
-          aria-label={`${block.title} 블록 크기 조절`}
-          title="끌어서 크기 조절 · 방향키로 미세 조절"
+          data-direction={direction}
+          aria-label={`${block.title} 블록 ${label} 크기 조절`}
+          title={`${label} 방향 크기 조절 · 방향키로 미세 조절`}
           onPointerDown={startResize}
           onPointerMove={resizeWithPointer}
           onPointerUp={finishResize}
@@ -341,11 +384,10 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           onLostPointerCapture={() => {
             if (resizeStart.current) cancelResize();
           }}
-          onKeyDown={resizeWithKeyboard}
-        >
-          <span />
-        </button>
-      )}
+          onKeyDown={(event) => resizeWithKeyboard(event, direction)}
+          key={direction}
+        ><span /></button>
+      ))}
     </article>
   );
 }, editorBlockPropsEqual);

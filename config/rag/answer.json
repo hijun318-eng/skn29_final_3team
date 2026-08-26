@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "maximum_context_tokens": 4096,
+  "reserved_system_tokens": 700,
+  "reserved_question_tokens": 512,
+  "maximum_output_tokens": 700,
+  "generation_timeout_seconds": 20,
+  "maximum_retries": 1,
+  "minimum_relevance_score": 0.18,
+  "maximum_evidence_chars": 30000,
+  "maximum_chunks": 10,
+  "maximum_points_per_article": 50,
+  "maximum_answer_chars": 20000
+}

@@ -26,7 +26,9 @@ class ConversationCommandRequest(ContractModel):
     user_message: str = Field(min_length=1, max_length=1000)
     idempotency_key: str = Field(min_length=1, max_length=128)
     expected_head_turn_id: UUID | None
-    requested_route: Literal["ANALYSIS", "PRESENTATION", "REPORT_ACTION"] | None = None
+    requested_route: Literal[
+        "ANALYSIS", "PRESENTATION", "REPORT_ACTION", "INTERNAL_GUIDELINE"
+    ] | None = None
     presentation_type: Literal[
         "SUMMARY", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT"
     ] | None = None

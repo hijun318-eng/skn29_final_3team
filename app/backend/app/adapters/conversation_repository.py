@@ -183,6 +183,125 @@ class ConversationRepository:
                 )
                 return dict(row)
 
+    async def append_rag_turn(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        user_message: str,
+        rag_result: dict[str, Any],
+        expected_head_turn_id: UUID | None = None,
+        enforce_expected_head: bool = False,
+    ) -> UUID | None:
+        """RAG 답변을 현재 release receipt를 유지한 불변 턴으로 저장한다."""
+        return await self.append_agent_turn(
+            conversation_id,
+            user_id,
+            user_message,
+            {"rag": rag_result},
+            route="INTERNAL_GUIDELINE",
+            expected_head_turn_id=expected_head_turn_id,
+            enforce_expected_head=enforce_expected_head,
+        )
+
+    async def append_agent_turn(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        user_message: str,
+        resolved_slots: dict[str, Any],
+        *,
+        route: str = "ANALYSIS",
+        terminal_status: str = "SUCCEEDED",
+        reason_code: str | None = None,
+        expected_head_turn_id: UUID | None = None,
+        enforce_expected_head: bool = False,
+    ) -> UUID | None:
+        """Agent 응답을 예상 head와 대조한 뒤 새 불변 턴으로 저장한다."""
+        if route not in {"ANALYSIS", "INTERNAL_GUIDELINE"}:
+            raise ValueError("지원하지 않는 Agent route입니다.")
+        if terminal_status not in {"SUCCEEDED", "BLOCKED", "FAILED"}:
+            raise ValueError("지원하지 않는 대화 턴 상태입니다.")
+        turn_id = uuid4()
+        now = datetime.now(timezone.utc)
+        async with self._sessionmaker() as session:
+            async with session.begin():
+                conversation = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT turn_count, head_turn_id, active_command_id,
+                                   product_release_id, permission_snapshot_id,
+                                   semantic_release_id
+                            FROM chat.conversations
+                            WHERE conversation_id = :conv_id
+                              AND owner_user_id = :user_id
+                              AND status = 'ACTIVE'
+                            FOR UPDATE
+                            """
+                        ),
+                        {"conv_id": conversation_id, "user_id": user_id},
+                    )
+                ).mappings().one_or_none()
+                if conversation is None:
+                    return None
+                if conversation["active_command_id"] is not None:
+                    raise ValueError("실행 중인 대화 명령이 있어 Agent 턴을 저장할 수 없습니다.")
+                if enforce_expected_head and conversation["head_turn_id"] != expected_head_turn_id:
+                    raise ValueError("대화가 갱신되어 요청을 다시 확인해야 합니다.")
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO chat.turns (
+                            turn_id, conversation_id, turn_index, user_message, route,
+                            source_turn_ids, resolved_slots, product_release_id,
+                            permission_snapshot_id, semantic_release_id, reply_to_turn_id,
+                            terminal_status, reason_code, created_at
+                        ) VALUES (
+                            :turn_id, :conv_id, :idx, :msg, :route,
+                            '[]'::jsonb, CAST(:slots AS jsonb), :product_release_id,
+                            :permission_snapshot_id, :semantic_release_id, :reply_to_turn_id,
+                            :terminal_status, :reason_code, :now
+                        )
+                        """
+                    ),
+                    {
+                        "turn_id": turn_id,
+                        "conv_id": conversation_id,
+                        "idx": int(conversation["turn_count"]),
+                        "msg": user_message,
+                        "route": route,
+                        "slots": json.dumps(resolved_slots, ensure_ascii=False, default=str),
+                        "product_release_id": conversation["product_release_id"],
+                        "permission_snapshot_id": conversation["permission_snapshot_id"],
+                        "semantic_release_id": conversation["semantic_release_id"],
+                        "reply_to_turn_id": conversation["head_turn_id"],
+                        "terminal_status": terminal_status,
+                        "reason_code": reason_code,
+                        "now": now,
+                    },
+                )
+                await self._insert_release_binding(
+                    session,
+                    object_kind="TURN",
+                    object_id=turn_id,
+                    product_release_id=conversation["product_release_id"],
+                    permission_snapshot_id=conversation["permission_snapshot_id"],
+                    semantic_release_id=conversation["semantic_release_id"],
+                )
+                await session.execute(
+                    text(
+                        """
+                        UPDATE chat.conversations
+                        SET head_turn_id = :turn_id,
+                            turn_count = turn_count + 1,
+                            updated_at = :now
+                        WHERE conversation_id = :conv_id
+                        """
+                    ),
+                    {"turn_id": turn_id, "now": now, "conv_id": conversation_id},
+                )
+        return turn_id
+
     async def list_turns(self, conversation_id: UUID) -> list[dict[str, Any]]:
         """대화방의 모든 불변 턴 목록을 순서대로 조회한다."""
         stmt = text("""

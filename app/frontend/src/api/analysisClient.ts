@@ -15,7 +15,7 @@ export interface ConversationCommandPayload {
   user_message: string;
   expected_head_turn_id?: string | null;
   idempotency_key?: string;
-  requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
   presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
 }
 
@@ -36,6 +36,7 @@ export interface AnalysisClient {
     parameters?: Record<string, AnalysisValue>,
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
+  manualPdfUrl(documentId: string): string;
   cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
@@ -64,7 +65,7 @@ export interface ConversationTurnWire {
   conversation_id: string;
   turn_index: number;
   user_message: string;
-  route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
   source_turn_ids: string[];
   reply_to_turn_id: string | null;
   clarifies_turn_id: string | null;
@@ -75,6 +76,7 @@ export interface ConversationTurnWire {
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {
+    rag?: Record<string, unknown>;
     business_terms?: string[];
     metric_id?: string | null;
     metric_ids?: string[];
@@ -362,6 +364,9 @@ export function createHttpAnalysisClient(
       } finally {
         if (poll !== undefined) window.clearInterval(poll);
       }
+    },
+    manualPdfUrl(documentId) {
+      return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source.pdf`);
     },
     async cancelAnalysis(traceId) {
       const payload = await parse<{ data: AnalysisProgress }>(await request(

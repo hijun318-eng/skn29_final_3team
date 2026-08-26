@@ -71,6 +71,11 @@ services:
       READINESS_PROBE_TIMEOUT_SECONDS: ${READINESS_PROBE_TIMEOUT_SECONDS:-2}
       NODE2_MODEL_PROVIDER: ${NODE2_MODEL_PROVIDER:-}
       MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-60}
+      RAG_API_URL: ${RAG_API_URL:-http://rag-api:8000}
+      RAG_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:-rag-local-dev-hmac-secret-change-before-shared-use}
+      RAG_TOOL_TIMEOUT_SECONDS: ${RAG_TOOL_TIMEOUT_SECONDS:-30}
+      RAG_FEATURE_ENABLED: ${RAG_FEATURE_ENABLED:-1}
+      RAG_MANUALS_DIR: /workspace/data/rag/manuals
       REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS: ${REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS:-2}
       REPORT_ASSISTANT_MAX_INPUT_TOKENS: ${REPORT_ASSISTANT_MAX_INPUT_TOKENS:-16000}
       REPORT_ASSISTANT_MAX_OUTPUT_TOKENS: ${REPORT_ASSISTANT_MAX_OUTPUT_TOKENS:-4096}
@@ -91,6 +96,7 @@ services:
       - ${AUTH_PRINCIPALS_HOST_FILE:?AUTH_PRINCIPALS_HOST_FILE is required}:/run/secrets/answervice_auth_principals.json:ro
       - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
       - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+      - ${RAG_MANUALS_HOST_DIR:-../../data/rag/manuals}:/workspace/data/rag/manuals:ro
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"
     networks:

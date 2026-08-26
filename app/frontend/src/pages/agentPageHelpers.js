@@ -6,6 +6,7 @@ import {
   normalizeAnalysisEvidence,
   normalizeAnalysisMetrics,
 } from "../contracts/analysis.ts";
+import { ragRun } from "./agentResponseMappers.js";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -155,10 +156,13 @@ export function hydrateTurnsFromServer(serverTurns) {
     for (const st of serverTurns) {
       const isPresentation = st.route === "PRESENTATION";
       const isReportAction = st.route === "REPORT_ACTION";
+      const ragResult = st.resolved_slots?.rag;
       const userMessage = st.user_message || "";
       let run;
 
-      if (isPresentation && st.terminal_status === "SUCCEEDED") {
+      if (ragResult) {
+        run = ragRun(userMessage, ragResult);
+      } else if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
         const sourceQueryId = lastAnalysisRun?.artifact?.queryId;
         const responseEvidence = st.evidence_json;
@@ -275,7 +279,7 @@ export function hydrateTurnsFromServer(serverTurns) {
         resolvedSlots: st.resolved_slots || null,
         viewType: isPresentation
           ? (st.view_type || "TABLE")
-          : (st.resolved_slots?.target_chart_type || "SUMMARY"),
+          : ragResult ? "RAG" : (st.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
         reusePending: false,
         viewSpecId: isPresentation ? st.view_spec_id : null,
@@ -317,10 +321,18 @@ export function quickViewAction(mode) {
  * @param {number} [limit=3] - 제시할 최대 개수
  * @returns {Array<{id: string, question: string}>} 예시 질문 목록(없으면 빈 배열)
  */
-export function exampleQuestionsFromDefinitions(definitions, limit = 3) {
-  if (!Array.isArray(definitions)) return [];
-  return definitions
+export function exampleQuestionsFromDefinitions(definitions, limit = 6) {
+  const defaults = [
+    { id: "rag-procedure", question: "[내부 지침] 객실 청결 불만이 들어오면 어떻게 처리해?" },
+    { id: "rag-criteria", question: "[내부 지침] 시설 문제를 '위험'으로 분류하는 기준이 뭐야?" },
+    { id: "rag-immediate", question: "[내부 지침] 고객이 객실에서 쓰러졌어. 지금 뭘 해야 해?" },
+    { id: "rag-policy", question: "[내부 지침] 예약 취소하면 환불 가능한가?" },
+    { id: "rag-summary", question: "[내부 지침] 고객응대 지침 핵심만 정리해줘." },
+    { id: "rag-compare", question: "[내부 지침] 시설 장애와 안전사고 대응 차이가 뭐야?" },
+  ];
+  const saved = (Array.isArray(definitions) ? definitions : [])
     .filter((item) => item && typeof item.question === "string" && item.question.trim())
-    .slice(0, limit)
     .map((item) => ({ id: item.definition_id || item.id || item.question, question: item.question }));
+  const unique = new Map([...defaults, ...saved].map((item) => [item.question, item]));
+  return [...unique.values()].slice(0, limit);
 }

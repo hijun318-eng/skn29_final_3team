@@ -1256,6 +1256,21 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("17", result.summary)
         self.assertIn("11", result.summary)
 
+    async def test_single_period_uses_comparison_capable_asset_without_second_window(self):
+        adapter = AsyncRuntimeDataPlatform(asset=COMPARISON_ASSET, result=QUERY_RESULT)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model_with(node1=NODE1_RESPONSE, node2=VALID_PLAN),
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        result = response.data.result
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(result.evidence.comparison_period)
+
     async def test_pre_resolved_comparison_keeps_both_windows_and_skips_node1(self):
         original_payload = self.payload
         self.payload = AnalysisRequest(

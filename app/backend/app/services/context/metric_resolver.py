@@ -404,21 +404,21 @@ def _range_period_recheck_required(
         return False
 
 
-def _analysis_shape_recheck_required(normalized: dict[str, Any]) -> bool:
-    """선택된 분석 요청의 결과 형태 슬롯이 불완전하면 1회 재검토를 요구한다.
+def _analysis_shape_recheck_violation(normalized: dict[str, Any]) -> str | None:
+    """선택된 분석 요청의 결과 형태 위반을 bounded 재검토 코드로 반환한다.
 
     ``analysis_operation``과 ``intent_candidates``는 같은 결정을 표현하는 active Node 1
-    계약의 typed 필드다. BUSINESS Metric이 선택된 분석인데 두 필드가 비었거나 서로
-    다르면 질문 문장을 서버에서 재해석하지 않고 모델에 한 번만 재검토시킨다.
+    계약의 typed 필드다. 서버는 질문을 다시 파싱하지 않고 첫 응답이 실패한 구조적
+    제약만 모델에 알려 한 번의 재검토가 같은 오판을 반복하지 않게 한다.
     """
 
     if normalized.get("metric_resolution") != "selected":
-        return False
+        return None
     if enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES) in {
         "PRESENTATION",
         "REPORT_ACTION",
     }:
-        return False
+        return None
     raw_ids = normalized.get("selected_metric_ids")
     if (
         not isinstance(raw_ids, list)
@@ -426,7 +426,7 @@ def _analysis_shape_recheck_required(normalized: dict[str, Any]) -> bool:
         or len(raw_ids) != len(set(raw_ids))
         or any(not isinstance(item, str) or not item for item in raw_ids)
     ):
-        return False
+        return None
     operation = normalized.get("analysis_operation")
     raw_intents = normalized.get("intent_candidates")
     if not (
@@ -434,29 +434,55 @@ def _analysis_shape_recheck_required(normalized: dict[str, Any]) -> bool:
         and isinstance(raw_intents, list)
         and raw_intents == [operation]
     ):
-        return True
+        return (
+            "ANALYSIS_OPERATION_REQUIRED"
+            if operation is None and (raw_intents is None or raw_intents == [])
+            else "ANALYSIS_OPERATION_INCONSISTENT"
+        )
     if "analysis_time_bucket" not in normalized:
-        return True
+        return "ANALYSIS_OPERATION_INCONSISTENT"
     dimensions = normalized.get("dimension_candidates")
     if not isinstance(dimensions, list):
-        return True
+        return "ANALYSIS_OPERATION_INCONSISTENT"
     result_limit = normalized.get("result_limit")
     bucket = normalized.get("analysis_time_bucket")
     if operation == "aggregate":
-        return bool(dimensions) or result_limit is not None or bucket is not None
-    if operation == "breakdown":
-        return not dimensions or result_limit is not None or bucket is not None
-    if operation == "time_trend":
-        return bucket not in _ANALYSIS_TIME_BUCKETS or result_limit is not None
-    if operation in {"top_n", "bottom_n"}:
         return (
-            not dimensions
-            or isinstance(result_limit, bool)
+            "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+            if dimensions or result_limit is not None or bucket is not None
+            else None
+        )
+    if operation == "breakdown":
+        if not dimensions:
+            return "ANALYSIS_DIMENSION_REQUIRED"
+        return (
+            "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+            if result_limit is not None or bucket is not None
+            else None
+        )
+    if operation == "time_trend":
+        if bucket not in _ANALYSIS_TIME_BUCKETS:
+            return "ANALYSIS_TIME_BUCKET_REQUIRED"
+        return (
+            "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+            if result_limit is not None
+            else None
+        )
+    if operation in {"top_n", "bottom_n"}:
+        if not dimensions:
+            return "ANALYSIS_DIMENSION_REQUIRED"
+        if (
+            isinstance(result_limit, bool)
             or not isinstance(result_limit, int)
             or not 1 <= result_limit <= 100
-            or bucket is not None
-        )
-    return result_limit is not None or bucket is not None
+        ):
+            return "ANALYSIS_RESULT_LIMIT_INVALID"
+        return "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT" if bucket is not None else None
+    return (
+        "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+        if result_limit is not None or bucket is not None
+        else None
+    )
 
 
 def _reconcile_analysis_bucket_signal(normalized: dict[str, Any]) -> dict[str, Any]:
@@ -1158,18 +1184,22 @@ class MetricResolver:
             node1_input["interpretation_recheck"] = {
                 "target": "period_candidates",
                 "attempt": 1,
+                "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
             }
             normalized = await normalize()
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 기간 재검토 응답은 객체여야 합니다.")
             interpretation_rechecked = True
-        if (
-            not interpretation_rechecked
-            and _analysis_shape_recheck_required(normalized)
-        ):
+        shape_violation = (
+            None
+            if interpretation_rechecked
+            else _analysis_shape_recheck_violation(normalized)
+        )
+        if shape_violation is not None:
             node1_input["interpretation_recheck"] = {
                 "target": "analysis_operation",
                 "attempt": 1,
+                "violation": shape_violation,
             }
             normalized = await normalize()
             if not isinstance(normalized, dict):

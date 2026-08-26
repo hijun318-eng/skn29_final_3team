@@ -1068,6 +1068,7 @@ class _OperationRecheckNormalizer(_Normalizer):
         if payload.get("interpretation_recheck") != {
             "target": "analysis_operation",
             "attempt": 1,
+            "violation": "ANALYSIS_OPERATION_REQUIRED",
         }:
             result["intent_candidates"] = []
             result["analysis_operation"] = None
@@ -1093,6 +1094,22 @@ class _DimensionlessBreakdownNormalizer(_Normalizer):
         result["analysis_operation"] = "breakdown"
         result["analysis_time_bucket"] = None
         result["dimension_candidates"] = []
+        return result
+
+
+class _ViolationAwareTimeTrendNormalizer(_DimensionlessBreakdownNormalizer):
+    """typed 위반 사유가 전달되면 시간 추이와 버킷을 다시 결속한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        if payload.get("interpretation_recheck") == {
+            "target": "analysis_operation",
+            "attempt": 1,
+            "violation": "ANALYSIS_DIMENSION_REQUIRED",
+        }:
+            result["intent_candidates"] = ["time_trend"]
+            result["analysis_operation"] = "time_trend"
+            result["analysis_time_bucket"] = "month"
         return result
 
 
@@ -1435,6 +1452,7 @@ def test_range_metric_rechecks_a_missing_period_once_before_clarifying() -> None
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "period_candidates",
         "attempt": 1,
+        "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
     }
     assert structured["period_candidates"] == [
         {
@@ -1490,6 +1508,7 @@ def test_missing_metric_followup_rechecks_only_the_period_before_clarifying() ->
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "period_candidates",
         "attempt": 1,
+        "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
     }
 
 
@@ -1531,6 +1550,7 @@ def test_range_metric_still_clarifies_when_the_bounded_recheck_has_no_period() -
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "period_candidates",
         "attempt": 1,
+        "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
     }
 
 
@@ -1570,6 +1590,7 @@ def test_range_metric_rechecks_a_future_period_before_execution() -> None:
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "period_candidates",
         "attempt": 1,
+        "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
     }
     assert structured["period_candidates"][0]["start"].startswith("2026-08-01")
 
@@ -1680,6 +1701,7 @@ def test_selected_analysis_rechecks_a_missing_result_shape_once() -> None:
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "analysis_operation",
         "attempt": 1,
+        "violation": "ANALYSIS_OPERATION_REQUIRED",
     }
     assert structured["analysis_operation"] == "aggregate"
     assert structured["intent_candidates"] == ["aggregate"]
@@ -1721,6 +1743,7 @@ def test_selected_analysis_reconciles_a_governed_bucket_after_bounded_recheck() 
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "analysis_operation",
         "attempt": 1,
+        "violation": "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT",
     }
     assert structured["analysis_operation"] == "time_trend"
     assert structured["intent_candidates"] == ["time_trend"]
@@ -1813,6 +1836,7 @@ def test_selected_analysis_rejects_an_unresolved_shape_after_one_recheck() -> No
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "analysis_operation",
         "attempt": 1,
+        "violation": "ANALYSIS_OPERATION_REQUIRED",
     }
 
 
@@ -1857,7 +1881,51 @@ def test_selected_analysis_blocks_dimensionless_breakdown_after_one_recheck() ->
     assert model.inputs[1]["interpretation_recheck"] == {
         "target": "analysis_operation",
         "attempt": 1,
+        "violation": "ANALYSIS_DIMENSION_REQUIRED",
     }
+
+
+def test_selected_analysis_recovers_time_trend_from_typed_shape_violation() -> None:
+    """문장별 규칙 없이 첫 shape 위반을 알려 한 번의 모델 재해석으로 복구한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _ViolationAwareTimeTrendNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000053"),
+        trace_id="shape-violation-time-trend-recheck",
+        user_id=UUID("20000000-0000-0000-0000-000000000054"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="Amount per Event",
+                parameters={"active": True},
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert len(model.inputs) == 2
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "analysis_operation",
+        "attempt": 1,
+        "violation": "ANALYSIS_DIMENSION_REQUIRED",
+    }
+    assert structured["analysis_operation"] == "time_trend"
+    assert structured["analysis_time_bucket"] == "month"
+    assert structured["dimension_fields"] == []
 
 
 def test_latest_snapshot_contract_rejects_unapproved_period_coercion() -> None:

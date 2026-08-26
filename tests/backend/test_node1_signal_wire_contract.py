@@ -131,15 +131,25 @@ async def test_previous_result_shape_reaches_the_model_over_the_wire():
     assert wire_request["previous_result_shape"] == RESULT_SHAPE
 
 
-@pytest.mark.parametrize("target", ["period_candidates", "analysis_operation"])
+@pytest.mark.parametrize(
+    ("target", "violation"),
+    [
+        ("period_candidates", "PERIOD_REQUIRED_OR_OUT_OF_RANGE"),
+        ("analysis_operation", "ANALYSIS_DIMENSION_REQUIRED"),
+    ],
+)
 @async_test
-async def test_bounded_interpretation_recheck_reaches_the_model_over_the_wire(target):
+async def test_bounded_interpretation_recheck_reaches_the_model_over_the_wire(
+    target,
+    violation,
+):
     """서버 소유 재검토 지시가 변형되지 않고 두 번째 Node1 요청에 실리는지 검증."""
 
     request = dict(VALID_PAYLOADS["node1_request"])
     request["interpretation_recheck"] = {
         "target": target,
         "attempt": 1,
+        "violation": violation,
     }
 
     wire_request, _ = await _run_node1(
@@ -150,6 +160,7 @@ async def test_bounded_interpretation_recheck_reaches_the_model_over_the_wire(ta
     assert wire_request["interpretation_recheck"] == {
         "target": target,
         "attempt": 1,
+        "violation": violation,
     }
 
 

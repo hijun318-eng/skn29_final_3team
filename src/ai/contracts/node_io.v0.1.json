@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.24.0",
+  "version": "MODEL-v1.25.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -712,13 +712,25 @@
         "interpretation_recheck": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["target", "attempt"],
+          "required": ["target", "attempt", "violation"],
           "properties": {
             "target": {
               "type": "string",
               "enum": ["period_candidates", "analysis_operation"]
             },
-            "attempt": {"type": "integer", "const": 1}
+            "attempt": {"type": "integer", "const": 1},
+            "violation": {
+              "type": "string",
+              "enum": [
+                "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
+                "ANALYSIS_OPERATION_REQUIRED",
+                "ANALYSIS_OPERATION_INCONSISTENT",
+                "ANALYSIS_DIMENSION_REQUIRED",
+                "ANALYSIS_TIME_BUCKET_REQUIRED",
+                "ANALYSIS_RESULT_LIMIT_INVALID",
+                "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+              ]
+            }
           }
         },
         "allowed_routes": {

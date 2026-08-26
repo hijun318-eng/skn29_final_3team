@@ -81,8 +81,14 @@ def test_contract_accepts_previous_result_shape():
     )
 
 
-@pytest.mark.parametrize("target", ["period_candidates", "analysis_operation"])
-def test_contract_accepts_one_bounded_interpretation_recheck(target):
+@pytest.mark.parametrize(
+    ("target", "violation"),
+    [
+        ("period_candidates", "PERIOD_REQUIRED_OR_OUT_OF_RANGE"),
+        ("analysis_operation", "ANALYSIS_DIMENSION_REQUIRED"),
+    ],
+)
+def test_contract_accepts_one_bounded_interpretation_recheck(target, violation):
     """서버가 요청하는 슬롯 재검토가 대상과 회차가 고정된 typed 객체인지 검증."""
 
     validate_payload(
@@ -91,6 +97,7 @@ def test_contract_accepts_one_bounded_interpretation_recheck(target):
             interpretation_recheck={
                 "target": target,
                 "attempt": 1,
+                "violation": violation,
             }
         ),
     )
@@ -99,12 +106,41 @@ def test_contract_accepts_one_bounded_interpretation_recheck(target):
 @pytest.mark.parametrize(
     "recheck",
     [
-        {"target": "period_candidates"},
-        {"target": "metric_candidates", "attempt": 1},
-        {"target": "period_candidates", "attempt": 2},
-        {"target": "period_candidates", "attempt": 1, "force": True},
+        {
+            "target": "period_candidates",
+            "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
+        },
+        {"target": "period_candidates", "attempt": 1},
+        {
+            "target": "metric_candidates",
+            "attempt": 1,
+            "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
+        },
+        {
+            "target": "period_candidates",
+            "attempt": 2,
+            "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
+        },
+        {
+            "target": "period_candidates",
+            "attempt": 1,
+            "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
+            "force": True,
+        },
+        {
+            "target": "period_candidates",
+            "attempt": 1,
+            "violation": "UNKNOWN",
+        },
     ],
-    ids=["missing_attempt", "unknown_target", "second_retry", "extra_directive"],
+    ids=[
+        "missing_attempt",
+        "missing_violation",
+        "unknown_target",
+        "second_retry",
+        "extra_directive",
+        "unknown_violation",
+    ],
 )
 def test_contract_rejects_unbounded_or_unknown_interpretation_recheck(recheck):
     """모델 재검토가 반복되거나 다른 슬롯을 임의로 강제할 수 없도록 닫는다."""

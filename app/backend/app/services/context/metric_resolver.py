@@ -149,18 +149,30 @@ def _reconcile_comparison_axis(
     result_limit: object,
     ambiguity: object,
 ) -> tuple[str | None, str, list[str]]:
-    """두 지표 비교를 불완전한 두 기간 비교로 오인한 Node 1 출력을 보정한다.
+    """검증된 기간 수와 일반 비교 결과 형태의 중복 신호를 일관되게 결속한다.
 
-    질문 문자열을 다시 파싱하지 않고 이미 검증된 구조만 사용한다. 서로 다른 측정값이
-    둘 이상 확정됐고 두 번째 기간 증거가 없으며 모호성도 선언되지 않은 경우에는
-    ``period_comparison``이 성립할 수 없다. 이때 하나의 공유 기간에서 지표들을 나란히
-    조회하는 aggregate/breakdown으로만 좁혀 복구한다. 두 기간이 실제로 있거나 시간
-    모호성이 남아 있으면 그대로 두어 기존 PERIOD_REQUIRED 경계가 닫도록 한다.
+    질문 문자열을 다시 파싱하지 않고 이미 검증된 구조만 사용한다. 정확히 두 기간과
+    comparison 관계가 확정됐는데 일반 aggregate/breakdown으로 남은 응답은
+    period_comparison으로 좁힌다. 반대로 서로 다른 측정값이 둘 이상 확정됐지만 두 번째
+    기간이 없으면 하나의 공유 기간에서 지표들을 나란히 조회하는 일반 형태로 복구한다.
+    추이·순위처럼 별도 의미가 있는 충돌과 시간 모호성은 보정하지 않고 후속 검증이
+    fail-closed하도록 둔다.
     """
 
     is_ambiguous = (
         isinstance(ambiguity, dict) and ambiguity.get("is_ambiguous") is True
     )
+    if (
+        relationship == "comparison"
+        and len(periods) == 2
+        and analysis_operation in {"aggregate", "breakdown"}
+        and intents == [analysis_operation]
+        and bool(selected_metric_ids)
+        and len(measurement_source_texts) == len(selected_metric_ids)
+        and result_limit is None
+        and not is_ambiguous
+    ):
+        return "period_comparison", relationship, ["period_comparison"]
     if not (
         analysis_operation == "period_comparison"
         and relationship == "comparison"

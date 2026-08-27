@@ -69,6 +69,7 @@ from app.services.analysis.result_validator import PipelineResultValidator  # no
 from app.services.context.metric_resolver import (  # noqa: E402
     MetricResolver,
     _explicit_calendar_time_bucket,
+    _reconcile_comparison_axis,
     _validate_selected_data_availability,
 )
 from app.services.context.metric_execution_scope import select_assets_for_metrics  # noqa: E402
@@ -1264,6 +1265,62 @@ class _TwoPeriodMultiMetricNormalizer(_CrossMetricComparisonNormalizer):
             },
         ]
         return result
+
+
+@pytest.mark.parametrize(
+    ("operation", "dimensions"),
+    (("aggregate", []), ("breakdown", ["observation_segment"])),
+)
+def test_verified_two_period_axis_reconciles_only_general_result_shapes(
+    operation: str,
+    dimensions: list[str],
+) -> None:
+    periods = [
+        {"start": "2042-05-01", "end_exclusive": "2042-06-01"},
+        {"start": "2042-06-01", "end_exclusive": "2042-07-01"},
+    ]
+
+    reconciled = _reconcile_comparison_axis(
+        analysis_operation=operation,
+        relationship="comparison",
+        intents=[operation],
+        periods=periods,
+        selected_metric_ids=["measure_alpha", "measure_beta"],
+        measurement_source_texts=["Measure Alpha", "Measure Beta"],
+        selected_dimensions=dimensions,
+        result_limit=None,
+        ambiguity={"is_ambiguous": False},
+    )
+
+    assert reconciled == (
+        "period_comparison",
+        "comparison",
+        ["period_comparison"],
+    )
+
+
+@pytest.mark.parametrize("operation", ("time_trend", "top_n"))
+def test_verified_two_period_axis_keeps_specific_shape_conflicts_fail_closed(
+    operation: str,
+) -> None:
+    periods = [
+        {"start": "2042-05-01", "end_exclusive": "2042-06-01"},
+        {"start": "2042-06-01", "end_exclusive": "2042-07-01"},
+    ]
+
+    reconciled = _reconcile_comparison_axis(
+        analysis_operation=operation,
+        relationship="comparison",
+        intents=[operation],
+        periods=periods,
+        selected_metric_ids=["measure_alpha"],
+        measurement_source_texts=["Measure Alpha"],
+        selected_dimensions=[],
+        result_limit=3 if operation == "top_n" else None,
+        ambiguity={"is_ambiguous": False},
+    )
+
+    assert reconciled == (operation, "comparison", [operation])
 
 
 class _InconsistentSelectedNormalizer(_Normalizer):

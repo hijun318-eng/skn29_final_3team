@@ -240,6 +240,11 @@ class AnalysisContextStage:
                 decision,
             )
         except ContextBuildError as error:
+            logger.warning(
+                "governed context build rejected: code=%s detail=%s",
+                error.code.value,
+                error,
+            )
             if error.code in {
                 ContextBuildErrorCode.GOVERNANCE_VERSION_UNSUPPORTED,
                 ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,

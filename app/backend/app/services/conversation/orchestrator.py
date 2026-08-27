@@ -201,60 +201,72 @@ class ConversationOrchestrator:
             # 5. Node 1 사전 발화 정규화 (DataHub 자산 검색)
             node1_res: dict[str, Any] = {}
             preflight_clarification: ContextBuildError | None = None
-            try:
-                # 1차: user_message 원문으로 검색
-                assets = await self._data_platform.search_assets(
+            previous_slots = (
+                previous_turns[-1].get("resolved_slots", {})
+                if previous_turns
+                else {}
+            )
+            matched_server_option = None
+            if previous_slots.get("ambiguity_status") == "NEEDS_CLARIFICATION":
+                matched_server_option = ConversationSlotResolver.match_disambiguation_option(
                     user_message,
-                    {"role": context.role.value if hasattr(context.role, "value") else str(context.role)},
+                    previous_slots.get("disambiguation_options", ()),
                 )
-                search_query = user_message
+            try:
+                if matched_server_option is None:
+                    # 1차: user_message 원문으로 검색
+                    assets = await self._data_platform.search_assets(
+                        user_message,
+                        {"role": context.role.value if hasattr(context.role, "value") else str(context.role)},
+                    )
+                    search_query = user_message
 
-                # 2차: 자산 미발견 시 이전 분석 지표를 결합하여 후속 단답형 질의("4월은?", "비스타는?") 검색
-                if not assets:
-                    last_analysis_metric = next(
-                        (
-                            t.get("resolved_slots", {}).get("metric_id")
-                            or " ".join(
-                                map(
-                                    str,
-                                    t.get("resolved_slots", {}).get("metric_ids", ()),
+                    # 2차: 자산 미발견 시 이전 분석 지표를 결합하여 후속 단답형 질의("4월은?", "비스타는?") 검색
+                    if not assets:
+                        last_analysis_metric = next(
+                            (
+                                t.get("resolved_slots", {}).get("metric_id")
+                                or " ".join(
+                                    map(
+                                        str,
+                                        t.get("resolved_slots", {}).get("metric_ids", ()),
+                                    )
                                 )
+                             for t in reversed(previous_turns)
+                             if t.get("route") == "ANALYSIS"
+                             and (
+                                 t.get("resolved_slots", {}).get("metric_id")
+                                 or t.get("resolved_slots", {}).get("metric_ids")
+                             )),
+                            None,
+                        )
+                        if last_analysis_metric:
+                            search_query = f"{last_analysis_metric} {user_message}"
+                            assets = await self._data_platform.search_assets(
+                                search_query,
+                                {"role": context.role.value if hasattr(context.role, "value") else str(context.role)},
                             )
-                         for t in reversed(previous_turns)
-                         if t.get("route") == "ANALYSIS"
-                         and (
-                             t.get("resolved_slots", {}).get("metric_id")
-                             or t.get("resolved_slots", {}).get("metric_ids")
-                         )),
-                        None,
-                    )
-                    if last_analysis_metric:
-                        search_query = f"{last_analysis_metric} {user_message}"
-                        assets = await self._data_platform.search_assets(
-                            search_query,
-                            {"role": context.role.value if hasattr(context.role, "value") else str(context.role)},
-                        )
 
-                if assets:
-                    preflight_slots = None
-                    last_time = next(
-                        (t.get("resolved_slots", {}).get("time_range")
-                         for t in reversed(previous_turns)
-                         if t.get("resolved_slots", {}).get("time_range")),
-                        None,
-                    )
-                    if last_time and isinstance(last_time, dict) and last_time.get("start") and last_time.get("end_exclusive"):
-                        preflight_slots = ResolvedSlots(
-                            period_start=last_time["start"],
-                            period_end_exclusive=last_time["end_exclusive"],
+                    if assets:
+                        preflight_slots = None
+                        last_time = next(
+                            (t.get("resolved_slots", {}).get("time_range")
+                             for t in reversed(previous_turns)
+                             if t.get("resolved_slots", {}).get("time_range")),
+                            None,
                         )
-                    # `search_query`는 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
-                    # 의도·생략 여부·새 주제 판정은 사용자가 실제로 쓴 원문을 기준으로 해야
-                    # 하므로 모델 입력까지 보강 문자열로 바꾸지 않는다.
-                    _, _nq, structured = await self._support.select_metric(
-                        AnalysisRequest(question=user_message, resolved_slots=preflight_slots), context, assets,
-                    )
-                    node1_res = structured
+                        if last_time and isinstance(last_time, dict) and last_time.get("start") and last_time.get("end_exclusive"):
+                            preflight_slots = ResolvedSlots(
+                                period_start=last_time["start"],
+                                period_end_exclusive=last_time["end_exclusive"],
+                            )
+                        # `search_query`는 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
+                        # 의도·생략 여부·새 주제 판정은 사용자가 실제로 쓴 원문을 기준으로 해야
+                        # 하므로 모델 입력까지 보강 문자열로 바꾸지 않는다.
+                        _, _nq, structured = await self._support.select_metric(
+                            AnalysisRequest(question=user_message, resolved_slots=preflight_slots), context, assets,
+                        )
+                        node1_res = structured
             except NoEntitledAssetsError:
                 # 이 사전 검색은 역할만으로 좁힌 근사치이고, 권위 있는 자산 탐색은 분석
                 # 파이프라인이 전체 Context로 다시 수행한다. 여기서 못 찾았다고 닫으면

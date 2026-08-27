@@ -8,10 +8,10 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 130 |
-| documentation | 145 |
+| documentation | 146 |
 | production | 304 |
 | project-config | 38 |
-| runtime-config | 65 |
+| runtime-config | 66 |
 | runtime-contract | 10 |
 | test | 139 |
 
@@ -204,6 +204,7 @@
 | `app/backend/migrations/versions/20260819_26_platform_admin_capability.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_27_canonical_analyst_role.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_28_analysis_transition_status_width.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260821_29_repair_analysis_transition_status_width.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -419,6 +420,7 @@
 | `docs/reference/DataHub_검색_흐름_효율성_및_일반성_비교.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/DataHub_네이티브_시맨틱_모델_중심_제안_객관적_평가_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/DataHub_사용_방식_객관적_재평가_및_실사용_사례_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/dev_Canonical_Semantic_구조_변경_비교_2026-08-21.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/m0_single_turn_live_receipt.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/P0_실행목표_프롬프트.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/Runtime_governance_V4.3_승인검토안.md` | documentation | REFERENCE_NON_RUNTIME |

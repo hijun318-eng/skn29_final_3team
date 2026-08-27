@@ -112,6 +112,64 @@ def _suggestions(
     return tuple(values)
 
 
+def _unique_business_metric_ids_from_sources(
+    measurement_source_texts: list[str],
+    glossary: dict[str, tuple[str, ...]],
+) -> list[str] | None:
+    """각 측정 구간에 포함된 DataHub 지표 ID·alias가 고유할 때만 지표를 확정한다."""
+
+    if not measurement_source_texts:
+        return None
+    index: dict[str, set[str]] = {}
+    for metric_id, aliases in glossary.items():
+        for value in (metric_id, *aliases):
+            normalized = value.strip().casefold()
+            if normalized:
+                index.setdefault(normalized, set()).add(metric_id)
+    resolved: list[str] = []
+    for source_text in measurement_source_texts:
+        source = source_text.strip().casefold()
+        matches = {
+            metric_id
+            for alias, metric_ids in index.items()
+            if alias in source
+            for metric_id in metric_ids
+        }
+        if len(matches) != 1:
+            return None
+        resolved.append(next(iter(matches)))
+    return resolved if len(resolved) == len(set(resolved)) else None
+
+
+def _validated_scoped_dimension_ids(
+    values: list[str],
+    dimension_terms: dict[str, dict[str, object]],
+    asset_fqns: set[str],
+) -> list[str]:
+    """선택된 metric asset 안에서만 dimension ID 또는 고유 column을 해석한다."""
+
+    scoped = {
+        identifier: term
+        for identifier, term in dimension_terms.items()
+        if isinstance(term.get("field"), dict)
+        and str(term["field"].get("asset_fqn")) in asset_fqns
+    }
+    columns: dict[str, list[str]] = {}
+    for identifier, term in scoped.items():
+        column = str(term["field"].get("column") or "")
+        if column:
+            columns.setdefault(column, []).append(identifier)
+    result: list[str] = []
+    for value in values:
+        if value in scoped:
+            result.append(value)
+            continue
+        candidates = columns.get(value, ())
+        if len(candidates) == 1:
+            result.append(candidates[0])
+    return list(dict.fromkeys(result))
+
+
 def _model_periods(candidates: object, timezone: ZoneInfo) -> list[dict[str, Any]]:
     if not isinstance(candidates, list) or len(candidates) > 4:
         raise ValueError("Node1 period_candidates 는 최대 4개 항목 이내의 배열이어야 합니다.")
@@ -319,27 +377,6 @@ class MetricResolver:
         if resolved_metric_ids:
             if set(resolved_metric_ids).issubset(candidate_ids):
                 pre_dims = list(payload.resolved_slots.dimension_ids)
-                allowed_dimensions = {
-                    identifier
-                    for identifier, term in business_terms.items()
-                    if term["kind"] == "dimension"
-                }
-                col_to_dim = {
-                    str(term.get("field", {}).get("column")): identifier
-                    for identifier, term in dimension_terms.items()
-                    if isinstance(term.get("field"), dict) and term.get("field", {}).get("column")
-                }
-                validated_dims = []
-                for d in pre_dims:
-                    if d in allowed_dimensions:
-                        validated_dims.append(d)
-                    elif d in col_to_dim and col_to_dim[d] in allowed_dimensions:
-                        validated_dims.append(col_to_dim[d])
-
-                pre_filters = validated_pre_filters(
-                    payload.resolved_slots.user_filters, dimension_terms, allowed_dimensions
-                )
-
                 pre_keep_ids = set(resolved_metric_ids)
                 pre_synthetic: list[dict[str, object]] = []
                 for pre_metric in resolved_metric_ids:
@@ -369,6 +406,26 @@ class MetricResolver:
                     assets,
                     pre_keep_ids,
                     tuple(pre_synthetic),
+                )
+                selected_asset_fqns = {
+                    str(asset.get("fqn") or "") for asset in selected_assets
+                }
+                validated_dims = _validated_scoped_dimension_ids(
+                    pre_dims,
+                    dimension_terms,
+                    selected_asset_fqns,
+                )
+                allowed_dimensions = set(validated_dims) | {
+                    identifier
+                    for identifier, term in dimension_terms.items()
+                    if isinstance(term.get("field"), dict)
+                    and str(term["field"].get("asset_fqn"))
+                    in selected_asset_fqns
+                }
+                pre_filters = validated_pre_filters(
+                    payload.resolved_slots.user_filters,
+                    dimension_terms,
+                    allowed_dimensions,
                 )
 
                 periods: list[dict[str, Any]] = []
@@ -622,6 +679,22 @@ class MetricResolver:
             for item in raw_metric_ids
             if item in candidate_ids
         ]
+        exact_metric_ids = _unique_business_metric_ids_from_sources(
+            measurement_source_texts,
+            glossary,
+        )
+        if exact_metric_ids is not None:
+            # 모델의 selected/ambiguous 판정이 흔들려도 질문에서 복사한 측정 구간이
+            # live DataHub의 고유 ID·alias가 측정 구간에서 하나로만 매칭되면 서버가
+            # 그 관계만 확정한다.
+            # 부분 문자열이나 운영 코드의 정적 사전은 사용하지 않는다.
+            metric_resolution = "selected"
+            selected_metric_ids = exact_metric_ids
+            selected = (
+                exact_metric_ids[0] if len(exact_metric_ids) == 1 else None
+            )
+            raw_metric_ids = list(exact_metric_ids)
+            suggestion_ids = list(exact_metric_ids)
         analysis_operation, relationship, intents = _reconcile_comparison_axis(
             analysis_operation=analysis_operation,
             relationship=relationship,

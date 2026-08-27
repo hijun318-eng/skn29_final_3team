@@ -501,6 +501,37 @@ def test_catalog_snapshot_migration_preserves_meaning_but_rediscovers_physical_v
     assert "ordinal_position" not in policy["assets"][0]["columns"][0]
 
 
+def test_catalog_snapshot_migration_restores_policy_keys_from_semantic_grain():
+    """legacy connector key가 비어 있어도 승인 grain은 v2 policy key로 승격한다."""
+
+    source = arbitrary_bundle()
+    _scopes, _inventory, datasets, terms = _runtime(source)
+    snapshot = assemble_catalog_snapshot_bundle(datasets, terms)
+    for asset in snapshot["schema_context"]["assets"]:
+        for column in asset["columns"]:
+            column["is_part_of_key"] = False
+
+    policy = migrate_authoring_policy(
+        snapshot,
+        catalog_version="sample-catalog-iceberg.1",
+        policy_version="sample-policy-analyst.1",
+        schema_context_version="sample-schema-iceberg.1",
+        roles=("analyst",),
+    )
+    _physical_scopes, _physical_inventory, _base, bindings = _physical(source)
+
+    target = assemble_authoring_bundle(policy, bindings)
+
+    for asset in policy["assets"]:
+        policy_keys = {
+            column["name"]
+            for column in asset["columns"]
+            if column["is_part_of_key"]
+        }
+        assert policy_keys == set(asset["grain"]["keys"])
+    assert target["schema_context"]["assets"]
+
+
 def test_catalog_snapshot_migration_rejects_unregistered_target_role():
     source = arbitrary_bundle()
     _scopes, _inventory, datasets, terms = _runtime(source)

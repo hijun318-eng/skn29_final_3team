@@ -36,6 +36,7 @@
 - `reference/Runtime_governance_V4.3_승인검토안.md`: V4.3 serving SQL AST와 컬럼 설명에서 생성한 비권위 DRAFT다. 업무 승인 전에는 DataHub runtime governance로 발행하지 않는다.
 - `reference/Runtime_governance_V4.3_업무승인.md`: V4.3 생성식과 동일하게 제한한 통합매출·이벤트·VOC·연회 취소의 업무 승인 기록이다. 실제 발행은 별도의 live check에서 확인한 target·predecessor checksum과 전체 read-back을 요구한다.
 - `reference/BI_범용질문_시맨틱_확장설계.md`: 특정 예시 문장이 아닌 범용 BI 질문을 위한 재사용 fact·시맨틱·AnalysisPlan 계약, 현재 검증 증거, 승인·배포 Gate를 정의한다.
+- `reference/dev_Canonical_Semantic_구조_변경_비교_2026-08-21.md`: 이전 검토 기준과 현재 `dev`를 비교해 Canonical Semantic Release, grain-safe AnalysisPlan, typed SQL compiler와 SQL Guard의 적용 범위 및 아직 남은 Native 전환 경계를 정리한 구현 점검 보고서다.
 - `architecture/`: 최신 Archify 원본 JSON 4개와 HTML 4개만 유지한다. 모두 showcase 9/9와 1440·1600·1920·2048 containment를 통과했고 1440 light/dark를 수동 확인했다. 이는 그림 품질 `GO`이며 제품 구현 완료 증거는 아니다.
 - `reference/Walkerhill_V4.1_SQL_검토.md`와 V4.3 교체 보고서는 삭제된 생성·적재 구현의 역사적 감사 기록이다. 현재 runtime 입력이나 rollback 절차로 실행하지 않는다.
 - `daily_reports/`, `deliverables/`, `templates/`: 일지·제출물·양식이다. 제품 요구의 권위 원본이 아니다.

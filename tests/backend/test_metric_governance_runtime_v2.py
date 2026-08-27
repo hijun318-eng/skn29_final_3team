@@ -32,7 +32,11 @@ from app.adapters.model_context import metric_selection  # noqa: E402
 from app.contracts import AnalysisRequest, RequestContext, ResolvedSlots, Role  # noqa: E402
 from app.ports.data_platform import NoEntitledAssetsError  # noqa: E402
 from app.services.analysis.responses import _business_metrics  # noqa: E402
-from app.services.context.metric_resolver import MetricResolver  # noqa: E402
+from app.services.context.metric_resolver import (  # noqa: E402
+    MetricResolver,
+    _unique_business_metric_ids_from_sources,
+    _validated_scoped_dimension_ids,
+)
 from app.services.context.metric_execution_scope import select_assets_for_metrics  # noqa: E402
 from app.services.context.builder import (  # noqa: E402
     ContextBuildError,
@@ -48,6 +52,58 @@ from test_datahub_metadata_publication import (  # noqa: E402
 )
 from test_metric_governance_v2 import _v2_bundle  # noqa: E402
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V1  # noqa: E402
+
+
+def test_metric_source_matching_uses_only_unique_live_aliases() -> None:
+    """DataHub alias가 측정 구간에서 고유할 때만 모델 판정과 독립적으로 확정한다."""
+
+    glossary = {
+        "total_operating_revenue_krw": (
+            "합성 통합 운영매출",
+            "합성 운영매출",
+        ),
+        "other_metric": ("다른 지표", "공통 별칭"),
+        "third_metric": ("세 번째 지표", "공통 별칭"),
+    }
+
+    assert _unique_business_metric_ids_from_sources(
+        ["합성 통합 운영매출"], glossary
+    ) == ["total_operating_revenue_krw"]
+    assert _unique_business_metric_ids_from_sources(
+        ["TOTAL_OPERATING_REVENUE_KRW"], glossary
+    ) == ["total_operating_revenue_krw"]
+    assert _unique_business_metric_ids_from_sources(
+        ["호텔별 합성 통합 운영매출"], glossary
+    ) == ["total_operating_revenue_krw"]
+    assert _unique_business_metric_ids_from_sources(
+        ["통합 운영매출"], glossary
+    ) is None
+    assert _unique_business_metric_ids_from_sources(["공통 별칭"], glossary) is None
+
+
+def test_dimension_column_is_resolved_only_inside_selected_metric_asset() -> None:
+    """동일 column을 가진 다른 asset 차원이 선택 metric의 차원을 덮지 못한다."""
+
+    terms = {
+        "operations_hotel_code": {
+            "field": {
+                "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+                "column": "hotel_code",
+            }
+        },
+        "banquet_hotel_code": {
+            "field": {
+                "asset_fqn": "serving.analytics_v4_3.banquet_daily",
+                "column": "hotel_code",
+            }
+        },
+    }
+
+    assert _validated_scoped_dimension_ids(
+        ["hotel_code"],
+        terms,
+        {"serving.analytics_v4_3.hotel_operations_daily"},
+    ) == ["operations_hotel_code"]
 
 
 def _runtime_bundle(

@@ -1098,14 +1098,17 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 partial_context=partial_context,
             ),
         )
-        self.support.program(
+        # 선택 버튼이 원문과 label을 함께 보내더라도 서버가 이미 발행한 option을
+        # 다시 모델에 해석시키지 않아야 한다. 호출되면 같은 모호성이 반복되게 만들어
+        # typed 선택 우선 경계를 회귀 검증한다.
+        self.support.program_error(
             "Total Operating Revenue",
-            selected_metric_id="total_operating_revenue_krw",
-            metric_ids=["total_operating_revenue_krw"],
-            period_candidates=partial_context["period_candidates"],
-            period_relationship="single",
-            requested_route="ANALYSIS",
-            is_elliptical=False,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "선택 발화를 다시 해석하면 모호성이 반복됩니다.",
+                disambiguation_options=options,
+                partial_context=partial_context,
+            ),
         )
 
         conversation = await self.repo.create_conversation(self.user_id, "부분 슬롯 재질의")

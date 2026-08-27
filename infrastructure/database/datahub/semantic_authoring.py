@@ -176,6 +176,7 @@ def migrate_authoring_policy(
     for source in source_bundle["schema_context"]["assets"]:
         entitlements = deepcopy(source["entitlements"])
         entitlements["roles"] = list(roles)
+        grain_keys = set(source["grain"]["keys"])
         assets.append(
             {
                 "fqn": source["fqn"],
@@ -189,7 +190,7 @@ def migrate_authoring_policy(
                     {
                         "name": column["name"],
                         "logical_type": column["logical_type"],
-                        "is_part_of_key": column["is_part_of_key"],
+                        "is_part_of_key": column["name"] in grain_keys,
                         "role": column["role"],
                     }
                     for column in source["columns"]

@@ -1,9 +1,10 @@
-"""승인된 단일 Serving View 논리 계획을 결정론적 Trino SQL AST로 컴파일한다.
+"""승인된 단일 자산 논리 계획을 결정론적 Trino SQL AST로 컴파일한다.
 
 이 모듈의 권위 입력은 질문 원문이나 지표 이름 사전이 아니라 검증된 ``AnalysisPlan``과
-``RuntimeContextPackage``다. 현재 활성 범위는 JOIN이 필요 없는 ``VIEW_REUSE``이며, 모든
-결과는 기존 SQL Guard가 다시 파싱·검증·바인딩한다. 서로 다른 자산·시간 필드·필터 의미를
-한 SQL로 합쳐야 하는 계획은 추측하지 않고 기존 제한된 Node 2 경로에 맡긴다.
+``RuntimeContextPackage``다. 현재 활성 범위는 JOIN이 필요 없는 ``VIEW_REUSE``와 DataHub가
+분자·분모를 완전히 승인한 단일 자산 ``RAW_APPROVED_DETAIL`` 비율식이며, 모든 결과는 기존
+SQL Guard가 다시 파싱·검증·바인딩한다. 서로 다른 자산·시간 필드·필터 의미를 한 SQL로
+합쳐야 하는 계획은 추측하지 않고 기존 제한된 Node 2 경로에 맡긴다.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from app.services.context.query_planner import (
 )
 
 
-TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.3.1"
+TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.3.2"
 _SUPPORTED_AGGREGATIONS = frozenset(
     {"sum", "count", "count_distinct", "average", "min", "max", "exists"}
 )
@@ -47,7 +48,7 @@ def compile_typed_sql(
     plan: AnalysisPlan,
     package: object,
 ) -> dict[str, object] | None:
-    """지원 가능한 VIEW_REUSE 계획을 SQLGlot AST로 컴파일한다.
+    """지원 가능한 단일 자산 계획을 SQLGlot AST로 컴파일한다.
 
     반환값이 ``None``이면 계획이 현재 결정론적 범위 밖이라는 뜻이며 안전성 실패를 성공으로
     바꾸지 않는다. 호출자는 기존 Node 2 후보를 생성하더라도 동일한 ``AnalysisPlan``과 G2
@@ -71,7 +72,12 @@ def compile_typed_sql(
 
     if plan.joins:
         return _compile_joined_sql(plan, package, contracts, rules)
-    if plan.query_strategy != VIEW_REUSE:
+    has_governed_ratio = any(
+        _source_kind(rule) == "ratio" for rule in rules.values()
+    )
+    if plan.query_strategy != VIEW_REUSE and not (
+        plan.query_strategy == RAW_APPROVED_DETAIL and has_governed_ratio
+    ):
         return None
 
     leaf_rules = tuple(

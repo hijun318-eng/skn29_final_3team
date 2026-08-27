@@ -28,7 +28,7 @@ from app.services.analysis.typed_sql_compiler import (
     compile_typed_sql,
 )
 from app.services.analysis.result_validator import PipelineResultValidator
-from app.services.context.query_planner import VIEW_REUSE
+from app.services.context.query_planner import RAW_APPROVED_DETAIL, VIEW_REUSE
 from app.services.sql_guard import apply_guard_decision, validate_plan
 from src.ai.schema import ContractError, validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
@@ -705,12 +705,20 @@ def test_typed_sql_compiler_does_not_guess_a_join_or_mixed_filter_scope() -> Non
     assert compile_typed_sql(mixed_plan, mixed) is None
 
 
-def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
+@pytest.mark.parametrize("query_strategy", (VIEW_REUSE, RAW_APPROVED_DETAIL))
+def test_typed_sql_compiler_builds_a_ratio_from_governed_operands(
+    query_strategy: str,
+) -> None:
     """동일 scope의 분자·분모는 DOUBLE/NULLIF 비율식과 원본 증거를 함께 생성한다."""
 
     package = _multi_metric_view_reuse_package()
     numerator, denominator = (
-        replace(metric, visibility="SUPPORT") for metric in package.metrics
+        replace(
+            metric,
+            visibility="SUPPORT",
+            query_strategies=(query_strategy,),
+        )
+        for metric in package.metrics
     )
     ratio = ContextMetric(
         id="governed_ratio",
@@ -729,7 +737,7 @@ def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
         contains_pii=False,
         allowed_join_ids=(),
         join_required=False,
-        query_strategies=(VIEW_REUSE,),
+        query_strategies=(query_strategy,),
     )
     contracts = deepcopy(package.runtime_contracts)
     contracts["metric_rules"].append(
@@ -754,6 +762,7 @@ def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
         package,
         metrics=(numerator, denominator, ratio),
         runtime_contracts=contracts,
+        query_strategy=query_strategy,
     )
     plan = build_analysis_plan(
         {
@@ -763,6 +772,7 @@ def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
         },
         package,
     )
+    assert plan.query_strategy == query_strategy
 
     candidate = compile_typed_sql(plan, package)
 

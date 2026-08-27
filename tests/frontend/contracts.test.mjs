@@ -41,6 +41,8 @@ assert.match(viteConfig, /composeMode \? "http:\/\/127\.0\.0\.1:28000"/);
 assert.match(viteConfig, /composeMode \? "\/api"/);
 assert.match(frontendCompose, /VITE_BACKEND_BASE_URL: "\$\{VITE_BACKEND_BASE_URL:-\/api\}"/);
 assert.match(frontendDockerfile, /ARG VITE_BACKEND_BASE_URL=\/api/);
+assert.match(frontendDockerfile, /^FROM node:24-alpine@sha256:[a-f0-9]{64} AS build$/m);
+assert.match(frontendDockerfile, /^FROM nginx:1\.28-alpine@sha256:[a-f0-9]{64}$/m);
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(resolveRoute("/").path, "/agent");
 assert.equal(resolveRoute("/agent").page, "chat");

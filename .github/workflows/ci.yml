@@ -4,7 +4,6 @@ name: CI
 
 on:
   push:
-    branches: [dev, test, "codex/**"]
   pull_request:
 
 permissions:
@@ -22,13 +21,15 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: |
             app/backend/requirements.txt
+            app/backend/requirements.lock.txt
             infrastructure/database/datahub/requirements.authoring.txt
       - run: >-
           python -m pip install pytest
+          --constraint app/backend/requirements.lock.txt
           -r app/backend/requirements.txt
           -r infrastructure/database/datahub/requirements.authoring.txt
       - run: python scripts/lint_architectural_invariants.py

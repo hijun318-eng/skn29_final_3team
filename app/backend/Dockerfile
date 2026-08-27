@@ -12,11 +12,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /workspace
 
 COPY app/backend/requirements.txt app/backend/requirements.txt
+COPY app/backend/requirements.lock.txt app/backend/requirements.lock.txt
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         fonts-noto-cjk libpango-1.0-0 libpangoft2-1.0-0 \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --disable-pip-version-check -r app/backend/requirements.txt \
+    && pip install --disable-pip-version-check \
+        --constraint app/backend/requirements.lock.txt \
+        -r app/backend/requirements.txt \
     && useradd --create-home --uid 10001 appuser
 
 COPY --chown=appuser:appuser app/backend/ app/backend/

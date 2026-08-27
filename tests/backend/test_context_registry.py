@@ -62,7 +62,7 @@ class ContextRegistryServiceTest(unittest.IsolatedAsyncioTestCase):
             record_key="hotel-pms",
             version_no=1,
             payload={"asset": "pms"},
-            owner_role="data_admin",
+            owner_role="admin",
             valid_from=datetime.now(timezone.utc),
             idempotency_key="record-1",
         )
@@ -129,7 +129,7 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
             "record_key": f"hotel-pms-{uuid4().hex[:8]}",
             "version_no": 1,
             "payload": {"asset": "pms", "columns": ["day", "revenue"]},
-            "owner_role": "data_admin",
+            "owner_role": "admin",
             "valid_from": datetime.now(timezone.utc),
             "idempotency_key": f"record-{uuid4()}",
         }

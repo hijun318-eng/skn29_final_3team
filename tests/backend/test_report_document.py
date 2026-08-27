@@ -652,7 +652,7 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         router = create_report_router(repository)
         request_context = RequestContext(
             user_id=UUID("00000000-0000-0000-0000-000000000001"),
-            role=Role.REPORT_ADMIN,
+            role=Role.ADMIN,
         )
         payload = ApproveReportVersionRequest(approved_at=APPROVED_AT)
         with patch.object(report_api, "_router", return_value=router), patch.dict(

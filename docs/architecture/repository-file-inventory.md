@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 130 |
-| documentation | 146 |
-| production | 304 |
+| documentation | 149 |
+| production | 316 |
 | project-config | 38 |
-| runtime-config | 66 |
+| runtime-config | 68 |
 | runtime-contract | 10 |
-| test | 139 |
+| test | 145 |
 
 운영 무결성 위반: **0건**
 
@@ -42,6 +42,7 @@
 | `AGENTS.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/alembic.ini` | project-config | REVIEWED |
 | `app/backend/app/__init__.py` | production | REVIEWED |
+| `app/backend/app/adapters/admin_account_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_definition_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_evidence_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_repository.py` | production | REVIEWED |
@@ -82,7 +83,9 @@
 | `app/backend/app/adapters/report_schedule_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/trino_async.py` | production | REVIEWED |
 | `app/backend/app/adapters/trino_schema.py` | production | REVIEWED |
+| `app/backend/app/admin_contracts.py` | production | REVIEWED |
 | `app/backend/app/analysis_contracts.py` | production | REVIEWED |
+| `app/backend/app/api/admin_router.py` | production | REVIEWED |
 | `app/backend/app/api/analysis_router_runtime.py` | production | REVIEWED |
 | `app/backend/app/api/analysis_router_support.py` | production | REVIEWED |
 | `app/backend/app/api/mcp_router.py` | production | REVIEWED |
@@ -105,6 +108,7 @@
 | `app/backend/app/query_capability.py` | production | REVIEWED |
 | `app/backend/app/report_contracts.py` | production | REVIEWED |
 | `app/backend/app/services/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/admin_connections.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/evidence.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/logical_plan.py` | production | REVIEWED |
@@ -205,9 +209,11 @@
 | `app/backend/migrations/versions/20260820_27_canonical_analyst_role.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_28_analysis_transition_status_width.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260821_29_repair_analysis_transition_status_width.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260827_31_admin_control_plane.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
+| `app/backend/scripts/provision_accounts.py` | runtime-config | REVIEWED |
 | `app/backend/scripts/verify-container.ps1` | runtime-config | REVIEWED |
 | `app/frontend/.dockerignore` | project-config | REVIEWED |
 | `app/frontend/compose.fragment.yml` | project-config | REVIEWED |
@@ -216,6 +222,7 @@
 | `app/frontend/nginx.conf` | project-config | REVIEWED |
 | `app/frontend/package-lock.json` | runtime-contract | REVIEWED |
 | `app/frontend/package.json` | runtime-contract | REVIEWED |
+| `app/frontend/src/api/adminClient.ts` | production | REVIEWED |
 | `app/frontend/src/api/analysisClient.ts` | production | REVIEWED |
 | `app/frontend/src/api/reportClient.ts` | production | REVIEWED |
 | `app/frontend/src/App.jsx` | production | REVIEWED |
@@ -230,8 +237,8 @@
 | `app/frontend/src/components/auth/SessionLogin.jsx` | production | REVIEWED |
 | `app/frontend/src/components/charts/EnterpriseChart.jsx` | production | REVIEWED |
 | `app/frontend/src/components/common/EnterpriseUi.jsx` | production | REVIEWED |
+| `app/frontend/src/components/common/ThemeToggle.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppHeader.jsx` | production | REVIEWED |
-| `app/frontend/src/components/layout/AppSidebar.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnCard.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnEvidenceDrawer.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnReportModal.jsx` | production | REVIEWED |
@@ -240,9 +247,14 @@
 | `app/frontend/src/contracts/reportContract.ts` | production | REVIEWED |
 | `app/frontend/src/contracts/reportLayout.ts` | production | REVIEWED |
 | `app/frontend/src/contracts/reportNormalization.ts` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/audit-trail.css` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/AuditTrailDetail.tsx` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/AuditTrailPanel.tsx` | production | REVIEWED |
+| `app/frontend/src/features/admin/audit/auditTrailTypes.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/index.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/MarkdownBlockEditor.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportArtifactContent.jsx` | production | REVIEWED |
+| `app/frontend/src/features/reports/components/ReportAssistantPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportBlockControls.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportDocumentView.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportEditorBlock.jsx` | production | REVIEWED |
@@ -294,11 +306,13 @@
 | `app/frontend/src/features/reports/v2/ReportPresentation.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/v2/ReportShortcutHelp.jsx` | production | REVIEWED |
 | `app/frontend/src/main.jsx` | production | REVIEWED |
+| `app/frontend/src/pages/AdminPage.jsx` | production | REVIEWED |
 | `app/frontend/src/pages/AgentPage.jsx` | production | REVIEWED |
 | `app/frontend/src/pages/agentPageHelpers.js` | production | REVIEWED |
 | `app/frontend/src/pages/ReportsPage.jsx` | production | REVIEWED |
 | `app/frontend/src/routing.js` | production | REVIEWED |
 | `app/frontend/src/styles.css` | production | REVIEWED |
+| `app/frontend/src/themePreference.js` | production | REVIEWED |
 | `app/frontend/src/utils/createUuid.ts` | production | REVIEWED |
 | `app/frontend/src/utils/presentation.ts` | production | REVIEWED |
 | `app/frontend/vite.config.js` | runtime-config | REVIEWED |
@@ -351,6 +365,8 @@
 | `docs/daily_reports/team_summaries/5주차/20260814.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/6주차/20260818.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/20260819.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/01_요구사항 정의서_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/02_WBS_29기_3팀.xlsm` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/03_프로젝트기획서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
@@ -367,6 +383,7 @@
 | `docs/deliverables/12_AI시스템아키텍처_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/13_LLM활용소프트웨어_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/14_자체sLLM인공지능_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/15_시스템구성도_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/ANTIGRAVITY_DOCKER_RUNTIME_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/DEVELOPMENT_CHANGELOG_AND_ARCHITECTURE_RECORD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/Qwen3.5-2B_Node2_학습_실행가이드.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -754,6 +771,10 @@
 | `tests/backend/fixtures/api/v0.1/success.json` | test | TEST_ONLY |
 | `tests/backend/fixtures/api/v0.1/timeout.json` | test | TEST_ONLY |
 | `tests/backend/fixtures/report-layout-canonical.json` | test | TEST_ONLY |
+| `tests/backend/test_account_provisioning.py` | test | TEST_ONLY |
+| `tests/backend/test_admin_audit_trails.py` | test | TEST_ONLY |
+| `tests/backend/test_admin_connections.py` | test | TEST_ONLY |
+| `tests/backend/test_admin_control.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_persistence.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_pipeline.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_progress.py` | test | TEST_ONLY |
@@ -820,6 +841,7 @@
 | `tests/frontend/authenticated-browser-state.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/chart-renderer.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/contracts.test.mjs` | test | TEST_ONLY |
+| `tests/frontend/fixtures/analysis-process-view-models.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/analysis-report-library.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/analysis-rich-success.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/artifact-channel-mix.json` | test | TEST_ONLY |
@@ -841,6 +863,7 @@
 | `tests/frontend/report-page-architecture.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-source-contract.mjs` | test | TEST_ONLY |
 | `tests/frontend/run.mjs` | test | TEST_ONLY |
+| `tests/frontend/theme.test.mjs` | test | TEST_ONLY |
 | `tests/integration/test_answervice_runtime.py` | test | TEST_ONLY |
 | `tests/integration/test_app_postgres_compose_override.py` | test | TEST_ONLY |
 | `tests/integration/test_ci_workflow.py` | test | TEST_ONLY |

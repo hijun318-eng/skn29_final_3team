@@ -1,4 +1,4 @@
-"""APP DB migration·template registry, Trino, DataHub, model, 외부 principal store와 scheduler를 제한 시간의 실제 probe로 확인해 구성요소별 ready 상태를 반환한다."""
+"""APP DB·계정·Trino·DataHub·model과 scheduler를 제한 시간의 실제 probe로 확인한다."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from sqlalchemy import text
 from app.adapters.catalog_snapshot import DEFAULT_CATALOG_RELEASE_TTL_SECONDS
 from app.adapters.datahub_catalog import DataHubCatalogClient
 from app.adapters.trino_async import TrinoAsyncClient
-from app.auth_principal_store import AuthenticationError, principal_store_ready
 from app.database import session_scope
 from src.modelops.runtime_config import ActiveModelRoute, resolve_active_model_routes
 
@@ -48,7 +47,7 @@ class AppDatabaseReadiness:
                 self._datahub_probe(),
                 self._catalog_release_probe(),
                 self._model_probe(client),
-                asyncio.to_thread(self._auth_probe),
+                self._auth_probe(),
             )
         probe = database
         probe["trino"] = trino
@@ -60,18 +59,27 @@ class AppDatabaseReadiness:
         return probe
 
     @staticmethod
-    def _auth_probe() -> str:
-        principal_file = os.getenv("AUTH_PRINCIPALS_FILE", "").strip()
+    async def _auth_probe() -> str:
+        """세션 secret과 DB의 마지막 활성 관리자 계정이 모두 준비됐는지 확인한다."""
+
         secret = os.getenv("AUTH_SESSION_SECRET", "").strip()
-        if (
-            not os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
-            or len(secret) < 32
-            or not principal_file
-        ):
+        database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+        if not database_url or len(secret) < 32:
             return "not_ready"
         try:
-            return "ready" if principal_store_ready(Path(principal_file)) else "not_ready"
-        except (AuthenticationError, OSError):
+            async with session_scope(database_url) as session:
+                result = await session.execute(
+                    text(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1 FROM security.accounts
+                            WHERE role = 'admin' AND active AND deleted_at IS NULL
+                        )
+                        """
+                    )
+                )
+                return "ready" if result.scalar_one() else "not_ready"
+        except Exception:
             return "not_ready"
 
     @staticmethod

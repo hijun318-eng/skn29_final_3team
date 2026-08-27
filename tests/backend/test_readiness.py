@@ -41,6 +41,14 @@ class _Session:
 
 
 class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
+    def test_container_verifier_uses_current_readiness_dependency_keys(self) -> None:
+        verifier = (BACKEND / "scripts" / "verify-container.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("dependencies.datahub_transport", verifier)
+        self.assertIn("dependencies.auth_session_store", verifier)
+        self.assertNotIn("dependencies.datahub -ne", verifier)
+
     def test_probe_timeout_uses_bounded_two_second_production_budget(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(2.0, AppDatabaseReadiness._probe_timeout())
@@ -165,66 +173,32 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("runtime-user", trino_request.headers["x-trino-user"])
         self.assertTrue(trino_request.headers["authorization"].startswith("Basic "))
 
-    def test_release_auth_readiness_requires_database_secret_and_principal_file(self) -> None:
+    async def test_release_auth_readiness_requires_database_and_session_secret(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
-            self.assertEqual("not_ready", AppDatabaseReadiness._auth_probe())
+            self.assertEqual("not_ready", await AppDatabaseReadiness._auth_probe())
 
-    def test_auth_readiness_parses_store_and_requires_an_active_principal(self) -> None:
-        salt = urlsafe_b64encode(b"0123456789abcdef").decode().rstrip("=")
-        account = {
-            "username": "analyst",
-            "password_salt": salt,
-            "password_hash": "0" * 64,
-            "password_iterations": 210_000,
-            "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "analyst",
-            "active": True,
+    async def test_auth_readiness_requires_an_active_db_admin(self) -> None:
+        environment = {
+            "APP_RUNTIME_DATABASE_URL": "postgresql://readiness",
+            "AUTH_SESSION_SECRET": "s" * 32,
+            # 외부 principal 파일은 설정돼도 새 DB 권위 probe의 입력이 아니다.
+            "AUTH_PRINCIPALS_FILE": "ignored.json",
         }
-        with tempfile.TemporaryDirectory() as directory:
-            principal_file = Path(directory) / "principals.json"
-            environment = {
-                "APP_RUNTIME_DATABASE_URL": "postgresql://readiness",
-                "AUTH_SESSION_SECRET": "s" * 32,
-                "AUTH_PRINCIPALS_FILE": str(principal_file),
-            }
-            for name, payload, expected in (
-                ("active", [account], "ready"),
-                ("inactive", [{**account, "active": False}], "not_ready"),
-                ("malformed", {"accounts": [account]}, "not_ready"),
-            ):
-                with self.subTest(name=name):
-                    principal_file.write_text(json.dumps(payload), encoding="utf-8")
-                    with patch.dict("os.environ", environment, clear=True):
-                        self.assertEqual(expected, AppDatabaseReadiness._auth_probe())
+        for name, exists, expected in (
+            ("active_admin", True, "ready"),
+            ("missing_admin", False, "not_ready"),
+        ):
+            session = _Session([MagicMock(scalar_one=lambda: exists)])
 
-    def test_auth_readiness_requires_a_current_digest_principal(self) -> None:
-        now = datetime.now(timezone.utc)
-        record = {
-            "token_sha256": "0" * 64,
-            "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "analyst",
-            "not_before": (now - timedelta(minutes=2)).isoformat(),
-            "expires_at": (now + timedelta(minutes=1)).isoformat(),
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            principal_file = Path(directory) / "principals.json"
-            environment = {
-                "APP_RUNTIME_DATABASE_URL": "postgresql://readiness",
-                "AUTH_SESSION_SECRET": "s" * 32,
-                "AUTH_PRINCIPALS_FILE": str(principal_file),
-            }
-            for name, payload, expected in (
-                ("current", record, "ready"),
-                (
-                    "expired",
-                    {**record, "expires_at": (now - timedelta(minutes=1)).isoformat()},
-                    "not_ready",
-                ),
-            ):
-                with self.subTest(name=name):
-                    principal_file.write_text(json.dumps([payload]), encoding="utf-8")
-                    with patch.dict("os.environ", environment, clear=True):
-                        self.assertEqual(expected, AppDatabaseReadiness._auth_probe())
+            @asynccontextmanager
+            async def scope(*_args, **_kwargs):
+                yield session
+
+            with self.subTest(name=name), patch(
+                "app.services.readiness.session_scope", scope
+            ), patch.dict("os.environ", environment, clear=True):
+                self.assertEqual(expected, await AppDatabaseReadiness._auth_probe())
+                self.assertIn("security.accounts", session.queries[0])
 
     async def test_trino_probe_follows_same_origin_pages_to_terminal_success(self) -> None:
         requests: list[httpx.Request] = []

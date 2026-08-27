@@ -2,7 +2,7 @@
 # 함께 검증한다. cached 응답이나 일부 dependency 성공으로 READY를 만들지 않는다.
 param(
     [switch]$RemoveAfterVerification,
-    [string]$BackendBaseUrl = $env:ANSWERVICE_BACKEND_BASE_URL,
+    [string]$BackendBaseUrl = 'http://127.0.0.1:28000',
     [string]$EnvFilePath
 )
 
@@ -13,11 +13,11 @@ $repositoryRoot = (Resolve-Path (Join-Path $backendPath '..\..')).Path
 $composeFile = Join-Path $repositoryRoot 'compose.yml'
 . (Join-Path $repositoryRoot 'infrastructure\database\scripts\deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$environmentFile = Resolve-ExternalDeploymentEnvFile `
+$environmentFile = Resolve-RepositoryDeploymentEnvFile `
     -Path $EnvFilePath -RepositoryRoot $repositoryRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $environmentFile)
 $containerName = 'answervice-backend'
-if (-not $BackendBaseUrl) { $BackendBaseUrl = 'http://127.0.0.1:18000' }
+if (-not $BackendBaseUrl) { $BackendBaseUrl = 'http://127.0.0.1:28000' }
 $BackendBaseUrl = $BackendBaseUrl.TrimEnd('/')
 $composeArguments = @('compose') + $composeEnvArguments + @(
     '-f', $composeFile,
@@ -53,8 +53,9 @@ try {
                 $readinessResponse.data.dependencies.migration -ne 'ready' -or
                 $readinessResponse.data.dependencies.analysis_template_registry -ne 'ready' -or
                 $readinessResponse.data.dependencies.trino -ne 'ready' -or
-                $readinessResponse.data.dependencies.datahub -ne 'ready' -or
-                $readinessResponse.data.dependencies.model -ne 'ready'
+                $readinessResponse.data.dependencies.datahub_transport -ne 'ready' -or
+                $readinessResponse.data.dependencies.model -ne 'ready' -or
+                $readinessResponse.data.dependencies.auth_session_store -ne 'ready'
             ) {
                 throw 'Backend /readiness did not confirm all product dependencies.'
             }

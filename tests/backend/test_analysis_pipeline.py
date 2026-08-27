@@ -625,15 +625,13 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, adapter.execute_count)
         self.assertEqual(["node1", "node2"], [node for node, _ in model.calls])
 
-    async def test_role_is_denied_before_metadata_model_or_query_access(self):
-        denied_context = self.context.model_copy(update={"role": Role.DATA_ADMIN})
+    async def test_admin_can_run_the_analysis_pipeline(self):
+        context = self.context.model_copy(update={"role": Role.ADMIN})
+        response, adapter, model, _service = await self.run_pipeline(context=context)
 
-        response, adapter, model, _service = await self.run_pipeline(context=denied_context)
-
-        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
-        self.assertEqual(ErrorCode.ACCESS_DENIED, response.error.code)
-        self.assertEqual(0, adapter.search_count)
-        self.assertEqual([], model.calls)
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.search_count)
+        self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
 
     async def test_unentitled_assets_are_blocked_without_model_or_query_calls(self):
         adapter = AsyncRuntimeDataPlatform(

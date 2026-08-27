@@ -33,10 +33,10 @@ def report_draft_context(
     return context
 
 
-def report_admin_context(
+def report_manage_context(
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> RequestContext:
-    """승인·실행 관리 작업을 ``REPORT_ADMIN`` 주체로만 제한한다."""
+    """승인·실행 관리 작업을 ``report.manage`` Capability 보유 주체로 제한한다."""
     if not has_capability(context.role, Capability.MANAGE_REPORT):
         raise HTTPException(status_code=403, detail="Report 실행 관리 권한이 없습니다.")
     return context
@@ -45,7 +45,7 @@ def report_admin_context(
 def build_report_router(context: RequestContext):
     """요청 사용자와 역할 범위가 적용된 PostgreSQL repository로 보고서 router를 조립한다.
 
-    ``REPORT_ADMIN``에만 전체 관리 범위를 부여하며 runtime DB URL이 없으면 메모리 대체재를
+    ``report.manage`` 보유 주체에만 전체 관리 범위를 부여하며 runtime DB URL이 없으면 메모리 대체재를
     만들지 않고 503으로 fail closed 한다.
     """
     from app.adapters.report_repository import PostgresReportRepository

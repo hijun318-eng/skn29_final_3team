@@ -33,6 +33,13 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual("OPENAPI-v1.0.0", CONTRACT_VERSION)
         self.assertEqual(
             {
+                "/admin/accounts",
+                "/admin/accounts/{subject}",
+                "/admin/accounts/{subject}/password",
+                "/admin/audit-events",
+                "/admin/audit-trails",
+                "/admin/audit-trails/{trail_id}",
+                "/admin/connections",
                 "/analysis",
                 "/analysis/progress/{trace_id}",
                 "/analysis/progress/{trace_id}/cancel",
@@ -80,6 +87,15 @@ class OpenApiContractTest(unittest.TestCase):
         }
         self.assertEqual(
             {
+                "listAdminAccounts",
+                "createAdminAccount",
+                "updateAdminAccount",
+                "deleteAdminAccount",
+                "resetAdminAccountPassword",
+                "listAdminConnections",
+                "listAdminAuditEvents",
+                "listAdminAuditTrails",
+                "getAdminAuditTrail",
                 "getHealth",
                 "getReadiness",
                 "getAuthenticatedSession",

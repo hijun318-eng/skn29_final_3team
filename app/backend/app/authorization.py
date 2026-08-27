@@ -2,7 +2,8 @@
 
 사용자명·질문·화면 경로는 이 정책의 입력이 아니다. 인증 저장소가 확정한 Role만 받아
 API 기능 권한과 DataHub/Template의 허용 Role 상속을 결정해 모든 실행 경계가 같은
-감사 가능한 규칙을 사용하게 한다.
+감사 가능한 규칙을 사용하게 한다. ``admin``은 analyst 권한을 포함한 현재 서비스
+Capability 전체를 가지며 외부 entitlement에서는 analyst 계약도 함께 만족한다.
 """
 
 from __future__ import annotations
@@ -21,21 +22,12 @@ _ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
             Capability.DRAFT_REPORT,
         }
     ),
-    Role.REPORT_ADMIN: frozenset(
-        {
-            Capability.DRAFT_REPORT,
-            Capability.MANAGE_REPORT,
-        }
-    ),
-    Role.DATA_ADMIN: frozenset({Capability.MANAGE_DATA}),
-    Role.PLATFORM_ADMIN: frozenset(Capability),
+    Role.ADMIN: frozenset(Capability),
 }
 
 _EFFECTIVE_ROLES: dict[Role, frozenset[Role]] = {
     Role.ANALYST: frozenset({Role.ANALYST}),
-    Role.REPORT_ADMIN: frozenset({Role.REPORT_ADMIN}),
-    Role.DATA_ADMIN: frozenset({Role.DATA_ADMIN}),
-    Role.PLATFORM_ADMIN: frozenset(Role),
+    Role.ADMIN: frozenset({Role.ANALYST, Role.ADMIN}),
 }
 
 
@@ -54,9 +46,8 @@ def has_capability(role: Role, capability: Capability) -> bool:
 def effective_roles(role: Role) -> frozenset[Role]:
     """Role 기반 외부 entitlement 대조에 사용할 상속된 역할 집합을 반환한다.
 
-    일반 역할은 자기 자신만 만족한다. ``platform_admin``만 현재 Role 전체를 상속하므로
-    기존 DataHub·Template 계약을 권한 확대용으로 다시 발행하지 않아도 관리자가 같은
-    정책을 통과하며, 원래 허용 Role과 실제 실행 Role은 감사 로그에서 구분된다.
+    관리자는 분석용 ``analyst``와 관리용 ``admin`` 계약을 모두 만족한다. 원래 허용
+    Role과 실제 실행 Role은 감사 로그에서 구분되며 그 밖의 legacy Role은 거부한다.
     """
 
     return _EFFECTIVE_ROLES[role]

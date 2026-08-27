@@ -220,29 +220,30 @@ def test_support_operands_execute_but_are_not_business_candidates() -> None:
     assert assets[0]["entitled_metric_ids"] == ["amount_per_event"]
 
 
-def test_platform_admin_inherits_existing_metric_and_asset_entitlements() -> None:
+def test_all_authenticated_roles_inherit_analysis_metric_and_asset_entitlements() -> None:
     engine = _engine(_runtime_bundle())
 
-    assets = asyncio.run(
-        engine.search_assets(
-            "Amount per Event",
-            {"role": "platform_admin", "parameters": {"active": True}},
+    for role in ("analyst", "admin"):
+        assets = asyncio.run(
+            engine.search_assets(
+                "Amount per Event",
+                {"role": role, "parameters": {"active": True}},
+            )
         )
-    )
 
-    assert assets[0]["entitled_metric_ids"] == ["amount_per_event"]
-    assert {item["id"] for item in assets[0]["metrics"]} == {
-        "amount_total",
-        "event_count",
-        "amount_per_event",
-    }
+        assert assets[0]["entitled_metric_ids"] == ["amount_per_event"]
+        assert {item["id"] for item in assets[0]["metrics"]} == {
+            "amount_total",
+            "event_count",
+            "amount_per_event",
+        }
 
 
 def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> None:
     role_restricted = _engine(
         _runtime_bundle(
-            asset_roles=("analyst", "data_admin"),
-            metric_roles=("data_admin",),
+            asset_roles=("analyst", "admin"),
+            metric_roles=("admin",),
         )
     )
     with pytest.raises(NoEntitledAssetsError, match="business metric"):
@@ -265,7 +266,7 @@ def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> Non
         asyncio.run(
             pii.search_assets(
                 "Amount per Event",
-                {"role": "platform_admin", "parameters": {"active": True}},
+                {"role": "admin", "parameters": {"active": True}},
             )
         )
 

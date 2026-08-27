@@ -31,8 +31,9 @@ from app.ports.data_platform import (
 from app.services.analysis import AnalysisService
 from app.services.analysis.pipeline_support import PipelineSupport
 from app.services.analysis.result_validator import PipelineResultValidator
+from app.services.analysis.sql_generation_mode import SqlGenerationMode
 from app.services.context.builder import ContextPackageBuilder
-from app.services.execution_control import ModelCallBudget
+from app.services.execution_control import IsolatedExecutionCache, ModelCallBudget
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
@@ -430,10 +431,22 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.payload = AnalysisRequest(question=REQUEST_TEXT)
         self.decision = await RoutingService().decide(self.payload)
 
-    async def run_pipeline(self, *, adapter=None, model=None, context=None, **sinks):
+    async def run_pipeline(
+        self,
+        *,
+        adapter=None,
+        model=None,
+        context=None,
+        sql_generation_mode=SqlGenerationMode.HYBRID,
+        **sinks,
+    ):
         adapter = adapter or AsyncRuntimeDataPlatform()
         model = model or model_with()
-        service = AnalysisService(adapter, model)
+        service = AnalysisService(
+            adapter,
+            model,
+            sql_generation_mode=sql_generation_mode,
+        )
         response = await service.analyze(
             self.payload,
             context or self.context,
@@ -651,6 +664,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             adapter=adapter,
             model=model,
             execution_sink=execution.update,
+            sql_generation_mode=SqlGenerationMode.COMPILER_ONLY,
         )
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
@@ -666,6 +680,59 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             any("node=typed_sql_compiler" in detail for detail in model_traces)
         )
+
+    async def test_compiler_only_blocks_unsupported_plan_without_node2_or_query(self):
+        adapter = AsyncRuntimeDataPlatform()
+        model = model_with()
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model,
+            sql_generation_mode=SqlGenerationMode.COMPILER_ONLY,
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SQL_POLICY_BLOCKED, response.error.code)
+        self.assertEqual(0, adapter.execute_count)
+        self.assertEqual(["node1"], [node for node, _ in model.calls])
+        self.assertTrue(
+            any(
+                step.stage is PipelineStage.G2
+                and step.detail == "COMPILER_SCOPE_UNSUPPORTED"
+                for step in response.data.trace
+            )
+        )
+
+    async def test_compiler_only_does_not_reuse_hybrid_node2_plan_cache(self):
+        cache = IsolatedExecutionCache()
+        adapter = AsyncRuntimeDataPlatform()
+        hybrid_model = model_with()
+        hybrid_service = AnalysisService(adapter, hybrid_model, cache=cache)
+
+        hybrid_response = await hybrid_service.analyze(
+            self.payload,
+            self.context,
+            self.decision,
+        )
+        self.assertEqual(AnalysisStatus.SUCCEEDED, hybrid_response.data.status)
+        self.assertIn("node2", [node for node, _ in hybrid_model.calls])
+
+        compiler_model = model_with()
+        compiler_service = AnalysisService(
+            adapter,
+            compiler_model,
+            cache=cache,
+            sql_generation_mode=SqlGenerationMode.COMPILER_ONLY,
+        )
+        compiler_response = await compiler_service.analyze(
+            self.payload,
+            self.context,
+            self.decision,
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, compiler_response.data.status)
+        self.assertEqual(["node1"], [node for node, _ in compiler_model.calls])
+        self.assertEqual(1, adapter.execute_count)
 
     async def test_multi_metric_request_reaches_result_without_single_metric_collapse(self):
         count_metric_id = "observation_count"

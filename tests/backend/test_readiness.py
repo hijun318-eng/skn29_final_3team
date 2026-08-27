@@ -553,6 +553,36 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_compiler_only_model_probe_does_not_call_node2(self) -> None:
+        requests: list[httpx.Request] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "gpt-5.4-mini"}]},
+                request=request,
+            )
+
+        environment = {
+            "OPENAI_ENDPOINT": "https://primary.model.invalid",
+            "OPENAI_API_KEY": "primary-token",
+            "OPENAI_MODEL": "gpt-5.4-mini",
+            "NODE2_MODEL_PROVIDER": "qwen",
+            "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
+            "NODE2_MODEL_API_TOKEN": "node2-token",
+            "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
+            "ANALYSIS_SQL_GENERATION_MODE": "compiler_only",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                self.assertEqual("ready", await AppDatabaseReadiness._model_probe(client))
+
+        self.assertEqual(
+            [("primary.model.invalid", "/v1/models")],
+            [(request.url.host, request.url.path) for request in requests],
+        )
+
     async def test_model_probe_rejects_invalid_route_token(self) -> None:
         attempts = 0
 

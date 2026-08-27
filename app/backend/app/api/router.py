@@ -75,6 +75,7 @@ from app.api.analysis_router_support import (
 )
 from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis import AnalysisService, analysis_progress
+from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.readiness import AppDatabaseReadiness
 
@@ -82,7 +83,11 @@ from app.services.readiness import AppDatabaseReadiness
 @lru_cache(maxsize=1)
 def _controller() -> AnalysisController:
     return AnalysisController(
-        AnalysisService(_data_platform(), _model()),
+        AnalysisService(
+            _data_platform(),
+            _model(),
+            sql_generation_mode=configured_sql_generation_mode(),
+        ),
         _routing_service(),
     )
 

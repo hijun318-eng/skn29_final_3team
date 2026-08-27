@@ -18,6 +18,10 @@ from app.adapters.datahub_catalog import DataHubCatalogClient
 from app.adapters.trino_async import TrinoAsyncClient
 from app.auth import AuthenticationError, auth_account_store_ready
 from app.database import session_scope
+from app.services.analysis.sql_generation_mode import (
+    SqlGenerationMode,
+    configured_sql_generation_mode,
+)
 from src.modelops.runtime_config import ActiveModelRoute, resolve_active_model_routes
 
 
@@ -316,6 +320,8 @@ class AppDatabaseReadiness:
     async def _model_probe(client: httpx.AsyncClient) -> str:
         try:
             routes = resolve_active_model_routes()
+            if configured_sql_generation_mode() is SqlGenerationMode.COMPILER_ONLY:
+                routes = tuple(route for route in routes if "node1" in route.nodes)
         except (OSError, ValueError):
             return "not_ready"
         states = await asyncio.gather(

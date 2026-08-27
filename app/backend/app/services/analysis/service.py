@@ -29,6 +29,7 @@ from app.services.analysis.model_support import (
 from app.services.analysis.pipeline import AnalysisPipeline
 from app.services.analysis.responses import AnalysisResponseFactory
 from app.services.analysis.pipeline_support import PipelineSupport
+from app.services.analysis.sql_generation_mode import SqlGenerationMode
 from app.services.context.builder import ContextPackageBuilder
 from app.services.execution_control import IsolatedExecutionCache, ModelCallBudget
 from app.services.routing_service import RouteDecision
@@ -43,6 +44,7 @@ class AnalysisService:
         model: ModelAdapter,
         context_builder: ContextPackageBuilder | None = None,
         cache: IsolatedExecutionCache | None = None,
+        sql_generation_mode: SqlGenerationMode = SqlGenerationMode.HYBRID,
     ) -> None:
         self._adapter = adapter
         self._model = model
@@ -53,6 +55,7 @@ class AnalysisService:
         )
         self._responses = AnalysisResponseFactory()
         self._cache = cache or IsolatedExecutionCache()
+        self._sql_generation_mode = sql_generation_mode
 
     @property
     def data_platform(self) -> DataPlatformAdapter:
@@ -94,6 +97,7 @@ class AnalysisService:
             self._support,
             self._responses,
             self._cache,
+            self._sql_generation_mode,
         )
         return await pipeline.run(
             payload,

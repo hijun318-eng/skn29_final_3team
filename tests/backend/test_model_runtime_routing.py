@@ -67,6 +67,41 @@ def test_dedicated_node2_route_never_substitutes_primary_credentials() -> None:
     )
 
 
+def test_compiler_only_builds_primary_adapter_without_node2_client() -> None:
+    expected = object()
+    environment = PRIMARY | NODE2 | {"ANALYSIS_SQL_GENERATION_MODE": "compiler_only"}
+    with patch.dict("os.environ", environment, clear=True), patch(
+        "app.adapters.contract_model.ContractModelAdapter.from_openai",
+        return_value=expected,
+    ) as primary_factory, patch(
+        "app.adapters.contract_model.ContractModelAdapter.from_endpoints"
+    ) as routed_factory:
+        result = model()
+
+    assert result is expected
+    routed_factory.assert_not_called()
+    primary_factory.assert_called_once_with(
+        endpoint="https://primary.model.invalid",
+        token="primary-token",
+        model="gpt-5.4-mini",
+        timeout_seconds=30.0,
+    )
+
+
+def test_unknown_sql_generation_mode_is_rejected_before_adapter() -> None:
+    environment = PRIMARY | {"ANALYSIS_SQL_GENERATION_MODE": "automatic"}
+    with patch.dict("os.environ", environment, clear=True), patch(
+        "app.adapters.contract_model.ContractModelAdapter.from_openai"
+    ) as primary_factory, patch(
+        "app.adapters.contract_model.ContractModelAdapter.from_endpoints"
+    ) as routed_factory:
+        with pytest.raises(ValueError, match="ANALYSIS_SQL_GENERATION_MODE"):
+            model()
+
+    primary_factory.assert_not_called()
+    routed_factory.assert_not_called()
+
+
 def test_partial_node2_route_is_rejected_before_adapter_construction() -> None:
     with patch.dict(
         "os.environ",

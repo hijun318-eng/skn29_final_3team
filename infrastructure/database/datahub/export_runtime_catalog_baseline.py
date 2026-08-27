@@ -120,6 +120,12 @@ _LIVE_RECEIPT_KEYS = frozenset(
         "native_projection_sha256",
         "native_membership_sha256",
         "trino_relation_count",
+        "quality_status",
+        "quality_receipt_sha256",
+        "quality_expires_at",
+        "quality_dataset_check_count",
+        "quality_business_metric_check_count",
+        "quality_lineage_edge_count",
     }
 )
 _INVENTORY_KEYS = frozenset(
@@ -481,6 +487,28 @@ def _validated_live_receipt(
         raise RuntimeCatalogBaselineError("live candidate receipt fields differ")
     receipt = json.loads(canonical_json(value))
     snapshot = projection.snapshot
+    quality_status = _text(value.get("quality_status"), "quality status")
+    if quality_status != "VERIFIED":
+        raise RuntimeCatalogBaselineError("live candidate quality is not verified")
+    quality_dataset_check_count = _integer(
+        value.get("quality_dataset_check_count"),
+        "quality dataset check count",
+    )
+    quality_business_metric_check_count = _integer(
+        value.get("quality_business_metric_check_count"),
+        "quality business metric check count",
+    )
+    expected_business_metric_count = sum(
+        item["visibility"] == "BUSINESS"
+        for item in projection.source_selection["metrics"]
+    )
+    if (
+        quality_dataset_check_count != len(snapshot.datasets_by_urn)
+        or quality_business_metric_check_count != expected_business_metric_count
+    ):
+        raise RuntimeCatalogBaselineError(
+            "live candidate quality coverage differs from the runtime projection"
+        )
     expected = {
         "schema_version": RUNTIME_CATALOG_CANDIDATE_RECEIPT_VERSION,
         "status": "CHECKED_NOT_PUBLISHED",
@@ -517,6 +545,23 @@ def _validated_live_receipt(
             "native_membership_sha256"
         ],
         "trino_relation_count": len(projection.trino_fingerprints),
+        "quality_status": quality_status,
+        "quality_receipt_sha256": _checksum(
+            value.get("quality_receipt_sha256"),
+            "quality receipt checksum",
+        ),
+        "quality_expires_at": _timestamp(
+            value.get("quality_expires_at"),
+            "quality receipt expiration",
+        ),
+        "quality_dataset_check_count": quality_dataset_check_count,
+        "quality_business_metric_check_count": (
+            quality_business_metric_check_count
+        ),
+        "quality_lineage_edge_count": _integer(
+            value.get("quality_lineage_edge_count"),
+            "quality lineage edge count",
+        ),
     }
     if receipt != expected:
         raise RuntimeCatalogBaselineError(

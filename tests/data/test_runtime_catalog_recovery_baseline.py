@@ -163,7 +163,18 @@ def _fixture() -> tuple[
         ],
         "activation_receipts": list(reversed(receipts)),
     }
-    return active, previous, state, candidate_receipt(active, native)
+    quality_receipt = {
+        "status": "VERIFIED",
+        "receipt_sha256": "e" * 64,
+        "expires_at": "2026-08-27T02:00:00+00:00",
+        "dataset_check_count": len(active.snapshot.datasets_by_urn),
+        "business_metric_check_count": sum(
+            item["visibility"] == "BUSINESS"
+            for item in active.source_selection["metrics"]
+        ),
+        "lineage_edge_count": 1,
+    }
+    return active, previous, state, candidate_receipt(active, native, quality_receipt)
 
 
 def test_baseline_seals_live_exact_match_and_complete_receipt_dependencies() -> None:
@@ -216,6 +227,11 @@ def test_baseline_rejects_content_or_receipt_tampering() -> None:
     tampered["active_pointer"]["activated_by"] = "unknown"
     with pytest.raises(ValueError, match="deployment receipt checksum"):
         validate_runtime_catalog_baseline(tampered)
+
+    invalid_quality = copy.deepcopy(receipt)
+    invalid_quality["quality_status"] = "FAILED"
+    with pytest.raises(ValueError, match="quality is not verified"):
+        build_runtime_catalog_baseline(state, active, invalid_quality)
 
 
 def test_baseline_export_never_overwrites_existing_file(tmp_path: Path) -> None:

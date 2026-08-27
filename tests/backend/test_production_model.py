@@ -161,7 +161,7 @@ def test_provider_input_uses_the_six_runtime_contracts(catalog: str) -> None:
     assert model_input["resolved_request"]["intent"] == "aggregate"
     assert model_input["resolved_request"]["time_bucket"] == "none"
     assert model_input["resolved_request"]["result_limit"] is None
-    assert set(serving_schema("node2")["required"]) == set(_node2_response(catalog))
+    assert serving_schema("node2")["required"] == ["sql"]
 
 
 def test_ratio_request_deduplicates_shared_dimensions_and_filters() -> None:
@@ -237,17 +237,11 @@ def test_node2_rejects_implicit_business_outputs() -> None:
         canonical_model_input("node2", payload)
 
 
-def test_sql_only_schema_is_dormant_while_active_provider_schema_remains_legacy() -> None:
+def test_sql_only_schema_is_the_active_node2_serving_contract() -> None:
     active = serving_schema("node2")
     sql_only = sql_only_serving_schema("node2")
 
-    assert set(active["required"]) == {
-        "sql",
-        "used_assets",
-        "used_columns",
-        "used_joins",
-        "used_metrics",
-    }
+    assert active == sql_only
     assert sql_only["required"] == ["sql"]
     assert set(sql_only["properties"]) == {"sql"}
 
@@ -256,40 +250,40 @@ def test_openai_and_qwen_use_identical_canonical_messages() -> None:
     payload = canonical_model_input("node2", _node2_payload())
 
     openai = _openai_payload("gpt-5.4-mini", "node2", payload)
-    qwen = _qwen_payload("answervice-sql", "node2", payload)
+    qwen = _qwen_payload("node2-qwen35-2b-full3000-20260825", "node2", payload)
 
     assert openai["messages"] == qwen["messages"]
     assert json.loads(openai["messages"][1]["content"]) == payload
     assert openai["max_completion_tokens"] == 1_280
-    assert qwen["max_tokens"] == 1_280
+    assert qwen["max_tokens"] == 1_024
+    assert qwen["seed"] == 0
 
 
 def test_openai_and_qwen_schema_dual_adaptation() -> None:
     payload = canonical_model_input("node2", _node2_payload())
 
     openai = _openai_payload("gpt-5.4-mini", "node2", payload)
-    qwen = _qwen_payload("answervice-sql", "node2", payload)
+    qwen = _qwen_payload("node2-qwen35-2b-full3000-20260825", "node2", payload)
 
     openai_schema = openai["response_format"]["json_schema"]["schema"]
-    qwen_schema = qwen["guided_json"]
+    qwen_schema = qwen["response_format"]["json_schema"]["schema"]
 
     # 1. OpenAI Strict Schema Verification
     assert openai["response_format"]["json_schema"]["strict"] is True
     assert openai_schema["type"] == "object"
     assert openai_schema["additionalProperties"] is False
-    assert set(openai_schema["required"]) == set(openai_schema["properties"].keys())
-    assert "minItems" not in openai_schema["properties"]["used_assets"]
-    assert "uniqueItems" not in openai_schema["properties"]["used_assets"]
+    assert openai_schema["required"] == ["sql"]
+    assert set(openai_schema["properties"]) == {"sql"}
     assert "minLength" not in openai_schema["properties"]["sql"]
-    assert "$defs" in openai_schema
-    assert set(openai_schema["$defs"].keys()) == {"qualified_field"}  # tree-shaked
-    assert openai_schema["$defs"]["qualified_field"]["additionalProperties"] is False
+    assert "$defs" not in openai_schema
 
-    # 2. Qwen Guided Decoding Schema Preservation
-    assert qwen_schema["properties"]["used_assets"]["minItems"] == 1
-    assert qwen_schema["properties"]["used_assets"]["uniqueItems"] is True
+    # 2. Qwen/vLLM response_format preserves the governed Draft schema.
+    assert qwen["response_format"]["json_schema"]["strict"] is True
+    assert qwen["response_format"]["json_schema"]["name"] == "node2_sql_only_response"
+    assert "guided_json" not in qwen
+    assert qwen_schema["required"] == ["sql"]
+    assert set(qwen_schema["properties"]) == {"sql"}
     assert qwen_schema["properties"]["sql"]["minLength"] == 1
-    assert len(qwen_schema.get("$defs", {})) > 1  # Full definitions preserved for BNF grammar compiler
 
 
 
@@ -304,7 +298,7 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
                 json={
                     "model": "runtime-model-snapshot",
                     "choices": [
-                        {"message": {"content": json.dumps(_node2_response())}}
+                        {"message": {"content": json.dumps({"sql": _node2_response()["sql"]})}}
                     ],
                     "usage": {"prompt_tokens": 11, "completion_tokens": 7},
                 },
@@ -323,7 +317,8 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(1, len(seen))
-        self.assertEqual(["orbit.ops.event_fact"], result["used_assets"])
+        self.assertEqual(_node2_response()["sql"], result["sql"])
+        self.assertNotIn("used_assets", result)
         self.assertNotIn("model", result)
         self.assertEqual(
             "gpt-5.4-mini",
@@ -452,7 +447,7 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
             response = (
                 {"corrected_sql": _node2_response()["sql"]}
                 if node == "node2_repair"
-                else _node2_response()
+                else {"sql": _node2_response()["sql"]}
             )
             return httpx.Response(
                 200,
@@ -478,7 +473,7 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
                     openai_model="gpt-5.4-mini",
                     node2_endpoint="https://node2.invalid",
                     node2_token="node2-token",
-                    node2_model="answervice-sql",
+                    node2_model="node2-qwen35-2b-full3000-20260825",
                     node2_provider="qwen",
                     timeout_seconds=2,
                 )
@@ -570,8 +565,9 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("context_package", seen_wire_requests["node2_repair"])
             self.assertNotIn("filter_rules", seen_wire_requests["node2"])
             self.assertNotIn("filter_rules", seen_wire_requests["node2_repair"])
-            self.assertEqual("answervice-sql", plan["model_version"])
-            self.assertEqual("answervice-sql", repaired["model_version"])
+            self.assertEqual("node2-qwen35-2b-full3000-20260825", plan["model_version"])
+            self.assertEqual("node2-qwen35-2b-full3000-20260825", repaired["model_version"])
+            self.assertEqual("node2.sql_only", traces["node2"]["prompt_id"])
             self.assertEqual("gpt-5.4-mini", explanation["model_version"])
             self.assertEqual("fixture", explanation["summary"])
             self.assertEqual(

@@ -95,7 +95,7 @@ async def _run_node1(request: dict[str, Any], response: dict[str, Any]) -> tuple
                 openai_model="gpt-5.4-mini",
                 node2_endpoint="https://node2.invalid",
                 node2_token="node2-token",
-                node2_model="answervice-sql",
+                node2_model="node2-qwen35-2b-full3000-20260825",
                 node2_provider="qwen",
                 timeout_seconds=2,
             )

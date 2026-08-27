@@ -143,6 +143,16 @@ def test_backend_image_and_verifier_include_the_sealed_phase2a_gate():
     assert "BACKEND_METRIC_RETRIEVAL_READY" in verifier
 
 
+def test_backend_image_includes_node2_runtime_evidence():
+    dockerfile = BACKEND_DOCKERFILE.read_text(encoding="utf-8")
+
+    for artifact in (
+        "evals/node2_qwen35_2b_full3000_huggingface.receipt.json",
+        "evals/node2_qwen35_2b_full3000_canary.v1.json",
+    ):
+        assert artifact in dockerfile
+
+
 def test_backend_verifier_rehearses_search_rollback_as_one_scoped_receipt():
     verifier = BACKEND_VERIFIER.read_text(encoding="utf-8")
 
@@ -183,6 +193,7 @@ def test_backend_build_fails_closed_and_verifier_matches_source_provenance():
     )
     assert "diff --binary --no-ext-diff HEAD" in resolver
     assert "ls-files --others --exclude-standard" in resolver
+    assert "'core.quotePath=false'" in resolver
     assert "source-provenance.ps1" in verifier
     assert "docker inspect --format '{{json .Config.Labels}}'" in verifier
     assert "BACKEND_IMAGE_PROVENANCE_READY" in verifier

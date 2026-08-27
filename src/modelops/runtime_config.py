@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from src.ai.model_contracts import model_release_manifest
 
 
-_MANIFEST_VERSION = "MODEL-RUNTIME-v1.1.0"
+_MANIFEST_VERSION = "MODEL-RUNTIME-v1.2.0"
 _MANIFEST_PATH = Path(__file__).with_name("model_runtime_manifest.v1.json")
 _SUPPORTED_PROVIDERS = frozenset({"openai", "qwen"})
 

@@ -1,4 +1,4 @@
-"""active model release의 노드 schema를 OpenAI strict JSON과 Qwen guided JSON payload로 조립한다.
+"""active model release의 노드 schema를 OpenAI·vLLM structured payload로 조립한다.
 
 Provider payload schemas built from governed runtime context.
 """
@@ -60,22 +60,18 @@ def response_schema(node: str) -> dict[str, Any]:
 def serving_schema(node: str) -> dict[str, Any]:
     """현재 provider에 요구할 노드별 응답 스키마를 구성한다.
 
-    Node2 내부 계약은 전환 기간에 legacy lineage 응답과 SQL-only 응답을 모두
-    허용한다. 활성 provider prompt는 아직 다섯 필드를 요구하므로 structured output은
-    legacy 형태로 고정해 기존 GPT 동작을 바꾸지 않는다.
+    Node2의 검증 계약은 legacy lineage 응답도 계속 읽을 수 있지만, 활성 모델에는
+    학습·canary와 동일한 SQL-only 응답만 생성하도록 요구한다. Lineage는 서버가 SQL AST와
+    거버넌스 계약에서 다시 계산하므로 모델 출력에 의존하지 않는다.
     """
     if node == "node2":
-        return schema_definition("node2_legacy_response")
+        return schema_definition("node2_sql_only_response")
     return response_schema(node)
 
 
 @lru_cache(maxsize=None)
 def sql_only_serving_schema(node: str) -> dict[str, Any]:
-    """향후 SQL-only Node2 release가 guided decoding에 사용할 응답 스키마를 반환한다.
-
-    활성 provider payload에는 아직 연결하지 않는다. Qwen adapter 활성화 시 SQL-only
-    prompt와 이 스키마를 같은 release에서 선택해야 한다.
-    """
+    """활성 SQL-only Node2 release의 응답 스키마를 반환한다."""
     if node != "node2":
         raise ValueError("SQL-only serving schema is supported only for node2")
     return schema_definition("node2_sql_only_response")
@@ -340,12 +336,6 @@ def openai_serving_schema(node: str) -> dict[str, Any]:
     return to_openai_strict_schema(serving_schema(node))
 
 
-@lru_cache(maxsize=None)
-def guided_serving_schema(node: str) -> dict[str, Any]:
-    """vLLM/sLLM Guided Decoding을 위한 원본 Draft 2020-12 JSON Schema를 반환한다."""
-    return serving_schema(node)
-
-
 _NODE_OUTPUT_LIMITS: MappingProxyType[str, int] = MappingProxyType(
     {
         "node1": 350,
@@ -400,7 +390,7 @@ def openai_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, 
 
 
 def qwen_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """표준 메시지·guided JSON Schema·승인된 출력 한도를 Qwen 요청으로 묶는다.
+    """표준 메시지·vLLM JSON Schema·승인된 출력 한도를 Qwen 요청으로 묶는다.
 
     vLLM OpenAI-compatible API가 사용하는 ``max_tokens`` 값은 active serving alias에 결합된
     runtime manifest에서 가져와 context budget 계산과 실제 생성 요청이 같은 한도를 사용한다.
@@ -410,11 +400,20 @@ def qwen_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, An
         provider="qwen",
     ).runtime_max_output_tokens
     bounded_limit = bounded_node_output_limit(node, output_limit)
+    schema_name = "node2_sql_only_response" if node == "node2" else f"{node}_response"
     return {
         "model": model,
         "messages": canonical_messages(PROMPT_IDS[node], payload),
         "temperature": 0,
+        "seed": 0,
         "max_tokens": bounded_limit,
         "chat_template_kwargs": {"enable_thinking": False},
-        "guided_json": guided_serving_schema(node),
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_name,
+                "strict": True,
+                "schema": serving_schema(node),
+            },
+        },
     }

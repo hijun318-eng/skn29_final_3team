@@ -128,6 +128,8 @@ def evaluate_record(
     server binding은 모델 입력에서 분리하고 AST 검증 뒤에만 주입하며, JSON·G2·Trino 단계 중
     하나라도 실패하면 이후 단계를 실행하지 않고 안정된 상태 code로 남긴다.
     """
+    node = record["node"]
+    schema_name = "node2_sql_only_response" if node == "node2" else f"{node}_response"
     started = time.perf_counter()
     response = requester(
         "POST",
@@ -136,9 +138,17 @@ def evaluate_record(
             "model": model,
             "messages": record["messages"][:-1],
             "temperature": 0,
-            "max_tokens": 512,
+            "seed": 0,
+            "max_tokens": 1024,
             "chat_template_kwargs": {"enable_thinking": False},
-            "guided_json": _schema(record["node"]),
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name,
+                    "strict": True,
+                    "schema": _schema(node),
+                },
+            },
         },
         None,
         timeout,
@@ -153,7 +163,6 @@ def evaluate_record(
     except (json.JSONDecodeError, TypeError, KeyError):
         return _invalid_json(evidence)
 
-    node = record["node"]
     field = "sql" if node == "node2" else "corrected_sql"
     g2, generated_plan = _validation_result(node, request, generated, bindings)
     expected_g2, expected_plan = _validation_result(node, request, expected, bindings)

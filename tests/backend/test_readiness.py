@@ -521,7 +521,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             requests.append(request)
             models = {
                 "primary.model.invalid": "gpt-5.4-mini",
-                "node2.model.invalid": "answervice-sql",
+                "node2.model.invalid": "node2-qwen35-2b-full3000-20260825",
             }
             return httpx.Response(
                 200,
@@ -536,7 +536,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             "NODE2_MODEL_PROVIDER": "qwen",
             "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
             "NODE2_MODEL_API_TOKEN": "node2-token",
-            "NODE2_MODEL": "answervice-sql",
+            "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
         }
         with patch.dict("os.environ", environment, clear=True):
             async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -605,7 +605,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
                 request=request,
             )
 
-        partial = base | {"NODE2_MODEL": "answervice-sql"}
+        partial = base | {"NODE2_MODEL": "node2-qwen35-2b-full3000-20260825"}
         with patch.dict("os.environ", partial, clear=True):
             async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
                 self.assertEqual("not_ready", await AppDatabaseReadiness._model_probe(client))

@@ -1,0 +1,536 @@
+# 책임: Dataset 품질·lineage 최소 Gate를 고정하며 실패·만료 증거로 activation을 차단한다.
+quality_policies:
+- dataset_id: banquet.banquet_bookings
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:banquet_event_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 769d89322761a2ff9b5cd225e19e5f07b6df751c8d1de6db3b9b7ce6f64fc945
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:cancelled_at,confirmed_at,ends_at,event_date,inquiry_at,quoted_at,starts_at
+- dataset_id: banquet.banquet_revenue_lines
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:revenue_line_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: d395a6fe9271e1b64fe4f20f7989114299eb5b8bbef51c2e76c54845690cc08b
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:recognized_date
+- dataset_id: banquet.banquet_room_blocks
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:room_block_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 3aeba97a17352060941751dfc440caad5450c8b1d0dbd17fd433d84f13ef4dd4
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:checkin_date,checkout_date
+- dataset_id: banquet.banquet_status_history
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:status_history_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: c2a034a1c3a250aa3c9737786f1ee8d019231edca597ed3c2b12abc09eb0039f
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:status_at
+- dataset_id: banquet.banquet_venues
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:venue_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 49ae170f3059be3304537da53e21d1b52b6981242f19f1ad58ecea9b04c2e781
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: crm.crm_customer_map
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:customer_map_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 4ceca4e38d2e2388df722eeeb309c83586626521ad7dfc9a497bfc6ca010d0e8
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:valid_from,valid_to
+- dataset_id: crm.crm_member_grade_history
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:grade_history_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 860783b0689be83668bbfccedf79963990f921eb6cd5e0df60b35d3fe2ad36dd
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:valid_from,valid_to
+- dataset_id: crm.crm_members
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:member_no
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 0c5732ab2ebcc070ca4c953c20463159dbf96d9f8f97ea421357eb4bbf96a6c9
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:joined_at
+- dataset_id: crm.crm_membership_tiers
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:tier_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 8d4d32193ab25bbbab33aa6f828ad5e1d4e0afd0e12224634a7355aeb936f497
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: crm.crm_point_transactions
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:point_txn_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: a7ba371de87bc941e9b480198c11c34a48d99f58bd739129fcd74f08499dc3ba
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:event_at
+- dataset_id: crm.crm_voc_analysis
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:voc_analysis_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: c610b14f8be4738d515ebf8d4d7743f81355a1476894c2ba4cc360f5ea38af8f
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:analyzed_at
+- dataset_id: crm.crm_voc_reviews
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:voc_review_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 491358bfbbbe2ecb2088cb38fedda5bc2bee2d685277314ccb751a48ad6de95c
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:source_business_date,submitted_at
+- dataset_id: facility.facility_incidents
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:incident_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 45dff0fce122c6048f4402798b98760bcee148ce4930567edc0530af4baa6492
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:closed_at,opened_at
+- dataset_id: facility.facility_master
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:facility_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 805b864467c3a2cef90116c344ab6cfd592741e6ba425abc6838bf56414e59af
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:effective_from
+- dataset_id: facility.facility_resource_daily
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:business_date,facility_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 1f3e193680e533a5b0f57d262f1421b71b7c5651760aeeedc2e4a24879405bfe
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: facility.facility_usage_events
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:usage_event_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 4dd4db97afb106c33516ec275bed09b0c56bda2f42d33881b4d51341ca48d08f
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:event_time
+- dataset_id: facility.hotel_staffing_daily
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:business_date,department,hotel_code,shift_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 77f8c395b030af6318c4e9b1951ae132283675a84aa89b812d21f7fec302e732
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: pms.calendar_daily
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:business_date
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: bb412182888150b8f2219b990cdb9d34a15e1268abed4b4e63f56f686544dacd
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: pms.event_master
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:event_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 8e57a48419b22ec5336f394877e7adc514d6ca035ac387808af2153d3c9e2237
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:end_date,start_date
+- dataset_id: pms.evidence_registry
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:evidence_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 005ea404d9d20d6822bd13867378bc185304be0799969715a56db71640b653f0
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:accessed_at,published_date
+- dataset_id: pms.hotel_entities
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: b4d907d9841b3773f8a3a48e85b9533247696eef3f5b654610db5d57651faba8
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:effective_from,effective_to,source_as_of
+- dataset_id: pms.hotel_event_effect
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:domain,event_id,hotel_code,metric_name
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 4c71ebae967835a961ea0eef5b8ae2b39cb2c4606f466b3e8394acacd785bb94
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: pms.pms_folio_postings
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:folio_posting_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: c648c71ce966ee6755919b595d2a531252439df33537bf54e1ee3e56165e2950
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:posted_at
+- dataset_id: pms.pms_guests
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:guest_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 5fb8fe51a63d1bab19a551cbb37ef43cf4f2ea0221d98073fda56c3e975959b6
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:created_at
+- dataset_id: pms.pms_reservation_status_history
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:status_history_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 2c4725543d815af20b3e189af48fc2228dadeb54947cf06904dd9938d2806a08
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:status_at
+- dataset_id: pms.pms_reservations
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:reservation_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 3a1707e4ab4282dac77a7d3921b6b336eda186305f003d1365eea691d919cb7b
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:booked_at,cancelled_at,checkin_date,checkout_date
+- dataset_id: pms.pms_room_inventory_daily
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:business_date,hotel_code,room_type_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 87893752430b5f233f27f260e5902179930babaf1ef753e96c4b0af245405d94
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: pms.pms_room_out_of_order_periods
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:out_of_order_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 3bcef64eb742ef4e885c9b1c78946fc2a7454a5def7ad6d69455750bb0b0a653
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:ended_at,started_at
+- dataset_id: pms.pms_room_types
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:hotel_code,room_type_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: b601538295bf2bb3d12becd725208c2e9c72039d08beb7b32c9417a2925cd24c
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: pms.pms_rooms
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:room_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: dc74f2b3fc728924e498d417c2c2d5ed5d2f26d4ef45cebf46adbc92f05214f6
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: pms.pms_stay_nights
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:business_date,stay_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 5802003599e73422ea360cb0361eba5de0550d5699f055bb79a1e1f0d89695e1
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: pms.pms_stays
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:stay_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 0d6aa9416ea8d6e93d647bd62a9191365ad1aef87d181bd3392ed78c90775393
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:actual_checkin_at,actual_checkout_at
+- dataset_id: pos.pos_menu_items
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:item_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: a0c56e7dc823e9243572d609d8a14e87f82707bc9c5ebc73a8e0f2bac32e5539
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: pos.pos_menu_price_history
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:item_code,valid_from
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: de4ef7c8774e1d0ec6cc812f64a8904848e0d42c692809f867770aee2182a5db
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:valid_from,valid_to
+- dataset_id: pos.pos_order_items
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:order_item_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: a2b645bc4a1f7623f1f6a4730d11bb344001fe3a5f3d3116b58089347ce21e4f
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: pos.pos_orders
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:order_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 07a5600ff7e97f46e85cf4d127fb0f359bd8a4265c7dff880cd682ec2f9a87f4
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date,ordered_at
+- dataset_id: pos.pos_outlets
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:outlet_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 5fddde40a8a6f93cf688bb77cb704dbc478f5e4ac5eee1bd6a59220b8a2198df
+  status: ENFORCED
+  timestamp_validity: NOT_APPLICABLE
+- dataset_id: pos.pos_payment_lines
+  freshness: SEED_VERSION_MATCHES_ACTIVE_DATA_RELEASE
+  lineage:
+    mode: SOURCE_ROOT
+  required_keys: NOT_NULL:payment_line_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: d2e5fc38a90e44ec79f6f044d79f7cda169b73c82975a95d6983b813d97f0dd9
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:paid_at
+- dataset_id: serving.banquet_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - banquet.banquet_bookings
+    - banquet.banquet_revenue_lines
+    - banquet.banquet_venues
+  required_keys: NOT_NULL:business_date,hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 614a7f2a11d058fb62de6a105b29bad2bd99e5bfb7a3353e68fa7b9d6dafaeba
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.event_counterfactual_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - pms.event_master
+    - pms.hotel_event_effect
+    - serving.hotel_operations_daily
+  required_keys: NOT_NULL:event_id,hotel_code,metric_name
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 2b1d7b5a3bd1ae647febc70aac051e5478797c91d5017990b2867bb1392d4515
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:end_date,start_date
+- dataset_id: serving.facility_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - facility.facility_incidents
+    - facility.facility_master
+    - facility.facility_resource_daily
+    - facility.facility_usage_events
+  required_keys: NOT_NULL:business_date,hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 287113a8d40eaf496d54343dff7a3fb684de1300a018fc28225f253058b363a2
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.fnb_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - pos.pos_orders
+    - pos.pos_outlets
+  required_keys: NOT_NULL:business_date,hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: e4aea118d4a607853997ffed8a79f66ff18f4db7b0eaf6b36cc291bbc8767b3d
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.hotel_operations_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - pms.calendar_daily
+    - pms.event_master
+    - pms.hotel_event_effect
+    - serving.banquet_daily
+    - serving.facility_daily
+    - serving.fnb_daily
+    - serving.room_daily
+    - serving.staffing_daily
+  required_keys: NOT_NULL:business_date,hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 9fcc652f2626e181c713989481348cfa72c3ed0b5aaea125944d29521c9c68a8
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.hotel_operations_monthly
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - serving.hotel_operations_daily
+  required_keys: NOT_NULL:hotel_code,month_start
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: df739f04a6d82772a755d56c434f86714914dc48b38e5eb62ad32cf23411c9b9
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:month_start
+- dataset_id: serving.hotel_voc_signal_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - serving.hotel_operations_daily
+    - serving.voc_daily
+  required_keys: NOT_NULL:business_date,hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 2797a838d26c0624e48cbfbcadc9e50b35bf21f75160a36fd7954206b714b366
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.member_revenue_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - crm.crm_customer_map
+    - crm.crm_member_grade_history
+    - crm.crm_membership_tiers
+    - pms.pms_stay_nights
+    - pms.pms_stays
+    - pos.pos_orders
+    - pos.pos_outlets
+  required_keys: NOT_NULL:business_date,hotel_code,tier_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: da476735ee2a6a193d7e4f978e6c4939c7e29b78f4224b9fb7caff03b713a849
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.membership_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - crm.crm_point_transactions
+  required_keys: NOT_NULL:business_date
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 3b6ed59cf21e6a0a9eabf01281ce8dc0124a8a5368cd498a137e120b4cde3ce8
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.room_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - pms.pms_room_inventory_daily
+    - pms.pms_stay_nights
+    - pms.pms_stays
+  required_keys: NOT_NULL:business_date,hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 7f4ee9e23d228eb0d7e0585547ba2e966a24f50d32c551a97130f93c6ff9b3e6
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.room_monthly_kpi
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - serving.room_daily
+  required_keys: NOT_NULL:hotel_code,month_start
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 5faa8b5a520c24a3f6d6030d4466aec4d0dc1885065df8e9c76b2a0cb282dbf2
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:month_start
+- dataset_id: serving.room_stay_fact
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - pms.pms_stays
+  required_keys: NOT_NULL:stay_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: 97672aa93d1756526ad00b13a7644967ec473481e913f2cc459019945728b383
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:checkin_date,checkout_date
+- dataset_id: serving.staffing_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - facility.hotel_staffing_daily
+  required_keys: NOT_NULL:business_date,hotel_code
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: b790ff250a21a6ab81da76d0149f2dc360bce2bc0a33a77798fac586a73db7fc
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.voc_daily
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - crm.crm_voc_analysis
+    - crm.crm_voc_reviews
+  required_keys: NOT_NULL:business_date,hotel_code,source_channel
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: aa30b3475273c2f7987ceff3d7141c8fbbd349a8592f777b57c479d9645c611a
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date
+- dataset_id: serving.voc_review_detail
+  freshness: UPSTREAM_FRESHNESS_PROPAGATED
+  lineage:
+    mode: UPSTREAM
+    upstream_dataset_ids:
+    - crm.crm_voc_analysis
+    - crm.crm_voc_reviews
+  required_keys: NOT_NULL:voc_review_id
+  row_count: COUNT_GT_ZERO
+  schema_fingerprint_sha256: b84ea1947ca8af1597b660277e9a228838c3d21015d59c2bb7e3b4fb758151b3
+  status: ENFORCED
+  timestamp_validity: VALID_DATE_OR_TIMESTAMP:business_date,submitted_at
+schema_version: answervice.canonical-metadata.v1

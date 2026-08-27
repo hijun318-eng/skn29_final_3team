@@ -1,0 +1,2179 @@
+# 책임: PMS Dataset·Column 승인 상태를 소유하며 schema 불일치 시 게시를 차단한다.
+datasets:
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 영업일·휴일 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: business_date
+    data_type: DATE
+    description: 모든 도메인의 한국 영업일 결합 키
+    key_role: PRIMARY_KEY
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: day_of_week
+    data_type: SMALLINT
+    description: ISO 기준 요일 번호. 월요일 1, 일요일 7
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_weekend
+    data_type: BOOLEAN
+    description: 시설 운영·일반 달력 기준의 토요일 또는 일요일 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_rate_day_type
+    data_type: VARCHAR(16)
+    description: 객실 판매 요일 구분. 워커힐 공개 요금표의 일~목·금·토 구분을 반영한 SUN_THU·FRIDAY·SATURDAY
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_holiday
+    data_type: BOOLEAN
+    description: 대한민국 공휴일 캘린더에 포함된 날짜 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: holiday_name
+    data_type: VARCHAR(100)
+    description: 공휴일인 경우의 한국어 휴일명
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: season_code
+    data_type: VARCHAR(16)
+    description: SPRING·SUMMER·AUTUMN·WINTER 계절 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_weather_score
+    data_type: NUMERIC(6, 4)
+    description: 0~1 범위의 합성 야외활동 적합도. 실제 관측 기상이 아님
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_demand_index
+    data_type: NUMERIC(8, 4)
+    description: 평시 1을 기준으로 계절·주말·행사 수요를 결합한 합성 지수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: promotion_code
+    data_type: VARCHAR(64)
+    description: 해당 영업일에 적용한 합성 프로모션 코드
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: 캘린더 사실과 모델 가정의 출처 분류
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.calendar_daily
+  description: 2024~2025 영업일별 주말·공휴일·계절과 합성 기상·수요·프로모션 공통 드라이버
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - business_date
+  fqn: pms.walkerhill_v4_3.calendar_daily
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - business_date
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.calendar_daily,PROD)
+  primary_key:
+  - business_date
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 행사·이벤트 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: event_id
+    data_type: VARCHAR(48)
+    description: 이벤트의 안정적 시나리오 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_name
+    data_type: VARCHAR(200)
+    description: 공개 행사명 또는 합성 시나리오 표시명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_type
+    data_type: VARCHAR(48)
+    description: MEGA_CONTENT·SEASONAL_PACKAGE·FACILITY_OPENING 등 이벤트 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: start_date
+    data_type: DATE
+    description: 수요 효과 적용 시작일
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: end_date
+    data_type: DATE
+    description: 수요 효과 적용 종료일
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: location
+    data_type: VARCHAR(200)
+    description: 행사 또는 상품 효과가 발생하는 합성 공간 범위
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: estimated_attendance
+    data_type: INTEGER
+    description: 공개 근거가 없으면 NULL인 예상 참석자 수
+    key_role: NONE
+    logical_type: number
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: evidence_id
+    data_type: VARCHAR(40)
+    description: 이벤트 존재·시점 근거 레지스트리 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: fact_or_assumption
+    data_type: VARCHAR(16)
+    description: FACT·MIXED·ASSUMPTION 중 사실/가정 구분
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: confidence
+    data_type: NUMERIC(5, 4)
+    description: 이벤트 시점과 범위에 대한 0~1 신뢰도
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.event_master
+  description: 공개 행사·상품 출시와 명시적 합성 외부 이벤트의 기간 및 근거를 관리하는 마스터
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - end_date
+  - start_date
+  fqn: pms.walkerhill_v4_3.event_master
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - event_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.event_master,PROD)
+  primary_key:
+  - event_id
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 데이터 출처·근거 목록
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: evidence_id
+    data_type: VARCHAR(40)
+    description: 공개 근거 자료의 내부 식별 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: evidence_grade
+    data_type: CHAR(1)
+    description: A 공식 1차 자료, B 공공·공식 보조자료, C 모델 참고자료
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: publisher
+    data_type: VARCHAR(160)
+    description: 근거를 공개한 기관 또는 회사명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: title
+    data_type: VARCHAR(300)
+    description: 공개 페이지·보도자료·통계의 제목
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: FREE_TEXT
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: source_url
+    data_type: TEXT
+    description: 검증자가 재확인할 수 있는 원문 URL
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: published_date
+    data_type: DATE
+    description: 근거 자료의 공개일. 확인되지 않으면 NULL
+    key_role: NONE
+    logical_type: date
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: accessed_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 근거 페이지를 확인한 한국 표준시 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: supported_fact
+    data_type: TEXT
+    description: 자료가 직접 뒷받침하는 사실의 제한된 범위
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: affected_table
+    data_type: VARCHAR(160)
+    description: 근거를 사용하는 V4.3 대상 테이블
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: affected_column
+    data_type: VARCHAR(160)
+    description: 근거 또는 규칙의 직접 영향 컬럼
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: modeling_rule
+    data_type: TEXT
+    description: 공개 사실을 합성 데이터 파라미터로 변환한 규칙
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: confidence
+    data_type: NUMERIC(5, 4)
+    description: 0~1 범위의 근거·모델 신뢰도
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: notes
+    data_type: TEXT
+    description: 충돌·한계·해석 주의사항
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: FREE_TEXT
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  data_origin: SYNTHETIC
+  dataset_id: pms.evidence_registry
+  description: 공개 자료가 어떤 테이블·컬럼과 모델링 규칙을 뒷받침하는지 추적하는 근거 레지스트리
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - accessed_at
+  - published_date
+  fqn: pms.walkerhill_v4_3.evidence_registry
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - evidence_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.evidence_registry,PROD)
+  primary_key:
+  - evidence_id
+  sensitivity: RESTRICTED
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 호텔·브랜드 구성 정보
+  columns:
+  - authoring_is_part_of_key: false
+    column_name: resort_id
+    data_type: VARCHAR(32)
+    description: 모든 호텔 엔터티를 묶는 합성 리조트 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: GRAND·VISTA·DOUGLAS 등 호텔 엔터티 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: parent_hotel_code
+    data_type: VARCHAR(32)
+    description: 브랜드 중첩을 표현하는 상위 호텔 코드. 독립 최상위는 NULL
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: public_name
+    data_type: VARCHAR(160)
+    description: 워커힐 공식 채널에서 확인한 공개 브랜드명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: entity_type
+    data_type: VARCHAR(32)
+    description: RESORT·HOTEL·SUB_BRAND 등 계층 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_url
+    data_type: TEXT
+    description: 브랜드명과 운영 범위의 공개 근거 URL
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_as_of
+    data_type: DATE
+    description: 공개 근거를 확인한 기준일
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_room_capacity
+    data_type: INTEGER
+    description: 생성 부하와 점유율 모델에 쓰는 합성 객실 수. 공식 객실 수가 아님
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: inventory_scope
+    data_type: VARCHAR(48)
+    description: 객실 재고를 중복 계산하지 않기 위한 합성 재고 소유 범위
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reporting_scope
+    data_type: VARCHAR(48)
+    description: 매출·KPI 보고 시 포함되는 엔터티 범위
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: effective_from
+    data_type: DATE
+    description: 해당 계층 관계가 유효해지는 시작일
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: effective_to
+    data_type: DATE
+    description: 계층 관계 종료일. 현재 유효하면 NULL
+    key_role: NONE
+    logical_type: date
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: OFFICIAL_NAME_SYNTHETIC_CAPACITY 등 사실과 가정을 구분하는 출처 등급
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_active
+    data_type: BOOLEAN
+    description: 생성 기간 종료일 현재 분석 대상 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.hotel_entities
+  description: 워커힐 리조트와 Grand·Vista·Douglas의 보고 범위 및 합성 객실 공급을 분리한 호텔 계층 마스터
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - effective_from
+  - effective_to
+  - source_as_of
+  fqn: pms.walkerhill_v4_3.hotel_entities
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - hotel_code
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.hotel_entities,PROD)
+  primary_key:
+  - hotel_code
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 호텔별 이벤트 영향 가정
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: event_id
+    data_type: VARCHAR(48)
+    description: event_master의 이벤트 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 효과를 적용받는 합성 호텔 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: domain
+    data_type: VARCHAR(32)
+    description: ROOMS·FNB·BANQUET·FACILITY 중 영향 도메인
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: metric_name
+    data_type: VARCHAR(64)
+    description: OCCUPANCY_RATE·ADR·ORDER_COUNT·BOOKING_COUNT·USAGE_COUNT 중 대상 지표
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: lead_days
+    data_type: SMALLINT
+    description: 이벤트 시작 전에 수요가 반응하는 합성 일수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: lag_days
+    data_type: SMALLINT
+    description: 이벤트 종료 후 효과가 남는 합성 일수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: effect_curve
+    data_type: VARCHAR(24)
+    description: TRIANGULAR·DECAY 등 기간 내 효과 곡선
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: uplift_min
+    data_type: NUMERIC(8, 4)
+    description: 삼각 시나리오의 최소 상대 상승률
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: uplift_mode
+    data_type: NUMERIC(8, 4)
+    description: 삼각 시나리오의 최빈 상대 상승률
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: uplift_max
+    data_type: NUMERIC(8, 4)
+    description: 삼각 시나리오의 최대 상대 상승률
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: capacity_limit
+    data_type: NUMERIC(8, 4)
+    description: 점유·이용량이 초과하지 못하는 합성 포화 상한
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: confidence
+    data_type: NUMERIC(5, 4)
+    description: 효과 크기 가정의 0~1 신뢰도
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: evidence_id
+    data_type: VARCHAR(40)
+    description: 이벤트 존재를 뒷받침하는 근거 코드. 상승폭 자체의 실측 근거는 아님
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.hotel_event_effect
+  description: 동일 이벤트가 호텔과 영업 도메인마다 서로 다른 상승폭·선행·후행 효과를 갖도록 한 시나리오 계약
+  domain_urn: urn:li:domain:answervice_pms
+  event_time: NOT_APPLICABLE
+  fqn: pms.walkerhill_v4_3.hotel_event_effect
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - domain
+    - event_id
+    - hotel_code
+    - metric_name
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.hotel_event_effect,PROD)
+  primary_key:
+  - domain
+  - event_id
+  - hotel_code
+  - metric_name
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 투숙별 요금·환불 내역
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: folio_posting_id
+    data_type: VARCHAR(72)
+    description: 폴리오 전표의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: stay_id
+    data_type: VARCHAR(64)
+    description: 전표가 귀속되는 합성 투숙 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reservation_id
+    data_type: VARCHAR(64)
+    description: 전표와 연결된 합성 예약 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: RESERVATION_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: posted_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 전표가 원장에 기록된 한국 표준시 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: posting_type
+    data_type: VARCHAR(32)
+    description: ROOM_CHARGE·OTHER_ROOM_CHARGE·POS_ROOM_CHARGE·REFUND 등 전표 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_system
+    data_type: VARCHAR(24)
+    description: 외부 원천 전표이면 POS 등 원천 시스템 코드, PMS 자체 전표이면 NULL
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_transaction_id
+    data_type: VARCHAR(64)
+    description: 외부 원천 전표 식별자. POS 객실청구는 pos_orders.order_id와 논리적으로 연결
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: gross_amount
+    data_type: NUMERIC(18, 2)
+    description: 할인 전 합성 공급가액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: discount_amount
+    data_type: NUMERIC(18, 2)
+    description: 전표 단위 합성 할인액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: service_charge_amount
+    data_type: NUMERIC(18, 2)
+    description: 별도로 계산한 합성 봉사료
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: tax_amount
+    data_type: NUMERIC(18, 2)
+    description: 별도로 계산한 합성 세액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: refund_amount
+    data_type: NUMERIC(18, 2)
+    description: 환불·취소 전표의 양수 표시 금액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: net_amount
+    data_type: NUMERIC(18, 2)
+    description: 할인·봉사료·세금·환불을 반영한 부호 있는 최종 전표액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: currency_code
+    data_type: CHAR(3)
+    description: 전표 통화 ISO 코드이며 현재 KRW
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: posting_status
+    data_type: VARCHAR(20)
+    description: POSTED·REVERSED 중 원장 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 회계 전표가 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_folio_postings
+  description: 객실료·부대료·세금·봉사료·환불을 분리해 투숙별 금액을 재조정할 수 있는 합성 폴리오 원장
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - posted_at
+  fqn: pms.walkerhill_v4_3.pms_folio_postings
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - folio_posting_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_folio_postings,PROD)
+  primary_key:
+  - folio_posting_id
+  sensitivity: RESTRICTED
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 투숙객 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: guest_id
+    data_type: VARCHAR(40)
+    description: 실제 고객과 연결되지 않는 합성 투숙객 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: identifier
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: guest_segment
+    data_type: VARCHAR(24)
+    description: LEISURE·BUSINESS·FAMILY·MEMBER 등 합성 수요 세그먼트
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: country_group
+    data_type: VARCHAR(24)
+    description: DOMESTIC·ASIA·AMERICAS_EUROPE 등 비식별 지역 그룹
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: created_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 합성 고객 레코드 최초 생성 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 고객자료가 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_guests
+  description: 이름·연락처·주소 없이 세그먼트만 보유하는 비식별 합성 투숙객 마스터
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - created_at
+  fqn: pms.walkerhill_v4_3.pms_guests
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - guest_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_guests,PROD)
+  primary_key:
+  - guest_id
+  sensitivity: RESTRICTED
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 예약 상태 변경 이력
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: status_history_id
+    data_type: VARCHAR(72)
+    description: 예약 상태 이력의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reservation_id
+    data_type: VARCHAR(64)
+    description: 상태가 변경된 합성 예약 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: RESERVATION_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: status_code
+    data_type: VARCHAR(24)
+    description: 해당 시각 이후 적용되는 예약 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: status_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 상태 전이가 발생한 한국 표준시 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reason_code
+    data_type: VARCHAR(32)
+    description: 취소·노쇼 등 상태 변경의 합성 사유
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_process
+    data_type: VARCHAR(32)
+    description: BOOKING·FRONT_DESK·NIGHT_AUDIT 등 상태를 만든 합성 업무 프로세스
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 예약 로그가 아닌 합성 이력임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_reservation_status_history
+  description: 예약 생성·확정·취소·체크인·체크아웃 전이를 시간순으로 보존하는 합성 상태 이력
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - status_at
+  fqn: pms.walkerhill_v4_3.pms_reservation_status_history
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - status_history_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_reservation_status_history,PROD)
+  primary_key:
+  - status_history_id
+  sensitivity: RESTRICTED
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 객실 예약 내역
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: reservation_id
+    data_type: VARCHAR(64)
+    description: 예약의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: RESERVATION_ID
+    semantic_role: identifier
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: guest_id
+    data_type: VARCHAR(40)
+    description: 예약 대표 합성 투숙객 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 예약 대상 합성 호텔 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_type_code
+    data_type: VARCHAR(40)
+    description: 예약한 호텔 내 객실 유형 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: assigned_room_id
+    data_type: VARCHAR(64)
+    description: 체크인 또는 사전배정된 합성 객실. 미배정·취소는 NULL
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: booked_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 한국 표준시 오프셋을 포함한 예약 생성 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: checkin_date
+    data_type: DATE
+    description: 예약 체크인 영업일
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: checkout_date
+    data_type: DATE
+    description: 예약 체크아웃 영업일. 숙박일 계산에서 제외되는 끝 경계
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: booking_channel
+    data_type: VARCHAR(24)
+    description: DIRECT_WEB·OTA·CORPORATE·PHONE 등 합성 유입 채널
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: market_segment
+    data_type: VARCHAR(24)
+    description: LEISURE·BUSINESS·GROUP 등 합성 시장 세그먼트
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reservation_status
+    data_type: VARCHAR(24)
+    description: BOOKED·CONFIRMED·CANCELLED·NO_SHOW·CHECKED_OUT 중 최종 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: cancelled_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 취소된 경우의 취소 시각
+    key_role: NONE
+    logical_type: time
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: cancellation_reason_code
+    data_type: VARCHAR(32)
+    description: 고객·가격·일정 등 합성 취소 사유 코드
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: banquet_event_id
+    data_type: VARCHAR(64)
+    description: 연회 객실 블록에서 파생된 경우의 교차 엔진 논리 키
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: quoted_room_rate
+    data_type: NUMERIC(18, 2)
+    description: 1박 기준 합성 제시 객실요금
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: discount_amount
+    data_type: NUMERIC(18, 2)
+    description: 전체 예약에 적용한 합성 객실 할인액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: booked_amount
+    data_type: NUMERIC(18, 2)
+    description: 숙박일수와 할인을 반영한 합성 예약 객실금액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: currency_code
+    data_type: CHAR(3)
+    description: 금액 통화 ISO 코드이며 현재 KRW
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_forecast
+    data_type: BOOLEAN
+    description: 2026-08-31 종료 합성 시나리오 행과 향후 별도 예측 예약을 구분하는 플래그. false는 실제 워커힐 실적을 뜻하지 않음
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 예약이 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_reservations
+  description: 예약 시점부터 취소·확정 상태, 채널, 투숙일, 견적요금까지 재현한 합성 예약 원장
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - booked_at
+  - cancelled_at
+  - checkin_date
+  - checkout_date
+  fqn: pms.walkerhill_v4_3.pms_reservations
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - reservation_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_reservations,PROD)
+  primary_key:
+  - reservation_id
+  sensitivity: RESTRICTED
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 일별 판매 가능 객실 현황
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 재고가 속한 합성 호텔 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: business_date
+    data_type: DATE
+    description: 객실 재고가 적용되는 영업일
+    key_role: PRIMARY_KEY
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: room_type_code
+    data_type: VARCHAR(40)
+    description: 재고를 집계한 호텔 내 객실 유형 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: physical_rooms
+    data_type: INTEGER
+    description: 합성 객실 마스터의 물리 객실 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: out_of_order_rooms
+    data_type: INTEGER
+    description: 해당 날짜 판매중지 기간과 겹치는 객실 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: house_use_rooms
+    data_type: INTEGER
+    description: 직원·운영 목적으로 판매하지 않는 합성 객실 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: available_room_nights
+    data_type: INTEGER
+    description: physical-out_of_order-house_use로 계산한 판매 가능 객실박
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_forecast
+    data_type: BOOLEAN
+    description: 2026-08-31 종료 합성 시나리오에 포함된 행은 false. 패키지 생성일 현재 실제 관측 실적이라는 뜻이 아니며 향후 별도 예측 확장만 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: 객실 공급이 합성 가정임을 나타내는 출처 분류
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_room_inventory_daily
+  description: 호텔·영업일·객실유형 단위 물리 객실, 고장, 하우스유즈 및 판매 가능 객실박 스냅샷
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - business_date
+  fqn: pms.walkerhill_v4_3.pms_room_inventory_daily
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - business_date
+    - hotel_code
+    - room_type_code
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_room_inventory_daily,PROD)
+  primary_key:
+  - business_date
+  - hotel_code
+  - room_type_code
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 객실 판매 중지 이력
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: out_of_order_id
+    data_type: VARCHAR(64)
+    description: 판매중지 기간의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_id
+    data_type: VARCHAR(64)
+    description: 판매 중지된 합성 객실 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: started_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 객실 판매중지 시작 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: ended_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 객실 판매중지 종료 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reason_code
+    data_type: VARCHAR(32)
+    description: MAINTENANCE·SAFETY·DEEP_CLEAN 등 합성 중지 사유
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: work_order_ref
+    data_type: VARCHAR(64)
+    description: 향후 시설 작업지시와 연결할 합성 참조 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 작업지시가 아닌 합성 이력임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_room_out_of_order_periods
+  description: 정비·안전·객실 상태로 판매 중지된 합성 객실 기간 이력
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - ended_at
+  - started_at
+  fqn: pms.walkerhill_v4_3.pms_room_out_of_order_periods
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - out_of_order_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_room_out_of_order_periods,PROD)
+  primary_key:
+  - out_of_order_id
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 객실 유형 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 객실 유형을 운영하는 합성 호텔 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: room_type_code
+    data_type: VARCHAR(40)
+    description: 호텔 내부에서 유일한 합성 객실 유형 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: public_name
+    data_type: VARCHAR(160)
+    description: 공식 객실 페이지에서 확인한 공개 객실 유형명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_room_count
+    data_type: INTEGER
+    description: 생성용 객실 수 가정. 공식 보유 객실 수가 아님
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_max_occupancy
+    data_type: SMALLINT
+    description: 객실 유형별 합성 최대 투숙 인원. 공식 정원이 아니며 생성·검증용 가정
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_base_rate_krw
+    data_type: NUMERIC(18, 2)
+    description: 가격 분포 중심값으로 쓰는 합성 원화 기준요금
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_url
+    data_type: TEXT
+    description: 객실 유형명 공개 근거 URL
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: 공개 명칭과 합성 수량·가격의 출처 분류
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_active
+    data_type: BOOLEAN
+    description: 생성 기간 종료일 현재 판매 대상 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_room_types
+  description: 호텔별 공개 객실 유형명에 합성 객실 수와 기준요금을 연결한 객실 유형 마스터
+  domain_urn: urn:li:domain:answervice_pms
+  event_time: NOT_APPLICABLE
+  fqn: pms.walkerhill_v4_3.pms_room_types
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - hotel_code
+    - room_type_code
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_room_types,PROD)
+  primary_key:
+  - hotel_code
+  - room_type_code
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 객실 정보
+  columns:
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 객실이 속한 합성 호텔 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: room_id
+    data_type: VARCHAR(64)
+    description: 실제 객실번호와 무관한 합성 객실 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_type_code
+    data_type: VARCHAR(40)
+    description: 같은 hotel_code 안에서 참조하는 객실 유형 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: floor_no
+    data_type: SMALLINT
+    description: 동선·배정 분산을 위한 합성 층 번호
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_active
+    data_type: BOOLEAN
+    description: 생성 기간 종료일 현재 운용 객실 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: 객실 행이 전적으로 합성임을 나타내는 출처 분류
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_rooms
+  description: 중복 없는 객실 배정과 고장 기간 검증을 위한 개별 합성 객실 마스터
+  domain_urn: urn:li:domain:answervice_pms
+  event_time: NOT_APPLICABLE
+  fqn: pms.walkerhill_v4_3.pms_rooms
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - room_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_rooms,PROD)
+  primary_key:
+  - room_id
+  sensitivity: INTERNAL
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 투숙일별 객실 요금·매출
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: stay_id
+    data_type: VARCHAR(64)
+    description: 객실박이 속한 합성 투숙 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reservation_id
+    data_type: VARCHAR(64)
+    description: 객실박의 원 합성 예약 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: RESERVATION_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: true
+    column_name: business_date
+    data_type: DATE
+    description: 요금과 객실 매출이 귀속되는 Asia/Seoul 숙박일
+    key_role: PRIMARY_KEY
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_rate_day_type
+    data_type: VARCHAR(16)
+    description: SUN_THU·FRIDAY·SATURDAY 중 해당 숙박일의 판매 요일 구분
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: gross_room_rate
+    data_type: NUMERIC(18, 2)
+    description: 할인 전 숙박일별 합성 객실요금(원)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: discount_amount
+    data_type: NUMERIC(18, 2)
+    description: 해당 숙박일에 배분된 합성 할인액(원)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: net_room_revenue
+    data_type: NUMERIC(18, 2)
+    description: 예약 총액과 일치하도록 원단위 잔액을 보정한 숙박일별 합성 객실매출(원)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_id
+    data_type: VARCHAR(48)
+    description: 해당 숙박일 요금에 가장 큰 ADR 효과를 적용한 이벤트 코드. 미적용은 NULL
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 요금 원장이 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_stay_nights
+  description: 투숙일별 금·토·일~목, 계절·공휴일·이벤트 요금과 할인을 보존하는 합성 객실박 원장
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - business_date
+  fqn: pms.walkerhill_v4_3.pms_stay_nights
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - business_date
+    - stay_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_stay_nights,PROD)
+  primary_key:
+  - business_date
+  - stay_id
+  sensitivity: RESTRICTED
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pms
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 객실 투숙 내역
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: stay_id
+    data_type: VARCHAR(64)
+    description: 투숙 건의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reservation_id
+    data_type: VARCHAR(64)
+    description: 투숙을 발생시킨 합성 예약 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: RESERVATION_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: guest_id
+    data_type: VARCHAR(40)
+    description: 대표 합성 투숙객 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 실제 투숙한 합성 호텔 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_id
+    data_type: VARCHAR(64)
+    description: 배정된 합성 객실 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_type_code
+    data_type: VARCHAR(40)
+    description: 투숙한 호텔 내 객실 유형 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: actual_checkin_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 실제 합성 체크인 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: actual_checkout_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 실제 합성 체크아웃 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: occupied_room_nights
+    data_type: INTEGER
+    description: 체크인일부터 체크아웃 전일까지의 점유 객실박 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: guest_count
+    data_type: SMALLINT
+    description: 객실에 등록된 합성 투숙 인원 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: room_revenue
+    data_type: NUMERIC(18, 2)
+    description: 할인 후 합성 객실 매출 총액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: other_room_charges
+    data_type: NUMERIC(18, 2)
+    description: 미니바·세탁과 POS 객실청구를 포함한 객실 부대 합성 청구액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: stay_status
+    data_type: VARCHAR(24)
+    description: CHECKED_IN·CHECKED_OUT 등 투숙 종료 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: complimentary_flag
+    data_type: BOOLEAN
+    description: 무료 투숙 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: house_use_flag
+    data_type: BOOLEAN
+    description: 호텔 내부 운영 목적 투숙 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_forecast
+    data_type: BOOLEAN
+    description: 2026-08-31 종료 합성 시나리오 투숙과 향후 별도 예측 행을 구분하는 플래그. false는 실제 워커힐 실적을 뜻하지 않음
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 투숙자료가 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pms.pms_stays
+  description: 실제 체크인·체크아웃과 객실 배정, 투숙객 수, 객실매출을 담는 합성 투숙 팩트
+  domain_urn: urn:li:domain:answervice_pms
+  event_time:
+  - actual_checkin_at
+  - actual_checkout_at
+  fqn: pms.walkerhill_v4_3.pms_stays
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - stay_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.walkerhill_v4_3.pms_stays,PROD)
+  primary_key:
+  - stay_id
+  sensitivity: RESTRICTED
+  source_system: PMS
+  update_frequency: ON_DATA_RELEASE
+schema_version: answervice.canonical-metadata.v1
+source_scope: pms

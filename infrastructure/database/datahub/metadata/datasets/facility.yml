@@ -1,0 +1,688 @@
+# 책임: Facility Dataset·Column 승인 상태를 소유하며 schema 불일치 시 게시를 차단한다.
+datasets:
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_facility
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 시설 사고·불편 이력
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: incident_id
+    data_type: String
+    description: 시설 사고·불편 접수 행의 결정적 합성 식별자
+    key_role: GRAIN_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: facility_id
+    data_type: String
+    description: 사고가 발생한 시설 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: opened_at
+    data_type: DateTime('Asia/Seoul')
+    description: 사고 또는 불편이 최초 접수된 한국 표준시 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: closed_at
+    data_type: Nullable(DateTime('Asia/Seoul'))
+    description: 조치 완료 시각. 미해결 상태는 NULL
+    key_role: NONE
+    logical_type: time
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: severity
+    data_type: LowCardinality(String)
+    description: LOW·MEDIUM·HIGH 중 운영 영향 심각도
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: incident_type
+    data_type: LowCardinality(String)
+    description: EQUIPMENT·SAFETY·CLEANLINESS·CAPACITY·WEATHER 중 원인 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: impact_minutes
+    data_type: UInt32
+    description: 시설 운영 또는 고객 경험에 영향을 준 합성 시간(분)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: guest_impact_count
+    data_type: UInt32
+    description: 해당 사고로 직접 영향을 받은 합성 고객 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: resolution_status
+    data_type: LowCardinality(String)
+    description: RESOLVED·MONITORING·OPEN 중 종료 시점의 조치 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: UInt8
+    description: 실제 사고 기록이 아닌 합성 행임을 나타내며 항상 1
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: facility.facility_incidents
+  description: 시설 신뢰성과 운영 중단을 분석하기 위한 합성 사고·불편 이력
+  domain_urn: urn:li:domain:answervice_facility
+  event_time:
+  - closed_at
+  - opened_at
+  fqn: facility.walkerhill_v4_3.facility_incidents
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - incident_id
+    kind: event
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:clickhouse,facility.walkerhill_v4_3.facility_incidents,PROD)
+  primary_key:
+  - incident_id
+  sensitivity: INTERNAL
+  source_system: FACILITY
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_facility
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 시설 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: facility_id
+    data_type: String
+    description: 시설을 유일하게 식별하는 합성 코드
+    key_role: GRAIN_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: facility_name
+    data_type: String
+    description: 공개 명칭 또는 합성 모델에서 부여한 시설 표시명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: facility_type
+    data_type: LowCardinality(String)
+    description: GOLF·POOL·FITNESS·WELLNESS·GUEST_SERVICE·EVENT_SUPPORT 중 시설 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: LowCardinality(String)
+    description: GRAND·VISTA·DOUGLAS 또는 CAMPUS 공용 운영 범위
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reporting_hotel_code
+    data_type: LowCardinality(String)
+    description: 공용 시설을 일관된 호텔 KPI에 배분하는 GRAND·VISTA·DOUGLAS 보고 귀속 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: effective_from
+    data_type: Date
+    description: 시설이 합성 운영 모델에 포함되기 시작한 날짜
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: capacity
+    data_type: UInt32
+    description: 동시 이용 가능 인원에 대한 합성 상한값
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: open_minute
+    data_type: UInt16
+    description: 영업일 00:00부터 합성 시설 운영 시작까지의 분
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: close_minute
+    data_type: UInt16
+    description: 영업일 00:00부터 합성 시설 운영 종료까지의 분. 현 버전은 자정 넘김 없음
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: closed_iso_weekday
+    data_type: UInt8
+    description: 0은 정기 휴무 없음, 1~7은 ISO 요일 합성 정기 휴무일
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_url
+    data_type: String
+    description: 명칭이나 개장일의 공개 근거 URL. 순수 가정은 대표 브랜드 URL
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: LowCardinality(String)
+    description: OFFICIAL_FACT·OFFICIAL_NAME_SYNTHETIC_RULE·SYNTHETIC_ASSUMPTION 중 출처 등급
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: UInt8
+    description: 실제 운영 레코드가 아닌 합성 데이터임을 나타내며 항상 1
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: facility.facility_master
+  description: 시설별 이용·사고·자원 지표의 기준이 되는 합성 시설 마스터
+  domain_urn: urn:li:domain:answervice_facility
+  event_time:
+  - effective_from
+  fqn: facility.walkerhill_v4_3.facility_master
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - facility_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:clickhouse,facility.walkerhill_v4_3.facility_master,PROD)
+  primary_key:
+  - facility_id
+  sensitivity: INTERNAL
+  source_system: FACILITY
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_facility
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 일별 시설 자원 사용량
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: business_date
+    data_type: Date
+    description: 자원 사용량이 귀속되는 호텔 영업일
+    key_role: GRAIN_KEY
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: facility_id
+    data_type: String
+    description: 자원을 소비한 시설 코드
+    key_role: GRAIN_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: energy_kwh
+    data_type: Decimal(16, 3)
+    description: 계절·이용량을 반영한 합성 전력 사용량(kWh)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: water_m3
+    data_type: Decimal(16, 3)
+    description: 시설 유형·이용량을 반영한 합성 용수 사용량(m³)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: waste_kg
+    data_type: Decimal(16, 3)
+    description: 고객 활동량을 반영한 합성 폐기물 발생량(kg)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: occupied_room_equivalent
+    data_type: Decimal(12, 3)
+    description: 자원 모델에 사용한 객실 점유 환산 수요. 실제 객실 점유값이 아님
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: weather_index
+    data_type: Decimal(8, 4)
+    description: 계절 온도·강수 효과를 압축한 합성 기상 부하 지수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: UInt8
+    description: 실제 계량기 자료가 아닌 합성 집계 행임을 나타내며 항상 1
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: facility.facility_resource_daily
+  description: 시설·영업일 단위의 전력·용수·폐기물 합성 사용량
+  domain_urn: urn:li:domain:answervice_facility
+  event_time:
+  - business_date
+  fqn: facility.walkerhill_v4_3.facility_resource_daily
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - business_date
+    - facility_id
+    kind: periodic
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:clickhouse,facility.walkerhill_v4_3.facility_resource_daily,PROD)
+  primary_key:
+  - business_date
+  - facility_id
+  sensitivity: INTERNAL
+  source_system: FACILITY
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_facility
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 시설 이용 내역
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: usage_event_id
+    data_type: String
+    description: 시설 이용 이벤트의 결정적 합성 식별자
+    key_role: GRAIN_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: facility_id
+    data_type: String
+    description: 이용한 시설 코드. facility_master와 논리적으로 연결
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_time
+    data_type: DateTime('Asia/Seoul')
+    description: 시설 이용이 시작된 한국 표준시 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: usage_type
+    data_type: LowCardinality(String)
+    description: ENTRY·SESSION·RENTAL·PROGRAM 중 이용 행위 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: user_ref
+    data_type: Nullable(String)
+    description: 개인정보가 아닌 교차 도메인용 합성 사용자 참조값
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: party_size
+    data_type: UInt16
+    description: 해당 이용 이벤트에 포함된 합성 인원 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: duration_minutes
+    data_type: UInt16
+    description: 시설 이용 지속 시간(분)
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: gross_amount
+    data_type: Decimal(18, 2)
+    description: 유료 이용인 경우의 부가세 포함 합성 총액. 무료 이용은 0
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_id
+    data_type: Nullable(String)
+    description: 공개 행사 또는 대형 이벤트 영향권에 포함된 경우의 합성 이벤트 코드
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: UInt8
+    description: 실제 이용 로그가 아닌 합성 행임을 나타내며 항상 1
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: facility.facility_usage_events
+  description: 시설별 시간대·계절·이벤트 영향을 재현한 합성 이용 이벤트
+  domain_urn: urn:li:domain:answervice_facility
+  event_time:
+  - event_time
+  fqn: facility.walkerhill_v4_3.facility_usage_events
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - usage_event_id
+    kind: event
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:clickhouse,facility.walkerhill_v4_3.facility_usage_events,PROD)
+  primary_key:
+  - usage_event_id
+  sensitivity: RESTRICTED
+  source_system: FACILITY
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_facility
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 일별 부서·근무조 인력 계획·실적
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: business_date
+    data_type: Date
+    description: 인력 배치가 귀속되는 호텔 영업일
+    key_role: GRAIN_KEY
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: hotel_code
+    data_type: LowCardinality(String)
+    description: GRAND·VISTA·DOUGLAS 중 인력이 배치된 호텔
+    key_role: GRAIN_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: department
+    data_type: LowCardinality(String)
+    description: FRONT·HOUSEKEEPING·FNB·FACILITY·SECURITY 중 운영 부서
+    key_role: GRAIN_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: shift_code
+    data_type: LowCardinality(String)
+    description: DAY·EVENING·NIGHT 중 근무조
+    key_role: GRAIN_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: planned_hours
+    data_type: Decimal(12, 2)
+    description: 점유·이벤트 수요를 반영한 합성 계획 근로시간
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: actual_hours
+    data_type: Decimal(12, 2)
+    description: 결근·초과근무 변동을 반영한 합성 실제 근로시간
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: guest_facing_fte
+    data_type: Decimal(10, 2)
+    description: 실제 근로시간을 8시간 기준으로 환산한 고객 접점 인력 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: overtime_hours
+    data_type: Decimal(10, 2)
+    description: 계획 근로시간을 초과한 합성 근로시간
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_load_index
+    data_type: Decimal(8, 4)
+    description: 해당 날짜의 대형 행사·성수기 인력 부하 지수. 평시 기준은 약 1
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: UInt8
+    description: 실제 인사자료가 아닌 합성 집계 행임을 나타내며 항상 1
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: facility.hotel_staffing_daily
+  description: 호텔·영업일·부서·근무조 단위의 합성 인력 계획 및 실적
+  domain_urn: urn:li:domain:answervice_facility
+  event_time:
+  - business_date
+  fqn: facility.walkerhill_v4_3.hotel_staffing_daily
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - business_date
+    - hotel_code
+    - department
+    - shift_code
+    kind: periodic
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:clickhouse,facility.walkerhill_v4_3.hotel_staffing_daily,PROD)
+  primary_key:
+  - business_date
+  - department
+  - hotel_code
+  - shift_code
+  sensitivity: INTERNAL
+  source_system: FACILITY
+  update_frequency: ON_DATA_RELEASE
+schema_version: answervice.canonical-metadata.v1
+source_scope: facility

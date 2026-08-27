@@ -91,6 +91,19 @@ class CatalogSnapshotLoader:
                 self._inflight = None
         return snapshot
 
+    async def invalidate(self) -> None:
+        """활성 release generation 변경 시 다음 load가 fresh readback을 수행하게 한다.
+
+        이미 시작된 readback은 그 호출자에게만 완료될 수 있도록 취소하지 않는다.
+        다만 inflight 참조를 분리해 완료된 이전 결과가 새 generation cache로 게시되지
+        못하게 하고, 다음 호출은 즉시 별도의 fresh readback을 시작한다.
+        """
+
+        async with self._lock:
+            self._snapshot = None
+            self._expires_at = 0.0
+            self._inflight = None
+
     async def _load_uncached(self) -> CatalogSnapshot:
         dataset_hits, term_hits = await asyncio.gather(
             self._client.list_datasets(),

@@ -1,0 +1,735 @@
+# 책임: Banquet Dataset·Column 승인 상태를 소유하며 schema 불일치 시 게시를 차단한다.
+datasets:
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_banquet
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 연회 예약
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: banquet_event_id
+    data_type: VARCHAR(64)
+    description: 연회 예약의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: banquet_customer_id
+    data_type: VARCHAR(40)
+    description: 개인정보가 아닌 합성 연회 고객 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: venue_id
+    data_type: VARCHAR(40)
+    description: 예약 행사장 식별 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: inquiry_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 최초 연회 문의 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: quoted_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 견적을 제시한 시각. 문의 종료는 NULL
+    key_role: NONE
+    logical_type: time
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: confirmed_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 계약 확정 시각. 미확정은 NULL
+    key_role: NONE
+    logical_type: time
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: cancelled_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 취소 시각. 취소되지 않았으면 NULL
+    key_role: NONE
+    logical_type: time
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_date
+    data_type: DATE
+    description: 행사가 실제 또는 예정된 영업일
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_slot
+    data_type: VARCHAR(16)
+    description: MORNING·AFTERNOON·EVENING 중 행사장 중복 방지용 합성 시간대
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: starts_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 행사장 점유가 시작되는 Asia/Seoul 기준 합성 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: ends_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 행사장 점유가 종료되는 Asia/Seoul 기준 합성 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: event_type
+    data_type: VARCHAR(40)
+    description: WEDDING·CORPORATE·SOCIAL·CONFERENCE 등 합성 행사 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: booking_status
+    data_type: VARCHAR(24)
+    description: COMPLETED·CANCELLED 중 2026-08-31 스냅샷 최종 상태. INQUIRY·QUOTED·CONFIRMED는 이력에 보존
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: expected_guests
+    data_type: INTEGER
+    description: 견적 단계의 합성 예상 참석자 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: actual_attendees
+    data_type: INTEGER
+    description: 행사 완료 후 합성 실제 참석자 수. 미완료는 NULL
+    key_role: NONE
+    logical_type: number
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: quoted_amount
+    data_type: NUMERIC(18, 2)
+    description: 견적 단계에 제시한 합성 원화 금액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: contracted_amount
+    data_type: NUMERIC(18, 2)
+    description: 확정 계약의 합성 원화 금액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: deposit_amount
+    data_type: NUMERIC(18, 2)
+    description: 확정 시 수납한 합성 계약금. 현 모델은 계약액의 30%
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: balance_amount
+    data_type: NUMERIC(18, 2)
+    description: 행사 완료 시 수납한 합성 잔금. 취소 건은 0
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: cancellation_fee_amount
+    data_type: NUMERIC(18, 2)
+    description: 취소 계약에서 인식한 합성 위약금. 완료 건은 0
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: currency_code
+    data_type: CHAR(3)
+    description: 계약 통화 ISO 코드이며 현재 KRW
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 고객 계약이 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: banquet.banquet_bookings
+  description: 문의·견적·확정·취소 시각과 행사일·참석자·계약액을 재현한 합성 연회 예약
+  domain_urn: urn:li:domain:answervice_banquet
+  event_time:
+  - cancelled_at
+  - confirmed_at
+  - ends_at
+  - event_date
+  - inquiry_at
+  - quoted_at
+  - starts_at
+  fqn: banquet.walkerhill_v4_3.banquet_bookings
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - banquet_event_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.banquet_db.walkerhill_v4_3.banquet_bookings,PROD)
+  primary_key:
+  - banquet_event_id
+  sensitivity: RESTRICTED
+  source_system: BANQUET
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_banquet
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 연회 매출 상세
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: revenue_line_id
+    data_type: VARCHAR(72)
+    description: 연회 매출 항목의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: banquet_event_id
+    data_type: VARCHAR(64)
+    description: 매출이 귀속되는 합성 연회 예약 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: recognized_date
+    data_type: DATE
+    description: 매출을 영업실적으로 인식한 날짜
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: revenue_category
+    data_type: VARCHAR(40)
+    description: FOOD·BEVERAGE·VENUE·EQUIPMENT·SERVICE 중 매출 범주
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: gross_amount
+    data_type: NUMERIC(18, 2)
+    description: 할인·환입 전 합성 매출 총액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: discount_amount
+    data_type: NUMERIC(18, 2)
+    description: 계약·프로모션 합성 할인액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reversal_amount
+    data_type: NUMERIC(18, 2)
+    description: 취소·정정으로 환입한 합성 금액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: recognized_amount
+    data_type: NUMERIC(18, 2)
+    description: gross-discount-reversal로 계산한 합성 인식매출
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: cost_amount
+    data_type: NUMERIC(18, 2)
+    description: 품목별 합성 원가율로 계산한 분석용 원가
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: revenue_status
+    data_type: VARCHAR(24)
+    description: RECOGNIZED·REVERSED 등 매출 인식 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 회계자료가 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: banquet.banquet_revenue_lines
+  description: 식음·대관·장비·서비스 매출과 할인·환입·원가를 분리한 합성 연회 매출 원장
+  domain_urn: urn:li:domain:answervice_banquet
+  event_time:
+  - recognized_date
+  fqn: banquet.walkerhill_v4_3.banquet_revenue_lines
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - revenue_line_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.banquet_db.walkerhill_v4_3.banquet_revenue_lines,PROD)
+  primary_key:
+  - revenue_line_id
+  sensitivity: INTERNAL
+  source_system: BANQUET
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_banquet
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 연회 연계 객실 확보 현황
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: room_block_id
+    data_type: VARCHAR(72)
+    description: 객실 블록의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: banquet_event_id
+    data_type: VARCHAR(64)
+    description: 객실 블록을 발생시킨 합성 연회 예약 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 객실을 제공하는 합성 호텔 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: checkin_date
+    data_type: DATE
+    description: 단체 객실 블록 체크인 날짜
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: checkout_date
+    data_type: DATE
+    description: 단체 객실 블록 체크아웃 날짜
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reserved_room_nights
+    data_type: INTEGER
+    description: 계약상 확보된 합성 객실박 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: pickup_room_nights
+    data_type: INTEGER
+    description: 실제 예약으로 전환된 합성 객실박 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 단체 계약이 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: banquet.banquet_room_blocks
+  description: 연회·단체 행사와 PMS 객실 수요를 연결하는 호텔별 합성 객실 블록
+  domain_urn: urn:li:domain:answervice_banquet
+  event_time:
+  - checkin_date
+  - checkout_date
+  fqn: banquet.walkerhill_v4_3.banquet_room_blocks
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - room_block_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.banquet_db.walkerhill_v4_3.banquet_room_blocks,PROD)
+  primary_key:
+  - room_block_id
+  sensitivity: INTERNAL
+  source_system: BANQUET
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_banquet
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 연회 예약 상태 이력
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: status_history_id
+    data_type: VARCHAR(72)
+    description: 연회 상태 이력의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: banquet_event_id
+    data_type: VARCHAR(64)
+    description: 상태가 변경된 합성 연회 예약 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: status_code
+    data_type: VARCHAR(24)
+    description: 해당 시각부터 적용되는 연회 예약 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: status_at
+    data_type: TIMESTAMP WITH TIME ZONE
+    description: 연회 예약 상태 전이 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: reason_code
+    data_type: VARCHAR(32)
+    description: 취소·보류 등 상태 변경의 합성 사유
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BOOLEAN
+    description: 실제 영업 이력이 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: banquet.banquet_status_history
+  description: 문의부터 견적·확정·취소·완료까지 연회 예약 상태 전이를 보존하는 합성 이력
+  domain_urn: urn:li:domain:answervice_banquet
+  event_time:
+  - status_at
+  fqn: banquet.walkerhill_v4_3.banquet_status_history
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - status_history_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.banquet_db.walkerhill_v4_3.banquet_status_history,PROD)
+  primary_key:
+  - status_history_id
+  sensitivity: INTERNAL
+  source_system: BANQUET
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_banquet
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 연회장 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: venue_id
+    data_type: VARCHAR(40)
+    description: 행사장의 합성 식별 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 행사장이 귀속되는 합성 호텔 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: public_name
+    data_type: VARCHAR(160)
+    description: 공식 컨벤션 페이지에서 확인한 공개 행사장명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: venue_category
+    data_type: VARCHAR(40)
+    description: GRAND_BALLROOM·MEETING_ROOM·OUTDOOR 등 공간 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_capacity
+    data_type: INTEGER
+    description: 생성 부하에 쓰는 합성 최대 인원. 공식 수용인원과 동일하다고 보장하지 않음
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: public_capacity_note
+    data_type: TEXT
+    description: 공개 페이지의 수용인원 표현 또는 해석 주의사항
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: FREE_TEXT
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: source_url
+    data_type: TEXT
+    description: 행사장 명칭 근거 URL
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: 공개 명칭과 합성 수용인원의 출처 분류
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_active
+    data_type: BOOLEAN
+    description: 생성 기간 종료일 현재 예약 가능 여부
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: banquet.banquet_venues
+  description: 공개 미팅·연회 공간명과 합성 수용인원을 관리하는 행사장 마스터
+  domain_urn: urn:li:domain:answervice_banquet
+  event_time: NOT_APPLICABLE
+  fqn: banquet.walkerhill_v4_3.banquet_venues
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - venue_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.banquet_db.walkerhill_v4_3.banquet_venues,PROD)
+  primary_key:
+  - venue_id
+  sensitivity: RESTRICTED
+  source_system: BANQUET
+  update_frequency: ON_DATA_RELEASE
+schema_version: answervice.canonical-metadata.v1
+source_scope: banquet

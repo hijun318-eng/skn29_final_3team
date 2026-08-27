@@ -186,6 +186,8 @@ class QueryGovernanceEngine:
             max(0.1, ttl),
         )
         self._verified_projection_lock = asyncio.Lock()
+        self._parity_projection_key: tuple[str, str, int] | None = None
+        self._parity_projection_lock = asyncio.Lock()
 
     async def search_asset_candidates(
         self,
@@ -893,6 +895,18 @@ class QueryGovernanceEngine:
             raise MetadataUnavailableError(str(error)) from error
         return datasets[0].context_release
 
+    async def catalog_cache_identity(self) -> tuple[str, str, int] | None:
+        """DataHub 전체 readback 없이 active pointer의 cache namespace만 읽는다."""
+
+        if self._projection_repository is None:
+            return None
+        active = await self._projection_repository.load_active()
+        return (
+            active.projection.projection_id,
+            active.product_release_id,
+            active.generation,
+        )
+
     async def _verify_runtime_projection_schema(
         self,
         datasets: tuple[GovernedDataset, ...],
@@ -945,7 +959,7 @@ class QueryGovernanceEngine:
                     raise RuntimeCatalogRepositoryError(
                         "runtime catalog parity loader is unavailable"
                     )
-                snapshot = await self._parity_loader.load()
+                snapshot = await self._load_parity_snapshot(active_projection)
                 expected_release = projection_release.catalog_version
             else:
                 if self._loader is None:  # pragma: no cover - 생성자가 보장한다.
@@ -1027,6 +1041,27 @@ class QueryGovernanceEngine:
             else product_release_receipt(release)
         )
         return stages, receipt
+
+    async def _load_parity_snapshot(
+        self,
+        active_projection: ActiveRuntimeCatalogProjection,
+    ) -> CatalogSnapshot:
+        """활성 generation별로 DataHub parity snapshot을 한 번 fresh readback한다."""
+
+        if self._parity_loader is None:  # pragma: no cover - 호출자가 보장한다.
+            raise RuntimeCatalogRepositoryError(
+                "runtime catalog parity loader is unavailable"
+            )
+        key = (
+            active_projection.projection.projection_id,
+            active_projection.product_release_id,
+            active_projection.generation,
+        )
+        async with self._parity_projection_lock:
+            if self._parity_projection_key != key:
+                await self._parity_loader.invalidate()
+                self._parity_projection_key = key
+            return await self._parity_loader.load()
 
     async def _load_search_evidence(
         self,

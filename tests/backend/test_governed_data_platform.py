@@ -1096,6 +1096,51 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_runtime_separates_business_display_name_from_trino_fqn(self) -> None:
+        """Dataset 표시명은 업무명, 실행 식별자는 qualifiedName·governed FQN을 쓴다."""
+
+        first = next(iter(self.transport.datasets.values()))
+        first["name"] = "객실 매출 업무 데이터"
+        first["properties"]["name"] = "객실 매출 업무 데이터"
+
+        snapshot = await self.adapter._governance._loader.load()
+
+        self.assertIn(first["properties"]["qualifiedName"], snapshot.datasets_by_fqn)
+
+    async def test_runtime_rejects_display_name_and_property_name_disagreement(self) -> None:
+        """두 DataHub 표시명 표현이 갈라지면 identity read-back을 닫는다."""
+
+        first = next(iter(self.transport.datasets.values()))
+        first["name"] = "객실 매출 업무 데이터"
+        first["properties"]["name"] = "다른 표시명"
+
+        with self.assertRaisesRegex(
+            GovernedMetadataError,
+            "dataset identity differs",
+        ):
+            await self.adapter._governance._loader.load()
+
+    async def test_runtime_separates_editable_description_from_execution_receipt(self) -> None:
+        """업무 설명 개선은 허용하고 immutable typed column receipt는 보존한다."""
+
+        first = next(iter(self.transport.datasets.values()))
+        editable = first["editableSchemaMetadata"]["editableSchemaFieldInfo"]
+        editable[0]["description"] = "업무 사용자가 이해할 수 있도록 개선한 설명"
+        governed = next(
+            item
+            for item in first["properties"]["customProperties"]
+            if item["key"] == "answervice.typed_columns"
+        )
+        governed_description = json.loads(governed["value"])[0]["description"]
+
+        snapshot = await self.adapter._governance._loader.load()
+        dataset = snapshot.datasets_by_fqn[first["properties"]["qualifiedName"]]
+
+        self.assertEqual(
+            governed_description,
+            dataset.catalog_asset["columns"][0]["description"],
+        )
+
     async def test_v2_runtime_rejects_missing_editable_field_glossary_association(self) -> None:
         """Dataset Term만 남고 BUSINESS column 연결이 사라진 release는 닫는다."""
 
@@ -1234,6 +1279,27 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(stages, cached_stages)
             self.assertEqual(receipt, cached_receipt)
             self.assertEqual(parity_scrolls, self.transport.scroll_cursors)
+            self.assertEqual(
+                verified_statement_count,
+                len(self.transport.trino_statements),
+            )
+
+            repository.active = ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-a",
+                generation=2,
+            )
+            generation_stages, generation_receipt = (
+                await governance.catalog_readiness()
+            )
+            self.assertEqual(stages, generation_stages)
+            self.assertEqual(receipt, generation_receipt)
+            self.assertNotEqual(
+                parity_scrolls,
+                self.transport.scroll_cursors,
+                "active generation 변경은 DataHub parity snapshot을 다시 읽어야 한다",
+            )
+            parity_scrolls = copy.deepcopy(self.transport.scroll_cursors)
             self.assertEqual(
                 verified_statement_count,
                 len(self.transport.trino_statements),

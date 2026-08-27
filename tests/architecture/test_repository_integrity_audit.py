@@ -23,6 +23,12 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
         "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json"
     ) == "runtime-contract"
     assert _classify("infrastructure/database/trino/etc/iceberg-view-coercions.json") == "runtime-contract"
+    assert _classify(
+        "infrastructure/database/datahub/metadata/schema.json"
+    ) == "runtime-contract"
+    assert _classify(
+        "infrastructure/database/datahub/metadata/semantics.yml"
+    ) == "runtime-contract"
     assert _classify("app/backend/app/main.py") == "production"
 
 
@@ -75,6 +81,11 @@ def test_allows_versioned_schema_and_explicit_test_fixture() -> None:
     ) == ()
     assert _review_text(
         "tests/support/fakes.py", "class ContractFakeModelAdapter: pass", ".py"
+    ) == ()
+    assert _review_text(
+        "infrastructure/database/datahub/metadata/semantics.yml",
+        "catalog_version: walkerhill-analysis-semantics-v1\nmetric_id: room_revenue",
+        ".yml",
     ) == ()
 
 

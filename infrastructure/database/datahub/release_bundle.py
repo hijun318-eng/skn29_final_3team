@@ -367,7 +367,8 @@ def _asset(binding: ReleaseBinding) -> dict[str, Any]:
     platform, name, origin = dataset_key(dataset.urn)
     if (
         properties["fqn"] != relation.fqn
-        or dataset.name != relation.fqn
+        or not isinstance(dataset.name, str)
+        or not dataset.name.strip()
         or dataset.qualified_name != relation.fqn
         or platform != dataset.platform_urn
         or len(dataset.owners) != 1

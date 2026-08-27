@@ -1,0 +1,823 @@
+# 책임: POS Dataset·Column 승인 상태를 소유하며 schema 불일치 시 게시를 차단한다.
+datasets:
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pos
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 메뉴·상품 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: item_code
+    data_type: VARCHAR(48)
+    description: 메뉴 품목의 안정적 합성 식별 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: outlet_id
+    data_type: VARCHAR(40)
+    description: 메뉴를 판매하는 합성 업장 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: menu_slot
+    data_type: SMALLINT
+    description: 업장 내 결정적 메뉴 생성·정렬 순번
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: item_name
+    data_type: VARCHAR(160)
+    description: 실제 레시피와 무관한 합성 메뉴 표시명 또는 공개 카테고리명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: item_category
+    data_type: VARCHAR(40)
+    description: FOOD·BEVERAGE·ALCOHOL·DESSERT 등 메뉴 범주
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: 공개 업장 기준과 합성 메뉴 조합의 출처 분류
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_active
+    data_type: TINYINT(1)
+    description: 생성 기간 종료일 현재 판매 여부
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pos.pos_menu_items
+  description: 업장별 품목 구성과 카테고리를 제공하는 비공식 합성 메뉴 마스터
+  domain_urn: urn:li:domain:answervice_pos
+  event_time: NOT_APPLICABLE
+  fqn: pos.walkerhill_v4_3.pos_menu_items
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - item_code
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mysql,pos.walkerhill_v4_3.pos_menu_items,PROD)
+  primary_key:
+  - item_code
+  sensitivity: INTERNAL
+  source_system: POS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pos
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 메뉴 가격 변경 이력
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: item_code
+    data_type: VARCHAR(48)
+    description: 가격 이력이 적용되는 합성 메뉴 품목 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: valid_from
+    data_type: DATE
+    description: 해당 합성 단가의 유효 시작일
+    key_role: PRIMARY_KEY
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: valid_to
+    data_type: DATE
+    description: 해당 합성 단가의 유효 종료일. 현재 가격은 NULL
+    key_role: NONE
+    logical_type: date
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: unit_price_krw
+    data_type: DECIMAL(18, 2)
+    description: 원 단위로 반올림된 합성 메뉴 판매단가
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: price_reason
+    data_type: VARCHAR(40)
+    description: INITIALÂ·ANNUAL_REPRICEÂ·SEASONAL ë“± ê°€ê²© ë³€ê²½ ì‚¬ìœ
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: TINYINT(1)
+    description: 실제 가격표가 아닌 합성 이력임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pos.pos_menu_price_history
+  description: 기간 중 가격 변화와 주문 시점 단가 검증을 위한 합성 메뉴 가격 이력
+  domain_urn: urn:li:domain:answervice_pos
+  event_time:
+  - valid_from
+  - valid_to
+  fqn: pos.walkerhill_v4_3.pos_menu_price_history
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - item_code
+    - valid_from
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mysql,pos.walkerhill_v4_3.pos_menu_price_history,PROD)
+  primary_key:
+  - item_code
+  - valid_from
+  sensitivity: INTERNAL
+  source_system: POS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pos
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 주문별 메뉴 상세
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: order_item_id
+    data_type: VARCHAR(72)
+    description: 주문 품목 행의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: order_id
+    data_type: VARCHAR(64)
+    description: 품목이 속한 합성 POS 주문 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: item_code
+    data_type: VARCHAR(48)
+    description: 판매된 합성 메뉴 품목 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: quantity
+    data_type: SMALLINT
+    description: 주문 품목 수량
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: unit_price
+    data_type: DECIMAL(18, 2)
+    description: 주문 시점 가격 이력에서 선택한 합성 단가
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: gross_amount
+    data_type: DECIMAL(18, 2)
+    description: quantity*unit_price로 계산한 할인 전 품목 금액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: discount_amount
+    data_type: DECIMAL(18, 2)
+    description: 주문 할인을 품목에 배분한 합성 할인액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: net_amount
+    data_type: DECIMAL(18, 2)
+    description: gross_amount-discount_amount인 품목 순액. 세금·봉사료 제외
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: TINYINT(1)
+    description: 실제 판매 품목이 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pos.pos_order_items
+  description: 메뉴 가격 이력과 주문 헤더 금액을 재조정할 수 있는 합성 POS 주문 품목
+  domain_urn: urn:li:domain:answervice_pos
+  event_time: NOT_APPLICABLE
+  fqn: pos.walkerhill_v4_3.pos_order_items
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - order_item_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mysql,pos.walkerhill_v4_3.pos_order_items,PROD)
+  primary_key:
+  - order_item_id
+  sensitivity: INTERNAL
+  source_system: POS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pos
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 식음 주문·매출 내역
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: order_id
+    data_type: VARCHAR(64)
+    description: POS 주문의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: outlet_id
+    data_type: VARCHAR(40)
+    description: 주문이 발생한 합성 식음 업장 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: business_date
+    data_type: DATE
+    description: 자정 이후 영업 마감을 고려해 주문이 귀속되는 영업일
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: ordered_at
+    data_type: DATETIME(6)
+    description: 한국 표준시 기준 합성 주문 발생 시각. 세션 시간대가 Asia/Seoul이어야 함
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: pos_customer_ref
+    data_type: VARCHAR(40)
+    description: 개인정보가 아닌 CRM 교차 매핑용 합성 고객 참조값
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: linked_stay_id
+    data_type: VARCHAR(64)
+    description: 투숙 중 식음 주문인 경우의 PMS 합성 stay_id
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: guest_count
+    data_type: SMALLINT
+    description: 주문 테이블의 합성 고객 커버 수
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: service_period
+    data_type: VARCHAR(24)
+    description: BREAKFAST·LUNCH·DINNER·LATE_NIGHT 등 서비스 시간대
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: order_status
+    data_type: VARCHAR(24)
+    description: PAID·PARTIAL_REFUND·REFUNDED·VOID 중 주문 종료 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: item_gross_amount
+    data_type: DECIMAL(18, 2)
+    description: 품목 할인 전 합성 금액 합계
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: discount_amount
+    data_type: DECIMAL(18, 2)
+    description: 주문에 적용한 합성 할인액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: service_charge_amount
+    data_type: DECIMAL(18, 2)
+    description: 할인 후 공급가에 적용한 합성 봉사료
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: tax_amount
+    data_type: DECIMAL(18, 2)
+    description: 합성 과세 기준으로 별도 계산한 세액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: refund_amount
+    data_type: DECIMAL(18, 2)
+    description: 환불 처리된 금액의 양수 표시 합계
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: void_amount
+    data_type: DECIMAL(18, 2)
+    description: 결제 전 취소된 금액의 양수 표시 합계
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: net_amount
+    data_type: DECIMAL(18, 2)
+    description: 할인·봉사료·세금·환불·취소를 반영한 최종 합성 주문액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: payment_status
+    data_type: VARCHAR(24)
+    description: SETTLED·REFUNDED·VOIDED 중 결제 정산 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: currency_code
+    data_type: CHAR(3)
+    description: 주문 통화 ISO 코드이며 현재 KRW
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_forecast
+    data_type: TINYINT(1)
+    description: 2026-08-31 종료 합성 시나리오 주문과 향후 별도 예측 행을 구분하는 플래그. false는 실제 워커힐 실적을 뜻하지 않음
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: TINYINT(1)
+    description: 실제 주문이 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pos.pos_orders
+  description: 업장·시간대·이벤트·투숙 연계를 포함하고 세금·봉사료·환불을 분리한 합성 POS 주문 헤더
+  domain_urn: urn:li:domain:answervice_pos
+  event_time:
+  - business_date
+  - ordered_at
+  fqn: pos.walkerhill_v4_3.pos_orders
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - order_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mysql,pos.walkerhill_v4_3.pos_orders,PROD)
+  primary_key:
+  - order_id
+  sensitivity: RESTRICTED
+  source_system: POS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pos
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 식음 업장 정보
+  columns:
+  - authoring_is_part_of_key: false
+    column_name: resort_id
+    data_type: VARCHAR(32)
+    description: 모든 식음 업장을 묶는 합성 리조트 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: true
+    column_name: outlet_id
+    data_type: VARCHAR(40)
+    description: 식음 업장의 안정적 합성 식별 코드
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: outlet_seq
+    data_type: SMALLINT
+    description: 결정적 생성과 화면 정렬에 쓰는 업장 순번
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: VARCHAR(32)
+    description: 업장이 귀속되는 GRAND·VISTA·DOUGLAS 합성 호텔 코드
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: public_name
+    data_type: VARCHAR(160)
+    description: 워커힐 공식 다이닝 채널에서 확인한 공개 업장명
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: outlet_category
+    data_type: VARCHAR(40)
+    description: BUFFET·KOREAN·CHINESE·ITALIAN·BAR·CAFE 등 업장 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: open_time
+    data_type: TIME
+    description: 시간대 주문 분포에 쓰는 합성 영업 시작 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: close_time
+    data_type: TIME
+    description: 시간대 주문 분포에 쓰는 합성 영업 종료 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_seat_capacity
+    data_type: INTEGER
+    description: 회전율과 주문 포화를 위한 합성 좌석 수. 공식 좌석 수가 아님
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_url
+    data_type: TEXT
+    description: 공개 업장명 근거 URL
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48)
+    description: 공개 명칭과 합성 운영 파라미터의 출처 분류
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_active
+    data_type: TINYINT(1)
+    description: 생성 기간 종료일 현재 영업 대상 여부
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pos.pos_outlets
+  description: 공개 식음 업장명과 합성 영업시간·좌석을 관리하는 POS 업장 마스터
+  domain_urn: urn:li:domain:answervice_pos
+  event_time: NOT_APPLICABLE
+  fqn: pos.walkerhill_v4_3.pos_outlets
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - outlet_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mysql,pos.walkerhill_v4_3.pos_outlets,PROD)
+  primary_key:
+  - outlet_id
+  sensitivity: INTERNAL
+  source_system: POS
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_pos
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 식음 결제·환불 내역
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: payment_line_id
+    data_type: VARCHAR(72)
+    description: 결제·환불 행의 결정적 합성 식별자
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: order_id
+    data_type: VARCHAR(64)
+    description: 결제 또는 환불이 귀속되는 합성 주문 식별자
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: paid_at
+    data_type: DATETIME(6)
+    description: 한국 표준시 기준 합성 결제·환불 처리 시각
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: transaction_type
+    data_type: VARCHAR(24)
+    description: SALE·REFUND 중 결제 원장 거래 유형
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: tender_type
+    data_type: VARCHAR(24)
+    description: CARD·CASH·ROOM_CHARGE·MOBILE 등 합성 결제수단
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: signed_amount
+    data_type: DECIMAL(18, 2)
+    description: 결제는 양수, 환불·취소는 음수인 부호 있는 거래금액
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: payment_status
+    data_type: VARCHAR(24)
+    description: 결제 원장 반영이 완료된 SETTLED 처리 상태
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: TINYINT(1)
+    description: 실제 결제자료가 아닌 합성 행임을 나타내며 항상 true
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: pos.pos_payment_lines
+  description: 주문의 결제수단과 환불·취소를 부호 있는 금액으로 보존하는 합성 결제 원장
+  domain_urn: urn:li:domain:answervice_pos
+  event_time:
+  - paid_at
+  fqn: pos.walkerhill_v4_3.pos_payment_lines
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - payment_line_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mysql,pos.walkerhill_v4_3.pos_payment_lines,PROD)
+  primary_key:
+  - payment_line_id
+  sensitivity: INTERNAL
+  source_system: POS
+  update_frequency: ON_DATA_RELEASE
+schema_version: answervice.canonical-metadata.v1
+source_scope: pos

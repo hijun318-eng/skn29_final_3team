@@ -222,6 +222,11 @@ def _classify(relative: str) -> str:
         return "archive"
     if relative in ALLOWED_RUNTIME_JSON:
         return "runtime-contract"
+    if relative.startswith("infrastructure/database/datahub/metadata/"):
+        # schema.json으로 검증되고 canonical sync가 소유하는 승인 policy다.
+        # DataHub 실행 코드와 달리 고객·release·Metric identity를 기록해야 하며,
+        # runtime은 이 파일을 직접 읽지 않고 DataHub read-back만 사용한다.
+        return "runtime-contract"
     if relative in RUNTIME_GATE_FILES:
         return "runtime-config"
     if relative.startswith(ARCHIVE_PREFIXES):

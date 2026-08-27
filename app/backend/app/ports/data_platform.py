@@ -206,6 +206,10 @@ class DataPlatformAdapter(Protocol):
         """현재 완전 검증된 DataHub catalog release 식별자를 반환한다."""
         ...
 
+    async def get_catalog_cache_identity(self) -> tuple[str, str, int] | None:
+        """active projection·product release·generation cache namespace를 반환한다."""
+        ...
+
     async def get_catalog_readiness(self) -> tuple[dict[str, str], str | None]:
         """semantic release·manifest·Trino schema 상태와 검증 receipt를 반환한다."""
         ...

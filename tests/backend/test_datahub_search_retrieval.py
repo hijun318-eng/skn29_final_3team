@@ -516,6 +516,27 @@ class ScrollEnumerationTests(unittest.IsolatedAsyncioTestCase):
             [hit.urn for hit in hits],
         )
 
+    async def test_metric_enumeration_uses_the_same_bounded_scroll_contract(self) -> None:
+        request_inputs: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            request_input = body["variables"]["input"]
+            request_inputs.append(request_input)
+            return httpx.Response(200, json={"data": {"scrollAcrossEntities": {
+                "count": 1,
+                "nextScrollId": None,
+                "searchResults": [{
+                    "entity": {"urn": "urn:li:metric:room_revenue", "type": "METRIC"},
+                    "matchedFields": [],
+                }],
+            }}})
+
+        hits = await self._client(handler).list_metrics()
+
+        self.assertEqual(["METRIC"], request_inputs[0]["types"])
+        self.assertEqual(["urn:li:metric:room_revenue"], [hit.urn for hit in hits])
+
     async def test_empty_page_with_cursor_fails_closed(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             return self._page([], "cursor-forever")

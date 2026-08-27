@@ -103,6 +103,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="COMPONENT=sha256:DIGEST",
     )
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--quality-receipt-ttl-seconds",
+        type=float,
+        default=os.getenv("CANONICAL_QUALITY_RECEIPT_TTL_SECONDS", "3600"),
+    )
     return parser.parse_args(argv)
 
 
@@ -292,7 +297,7 @@ async def execute(arguments: argparse.Namespace) -> dict[str, Any]:
     )
     images = parse_image_receipts(arguments.image_receipt, backend_image)
     migration = migration_receipt()
-    projection, native_readback = await compile_live_candidate(arguments)
+    projection, native_readback, quality_receipt = await compile_live_candidate(arguments)
     if projection.projection_sha256 != expected_projection:
         raise RuntimeCatalogCandidateCommandError(
             "live runtime catalog candidate differs from the approved check"
@@ -330,7 +335,7 @@ async def execute(arguments: argparse.Namespace) -> dict[str, Any]:
     finally:
         await engine.dispose()
     return {
-        **candidate_receipt(projection, native_readback),
+        **candidate_receipt(projection, native_readback, quality_receipt),
         "schema_version": PUBLISHED_CANDIDATE_RECEIPT_VERSION,
         "status": "PUBLISHED_WITHOUT_ACTIVATION",
         "product_release_id": published.product_release_id,

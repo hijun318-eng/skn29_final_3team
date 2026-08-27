@@ -176,10 +176,15 @@ def parse_dataset(value: object) -> GovernedDataset:
     if custom["approval_status"] != "APPROVED":
         raise GovernedMetadataError("DataHub runtime governance is not approved")
     asset_fqn = fqn(custom["fqn"])
+    display_name = required_text(value.get("name"), "dataset name")
+    property_name = required_text(
+        properties.get("name"), "dataset property name"
+    )
+    # DataHub ``name``은 업무 표시명이고 ``qualifiedName``과 governed FQN이
+    # 실행 식별자다. 표시명을 FQN으로 강제하면 canonical business_name 게시가
+    # 정상적으로 끝난 직후 runtime parity가 전체 Dataset을 거부하게 된다.
     if (
-        value.get("name") != asset_fqn
-        or
-        properties.get("name") != asset_fqn
+        display_name != property_name
         or properties.get("qualifiedName") != asset_fqn
     ):
         raise GovernedMetadataError("DataHub dataset identity differs from its Trino FQN")
@@ -381,7 +386,7 @@ def _schema_fields(value, editable_value, typed_columns, column_roles):
     trino_columns = []
     datahub_columns = []
     associations = {}
-    editable_descriptions, editable_associations = _editable_fields(
+    _editable_descriptions, editable_associations = _editable_fields(
         editable_value,
         set(expected),
     )
@@ -397,11 +402,11 @@ def _schema_fields(value, editable_value, typed_columns, column_roles):
             or not field["nativeDataType"].strip()
             or field.get("nullable") is not governed["nullable"]
             or field.get("isPartOfKey") is not governed["is_part_of_key"]
-            or (
-                editable_descriptions.get(name) or field.get("description")
-            ) != governed["description"]
         ):
             raise GovernedMetadataError("DataHub native and governed column metadata differ")
+        # editable/native description은 DataHub 업무 문서이고 typed_columns는
+        # immutable 실행 receipt다. 설명 개선이 실행 schema drift로 오인되지 않게
+        # 분리하되 type·nullable·key와 아래 Glossary association은 계속 대조한다.
         schema_associations = term_urns(field.get("glossaryTerms"))
         if name in editable_associations:
             editable_terms = editable_associations[name]

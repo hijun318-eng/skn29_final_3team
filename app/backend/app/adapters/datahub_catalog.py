@@ -264,6 +264,10 @@ query GovernanceLifecycleStages {
         """모든 Glossary Term URN을 bounded pagination으로 수집하고 불완전한 결과는 거부한다."""
         return await self._scroll(entity_types=("GLOSSARY_TERM",))
 
+    async def list_metrics(self) -> tuple[DataHubSearchHit, ...]:
+        """모든 native Metric URN을 Dataset과 같은 bounded scroll 계약으로 수집한다."""
+        return await self._scroll(entity_types=("METRIC",))
+
     async def search_candidates(
         self,
         query_text: str,

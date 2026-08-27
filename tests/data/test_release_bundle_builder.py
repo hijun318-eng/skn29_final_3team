@@ -208,6 +208,26 @@ def test_dynamic_release_is_built_only_after_both_readiness_stages_pass():
     assert release_manifest(result.bundle) == release_manifest(bundle)
 
 
+def test_release_identity_uses_qualified_name_not_business_display_name():
+    """DataHub 업무 표시명은 보존하되 실행 FQN은 qualifiedName으로 대조한다."""
+
+    bundle = arbitrary_bundle()
+    scopes, inventory, datasets, terms = _runtime(bundle)
+    business_named = replace(datasets[0], name="객실 매출 업무 데이터")
+
+    result = asyncio.run(
+        inspect_release(
+            scopes,
+            FakeTrino(inventory),
+            FakeDataHub((business_named, *datasets[1:]), terms),
+        )
+    )
+
+    assert result.report.semantic_release.status == "READY"
+    assert result.bundle is not None
+    assert catalog_hash(result.bundle) == catalog_hash(bundle)
+
+
 def test_v2_release_readback_preserves_hidden_support_rules():
     """live Dataset property가 Glossary에 없는 SUPPORT Rule까지 동일하게 복원한다."""
 

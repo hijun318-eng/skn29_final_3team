@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,8 @@ from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
 from app.adapters.trino_schema import TrinoSchemaInspector  # noqa: E402
 from app.services.context.semantic_release import CanonicalSemanticRelease  # noqa: E402
 from http_client import DataHubMetadataAdminClient  # noqa: E402
+from canonical_metadata_manifest import load_canonical_metadata_manifest  # noqa: E402
+from canonical_quality_gate import verify_canonical_quality_gate  # noqa: E402
 from native_metric_publication import verify_native_metric_shadow  # noqa: E402
 from native_metric_shadow import (  # noqa: E402
     native_metric_runtime_records,
@@ -84,6 +87,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.getenv("ANALYTICS_CONTEXT_RELEASE") or None,
     )
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--quality-receipt-ttl-seconds",
+        type=float,
+        default=os.getenv("CANONICAL_QUALITY_RECEIPT_TTL_SECONDS", "3600"),
+    )
     return parser.parse_args(argv)
 
 
@@ -136,11 +144,12 @@ def _validate_native_readback(
 def candidate_receipt(
     projection: RuntimeCatalogProjection,
     native_readback: Mapping[str, Any],
+    quality_receipt: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """비밀이나 전체 projection JSON 없이 check 결과의 재검증 identity만 반환한다."""
 
     snapshot = projection.snapshot
-    return {
+    receipt = {
         "schema_version": RUNTIME_CATALOG_CANDIDATE_RECEIPT_VERSION,
         "status": "CHECKED_NOT_PUBLISHED",
         "catalog_release_id": projection.catalog_release_id,
@@ -172,11 +181,31 @@ def candidate_receipt(
         ),
         "trino_relation_count": len(projection.trino_fingerprints),
     }
+    if quality_receipt is not None:
+        receipt.update(
+            {
+                "quality_status": str(quality_receipt["status"]),
+                "quality_receipt_sha256": str(
+                    quality_receipt["receipt_sha256"]
+                ),
+                "quality_expires_at": str(quality_receipt["expires_at"]),
+                "quality_dataset_check_count": int(
+                    quality_receipt["dataset_check_count"]
+                ),
+                "quality_business_metric_check_count": int(
+                    quality_receipt["business_metric_check_count"]
+                ),
+                "quality_lineage_edge_count": int(
+                    quality_receipt["lineage_edge_count"]
+                ),
+            }
+        )
+    return receipt
 
 
 async def compile_live_candidate(
     arguments: argparse.Namespace,
-) -> tuple[RuntimeCatalogProjection, Mapping[str, Any]]:
+) -> tuple[RuntimeCatalogProjection, Mapping[str, Any], Mapping[str, Any]]:
     """Fresh full read-back과 exact native/Trino 검증으로 candidate 객체를 만든다."""
 
     if arguments.timeout <= 0:
@@ -246,14 +275,28 @@ async def compile_live_candidate(
             fingerprints,
             native_readback,
         )
-        return projection, native_readback
+        canonical_manifest = load_canonical_metadata_manifest(HERE / "metadata")
+        quality_receipt = await verify_canonical_quality_gate(
+            native_client,
+            trino,
+            canonical_manifest,
+            catalog_release_id=release.catalog_version,
+            live_seed_versions={
+                dataset.fqn: dataset.seed_version for dataset in datasets
+            },
+            trino_fingerprints=fingerprints,
+            checked_at=datetime.now(timezone.utc),
+            ttl_seconds=arguments.quality_receipt_ttl_seconds,
+            timeout_seconds=arguments.timeout,
+        )
+        return projection, native_readback, quality_receipt
 
 
 async def execute(arguments: argparse.Namespace) -> dict[str, Any]:
     """Live candidate를 컴파일하고 비밀 없는 checksum receipt로 축약한다."""
 
-    projection, native_readback = await compile_live_candidate(arguments)
-    return candidate_receipt(projection, native_readback)
+    projection, native_readback, quality_receipt = await compile_live_candidate(arguments)
+    return candidate_receipt(projection, native_readback, quality_receipt)
 
 
 async def async_main(argv: list[str] | None = None) -> int:

@@ -2643,6 +2643,41 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
         self.assertEqual([], self.submitted_requests)
 
+    async def test_unapproved_dimension_member_is_a_typed_filter_error(self) -> None:
+        """승인되지 않은 member는 서비스 장애가 아니라 수정 가능한 조건 오류로 남긴다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "승인 조건 확인")
+        from app.services.context.builder import (
+            ContextBuildError,
+            ContextBuildErrorCode,
+        )
+
+        self.data_platform.search_error = ContextBuildError(
+            ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND,
+            (
+                "요청한 Observation Segment 값은 현재 승인된 값과 일치하지 않습니다. "
+                "승인된 값: OMEGA, SIGMA."
+            ),
+        )
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "선택 기간 DELTA 구간의 수율을 알려줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.FILTER_VALUE_NOT_FOUND.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
+        self.assertIn("OMEGA, SIGMA", result["message"])
+        self.assertEqual("COMPLETED", result["turn"]["command_status"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual(
+            ErrorCode.FILTER_VALUE_NOT_FOUND.value,
+            result["turn"]["reason_code"],
+        )
+        self.assertEqual([], self.submitted_requests)
+
     async def test_future_period_is_failed_with_typed_range_error(self) -> None:
         """데이터 기준일 이후 기간은 서비스 장애가 아니라 수정 가능한 범위 오류로 보존한다."""
 

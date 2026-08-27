@@ -365,6 +365,56 @@ async def test_approved_dimension_member_avoids_domain_distinct_and_keeps_receip
     )
 
 
+def test_unapproved_dimension_member_returns_typed_filter_error_with_release_values():
+    dimension_terms = {
+        "observation_segment": {
+            "kind": "dimension",
+            "aliases": ["Observation Segment"],
+            "field": {
+                "asset_fqn": "serving.science.segment_yields",
+                "column": "observation_segment",
+            },
+            "members": [
+                {
+                    "id": "omega",
+                    "term_urn": "urn:li:glossaryTerm:observation_segment_omega",
+                    "canonical_value": "OMEGA",
+                    "aliases": ["OMEGA", "오메가"],
+                    "version": "glossary-r4",
+                    "semantic_sha256": "a" * 64,
+                },
+                {
+                    "id": "sigma",
+                    "term_urn": "urn:li:glossaryTerm:observation_segment_sigma",
+                    "canonical_value": "SIGMA",
+                    "aliases": ["SIGMA", "시그마"],
+                    "version": "glossary-r4",
+                    "semantic_sha256": "b" * 64,
+                },
+            ],
+        }
+    }
+
+    with pytest.raises(ContextBuildError) as raised:
+        resolve_filter_candidates(
+            [
+                {
+                    "dimension_id": "observation_segment",
+                    "value_text": "DELTA",
+                    "exclude": False,
+                }
+            ],
+            {"observation_segment"},
+            dimension_terms,
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND
+    assert str(raised.value) == (
+        "요청한 Observation Segment 값은 현재 승인된 값과 일치하지 않습니다. "
+        "승인된 값: OMEGA, SIGMA."
+    )
+
+
 @async_test
 async def test_metric_resolver_fails_closed_when_recheck_still_drops_the_governed_filter():
     adapter = _FakeAdapter(rows=[{"candidate_value": "OMEGA"}])

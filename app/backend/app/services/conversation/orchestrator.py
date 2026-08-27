@@ -1095,12 +1095,15 @@ class ConversationOrchestrator:
                 if error.code in {
                     ContextBuildErrorCode.METRIC_NOT_AVAILABLE,
                     ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                    ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND,
                     ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED,
                 }:
                     if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
                         public_code = ErrorCode.METRIC_NOT_AVAILABLE
                     elif error.code is ContextBuildErrorCode.OUT_OF_DATA_RANGE:
                         public_code = ErrorCode.OUT_OF_DATA_RANGE
+                    elif error.code is ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND:
+                        public_code = ErrorCode.FILTER_VALUE_NOT_FOUND
                     else:
                         public_code = ErrorCode.CONTEXT_INCOMPLETE
                     public_error = {

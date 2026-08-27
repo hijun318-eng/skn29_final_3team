@@ -10,6 +10,10 @@ from __future__ import annotations
 from typing import Any
 import unicodedata
 
+from app.services.context.builder_errors import (
+    ContextBuildError,
+    ContextBuildErrorCode,
+)
 from src.data.governance_contract import canonical_sha256
 
 # 허용된 필터 비교 연산자 (동등/부정)
@@ -145,8 +149,21 @@ def resolve_filter_candidates(
         if isinstance(members, list) and members:
             member = _member_for_text(canonical_value, members)
             if member is None:
-                raise ValueError(
-                    "Node1 필터 값이 승인된 Dimension Member와 일치하지 않습니다."
+                dimension_label = str(
+                    next(
+                        iter(dimension_terms[dimension_id].get("aliases", ())),
+                        dimension_id,
+                    )
+                )
+                approved_values = tuple(
+                    dict.fromkeys(str(item["canonical_value"]) for item in members)
+                )
+                raise ContextBuildError(
+                    ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND,
+                    (
+                        f"요청한 {dimension_label} 값은 현재 승인된 값과 일치하지 않습니다. "
+                        f"승인된 값: {', '.join(approved_values)}."
+                    ),
                 )
             canonical_value = str(member["canonical_value"])
         resolved.append(

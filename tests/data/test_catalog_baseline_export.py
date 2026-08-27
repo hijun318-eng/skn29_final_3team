@@ -16,7 +16,9 @@ DATAHUB = ROOT / "infrastructure" / "database" / "datahub"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DATAHUB))
 
+from src.data.governance_contract import canonical_sha256  # noqa: E402
 from export_catalog_baseline import (  # noqa: E402
+    BASELINE_SCOPE,
     build_catalog_baseline,
     validate_catalog_baseline,
 )
@@ -170,6 +172,14 @@ def test_baseline_is_deterministic_and_rejects_tampering() -> None:
     tampered["terms"][0]["name"] = "변조"
     with pytest.raises(ValueError, match="checksum"):
         validate_catalog_baseline(tampered)
+
+    wrong_scope = copy.deepcopy(first)
+    wrong_scope["scope"] = "UNRELATED_SCOPE"
+    payload = copy.deepcopy(wrong_scope)
+    payload.pop("content_sha256")
+    wrong_scope["content_sha256"] = canonical_sha256(payload)
+    with pytest.raises(ValueError, match="scope"):
+        validate_catalog_baseline(wrong_scope)
 
 
 def test_baseline_records_orphaned_technical_terms_without_fake_dataset_links() -> None:

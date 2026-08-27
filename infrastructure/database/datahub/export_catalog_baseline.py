@@ -24,6 +24,7 @@ from src.data.governance_contract import canonical_json, canonical_sha256  # noq
 
 
 BASELINE_SCHEMA_VERSION = "answervice.datahub-technical-glossary-baseline.v1"
+BASELINE_SCOPE = "GENERATED_DATASET_FIELD_GLOSSARY"
 _TECHNICAL_TERM_URN = re.compile(
     r"^urn:li:glossaryTerm:answervice_.+_(dataset|field)_[0-9a-f]{24}$"
 )
@@ -73,7 +74,7 @@ async def build_catalog_baseline(client: Any) -> dict[str, Any]:
 
     payload = {
         "schema_version": BASELINE_SCHEMA_VERSION,
-        "scope": "GENERATED_DATASET_FIELD_GLOSSARY",
+        "scope": BASELINE_SCOPE,
         "inventory": {
             "scanned_datasets": len(dataset_urns),
             "scanned_glossary_terms": len(term_urns),
@@ -93,6 +94,8 @@ def validate_catalog_baseline(document: Mapping[str, Any]) -> None:
 
     if document.get("schema_version") != BASELINE_SCHEMA_VERSION:
         raise ValueError("catalog baseline schema version is invalid")
+    if document.get("scope") != BASELINE_SCOPE:
+        raise ValueError("catalog baseline scope is invalid")
     checksum = document.get("content_sha256")
     if not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", checksum):
         raise ValueError("catalog baseline checksum is invalid")

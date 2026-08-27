@@ -198,21 +198,21 @@ try {
   // 실제 렌더 트리가 쓰는 KPI·차트·표 카드 선택자만 검증한다(죽은 ".analysis-dashboard" 조상 선택자는 삭제됨).
   assert.match(stylesSource, /\.analysis-metrics\{/);
   assert.match(stylesSource, /\.analysis-result-section \.analysis-table thead th\{/);
-  assert.match(stylesSource, /\.app-shell\{--workspace-inline-offset:var\(--sidebar\);/);
-  assert.match(stylesSource, /\.sidebar-collapsed\{--workspace-inline-offset:0px\}/);
-  assert.match(appSource, /\$\{menuOpen \? "" : "sidebar-collapsed"\}/);
-  assert.match(stylesSource, /@media\(max-width:900px\)\{[^\n]*\.topbar>div>span\{overflow:hidden;text-overflow:ellipsis;white-space:nowrap\}/);
+  assert.match(stylesSource, /\.app-shell\{--app-nav-height:64px;--app-context-height:74px;--app-header-height:calc\(var\(--app-nav-height\) \+ var\(--app-context-height\)\)/);
+  assert.match(stylesSource, /\.topbar\{[^}]*grid-template-rows:var\(--app-nav-height\) var\(--app-context-height\)/);
+  assert.match(appSource, /<AppHeader page=\{route\.page\}/);
+  assert.match(stylesSource, /@media\(max-width:760px\)\{[^\n]*\.top-navigation\{[^}]*overflow-x:auto/);
   // 데스크톱에서는 좌측 이력과 우측 근거 패널 사이에, 768px에서는 180px 이력 옆에 입력창을 맞춘다.
   assert.match(stylesSource, /\.chat-layout\{[^}]*grid-template-columns:205px minmax\(400px,1fr\) 285px/);
-  assert.match(stylesSource, /\.chat-input\{[^}]*left:calc\(var\(--workspace-inline-offset\) \+ 205px\)[^}]*transition:left \.2s,right \.2s/);
-  assert.match(stylesSource, /@media\(max-width:1200px\)\{[^\n]*\.chat-layout\{grid-template-columns:180px 1fr\}[^\n]*\.chat-input\{left:calc\(var\(--workspace-inline-offset\) \+ 180px\);right:0\}/);
+  assert.match(stylesSource, /\.chat-input\{[^}]*left:205px[^}]*transition:right \.2s/);
+  assert.match(stylesSource, /@media\(max-width:1200px\)\{[^\n]*\.chat-layout\{grid-template-columns:180px 1fr\}[^\n]*\.chat-input\{left:180px;right:0\}/);
   // 390px 모바일에서는 이력 패널을 접고 composer를 viewport 양쪽에 맞춘다.
   assert.match(stylesSource, /@media\(max-width:650px\)\{[^\n]*\.chat-layout\{height:auto;display:block\}[^\n]*\.chat-history\{display:none\}[^\n]*\.chat-input\{left:0;padding-inline:12px\}/);
   assert.match(stylesSource, /@media\(max-width:650px\)\{\.chat-main\{[^}]*padding-bottom:calc\(110px \+ env\(safe-area-inset-bottom\)\)[^}]*\}\.chat-input\{right:0;max-width:100vw\}/);
   assert.match(stylesSource, /\.chat-main\{padding-bottom:calc\(118px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(stylesSource, /\.conversation-end\{height:1px;scroll-margin-block-end:/);
   assert.match(stylesSource, /\.turn-user-bubble \.user-text,[^\n]*overflow-wrap:anywhere/);
-  assert.match(stylesSource, /@media\(prefers-reduced-motion:reduce\)\{[^\n]*\.sidebar,\.workspace,\.chat-input\{transition:none\}/);
+  assert.match(stylesSource, /@media\(prefers-reduced-motion:reduce\)\{[^\n]*\.chat-input\{transition:none\}/);
   assert.match(agentSource, /prefers-reduced-motion: reduce/);
   assert.match(agentSource, /scrollIntoView\(\{[\s\S]*?block: "end"/);
   assert.match(agentSource, /className="conversation-end"/);

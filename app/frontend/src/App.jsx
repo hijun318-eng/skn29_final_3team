@@ -1,7 +1,6 @@
 /** 인증된 애플리케이션 셸의 세션·권한·라우팅·lazy loading 경계를 조정하는 모듈이다. */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { AppHeader } from "./components/layout/AppHeader";
-import { AppSidebar } from "./components/layout/AppSidebar";
 import { SessionLogin } from "./components/auth/SessionLogin";
 import { createAnalysisClient } from "./api/analysisClient.ts";
 import { clearAuthenticatedBrowserState } from "./authenticatedBrowserState.js";
@@ -49,7 +48,6 @@ export function App() {
   const canUseReports = canDraftReport || canManageReports;
   const canUseAdmin = canManageSystem;
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
-  const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 1101px)").matches);
   const [isPending, startTransition] = useTransition();
   const themeClass = theme === "dark" ? "ppt-theme theme-dark" : "theme-light";
   const toggleTheme = useCallback(() => setTheme(nextTheme), []);
@@ -102,38 +100,25 @@ export function App() {
         window.history.pushState({}, "", route.path);
         return;
       }
-      if (window.matchMedia("(max-width: 1100px)").matches) setMenuOpen(false);
       startTransition(() => setRoute(resolveRoute(window.location.pathname)));
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [reportDirty, route.path]);
 
-  useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 1101px)");
-    const syncMenu = (event) => setMenuOpen(event.matches);
-    desktop.addEventListener("change", syncMenu);
-    return () => desktop.removeEventListener("change", syncMenu);
-  }, []);
-
   const navigate = useCallback((nextPath) => {
     const nextRoute = resolveRoute(nextPath);
     if (nextRoute.path === route.path) {
       window.dispatchEvent(new CustomEvent("answervice:navigate", { detail: nextRoute.path }));
-      if (window.matchMedia("(max-width: 1100px)").matches) setMenuOpen(false);
       return;
     }
     if (reportDirty && !window.confirm("저장하지 않은 보고서 변경사항이 있습니다. 페이지를 이동할까요?")) return;
     window.history.pushState({}, "", nextRoute.path);
-    if (window.matchMedia("(max-width: 1100px)").matches) setMenuOpen(false);
     startTransition(() => setRoute(nextRoute));
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   }, [reportDirty, route.path]);
 
-  const handleReportEditorMode = useCallback((active) => {
-    setReportEditorMode(active);
-    setMenuOpen(window.matchMedia("(min-width: 1101px)").matches && !active);
-  }, []);
+  const handleReportEditorMode = useCallback((active) => setReportEditorMode(active), []);
 
   useEffect(() => {
     if (!canRunAnalysis && route.page === "chat") {
@@ -172,8 +157,7 @@ export function App() {
     }
   };
 
-  return <div className={`app-shell ${themeClass} ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${reportEditorMode && REPORT_BUILDER_V2 ? "report-builder-v2-mode" : ""} ${isPending ? "is-page-pending" : ""}`}>
-    <AppSidebar page={route.page} role={role} capabilities={capabilities} onNavigate={navigate} open={menuOpen} onClose={() => setMenuOpen(false)} />
-    <div className="workspace"><AppHeader title={title} description={description} role={role} theme={theme} onMenu={() => setMenuOpen(true)} onSignOut={signOut} onToggleTheme={toggleTheme} /><div className="page-progress" aria-hidden="true" /><main className="page-stage" key={route.path} aria-busy={isPending}><Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>{content}</Suspense></main></div>
+  return <div className={`app-shell ${themeClass} ${reportEditorMode ? "report-editor-mode" : ""} ${reportEditorMode && REPORT_BUILDER_V2 ? "report-builder-v2-mode" : ""} ${isPending ? "is-page-pending" : ""}`}>
+    <div className="workspace"><AppHeader page={route.page} title={title} description={description} role={role} capabilities={capabilities} theme={theme} onNavigate={navigate} onSignOut={signOut} onToggleTheme={toggleTheme} /><div className="page-progress" aria-hidden="true" /><main className="page-stage" key={route.path} aria-busy={isPending}><Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>{content}</Suspense></main></div>
   </div>;
 }

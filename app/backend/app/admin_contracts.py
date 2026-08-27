@@ -154,3 +154,114 @@ class AuditEventListResponse(ResponseContractModel):
     data: AuditEventListData
     meta: ResponseMeta
     error: None = None
+
+
+AuditOutcome = Literal[
+    "SUCCEEDED",
+    "FAILED",
+    "DENIED",
+    "CANCELLED",
+    "IN_PROGRESS",
+    "CLARIFICATION_REQUIRED",
+    "UNKNOWN",
+]
+
+
+class AuditActorData(ContractModel):
+    """계정 verifier나 세션 없이 감사 수행자의 공개 식별 정보만 표현한다."""
+
+    subject: UUID | None
+    display_name: str
+    role: str
+
+
+class AuditObjectData(ContractModel):
+    """감사 이벤트가 직접 다룬 객체의 종류와 불변 식별자를 표현한다."""
+
+    type: str
+    id: str
+
+
+class AuditCorrelationData(ContractModel):
+    """여러 append-only 이벤트를 하나의 작업 이력으로 묶은 서버 기준을 표현한다."""
+
+    type: str
+    id: str
+
+
+class AuditEvidenceData(ContractModel):
+    """감사 이벤트와 실행·정책·산출물을 연결하는 비밀정보 없는 식별자를 표현한다."""
+
+    request_id: UUID | None
+    trace_id: str | None
+    query_execution_id: UUID | None
+    query_id: str | None
+    artifact_id: UUID | None
+    report_run_id: UUID | None
+    context_release_id: UUID | None
+    model_version_id: UUID | None
+    sql_policy_version: str | None
+
+
+class AuditTrailSummaryData(ContractModel):
+    """최신순 감사 trail 목록에서 선택에 필요한 요약 필드만 표현한다."""
+
+    trail_id: str
+    headline: str
+    started_at: datetime
+    ended_at: datetime | None
+    outcome: AuditOutcome
+    event_count: int = Field(ge=1)
+    actor: AuditActorData
+    primary_object: AuditObjectData
+    correlation: AuditCorrelationData
+
+
+class AuditTrailPageData(ContractModel):
+    """감사 trail 요약과 다음 keyset 위치를 나타내는 불투명 cursor를 반환한다."""
+
+    items: tuple[AuditTrailSummaryData, ...]
+    next_cursor: str | None
+
+
+class AuditTrailPageResponse(ResponseContractModel):
+    """감사 trail 목록을 공통 요청 추적 메타데이터와 함께 반환한다."""
+
+    data: AuditTrailPageData
+    meta: ResponseMeta
+    error: None = None
+
+
+class AuditTrailEventData(ContractModel):
+    """단일 trail 안의 순서와 redacted 기술 근거가 검증된 이벤트를 표현한다."""
+
+    event_id: UUID
+    occurred_at: datetime
+    sequence: int = Field(ge=0)
+    action_code: str
+    action_label: str
+    summary: str
+    outcome: AuditOutcome
+    actor: AuditActorData
+    object: AuditObjectData
+    evidence: AuditEvidenceData
+    details_redacted: dict[str, Any]
+
+
+class AuditTrailDetailData(ContractModel):
+    """선택한 trail의 시간 범위와 발생 순서대로 정렬된 이벤트를 반환한다."""
+
+    trail_id: str
+    headline: str
+    started_at: datetime
+    ended_at: datetime | None
+    outcome: AuditOutcome
+    events: tuple[AuditTrailEventData, ...]
+
+
+class AuditTrailDetailResponse(ResponseContractModel):
+    """단일 감사 trail 상세를 공통 요청 추적 메타데이터와 함께 반환한다."""
+
+    data: AuditTrailDetailData
+    meta: ResponseMeta
+    error: None = None

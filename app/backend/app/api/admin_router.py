@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,8 @@ from app.adapters.admin_account_repository import (
     AdminAccountConflict,
     AdminAccountNotFound,
     AdminAccountRepository,
+    AuditTrailNotFound,
+    InvalidAuditTrailCursor,
     LastActiveAdminConflict,
 )
 from app.admin_contracts import (
@@ -23,6 +26,11 @@ from app.admin_contracts import (
     AuditEventData,
     AuditEventListData,
     AuditEventListResponse,
+    AuditTrailDetailData,
+    AuditTrailDetailResponse,
+    AuditTrailPageData,
+    AuditTrailPageResponse,
+    AuditTrailSummaryData,
     ConnectionData,
     ConnectionListData,
     ConnectionListResponse,
@@ -64,6 +72,16 @@ def _account_http_error(error: Exception) -> HTTPException | ContextValidationEr
     if isinstance(error, AdminAccountConflict):
         return HTTPException(status_code=409, detail=str(error))
     return HTTPException(status_code=503, detail="계정 저장소를 사용할 수 없습니다.")
+
+
+def _audit_http_error(error: Exception) -> HTTPException:
+    """감사 trail의 공개 가능한 조회 오류만 안정적인 HTTP 상태로 변환한다."""
+
+    if isinstance(error, InvalidAuditTrailCursor):
+        return HTTPException(status_code=422, detail=str(error))
+    if isinstance(error, AuditTrailNotFound):
+        return HTTPException(status_code=404, detail="감사 추적을 찾을 수 없습니다.")
+    return HTTPException(status_code=503, detail="감사 추적 저장소를 사용할 수 없습니다.")
 
 
 @admin_router.get(
@@ -254,5 +272,76 @@ async def list_audit_events(
             page_size=page_size,
             total=total,
         ),
+        meta=response_meta(context),
+    )
+
+
+@admin_router.get(
+    "/audit-trails",
+    response_model=AuditTrailPageResponse,
+    operation_id="listAdminAuditTrails",
+)
+async def list_audit_trails(
+    context: Annotated[RequestContext, Depends(system_manage_context)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    cursor: Annotated[str, Query(max_length=1024)] = "",
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    query: Annotated[str, Query(max_length=128)] = "",
+    outcome: Annotated[
+        str,
+        Query(
+            pattern=(
+                r"^(|SUCCEEDED|FAILED|DENIED|CANCELLED|IN_PROGRESS|"
+                r"CLARIFICATION_REQUIRED|UNKNOWN)$"
+            )
+        ),
+    ] = "",
+    action: Annotated[str, Query(max_length=96)] = "",
+    from_date: Annotated[date | None, Query(alias="from")] = None,
+    to_date: Annotated[date | None, Query(alias="to")] = None,
+) -> AuditTrailPageResponse:
+    """append-only 이벤트를 서버 correlation 기준으로 묶어 최신 trail부터 반환한다."""
+
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(status_code=422, detail="시작일은 종료일보다 늦을 수 없습니다.")
+    try:
+        rows, next_cursor = await AdminAccountRepository(session).list_audit_trails(
+            cursor=cursor,
+            limit=limit,
+            query=query,
+            outcome=outcome,
+            action=action,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    except (InvalidAuditTrailCursor, SQLAlchemyError, ValueError) as error:
+        raise _audit_http_error(error) from error
+    return AuditTrailPageResponse(
+        data=AuditTrailPageData(
+            items=tuple(AuditTrailSummaryData.model_validate(row) for row in rows),
+            next_cursor=next_cursor,
+        ),
+        meta=response_meta(context),
+    )
+
+
+@admin_router.get(
+    "/audit-trails/{trail_id}",
+    response_model=AuditTrailDetailResponse,
+    operation_id="getAdminAuditTrail",
+)
+async def get_audit_trail(
+    trail_id: Annotated[str, Path(min_length=3, max_length=256)],
+    context: Annotated[RequestContext, Depends(system_manage_context)],
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> AuditTrailDetailResponse:
+    """선택한 서버 grouping trail의 redacted 이벤트와 근거 식별자를 순서대로 반환한다."""
+
+    try:
+        trail = await AdminAccountRepository(session).get_audit_trail(trail_id)
+    except (AuditTrailNotFound, SQLAlchemyError, ValueError) as error:
+        raise _audit_http_error(error) from error
+    return AuditTrailDetailResponse(
+        data=AuditTrailDetailData.model_validate(trail),
         meta=response_meta(context),
     )

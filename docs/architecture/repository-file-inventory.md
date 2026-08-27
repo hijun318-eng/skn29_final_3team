@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 130 |
-| documentation | 150 |
-| production | 317 |
+| documentation | 148 |
+| production | 316 |
 | project-config | 37 |
 | runtime-config | 68 |
 | runtime-contract | 10 |
-| test | 146 |
+| test | 147 |
 
 운영 무결성 위반: **0건**
 
@@ -239,7 +239,6 @@
 | `app/frontend/src/components/common/EnterpriseUi.jsx` | production | REVIEWED |
 | `app/frontend/src/components/common/ThemeToggle.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppHeader.jsx` | production | REVIEWED |
-| `app/frontend/src/components/layout/AppSidebar.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnCard.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnEvidenceDrawer.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnReportModal.jsx` | production | REVIEWED |
@@ -330,8 +329,6 @@
 | `docs/architecture/answervice_v3_4_report_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/canonical-semantic-release-migration.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/README.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/daesung/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/jaehong/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -774,6 +771,7 @@
 | `tests/backend/fixtures/api/v0.1/timeout.json` | test | TEST_ONLY |
 | `tests/backend/fixtures/report-layout-canonical.json` | test | TEST_ONLY |
 | `tests/backend/test_account_provisioning.py` | test | TEST_ONLY |
+| `tests/backend/test_admin_audit_trails.py` | test | TEST_ONLY |
 | `tests/backend/test_admin_connections.py` | test | TEST_ONLY |
 | `tests/backend/test_admin_control.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_persistence.py` | test | TEST_ONLY |

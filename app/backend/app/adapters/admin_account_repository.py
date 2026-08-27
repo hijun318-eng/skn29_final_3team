@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 from collections.abc import Mapping
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -29,6 +32,95 @@ class AdminAccountConflict(ValueError):
 
 class LastActiveAdminConflict(AdminAccountConflict):
     """활성 admin이 0명이 되는 Role·활성·삭제 변경을 구분해 알린다."""
+
+
+class AuditTrailNotFound(LookupError):
+    """요청한 서버 grouping 감사 trail이 존재하지 않음을 알린다."""
+
+
+class InvalidAuditTrailCursor(ValueError):
+    """변조되었거나 지원하지 않는 감사 trail cursor를 알린다."""
+
+
+_AUDIT_OUTCOMES = {
+    "SUCCEEDED",
+    "FAILED",
+    "DENIED",
+    "CANCELLED",
+    "IN_PROGRESS",
+    "CLARIFICATION_REQUIRED",
+    "UNKNOWN",
+}
+
+
+def _encode_audit_cursor(started_at: datetime, trail_id: str) -> str:
+    """마지막 정렬 키를 URL-safe 불투명 cursor로 직렬화한다."""
+
+    payload = json.dumps(
+        {"started_at": started_at.isoformat(), "trail_id": trail_id},
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def _decode_audit_cursor(cursor: str) -> tuple[datetime | None, str]:
+    """목록 keyset cursor를 엄격히 검증하며 빈 값은 첫 페이지로 해석한다."""
+
+    if not cursor:
+        return None, ""
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode())
+        if set(payload) != {"started_at", "trail_id"}:
+            raise ValueError
+        started_at = datetime.fromisoformat(payload["started_at"])
+        trail_id = payload["trail_id"]
+        if started_at.tzinfo is None or not isinstance(trail_id, str) or not trail_id:
+            raise ValueError
+        return started_at, trail_id
+    except (
+        binascii.Error,
+        UnicodeDecodeError,
+        ValueError,
+        TypeError,
+        json.JSONDecodeError,
+    ) as error:
+        raise InvalidAuditTrailCursor("감사 추적 cursor가 올바르지 않습니다.") from error
+
+
+def _audit_outcome(value: object) -> str:
+    """DB의 과거 결과 별칭을 현재 공개 감사 결과 값으로 정규화한다."""
+
+    normalized = str(value or "UNKNOWN").upper()
+    aliases = {
+        "SUCCESS": "SUCCEEDED",
+        "FAILURE": "FAILED",
+        "ERROR": "FAILED",
+        "RUNNING": "IN_PROGRESS",
+    }
+    outcome = aliases.get(normalized, normalized)
+    return outcome if outcome in _AUDIT_OUTCOMES else "UNKNOWN"
+
+
+def _audit_actor(row: Mapping[str, Any]) -> dict[str, Any]:
+    """감사 row에서 credential 없는 수행자 공개 필드만 투영한다."""
+
+    subject = row.get("actor_subject")
+    display_name = row.get("actor_display_name")
+    return {
+        "subject": subject,
+        "display_name": str(display_name or subject or "시스템"),
+        "role": str(row.get("actor_role") or "system"),
+    }
+
+
+def _audit_details(value: object) -> dict[str, Any]:
+    """DB가 보장한 redacted JSON object만 반환하고 손상된 타입은 실패로 닫는다."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("감사 상세 데이터가 JSON object가 아닙니다.")
+    return dict(value)
 
 
 class AdminAccountRepository:
@@ -316,6 +408,242 @@ class AdminAccountRepository:
             parameters,
         )
         return tuple(dict(row) for row in rows.mappings()), int(total_result.scalar_one())
+
+    async def list_audit_trails(
+        self,
+        *,
+        cursor: str,
+        limit: int,
+        query: str,
+        outcome: str,
+        action: str,
+        from_date: date | None,
+        to_date: date | None,
+    ) -> tuple[tuple[dict[str, Any], ...], str | None]:
+        """append-only 이벤트를 correlation 우선순위로 묶어 keyset 기반 최신순 반환한다.
+
+        검색·기간·결과·action 필터는 서버 grouping 이후 적용하며 cursor에는 마지막
+        ``started_at``과 ``trail_id``만 포함한다. 저장된 redacted JSON은 이 목록에 싣지 않는다.
+        """
+
+        cursor_started_at, cursor_trail_id = _decode_audit_cursor(cursor)
+        rows_result = await self._session.execute(
+            text(
+                f"""
+                WITH normalized AS (
+                    SELECT e.*,
+                           CASE
+                               WHEN e.request_id IS NOT NULL THEN 'request_id'
+                               WHEN e.report_run_id IS NOT NULL THEN 'report_run_id'
+                               WHEN e.query_execution_id IS NOT NULL THEN 'query_execution_id'
+                               WHEN e.trace_id IS NOT NULL THEN 'trace_id'
+                               ELSE 'audit_event_id'
+                           END AS correlation_type,
+                           COALESCE(
+                               e.request_id::text,
+                               e.report_run_id::text,
+                               e.query_execution_id::text,
+                               e.trace_id,
+                               e.audit_event_id::text
+                           ) AS correlation_id,
+                           CASE upper(COALESCE(
+                               e.details_json_redacted->>'result',
+                               e.details_json_redacted->>'status',
+                               'UNKNOWN'
+                           ))
+                               WHEN 'SUCCESS' THEN 'SUCCEEDED'
+                               WHEN 'SUCCEEDED' THEN 'SUCCEEDED'
+                               WHEN 'FAILURE' THEN 'FAILED'
+                               WHEN 'ERROR' THEN 'FAILED'
+                               WHEN 'FAILED' THEN 'FAILED'
+                               WHEN 'DENIED' THEN 'DENIED'
+                               WHEN 'CANCELLED' THEN 'CANCELLED'
+                               WHEN 'RUNNING' THEN 'IN_PROGRESS'
+                               WHEN 'IN_PROGRESS' THEN 'IN_PROGRESS'
+                               WHEN 'CLARIFICATION_REQUIRED' THEN 'CLARIFICATION_REQUIRED'
+                               ELSE 'UNKNOWN'
+                           END AS normalized_outcome,
+                           a.username AS actor_display_name
+                    FROM governance.audit_events e
+                    LEFT JOIN security.accounts a ON a.subject = e.actor_user_id
+                ), grouped AS (
+                    SELECT correlation_type || ':' || correlation_id AS trail_id,
+                           correlation_type,
+                           correlation_id,
+                           min(created_at) AS started_at,
+                           max(created_at) AS ended_at,
+                           count(*)::integer AS event_count,
+                           (array_agg(action_code ORDER BY created_at DESC, audit_event_id DESC))[1] AS headline,
+                           (array_agg(normalized_outcome ORDER BY created_at DESC, audit_event_id DESC))[1] AS outcome,
+                           (array_agg(actor_user_id ORDER BY created_at DESC, audit_event_id DESC))[1] AS actor_subject,
+                           (array_agg(actor_display_name ORDER BY created_at DESC, audit_event_id DESC))[1] AS actor_display_name,
+                           (array_agg(actor_role ORDER BY created_at DESC, audit_event_id DESC))[1] AS actor_role,
+                           (array_agg(object_type ORDER BY created_at DESC, audit_event_id DESC))[1] AS object_type,
+                           (array_agg(object_id ORDER BY created_at DESC, audit_event_id DESC))[1] AS object_id,
+                           array_agg(DISTINCT action_code) AS action_codes,
+                           lower(string_agg(
+                               concat_ws(' ', action_code, object_type, object_id,
+                                   actor_user_id::text, actor_display_name, correlation_id),
+                               ' '
+                           )) AS search_text
+                    FROM normalized
+                    GROUP BY correlation_type, correlation_id
+                )
+                SELECT trail_id, correlation_type, correlation_id,
+                       started_at, ended_at, event_count, headline, outcome,
+                       actor_subject, actor_display_name, actor_role,
+                       object_type, object_id
+                FROM grouped
+                WHERE (:query = '' OR strpos(search_text, :query) > 0)
+                  AND (:outcome = '' OR outcome = :outcome)
+                  AND (:action = '' OR :action = ANY(action_codes))
+                  AND (CAST(:from_date AS date) IS NULL
+                       OR started_at >= CAST(:from_date AS date))
+                  AND (CAST(:to_date AS date) IS NULL
+                       OR started_at < CAST(:to_date AS date) + INTERVAL '1 day')
+                  AND (
+                      CAST(:cursor_started_at AS timestamptz) IS NULL
+                      OR (started_at, trail_id) < (
+                          CAST(:cursor_started_at AS timestamptz), :cursor_trail_id
+                      )
+                  )
+                ORDER BY started_at DESC, trail_id DESC
+                LIMIT :fetch_limit
+                """
+            ),
+            {
+                "query": query.strip().lower(),
+                "outcome": _audit_outcome(outcome) if outcome else "",
+                "action": action.strip(),
+                "from_date": from_date,
+                "to_date": to_date,
+                "cursor_started_at": cursor_started_at,
+                "cursor_trail_id": cursor_trail_id,
+                "fetch_limit": limit + 1,
+            },
+        )
+        rows = [dict(row) for row in rows_result.mappings()]
+        has_more = len(rows) > limit
+        visible = rows[:limit]
+        items = tuple(
+            {
+                "trail_id": row["trail_id"],
+                "headline": row["headline"],
+                "started_at": row["started_at"],
+                "ended_at": row["ended_at"],
+                "outcome": _audit_outcome(row["outcome"]),
+                "event_count": row["event_count"],
+                "actor": _audit_actor(row),
+                "primary_object": {
+                    "type": row["object_type"],
+                    "id": row["object_id"],
+                },
+                "correlation": {
+                    "type": row["correlation_type"],
+                    "id": row["correlation_id"],
+                },
+            }
+            for row in visible
+        )
+        next_cursor = None
+        if has_more and visible:
+            next_cursor = _encode_audit_cursor(
+                visible[-1]["started_at"], visible[-1]["trail_id"]
+            )
+        return items, next_cursor
+
+    async def get_audit_trail(self, trail_id: str) -> dict[str, Any]:
+        """서버 correlation과 정확히 일치하는 이벤트를 발생 순서와 근거 식별자로 반환한다."""
+
+        result = await self._session.execute(
+            text(
+                """
+                WITH normalized AS (
+                    SELECT e.*,
+                           CASE
+                               WHEN e.request_id IS NOT NULL THEN 'request_id'
+                               WHEN e.report_run_id IS NOT NULL THEN 'report_run_id'
+                               WHEN e.query_execution_id IS NOT NULL THEN 'query_execution_id'
+                               WHEN e.trace_id IS NOT NULL THEN 'trace_id'
+                               ELSE 'audit_event_id'
+                           END AS correlation_type,
+                           COALESCE(
+                               e.request_id::text,
+                               e.report_run_id::text,
+                               e.query_execution_id::text,
+                               e.trace_id,
+                               e.audit_event_id::text
+                           ) AS correlation_id,
+                           a.username AS actor_display_name,
+                           q.trino_query_id AS query_id
+                    FROM governance.audit_events e
+                    LEFT JOIN security.accounts a ON a.subject = e.actor_user_id
+                    LEFT JOIN query.query_executions q
+                        ON q.query_execution_id = e.query_execution_id
+                )
+                SELECT audit_event_id AS event_id, created_at AS occurred_at,
+                       actor_user_id AS actor_subject, actor_display_name, actor_role,
+                       action_code, object_type, object_id, details_json_redacted,
+                       request_id, trace_id, query_execution_id, query_id,
+                       artifact_id, report_run_id, context_release_id,
+                       model_version_id, sql_policy_version
+                FROM normalized
+                WHERE correlation_type || ':' || correlation_id = :trail_id
+                ORDER BY created_at, audit_event_id
+                """
+            ),
+            {"trail_id": trail_id},
+        )
+        rows = [dict(row) for row in result.mappings()]
+        if not rows:
+            raise AuditTrailNotFound("감사 추적을 찾을 수 없습니다.")
+
+        events: list[dict[str, Any]] = []
+        for sequence, row in enumerate(rows):
+            details = _audit_details(row["details_json_redacted"])
+            events.append(
+                {
+                    "event_id": row["event_id"],
+                    "occurred_at": row["occurred_at"],
+                    "sequence": sequence,
+                    "action_code": row["action_code"],
+                    "action_label": row["action_code"],
+                    "summary": str(
+                        details.get("summary")
+                        or details.get("message")
+                        or row["action_code"]
+                    ),
+                    "outcome": _audit_outcome(
+                        details.get("result") or details.get("status")
+                    ),
+                    "actor": _audit_actor(row),
+                    "object": {"type": row["object_type"], "id": row["object_id"]},
+                    "evidence": {
+                        key: row[key]
+                        for key in (
+                            "request_id",
+                            "trace_id",
+                            "query_execution_id",
+                            "query_id",
+                            "artifact_id",
+                            "report_run_id",
+                            "context_release_id",
+                            "model_version_id",
+                            "sql_policy_version",
+                        )
+                    },
+                    "details_redacted": details,
+                }
+            )
+
+        return {
+            "trail_id": trail_id,
+            "headline": events[-1]["action_code"],
+            "started_at": rows[0]["occurred_at"],
+            "ended_at": rows[-1]["occurred_at"],
+            "outcome": events[-1]["outcome"],
+            "events": tuple(events),
+        }
 
     async def record_connection_check(
         self,

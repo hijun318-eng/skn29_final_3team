@@ -884,6 +884,59 @@
         "title": "ArtifactReference",
         "type": "object"
       },
+      "AuditActorData": {
+        "additionalProperties": false,
+        "description": "계정 verifier나 세션 없이 감사 수행자의 공개 식별 정보만 표현한다.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "subject",
+          "display_name",
+          "role"
+        ],
+        "title": "AuditActorData",
+        "type": "object"
+      },
+      "AuditCorrelationData": {
+        "additionalProperties": false,
+        "description": "여러 append-only 이벤트를 하나의 작업 이력으로 묶은 서버 기준을 표현한다.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "AuditCorrelationData",
+        "type": "object"
+      },
       "AuditEventData": {
         "additionalProperties": false,
         "description": "append-only 감사 이벤트에서 자격 증명을 제외한 관리 조회 필드만 투영한다.",
@@ -1002,6 +1055,431 @@
           "meta"
         ],
         "title": "AuditEventListResponse",
+        "type": "object"
+      },
+      "AuditEvidenceData": {
+        "additionalProperties": false,
+        "description": "감사 이벤트와 실행·정책·산출물을 연결하는 비밀정보 없는 식별자를 표현한다.",
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "context_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Release Id"
+          },
+          "model_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version Id"
+          },
+          "query_execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Execution Id"
+          },
+          "query_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Id"
+          },
+          "report_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Run Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "sql_policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql Policy Version"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "request_id",
+          "trace_id",
+          "query_execution_id",
+          "query_id",
+          "artifact_id",
+          "report_run_id",
+          "context_release_id",
+          "model_version_id",
+          "sql_policy_version"
+        ],
+        "title": "AuditEvidenceData",
+        "type": "object"
+      },
+      "AuditObjectData": {
+        "additionalProperties": false,
+        "description": "감사 이벤트가 직접 다룬 객체의 종류와 불변 식별자를 표현한다.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "AuditObjectData",
+        "type": "object"
+      },
+      "AuditTrailDetailData": {
+        "additionalProperties": false,
+        "description": "선택한 trail의 시간 범위와 발생 순서대로 정렬된 이벤트를 반환한다.",
+        "properties": {
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditTrailEventData"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "SUCCEEDED",
+              "FAILED",
+              "DENIED",
+              "CANCELLED",
+              "IN_PROGRESS",
+              "CLARIFICATION_REQUIRED",
+              "UNKNOWN"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "trail_id": {
+            "title": "Trail Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trail_id",
+          "headline",
+          "started_at",
+          "ended_at",
+          "outcome",
+          "events"
+        ],
+        "title": "AuditTrailDetailData",
+        "type": "object"
+      },
+      "AuditTrailDetailResponse": {
+        "additionalProperties": false,
+        "description": "단일 감사 trail 상세를 공통 요청 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuditTrailDetailData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AuditTrailDetailResponse",
+        "type": "object"
+      },
+      "AuditTrailEventData": {
+        "additionalProperties": false,
+        "description": "단일 trail 안의 순서와 redacted 기술 근거가 검증된 이벤트를 표현한다.",
+        "properties": {
+          "action_code": {
+            "title": "Action Code",
+            "type": "string"
+          },
+          "action_label": {
+            "title": "Action Label",
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditActorData"
+          },
+          "details_redacted": {
+            "additionalProperties": true,
+            "title": "Details Redacted",
+            "type": "object"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/AuditEvidenceData"
+          },
+          "object": {
+            "$ref": "#/components/schemas/AuditObjectData"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "SUCCEEDED",
+              "FAILED",
+              "DENIED",
+              "CANCELLED",
+              "IN_PROGRESS",
+              "CLARIFICATION_REQUIRED",
+              "UNKNOWN"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "occurred_at",
+          "sequence",
+          "action_code",
+          "action_label",
+          "summary",
+          "outcome",
+          "actor",
+          "object",
+          "evidence",
+          "details_redacted"
+        ],
+        "title": "AuditTrailEventData",
+        "type": "object"
+      },
+      "AuditTrailPageData": {
+        "additionalProperties": false,
+        "description": "감사 trail 요약과 다음 keyset 위치를 나타내는 불투명 cursor를 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditTrailSummaryData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AuditTrailPageData",
+        "type": "object"
+      },
+      "AuditTrailPageResponse": {
+        "additionalProperties": false,
+        "description": "감사 trail 목록을 공통 요청 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuditTrailPageData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AuditTrailPageResponse",
+        "type": "object"
+      },
+      "AuditTrailSummaryData": {
+        "additionalProperties": false,
+        "description": "최신순 감사 trail 목록에서 선택에 필요한 요약 필드만 표현한다.",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/AuditActorData"
+          },
+          "correlation": {
+            "$ref": "#/components/schemas/AuditCorrelationData"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "event_count": {
+            "minimum": 1.0,
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "SUCCEEDED",
+              "FAILED",
+              "DENIED",
+              "CANCELLED",
+              "IN_PROGRESS",
+              "CLARIFICATION_REQUIRED",
+              "UNKNOWN"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "primary_object": {
+            "$ref": "#/components/schemas/AuditObjectData"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "trail_id": {
+            "title": "Trail Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trail_id",
+          "headline",
+          "started_at",
+          "ended_at",
+          "outcome",
+          "event_count",
+          "actor",
+          "primary_object",
+          "correlation"
+        ],
+        "title": "AuditTrailSummaryData",
         "type": "object"
       },
       "BlockFailureCode": {
@@ -4174,6 +4652,185 @@
           }
         ],
         "summary": "List Audit Events",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit-trails": {
+      "get": {
+        "description": "append-only 이벤트를 서버 correlation 기준으로 묶어 최신 trail부터 반환한다.",
+        "operationId": "listAdminAuditTrails",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1024,
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 128,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^(|SUCCEEDED|FAILED|DENIED|CANCELLED|IN_PROGRESS|CLARIFICATION_REQUIRED|UNKNOWN)$",
+              "title": "Outcome",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 96,
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditTrailPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Audit Trails",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit-trails/{trail_id}": {
+      "get": {
+        "description": "선택한 서버 grouping trail의 redacted 이벤트와 근거 식별자를 순서대로 반환한다.",
+        "operationId": "getAdminAuditTrail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trail_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 3,
+              "title": "Trail Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditTrailDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Audit Trail",
         "tags": [
           "admin"
         ]

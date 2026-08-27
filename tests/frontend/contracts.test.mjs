@@ -24,7 +24,7 @@ const productSources = [
   "features/admin/audit/auditTrailTypes.ts",
   "components/analysis/AnalysisStatePanel.tsx", "components/analysis/AnalysisStatePanelParts.tsx",
   "components/analysis/AnalysisFailureState.tsx",
-  "components/layout/AppHeader.jsx", "components/layout/AppSidebar.jsx",
+  "components/layout/AppHeader.jsx",
 ].map(source).concat(reportFeatureSource).join("\n");
 const reportA4Styles = [
   "features/reports/report-a4-paper.css",
@@ -150,8 +150,8 @@ assert.doesNotMatch([
     .filter(([name]) => name !== "reportClient")
     .map(([, reportSource]) => reportSource),
 ].join("\n"), /authToken/);
-assert.match(source("App.jsx"), /\(min-width: 1101px\)/);
-assert.match(source("styles.css"), /@media\(min-width:901px\) and \(max-width:1100px\)[\s\S]*?\.scrim\{position:fixed;z-index:29;inset:0/);
+assert.doesNotMatch(source("App.jsx"), /menuOpen|AppSidebar|sidebar-collapsed/);
+assert.doesNotMatch(source("styles.css"), /\.scrim\{|\.mobile-menu\{|(?:^|\n)\.sidebar\{/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.runAnalysis\)/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageReport\)/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageSystem\)/);
@@ -163,9 +163,16 @@ assert.match(source("App.jsx"), /answervice:report-dirty/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 페이지를 이동할까요\?"\)/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 로그아웃할까요\?"\)/);
 assert.match(source("App.jsx"), /현재 계정에 허용된 서비스 메뉴가 없습니다/);
-assert.match(source("App.jsx"), /<AppSidebar page=\{route\.page\} role=\{role\} capabilities=\{capabilities\}/);
-assert.match(source("components/layout/AppSidebar.jsx"), /hasCapability\(capabilities, item\.capability\)/);
-assert.match(source("components/layout/AppSidebar.jsx"), /label: "관리자"[\s\S]*?CAPABILITY\.manageSystem/);
+assert.match(source("App.jsx"), /<AppHeader page=\{route\.page\}[\s\S]*?capabilities=\{capabilities\}[\s\S]*?onNavigate=\{navigate\}/);
+assert.match(source("components/layout/AppHeader.jsx"), /hasCapability\(capabilities, item\.capability\)/);
+assert.match(source("components/layout/AppHeader.jsx"), /label: "관리자"[\s\S]*?CAPABILITY\.manageSystem/);
+assert.match(source("components/layout/AppHeader.jsx"), /alternative: CAPABILITY\.manageReport/);
+assert.match(source("components/layout/AppHeader.jsx"), /className="app-brand"[\s\S]*?ANSWERVICE/);
+assert.match(source("components/layout/AppHeader.jsx"), /className="app-brand-copy"[\s\S]*?데이터 분석 서비스/);
+assert.match(source("styles.css"), /\.app-brand-mark\{width:43px;height:43px[\s\S]*?font-size:26\.35px\}/);
+assert.match(source("styles.css"), /\.theme-light \.app-brand b:after\{background:linear-gradient\(90deg,#176fe5 0 18%,#e54b3d 18% 28%,#17263b 28% 100%\)\}/);
+assert.match(source("components/layout/AppHeader.jsx"), /<nav className="top-navigation" aria-label="주요 메뉴">/);
+assert.match(source("components/layout/AppHeader.jsx"), /aria-current=\{page === id \? "page" : undefined\}/);
 assert.match(source("pages/AdminPage.jsx"), /연결 상태/);
 assert.match(source("pages/AdminPage.jsx"), /계정 관리/);
 assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
@@ -643,8 +650,7 @@ assert.match(source("contracts/analysis.ts"), /interface ConversationCommandProg
 assert.match(source("pages/AgentPage.jsx"), /activeCommandAbortController\.current\?\.abort\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /progress\?\.traceId !== traceId/);
 assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
-assert.match(source("components/layout/AppSidebar.jsx"), /inert=\{!open\}/);
-assert.match(source("components/layout/AppSidebar.jsx"), /aria-hidden=\{!open\}/);
+assert.doesNotMatch(source("components/layout/AppHeader.jsx"), /inert=|메뉴 열기|메뉴 닫기/);
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {

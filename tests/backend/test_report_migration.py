@@ -253,6 +253,21 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertNotIn("DROP TABLE", upgrade)
         self.assertNotIn("DELETE FROM", upgrade)
 
+    def test_report_page_break_block_is_additive_and_fail_closed(self):
+        """page break migration은 40 뒤에서 기존 block을 보존하고 안전한 downgrade만 허용한다."""
+
+        source = (
+            MIGRATIONS / "20260827_41_report_page_break_blocks.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision = "20260826_40"', source)
+        self.assertIn("'page_break'", source)
+        self.assertIn("artifact_id IS NULL", source)
+        self.assertIn("query_id IS NULL", source)
+        self.assertIn("x = 0 AND w = 12 AND h = 1", source)
+        upgrade = source.split("def downgrade", 1)[0]
+        self.assertNotIn("DROP TABLE", upgrade)
+        self.assertNotIn("DELETE FROM", upgrade)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"

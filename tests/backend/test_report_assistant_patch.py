@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import unittest
+import json
 
 from pydantic import ValidationError
 
 from app.report_contracts import ReportAssistantPatch
 from app.report_patch import (
+    ReportPatchNoChangesError,
     VerifiedArtifactBinding,
     apply_report_assistant_patch,
 )
@@ -141,6 +143,182 @@ class ReportAssistantPatchTest(unittest.TestCase):
             })
             with self.assertRaisesRegex(ValueError, "실제 변경"):
                 apply_report_assistant_patch(self.definition, patch, self.bindings)
+
+    def test_report_orientation_changes_without_mutating_source(self) -> None:
+        """문서 방향 patch는 승인 대상 사본만 가로형으로 바꾸고 원본은 유지한다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "보고서를 A4 가로형으로 전환합니다.",
+            "operations": [{
+                "op": "set_report_orientation", "orientation": "landscape",
+            }],
+        })
+
+        result = apply_report_assistant_patch(self.definition, patch, self.bindings)
+
+        self.assertEqual("landscape", result.orientation)
+        self.assertEqual("portrait", self.definition.orientation)
+        self.assertEqual(self.definition.blocks, result.blocks)
+
+        with self.assertRaises(ReportPatchNoChangesError):
+            apply_report_assistant_patch(result, patch, self.bindings)
+
+    def test_add_report_page_appends_server_owned_page_break(self) -> None:
+        """빈 페이지 요청은 원본을 보존하고 보고서 끝에 12열 page break 한 건만 추가한다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "보고서 끝에 빈 페이지를 한 장 추가합니다.",
+            "operations": [{"op": "add_report_page"}],
+        })
+
+        result = apply_report_assistant_patch(self.definition, patch, self.bindings)
+        page_break = result.blocks[-1]
+
+        self.assertEqual(BlockType.PAGE_BREAK, page_break.type)
+        self.assertEqual((None, None, 0, 12, 1, ""), (
+            page_break.artifact_id, page_break.query_id, page_break.x,
+            page_break.w, page_break.h, page_break.content,
+        ))
+        self.assertGreaterEqual(page_break.y, max(block.y + block.h for block in self.definition.blocks))
+        self.assertEqual(2, len(self.definition.blocks))
+
+        duplicate = ReportAssistantPatch.model_validate({
+            "summary": "빈 페이지를 중복 추가합니다.",
+            "operations": [{"op": "add_report_page"}, {"op": "add_report_page"}],
+        })
+        with self.assertRaisesRegex(ValueError, "중복"):
+            apply_report_assistant_patch(self.definition, duplicate, self.bindings)
+
+        remove_marker = ReportAssistantPatch.model_validate({
+            "summary": "추가한 페이지를 삭제합니다.",
+            "operations": [{"op": "remove_block", "block_id": page_break.block_id}],
+        })
+        with self.assertRaisesRegex(ValueError, "페이지 경계 수정"):
+            apply_report_assistant_patch(result, remove_marker, self.bindings)
+
+        redundant_title = ReportAssistantPatch.model_validate({
+            "summary": "빈 페이지를 추가하고 제목을 유지합니다.",
+            "operations": [
+                {"op": "add_report_page"},
+                {"op": "set_report_title", "title": self.definition.title},
+            ],
+        })
+        with self.assertRaisesRegex(ReportPatchNoChangesError, "제목 operation"):
+            apply_report_assistant_patch(self.definition, redundant_title, self.bindings)
+
+    def test_document_currency_and_compact_layout_are_server_applied(self) -> None:
+        """통화 단위와 빈 공간 정리는 원본을 건드리지 않고 typed patch로만 적용한다."""
+
+        gapped = self.definition.replace_blocks((
+            self.definition.blocks[0],
+            ReportBlock(
+                "current-chart", "현재 실적", "artifact-old", 6, "query-old",
+                BlockType.CHART, 0, 20, 6, 7,
+            ),
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "통화 단위를 백만원으로 바꾸고 빈 공간을 정리합니다.",
+            "operations": [
+                {"op": "set_currency_display_unit", "currency_display_unit": "million"},
+                {"op": "compact_report_layout"},
+            ],
+        })
+
+        result = apply_report_assistant_patch(gapped, patch, self.bindings)
+
+        self.assertEqual("million", result.currency_display_unit)
+        self.assertEqual(4, result.blocks[1].y)
+        self.assertEqual("auto", gapped.currency_display_unit)
+        self.assertEqual(20, gapped.blocks[1].y)
+
+    def test_block_title_resize_and_view_settings_preserve_lineage(self) -> None:
+        """공통 제목·크기와 chart 설정은 허용 필드만 바꾸고 lineage를 보존한다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "차트 제목과 크기 및 표현을 변경합니다.",
+            "operations": [
+                {"op": "update_block_title", "block_id": "current-chart", "title": "월간 매출 추이"},
+                {"op": "resize_block", "block_id": "current-chart", "block_width": 6, "block_height": 9},
+                {
+                    "op": "update_chart_settings", "block_id": "current-chart",
+                    "chart_type": "horizontal-bar", "show_legend": False,
+                },
+            ],
+        })
+
+        result = apply_report_assistant_patch(self.definition, patch, self.bindings)
+        chart = next(block for block in result.blocks if block.block_id == "current-chart")
+        settings = json.loads(chart.content)
+
+        self.assertEqual("월간 매출 추이", chart.title)
+        self.assertEqual((6, 9), (chart.w, chart.h))
+        self.assertEqual("artifact-old", chart.artifact_id)
+        self.assertEqual("query-old", chart.query_id)
+        self.assertEqual(
+            {"chartType": "horizontal-bar", "showLegend": False, "sizeMode": "manual"},
+            settings,
+        )
+        self.assertEqual("현재 실적", self.definition.blocks[1].title)
+
+    def test_table_settings_and_artifact_view_presentation_are_typed(self) -> None:
+        """표와 신규 Artifact view는 해당 view에 허용된 renderer 설정만 저장한다."""
+
+        definition = self.definition.replace_blocks((
+            self.definition.blocks[0],
+            ReportBlock(
+                "current-table", "현재 표", "artifact-old", 12, "query-old",
+                BlockType.TABLE, 0, 4, 12, 5,
+            ),
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "표를 간결하게 하고 새 차트를 추가합니다.",
+            "operations": [
+                {
+                    "op": "update_table_settings", "block_id": "current-table",
+                    "density": "compact", "show_row_numbers": True, "size_mode": "auto",
+                },
+                {
+                    "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                    "view": "chart", "title": "추가 차트", "chart_type": "line",
+                    "show_legend": False, "size_mode": "auto",
+                },
+            ],
+        })
+
+        result = apply_report_assistant_patch(definition, patch, self.bindings)
+        table = next(block for block in result.blocks if block.block_id == "current-table")
+        chart = next(block for block in result.blocks if block.title == "추가 차트")
+
+        self.assertEqual(
+            {"density": "compact", "showRowNumbers": True, "sizeMode": "auto"},
+            json.loads(table.content),
+        )
+        self.assertEqual(
+            {"chartType": "line", "showLegend": False, "sizeMode": "auto"},
+            json.loads(chart.content),
+        )
+
+    def test_view_settings_fail_closed_for_wrong_block_type_and_conflicts(self) -> None:
+        """잘못된 view 대상과 같은 대상을 지우며 변경하는 모순은 전체 patch를 거부한다."""
+
+        wrong_type = ReportAssistantPatch.model_validate({
+            "summary": "텍스트에 차트 설정을 적용합니다.",
+            "operations": [{
+                "op": "update_chart_settings", "block_id": "summary", "show_legend": False,
+            }],
+        })
+        conflicting = ReportAssistantPatch.model_validate({
+            "summary": "차트를 삭제하면서 키웁니다.",
+            "operations": [
+                {"op": "remove_block", "block_id": "current-chart"},
+                {"op": "resize_block", "block_id": "current-chart", "block_width": 12, "block_height": 9},
+            ],
+        })
+
+        for invalid in (wrong_type, conflicting):
+            with self.subTest(summary=invalid.summary), self.assertRaises(ValueError):
+                apply_report_assistant_patch(self.definition, invalid, self.bindings)
+        self.assertEqual(("summary", "current-chart"), tuple(block.block_id for block in self.definition.blocks))
 
     def test_reordered_evidence_refs_do_not_create_a_revision(self) -> None:
         """근거 alias 순서는 의미가 없으므로 순서만 바꾼 본문 patch를 no-op으로 차단한다."""

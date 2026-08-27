@@ -33,6 +33,15 @@ const REQUIRED_ACTION_COPY = {
 
 const PATCH_OPERATION_LABEL = {
   set_report_title: "보고서 제목 변경",
+  set_report_orientation: "용지 방향 변경",
+  set_currency_display_unit: "통화 표시 단위 변경",
+  compact_report_layout: "전체 레이아웃 정리",
+  add_report_page: "빈 페이지 추가",
+  update_block_title: "블록 제목 변경",
+  resize_block: "블록 크기 변경",
+  update_chart_settings: "차트 설정 변경",
+  update_table_settings: "표 설정 변경",
+  set_block_size_mode: "블록 크기 모드 변경",
   add_text: "텍스트 블록 추가",
   update_text: "텍스트 블록 수정",
   add_artifact_view: "Artifact 보기 추가",

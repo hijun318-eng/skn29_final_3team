@@ -83,6 +83,15 @@ logger = logging.getLogger(__name__)
 
 _PATCH_OPERATION_LABELS = {
     "set_report_title": "보고서 제목",
+    "set_report_orientation": "용지 방향",
+    "set_currency_display_unit": "통화 표시 단위",
+    "compact_report_layout": "전체 레이아웃 정리",
+    "add_report_page": "빈 페이지 추가",
+    "update_block_title": "블록 제목",
+    "resize_block": "블록 크기",
+    "update_chart_settings": "차트 표현 설정",
+    "update_table_settings": "표 표현 설정",
+    "set_block_size_mode": "블록 크기 모드",
     "add_text": "텍스트 블록 추가",
     "update_text": "텍스트 블록 수정",
     "add_artifact_view": "Artifact 보기 추가",
@@ -98,7 +107,10 @@ def _patch_operation_impact(operation: Any) -> dict[str, object]:
 
     if operation.op in {"remove_block", "restore_previous_revision"}:
         category = "DESTRUCTIVE"
-    elif operation.op in {"add_artifact_view", "reposition_block", "duplicate_block"}:
+    elif operation.op in {
+        "set_report_orientation", "compact_report_layout", "add_report_page", "resize_block",
+        "set_block_size_mode", "add_artifact_view", "reposition_block", "duplicate_block",
+    }:
         category = "LAYOUT"
     else:
         category = "CONTENT"
@@ -496,6 +508,21 @@ def _patch_preview_text(value: object | None) -> str | None:
     return text_value if len(text_value) <= 4000 else f"{text_value[:3997]}..."
 
 
+def _preview_block_settings(block: Any) -> dict[str, Any]:
+    """공개 미리보기에 필요한 허용 renderer 설정만 안전하게 읽는다."""
+
+    if not block.content or block.type.value == "text":
+        return {}
+    try:
+        parsed = json.loads(block.content)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    allowed = {"chartType", "showLegend", "density", "showRowNumbers", "sizeMode"}
+    return {key: value for key, value in parsed.items() if key in allowed}
+
+
 def _report_patch_preview(
     definition: Any,
     patch: ReportAssistantPatch,
@@ -511,6 +538,70 @@ def _report_patch_preview(
         after: str | None = None
         if operation.op == "set_report_title":
             before, after = definition.title, operation.title
+        elif operation.op == "set_report_orientation":
+            labels = {"portrait": "A4 세로", "landscape": "A4 가로"}
+            before, after = labels[definition.orientation], labels[operation.orientation]
+        elif operation.op == "set_currency_display_unit":
+            labels = {
+                "auto": "자동", "one": "원", "thousand": "천원", "million": "백만원",
+                "hundredMillion": "억원", "billion": "십억원",
+            }
+            before = labels[definition.currency_display_unit]
+            after = labels[operation.currency_display_unit]
+        elif operation.op == "compact_report_layout":
+            target, before, after = "보고서 전체", "현재 블록 배치", "빈 공간 없이 정리"
+        elif operation.op == "add_report_page":
+            target, before, after = "보고서 끝", "현재 페이지 수 유지", "빈 A4 페이지 1장 추가"
+        elif operation.op == "update_block_title":
+            source = blocks[operation.block_id]
+            target, before, after = source.title, source.title, operation.title
+        elif operation.op == "resize_block":
+            source = blocks[operation.block_id]
+            target = source.title
+            before = f"{source.w}/12 × {source.h}단"
+            after = f"{operation.block_width}/12 × {operation.block_height}단"
+        elif operation.op == "update_chart_settings":
+            source = blocks[operation.block_id]
+            target = source.title
+            settings = _preview_block_settings(source)
+            chart_labels = {
+                "bar": "세로 막대", "horizontal-bar": "가로 막대", "line": "선",
+                "area": "영역", "stacked-bar": "누적 막대", "donut": "도넛", "pie": "원형",
+            }
+            before_parts: list[str] = []
+            after_parts: list[str] = []
+            if operation.chart_type is not None:
+                before_parts.append(f"차트 유형: {chart_labels.get(settings.get('chartType'), '기본 차트')}")
+                after_parts.append(f"차트 유형: {chart_labels[operation.chart_type]}")
+            if operation.show_legend is not None:
+                before_parts.append(f"범례: {'표시' if settings.get('showLegend') is not False else '숨김'}")
+                after_parts.append(f"범례: {'표시' if operation.show_legend else '숨김'}")
+            if operation.size_mode is not None:
+                before_parts.append(f"크기 모드: {'내용에 맞춤' if settings.get('sizeMode') == 'auto' else '수동'}")
+                after_parts.append(f"크기 모드: {'내용에 맞춤' if operation.size_mode == 'auto' else '수동'}")
+            before, after = " · ".join(before_parts), " · ".join(after_parts)
+        elif operation.op == "update_table_settings":
+            source = blocks[operation.block_id]
+            target = source.title
+            settings = _preview_block_settings(source)
+            before_parts = []
+            after_parts = []
+            if operation.density is not None:
+                before_parts.append(f"표 밀도: {'간결' if settings.get('density') == 'compact' else '보통'}")
+                after_parts.append(f"표 밀도: {'간결' if operation.density == 'compact' else '보통'}")
+            if operation.show_row_numbers is not None:
+                before_parts.append(f"행 번호: {'표시' if settings.get('showRowNumbers') is True else '숨김'}")
+                after_parts.append(f"행 번호: {'표시' if operation.show_row_numbers else '숨김'}")
+            if operation.size_mode is not None:
+                before_parts.append(f"크기 모드: {'내용에 맞춤' if settings.get('sizeMode') == 'auto' else '수동'}")
+                after_parts.append(f"크기 모드: {'내용에 맞춤' if operation.size_mode == 'auto' else '수동'}")
+            before, after = " · ".join(before_parts), " · ".join(after_parts)
+        elif operation.op == "set_block_size_mode":
+            source = blocks[operation.block_id]
+            target = source.title
+            settings = _preview_block_settings(source)
+            before = "내용에 맞춤" if settings.get("sizeMode") == "auto" else "수동 크기"
+            after = "내용에 맞춤" if operation.size_mode == "auto" else "수동 크기"
         elif operation.op == "add_text":
             target, after = operation.title, operation.content
         elif operation.op == "update_text":
@@ -527,7 +618,16 @@ def _report_patch_preview(
             before, after = "\n".join(before_parts), "\n".join(after_parts)
         elif operation.op == "add_artifact_view":
             target = operation.title
-            after = f"{view_labels[operation.view]} 블록 추가"
+            details = [f"{view_labels[operation.view]} 블록 추가"]
+            if operation.chart_type is not None:
+                details.append(f"차트 유형 {operation.chart_type}")
+            if operation.show_legend is not None:
+                details.append(f"범례 {'표시' if operation.show_legend else '숨김'}")
+            if operation.density is not None:
+                details.append(f"표 밀도 {'간결' if operation.density == 'compact' else '보통'}")
+            if operation.show_row_numbers is not None:
+                details.append(f"행 번호 {'표시' if operation.show_row_numbers else '숨김'}")
+            after = " · ".join(details)
         elif operation.op == "reposition_block":
             source = blocks[operation.block_id]
             anchor = blocks.get(operation.after_block_id) if operation.after_block_id else None

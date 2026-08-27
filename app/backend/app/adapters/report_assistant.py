@@ -161,6 +161,15 @@ def report_patch_model_payload(patch: ReportAssistantPatch) -> dict[str, object]
             "view": raw.get("view"),
             "title": raw.get("title"),
             "content": raw.get("content"),
+            "orientation": raw.get("orientation"),
+            "currency_display_unit": raw.get("currency_display_unit"),
+            "block_width": raw.get("block_width"),
+            "block_height": raw.get("block_height"),
+            "chart_type": raw.get("chart_type"),
+            "show_legend": raw.get("show_legend"),
+            "density": raw.get("density"),
+            "show_row_numbers": raw.get("show_row_numbers"),
+            "size_mode": raw.get("size_mode"),
             "after_block_id": raw.get("after_block_id"),
             "width": raw.get("width"),
             "evidence_refs": raw.get("evidence_refs", []),
@@ -290,12 +299,47 @@ async def generate_report_change_proposal(
             if kind == "existing_artifact":
                 if plan is not None or not isinstance(raw_patch, dict):
                     raise ValueError("existing_artifact requires a patch and no analysis plan")
+                operation_fields = {
+                    "set_report_title": {"title"},
+                    "set_report_orientation": {"orientation"},
+                    "set_currency_display_unit": {"currency_display_unit"},
+                    "compact_report_layout": set(),
+                    "add_report_page": set(),
+                    "update_block_title": {"block_id", "title"},
+                    "resize_block": {"block_id", "block_width", "block_height"},
+                    "update_chart_settings": {"block_id", "chart_type", "show_legend", "size_mode"},
+                    "update_table_settings": {"block_id", "density", "show_row_numbers", "size_mode"},
+                    "set_block_size_mode": {"block_id", "size_mode"},
+                    "add_text": {"title", "content"},
+                    "update_text": {"block_id", "title", "content"},
+                    "add_artifact_view": {
+                        "artifact_ref", "view", "title", "chart_type", "show_legend",
+                        "density", "show_row_numbers", "size_mode",
+                    },
+                    "reposition_block": {"block_id"},
+                    "remove_block": {"block_id"},
+                    "duplicate_block": {"block_id"},
+                    "restore_previous_revision": set(),
+                }
                 operations = []
                 for raw_operation in raw_patch["operations"]:
+                    allowed_fields = operation_fields[raw_operation["op"]]
+                    if raw_operation["op"] == "add_artifact_view":
+                        view_fields = {
+                            "chart": {"chart_type", "show_legend"},
+                            "table": {"density", "show_row_numbers"},
+                            "artifact": set(),
+                        }[raw_operation["view"]]
+                        allowed_fields = {
+                            "artifact_ref", "view", "title", "size_mode", *view_fields,
+                        }
                     operation = {
-                        key: value
-                        for key, value in raw_operation.items()
-                        if key not in {"after_block_id", "width", "evidence_refs"} and value is not None
+                        "op": raw_operation["op"],
+                        **{
+                            key: raw_operation[key]
+                            for key in allowed_fields
+                            if raw_operation.get(key) is not None
+                        },
                     }
                     if raw_operation["op"] in {"add_text", "update_text"}:
                         operation["evidence_refs"] = raw_operation["evidence_refs"]

@@ -69,6 +69,7 @@ function modelBlock(block) {
     w: Math.min(12, Math.max(1, Math.round(block.w ?? block.columns ?? 12))),
     h: Math.min(18, Math.max(1, Math.round(block.h ?? 4))),
   };
+  if (block.type === "page_break") return { ...base, kind: "pageBreak", x: 0, w: 12, h: 1 };
   if (block.type === "text") return { ...base, kind: "markdown", markdown: block.content || "" };
   if (!block.artifactId) return null;
   const settings = wholeArtifactSettings(block);
@@ -120,6 +121,12 @@ export function frontendBlocksToDocument({ definitionId, title, orientation, cur
     if (converted.some((block) => !block)) {
       return { ok: false, errors: ["\ub370\uc774\ud130 \ube14\ub85d\uc5d0 Artifact \ucc38\uc870\uac00 \uc5c6\uc2b5\ub2c8\ub2e4."] };
     }
+    if (converted.some((block) => block.kind === "pageBreak")) {
+      if (!page) startPage();
+      for (const block of converted) page.blocks.push({ ...block, x: 0, y: cursorY, w: 12, h: 1 });
+      startPage();
+      continue;
+    }
     const height = Math.max(...converted.map((block) => block.h));
     if (!page || (page.blocks.length && cursorY + height > pageRows)) startPage();
     let rowX = 0;
@@ -144,8 +151,9 @@ export function frontendBlocksFromDocument(document, sourceBlocks) {
   const pageRows = A4_PAGE_LAYOUT[document.orientation].contentRows;
   return document.pages.flatMap((page) => page.blocks.map((block) => {
     const source = sources.get(block.id);
-    const fallbackType = block.kind === "markdown"
-      ? "text"
+    const fallbackType = block.kind === "pageBreak"
+      ? "page_break"
+      : block.kind === "markdown" ? "text"
       : block.visibleViews.length > 1
         ? "artifact"
         : block.visibleViews[0] === "chart" ? "chart" : "table";

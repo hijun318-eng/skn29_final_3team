@@ -2886,6 +2886,15 @@
           "operation": {
             "enum": [
               "set_report_title",
+              "set_report_orientation",
+              "set_currency_display_unit",
+              "compact_report_layout",
+              "add_report_page",
+              "update_block_title",
+              "resize_block",
+              "update_chart_settings",
+              "update_table_settings",
+              "set_block_size_mode",
               "add_text",
               "update_text",
               "add_artifact_view",
@@ -3184,6 +3193,15 @@
             "items": {
               "enum": [
                 "set_report_title",
+                "set_report_orientation",
+                "set_currency_display_unit",
+                "compact_report_layout",
+                "add_report_page",
+                "update_block_title",
+                "resize_block",
+                "update_chart_settings",
+                "update_table_settings",
+                "set_block_size_mode",
                 "add_text",
                 "update_text",
                 "add_artifact_view",
@@ -3416,7 +3434,8 @@
               "table",
               "chart",
               "artifact",
-              "text"
+              "text",
+              "page_break"
             ],
             "title": "Type",
             "type": "string"
@@ -3503,7 +3522,8 @@
               "table",
               "chart",
               "artifact",
-              "text"
+              "text",
+              "page_break"
             ],
             "title": "Type",
             "type": "string"

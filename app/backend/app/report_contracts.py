@@ -19,6 +19,10 @@ ReportOrientation = Literal["portrait", "landscape"]
 CurrencyDisplayUnit = Literal[
     "auto", "one", "thousand", "million", "hundredMillion", "billion"
 ]
+ReportChartType = Literal[
+    "bar", "horizontal-bar", "line", "area", "stacked-bar", "donut", "pie"
+]
+ReportBlockSizeMode = Literal["auto", "manual"]
 
 
 class ReportContractModel(BaseModel):
@@ -33,7 +37,7 @@ class ReportBlockRequest(ReportContractModel):
     artifact_id: str | None = None
     query_id: str | None = None
     columns: int | None = Field(default=None, ge=1, le=12)
-    type: Literal["table", "chart", "artifact", "text"] = "table"
+    type: Literal["table", "chart", "artifact", "text", "page_break"] = "table"
     x: int = Field(default=0, ge=0, le=11)
     y: int = Field(default=0, ge=0)
     w: int | None = Field(default=None, ge=1, le=12)
@@ -103,7 +107,7 @@ class ReportBlockResponse(ReportContractModel):
     title: str
     artifact_id: str | None
     columns: int
-    type: Literal["table", "chart", "artifact", "text"]
+    type: Literal["table", "chart", "artifact", "text", "page_break"]
     x: int
     y: int
     w: int
@@ -475,7 +479,10 @@ class ReportAssistantPatchPreviewItem(ReportContractModel):
 
     index: int = Field(ge=0, le=11)
     operation: Literal[
-        "set_report_title", "add_text", "update_text", "add_artifact_view",
+        "set_report_title", "set_report_orientation", "set_currency_display_unit",
+        "compact_report_layout", "add_report_page", "update_block_title", "resize_block",
+        "update_chart_settings", "update_table_settings", "set_block_size_mode",
+        "add_text", "update_text", "add_artifact_view",
         "reposition_block", "remove_block", "duplicate_block",
         "restore_previous_revision",
     ]
@@ -510,7 +517,10 @@ class ReportAssistantSessionResponse(ReportContractModel):
     patch_summary: str | None = Field(default=None, min_length=1, max_length=1000)
     patch_operations: tuple[
         Literal[
-            "set_report_title", "add_text", "update_text", "add_artifact_view",
+            "set_report_title", "set_report_orientation", "set_currency_display_unit",
+            "compact_report_layout", "add_report_page", "update_block_title", "resize_block",
+            "update_chart_settings", "update_table_settings", "set_block_size_mode",
+            "add_text", "update_text", "add_artifact_view",
             "reposition_block", "remove_block", "duplicate_block",
             "restore_previous_revision",
         ], ...
@@ -672,6 +682,102 @@ class ReportAssistantSetTitleOperation(ReportContractModel):
         return value.strip()
 
 
+class ReportAssistantSetOrientationOperation(ReportContractModel):
+    """현재 draft의 A4 용지 방향만 가로 또는 세로로 교체한다."""
+
+    op: Literal["set_report_orientation"]
+    orientation: ReportOrientation
+
+
+class ReportAssistantSetCurrencyDisplayUnitOperation(ReportContractModel):
+    """현재 draft의 통화 표시 배율만 서버 허용 단위로 교체한다."""
+
+    op: Literal["set_currency_display_unit"]
+    currency_display_unit: CurrencyDisplayUnit
+
+
+class ReportAssistantCompactLayoutOperation(ReportContractModel):
+    """현재 block의 시각 순서와 폭을 유지하며 12열 격자의 빈 행을 제거한다."""
+
+    op: Literal["compact_report_layout"]
+
+
+class ReportAssistantAddPageOperation(ReportContractModel):
+    """현재 draft 끝에 내용 없는 A4 페이지 경계를 하나 추가한다."""
+
+    op: Literal["add_report_page"]
+
+
+class ReportAssistantUpdateBlockTitleOperation(ReportContractModel):
+    """현재 draft의 모든 block 유형에 공통인 사용자 표시 제목을 교체한다."""
+
+    op: Literal["update_block_title"]
+    block_id: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=255)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        """공백 block 제목을 거부하고 바깥 공백을 제거한다."""
+
+        if not value.strip():
+            raise ValueError("block 제목은 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantResizeBlockOperation(ReportContractModel):
+    """현재 block 하나를 12열 grid와 유형별 높이 범위 안에서 조절한다."""
+
+    op: Literal["resize_block"]
+    block_id: str = Field(min_length=1)
+    block_width: int = Field(ge=4, le=12)
+    block_height: int = Field(ge=1, le=18)
+
+
+class ReportAssistantUpdateChartSettingsOperation(ReportContractModel):
+    """chart block의 renderer 허용 유형·범례·크기 모드만 변경한다."""
+
+    op: Literal["update_chart_settings"]
+    block_id: str = Field(min_length=1)
+    chart_type: ReportChartType | None = None
+    show_legend: bool | None = None
+    size_mode: ReportBlockSizeMode | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ReportAssistantUpdateChartSettingsOperation":
+        """변경할 chart 설정이 하나도 없는 operation을 거부한다."""
+
+        if self.chart_type is None and self.show_legend is None and self.size_mode is None:
+            raise ValueError("chart 설정 변경값이 필요합니다.")
+        return self
+
+
+class ReportAssistantUpdateTableSettingsOperation(ReportContractModel):
+    """table block의 밀도·행 번호·크기 모드만 변경한다."""
+
+    op: Literal["update_table_settings"]
+    block_id: str = Field(min_length=1)
+    density: Literal["comfortable", "compact"] | None = None
+    show_row_numbers: bool | None = None
+    size_mode: ReportBlockSizeMode | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ReportAssistantUpdateTableSettingsOperation":
+        """변경할 table 설정이 하나도 없는 operation을 거부한다."""
+
+        if self.density is None and self.show_row_numbers is None and self.size_mode is None:
+            raise ValueError("table 설정 변경값이 필요합니다.")
+        return self
+
+
+class ReportAssistantSetBlockSizeModeOperation(ReportContractModel):
+    """chart·table·Artifact block의 자동 또는 수동 크기 모드를 교체한다."""
+
+    op: Literal["set_block_size_mode"]
+    block_id: str = Field(min_length=1)
+    size_mode: ReportBlockSizeMode
+
+
 class ReportAssistantAddTextOperation(ReportContractModel):
     """모델이 제안한 근거 기반 문구를 새 text block으로 추가한다."""
 
@@ -741,6 +847,11 @@ class ReportAssistantAddArtifactViewOperation(ReportContractModel):
     artifact_ref: str = Field(min_length=1, max_length=128)
     view: Literal["chart", "table", "artifact"]
     title: str = Field(min_length=1, max_length=255)
+    chart_type: ReportChartType | None = None
+    show_legend: bool | None = None
+    density: Literal["comfortable", "compact"] | None = None
+    show_row_numbers: bool | None = None
+    size_mode: ReportBlockSizeMode = "auto"
     placement: ReportAssistantPatchPlacement = Field(
         default_factory=ReportAssistantPatchPlacement
     )
@@ -753,6 +864,16 @@ class ReportAssistantAddArtifactViewOperation(ReportContractModel):
         if not value.strip():
             raise ValueError("Artifact 별칭과 block 제목은 비어 있을 수 없습니다.")
         return value.strip()
+
+    @model_validator(mode="after")
+    def validate_view_settings(self) -> "ReportAssistantAddArtifactViewOperation":
+        """추가할 view 유형과 무관한 표현 설정을 patch 저장 전에 거부한다."""
+
+        if self.view != "chart" and (self.chart_type is not None or self.show_legend is not None):
+            raise ValueError("chart 설정은 chart view에만 사용할 수 있습니다.")
+        if self.view != "table" and (self.density is not None or self.show_row_numbers is not None):
+            raise ValueError("table 설정은 table view에만 사용할 수 있습니다.")
+        return self
 
 
 class ReportAssistantRepositionBlockOperation(ReportContractModel):
@@ -794,6 +915,15 @@ class ReportAssistantRestorePreviousRevisionOperation(ReportContractModel):
 
 ReportAssistantPatchOperation = Annotated[
     ReportAssistantSetTitleOperation
+    | ReportAssistantSetOrientationOperation
+    | ReportAssistantSetCurrencyDisplayUnitOperation
+    | ReportAssistantCompactLayoutOperation
+    | ReportAssistantAddPageOperation
+    | ReportAssistantUpdateBlockTitleOperation
+    | ReportAssistantResizeBlockOperation
+    | ReportAssistantUpdateChartSettingsOperation
+    | ReportAssistantUpdateTableSettingsOperation
+    | ReportAssistantSetBlockSizeModeOperation
     | ReportAssistantAddTextOperation
     | ReportAssistantUpdateTextOperation
     | ReportAssistantAddArtifactViewOperation

@@ -116,7 +116,7 @@ def _paginate_layout(
     blocks: object,
     orientation: str,
 ) -> list[list[dict[str, Any]]]:
-    """블록들의 y좌표와 높이(h)를 계산하여 A4 페이지 한도에 맞춰 페이지별 블록 리스트로 분할합니다."""
+    """블록 좌표와 명시적 page_break를 A4 페이지 목록으로 결정론적으로 분할합니다."""
     row_limit = LAYOUT_PAGE_ROWS[orientation]
     ordered = sorted(
         enumerate(blocks if isinstance(blocks, (list, tuple)) else ()),
@@ -138,6 +138,11 @@ def _paginate_layout(
     page: list[dict[str, Any]] = []
     cursor_y = 0
     for source_y, row_blocks in rows:
+        if any(str(block.get("type")) == "page_break" for block in row_blocks):
+            pages.append(page)
+            page = []
+            cursor_y = 0
+            continue
         row_height = min(
             row_limit,
             max(max(1, int(block.get("h") or 1)) for block in row_blocks),
@@ -153,7 +158,7 @@ def _paginate_layout(
             placed["_source_y"] = source_y
             page.append(placed)
         cursor_y += row_height
-    if page or not pages:
+    if page or not pages or (rows and any(str(block.get("type")) == "page_break" for block in rows[-1][1])):
         pages.append(page)
     return pages
 
@@ -161,6 +166,8 @@ def _paginate_layout(
 def _block_html(block: Mapping[str, Any], currency_display_unit: str) -> str:
     """단일 보고서 블록의 HTML 엘리먼트를 조립합니다."""
     block_type = str(block["type"])
+    if block_type == "page_break":
+        return ""
     artifact = block.get("artifact") or {}
     if block_type == "text":
         content = _markdown_text(str(block.get("content") or ""))

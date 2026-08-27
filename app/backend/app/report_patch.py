@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from uuid import uuid4
@@ -16,7 +17,9 @@ _DEFAULT_HEIGHT = {
     BlockType.CHART: 7,
     BlockType.TABLE: 5,
     BlockType.ARTIFACT: 12,
+    BlockType.PAGE_BREAK: 1,
 }
+_MINIMUM_HEIGHT = _DEFAULT_HEIGHT
 
 
 class ReportPatchNoChangesError(ValueError):
@@ -51,7 +54,11 @@ def validate_report_patch_operation_dependencies(patch: ReportAssistantPatch) ->
     used_targets = {
         operation.block_id
         for operation in patch.operations
-        if operation.op in {"update_text", "reposition_block", "duplicate_block"}
+        if operation.op in {
+            "update_text", "update_block_title", "resize_block", "reposition_block",
+            "duplicate_block", "update_chart_settings", "update_table_settings",
+            "set_block_size_mode",
+        }
     }
     anchors: set[str] = set()
     for operation in patch.operations:
@@ -67,15 +74,95 @@ def validate_report_patch_operation_dependencies(patch: ReportAssistantPatch) ->
 
     unique_targets: set[tuple[str, str]] = set()
     for operation in patch.operations:
-        if operation.op == "set_report_title":
+        if operation.op in {
+            "set_report_title", "set_report_orientation", "set_currency_display_unit",
+            "compact_report_layout", "add_report_page",
+        }:
             key = (operation.op, "report")
-        elif operation.op in {"update_text", "reposition_block", "remove_block"}:
+        elif operation.op in {
+            "update_text", "update_block_title", "resize_block", "reposition_block",
+            "remove_block", "update_chart_settings", "update_table_settings",
+            "set_block_size_mode",
+        }:
             key = (operation.op, operation.block_id)
         else:
             continue
         if key in unique_targets:
             raise ValueError("Report patch가 같은 대상을 중복 변경합니다.")
         unique_targets.add(key)
+
+
+def _replace_block(block: ReportBlock, **changes: object) -> ReportBlock:
+    """한 block의 지정 필드만 바꾼 새 불변 값을 만들고 lineage 필드는 그대로 유지한다."""
+
+    values = {
+        "block_id": block.block_id, "title": block.title,
+        "artifact_id": block.artifact_id, "columns": block.columns,
+        "query_id": block.query_id, "type": block.type, "x": block.x, "y": block.y,
+        "w": block.w, "h": block.h, "content": block.content,
+        "evidence_refs": block.evidence_refs,
+    }
+    values.update(changes)
+    return ReportBlock(**values)
+
+
+def _block_settings(block: ReportBlock) -> dict[str, object]:
+    """비-text block의 JSON 설정만 객체로 읽고 손상된 값은 빈 설정으로 닫는다."""
+
+    if block.type is BlockType.TEXT or not block.content:
+        return {}
+    try:
+        value = json.loads(block.content)
+    except (TypeError, ValueError):
+        return {}
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _with_settings(block: ReportBlock, changes: dict[str, object]) -> ReportBlock:
+    """typed 허용값만 기존 renderer 설정에 병합해 결정적 JSON으로 저장한다."""
+
+    settings = {**_block_settings(block), **changes}
+    return _replace_block(
+        block,
+        content=json.dumps(settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _compact_blocks(blocks: list[ReportBlock]) -> list[ReportBlock]:
+    """시각 순서·폭과 명시적 페이지 경계를 유지하며 빈 세로 공간을 제거한다."""
+
+    ordered = sorted(enumerate(blocks), key=lambda item: (item[1].y, item[1].x, item[0]))
+    placed: dict[str, ReportBlock] = {}
+    row: list[ReportBlock] = []
+    row_y = row_x = row_height = 0
+
+    def finish_row() -> None:
+        nonlocal row, row_y, row_x, row_height
+        for item in row:
+            placed[item.block_id] = _replace_block(item, h=row_height)
+        row_y += row_height
+        row, row_x, row_height = [], 0, 0
+
+    for _, block in ordered:
+        if block.type is BlockType.PAGE_BREAK:
+            if row:
+                finish_row()
+            placed[block.block_id] = _replace_block(
+                block, columns=12, x=0, y=row_y, w=12, h=1,
+            )
+            row_y += 1
+            continue
+        if row_x and block.w > 12 - row_x:
+            finish_row()
+        item = _replace_block(block, columns=block.w, x=row_x, y=row_y, w=block.w)
+        row.append(item)
+        row_x += block.w
+        row_height = max(row_height, block.h)
+        if row_x == 12:
+            finish_row()
+    if row:
+        finish_row()
+    return [placed[item.block_id] for item in blocks]
 
 
 def _insert_block(
@@ -161,10 +248,101 @@ def apply_report_assistant_patch(
         return restored
     blocks = list(definition.blocks)
     title = definition.title
+    orientation = definition.orientation
+    currency_display_unit = definition.currency_display_unit
     latest_insert_for_anchor: dict[str, str] = {}
     for operation in patch.operations:
+        target_block_id = getattr(operation, "block_id", None)
+        target_block = next(
+            (item for item in blocks if item.block_id == target_block_id),
+            None,
+        )
+        if target_block is not None and target_block.type is BlockType.PAGE_BREAK:
+            raise ValueError("페이지 경계 수정은 현재 지원하지 않습니다.")
         if operation.op == "set_report_title":
+            if title == operation.title:
+                raise ReportPatchNoChangesError("보고서 제목 operation이 실제 변경을 만들지 않습니다.")
             title = operation.title
+            continue
+        if operation.op == "set_report_orientation":
+            if orientation == operation.orientation:
+                raise ReportPatchNoChangesError("보고서 방향 operation이 실제 변경을 만들지 않습니다.")
+            orientation = operation.orientation
+            continue
+        if operation.op == "set_currency_display_unit":
+            if currency_display_unit == operation.currency_display_unit:
+                raise ReportPatchNoChangesError("통화 단위 operation이 실제 변경을 만들지 않습니다.")
+            currency_display_unit = operation.currency_display_unit
+            continue
+        if operation.op == "compact_report_layout":
+            blocks = _compact_blocks(blocks)
+            continue
+        if operation.op == "add_report_page":
+            _insert_block(
+                blocks,
+                ReportBlock(
+                    str(uuid4()), "새 페이지", None, 12, None,
+                    BlockType.PAGE_BREAK, 0, 0, 12, 1, "",
+                ),
+                None,
+            )
+            continue
+        if operation.op in {
+            "update_block_title", "resize_block", "update_chart_settings",
+            "update_table_settings", "set_block_size_mode",
+        }:
+            index = next(
+                (position for position, item in enumerate(blocks) if item.block_id == operation.block_id),
+                None,
+            )
+            if index is None:
+                raise ValueError("Report patch의 설정 대상 block을 찾을 수 없습니다.")
+            source = blocks[index]
+            if operation.op == "update_block_title":
+                if source.title == operation.title:
+                    raise ReportPatchNoChangesError("블록 제목 operation이 실제 변경을 만들지 않습니다.")
+                blocks[index] = _replace_block(source, title=operation.title)
+            elif operation.op == "resize_block":
+                minimum_width = 4 if source.type is BlockType.TEXT else 6
+                minimum_height = _MINIMUM_HEIGHT[source.type]
+                if operation.block_width < minimum_width or operation.block_height < minimum_height:
+                    raise ValueError("Report block 크기가 유형별 최소 범위보다 작습니다.")
+                resized = _replace_block(
+                    source, columns=operation.block_width, w=operation.block_width,
+                    h=operation.block_height,
+                    x=min(source.x, 12 - operation.block_width),
+                )
+                blocks[index] = (
+                    _with_settings(resized, {"sizeMode": "manual"})
+                    if source.type is not BlockType.TEXT else resized
+                )
+                blocks = _compact_blocks(blocks)
+            elif operation.op == "update_chart_settings":
+                if source.type is not BlockType.CHART:
+                    raise ValueError("chart 설정은 chart block에만 적용할 수 있습니다.")
+                changes = {
+                    key: value for key, value in {
+                        "chartType": operation.chart_type,
+                        "showLegend": operation.show_legend,
+                        "sizeMode": operation.size_mode,
+                    }.items() if value is not None
+                }
+                blocks[index] = _with_settings(source, changes)
+            elif operation.op == "update_table_settings":
+                if source.type is not BlockType.TABLE:
+                    raise ValueError("table 설정은 table block에만 적용할 수 있습니다.")
+                changes = {
+                    key: value for key, value in {
+                        "density": operation.density,
+                        "showRowNumbers": operation.show_row_numbers,
+                        "sizeMode": operation.size_mode,
+                    }.items() if value is not None
+                }
+                blocks[index] = _with_settings(source, changes)
+            else:
+                if source.type not in {BlockType.CHART, BlockType.TABLE, BlockType.ARTIFACT}:
+                    raise ValueError("자동 크기 모드는 분석 view block에만 적용할 수 있습니다.")
+                blocks[index] = _with_settings(source, {"sizeMode": operation.size_mode})
             continue
         if operation.op == "remove_block":
             if len(blocks) == 1:
@@ -280,7 +458,20 @@ def apply_report_assistant_patch(
             block_type = BlockType(operation.view)
             artifact_id = binding.artifact_id
             query_id = binding.query_id
-            content = ""
+            settings: dict[str, object] = {"sizeMode": operation.size_mode}
+            if operation.view == "chart":
+                settings.update({
+                    "showLegend": True if operation.show_legend is None else operation.show_legend,
+                    **({"chartType": operation.chart_type} if operation.chart_type else {}),
+                })
+            elif operation.view == "table":
+                settings.update({
+                    "density": operation.density or "comfortable",
+                    "showRowNumbers": bool(operation.show_row_numbers),
+                })
+            content = json.dumps(
+                settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
         requested_anchor = operation.placement.after_block_id
         effective_anchor = (
             latest_insert_for_anchor.get(requested_anchor, requested_anchor)
@@ -308,7 +499,10 @@ def apply_report_assistant_patch(
         )
         if requested_anchor is not None:
             latest_insert_for_anchor[requested_anchor] = new_block_id
-    patched = definition.replace_blocks(tuple(blocks), title=title)
+    patched = definition.replace_blocks(
+        tuple(blocks), title=title, orientation=orientation,
+        currency_display_unit=currency_display_unit,
+    )
     if patched == definition:
         raise ReportPatchNoChangesError("Report patch가 실제 변경을 만들지 않습니다.")
     return patched

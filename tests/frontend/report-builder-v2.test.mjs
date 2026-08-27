@@ -20,6 +20,8 @@ const presentation = source("app/frontend/src/features/reports/v2/ReportPresenta
 const canvas = source("app/frontend/src/features/reports/ReportPageCanvas.jsx");
 const viewport = source("app/frontend/src/features/reports/reportEditorViewport.ts");
 const normalization = source("app/frontend/src/contracts/reportNormalization.ts");
+const reportPresentation = source("app/frontend/src/features/reports/components/reportPresentation.js");
+const draftOperations = source("app/frontend/src/features/reports/reportDraftOperations.js");
 
 assert.match(flags, /VITE_REPORT_BUILDER_V2 !== "false"/);
 assert.doesNotMatch(flags, /SHOWCASE/);
@@ -108,6 +110,13 @@ assert.match(assistant, /<details className="report-assistant-patch-detail">/);
 assert.match(assistant, /내용 펼치기/);
 assert.match(assistant, /approvalRef\.current\?\.focus\(\)/);
 assert.match(assistant, /PATCH_IMPACT_LABEL/);
+assert.match(assistant, /set_currency_display_unit: "통화 표시 단위 변경"/);
+assert.match(assistant, /compact_report_layout: "전체 레이아웃 정리"/);
+assert.match(assistant, /add_report_page: "빈 페이지 추가"/);
+assert.match(assistant, /update_block_title: "블록 제목 변경"/);
+assert.match(assistant, /resize_block: "블록 크기 변경"/);
+assert.match(assistant, /update_chart_settings: "차트 설정 변경"/);
+assert.match(assistant, /update_table_settings: "표 설정 변경"/);
 assert.match(assistant, /선택한 변경 영향/);
 assert.match(assistant, /preview\.items\.filter\(\(item\) => selectedIndexes\.includes\(item\.index\)\)/);
 assert.match(assistant, /evidenceRequired/);
@@ -138,5 +147,9 @@ assert.doesNotMatch(assistant, /데이터 재조회 0건|mock|fixture/i);
 assert.match(normalization, /artifact_id: block\.artifactId/);
 assert.doesNotMatch(normalization, /query_id: block\.queryId/);
 assert.doesNotMatch(normalization, /locked|selectedBlockIds|snapshots|clipboard|zoom/);
+assert.match(reportPresentation, /block\.type === "page_break"/);
+assert.match(reportPresentation, /startPage\(row\.sourceY \+ 1\)/);
+assert.match(draftOperations, /kind: "pageBreak"/);
+assert.match(draftOperations, /block\.kind === "pageBreak"/);
 
 console.log("frontend Report Builder V2 shell tests passed");

@@ -335,6 +335,26 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("grid-column:1 / span 12;grid-row:1;--report-min-rows:8", html)
         self.assertLess(html.index('data-block-id="left"'), html.index('data-block-id="right"'))
 
+    def test_explicit_page_break_creates_one_blank_trailing_page(self):
+        """페이지 추가 marker는 출력 block이 아니라 내용 없는 다음 A4 페이지가 된다."""
+
+        blocks = [
+            {
+                "block_id": "summary", "type": "text", "title": "요약",
+                "content": "본문", "x": 0, "y": 0, "w": 12, "h": 4,
+            },
+            {
+                "block_id": "break", "type": "page_break", "title": "새 페이지",
+                "content": "", "x": 0, "y": 4, "w": 12, "h": 1,
+            },
+        ]
+
+        pages = _paginate_layout(blocks, "portrait")
+
+        self.assertEqual(2, len(pages))
+        self.assertEqual(["summary"], [block["block_id"] for block in pages[0]])
+        self.assertEqual([], pages[1])
+
     def test_bar_chart_handles_negative_values_without_negative_svg_height(self):
         report_source = deepcopy(source())
         artifact = report_source["blocks"][1]["artifact"]

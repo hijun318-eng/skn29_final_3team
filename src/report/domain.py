@@ -69,11 +69,12 @@ class BlockFailureCode(StrEnum):
 
 
 class BlockType(StrEnum):
-    """보고서 격자 블록이 표, 차트, 일반 산출물, 사용자 텍스트 중 무엇을 렌더링할지 지정한다."""
+    """보고서 격자 블록이 데이터·텍스트·명시적 페이지 경계 중 무엇인지 지정한다."""
     TABLE = "table"
     CHART = "chart"
     ARTIFACT = "artifact"
     TEXT = "text"
+    PAGE_BREAK = "page_break"
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +111,15 @@ class ReportBlock:
             raise ValueError("table·chart·artifact block은 artifact_id가 필요합니다.")
         if self.type is BlockType.TEXT and not self.content.strip():
             raise ValueError("text block은 빈 content를 허용하지 않습니다.")
+        if self.type is BlockType.PAGE_BREAK and (
+            self.artifact_id is not None
+            or self.query_id is not None
+            or self.content
+            or self.x != 0
+            or self.w != 12
+            or self.h != 1
+        ):
+            raise ValueError("page break block은 내용·Artifact 없이 12열 한 행이어야 합니다.")
         if (
             len(self.evidence_refs) > 16
             or len(set(self.evidence_refs)) != len(self.evidence_refs)

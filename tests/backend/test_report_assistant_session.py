@@ -1937,6 +1937,59 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("DESTRUCTIVE", preview[1]["impact_category"])
         self.assertFalse(preview[1]["evidence_required"])
 
+    def test_patch_preview_describes_editor_settings_without_raw_json(self) -> None:
+        """차트 변경 카드는 허용 설정의 전후만 설명하고 내부 설정 JSON은 노출하지 않는다."""
+
+        block_id = str(uuid4())
+        definition = ReportDefinitionVersion(
+            str(uuid4()), 2, DefinitionStatus.DRAFT, "기존 제목",
+            (ReportBlock(
+                block_id, "매출 차트", str(uuid4()), 12, "query-secret",
+                BlockType.CHART, 0, 0, 12, 7,
+                '{"chartType":"bar","showLegend":true,"sizeMode":"manual","private":"hidden"}',
+            ),),
+        )
+        patch_value = ReportAssistantPatch.model_validate({
+            "summary": "차트 표현 변경",
+            "operations": [{
+                "op": "update_chart_settings", "block_id": block_id,
+                "chart_type": "horizontal-bar", "show_legend": False,
+                "size_mode": "auto",
+            }],
+        })
+
+        preview = _report_patch_preview(definition, patch_value)
+
+        self.assertIn("차트 유형: 세로 막대", preview[0]["before"])
+        self.assertIn("차트 유형: 가로 막대", preview[0]["after"])
+        self.assertIn("범례: 표시", preview[0]["before"])
+        self.assertIn("범례: 숨김", preview[0]["after"])
+        self.assertNotIn("private", str(preview))
+        self.assertNotIn("query-secret", str(preview))
+
+    def test_patch_preview_describes_one_blank_trailing_page(self) -> None:
+        """빈 페이지 추가 카드는 내부 marker 대신 사용자에게 보일 결과만 설명한다."""
+
+        definition = ReportDefinitionVersion(
+            str(uuid4()), 2, DefinitionStatus.DRAFT, "기존 제목",
+            (ReportBlock(
+                "summary", "요약", None, 12, None,
+                BlockType.TEXT, 0, 0, 12, 4, "본문",
+            ),),
+        )
+        patch_value = ReportAssistantPatch.model_validate({
+            "summary": "빈 페이지 추가",
+            "operations": [{"op": "add_report_page"}],
+        })
+
+        preview = _report_patch_preview(definition, patch_value)
+
+        self.assertEqual("add_report_page", preview[0]["operation"])
+        self.assertEqual("보고서 끝", preview[0]["target"])
+        self.assertEqual("빈 A4 페이지 1장 추가", preview[0]["after"])
+        self.assertEqual("LAYOUT", preview[0]["impact_category"])
+        self.assertNotIn("page_break", str(preview))
+
 
 class ReportAssistantComposeTest(unittest.IsolatedAsyncioTestCase):
     """새 분석 patch를 한 번 고정하고 저장 재개에서는 모델을 호출하지 않는지 검증한다."""

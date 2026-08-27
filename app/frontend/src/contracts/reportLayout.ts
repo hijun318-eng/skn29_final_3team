@@ -7,6 +7,16 @@ export function normalizeDraftLayout(blocks: readonly ReportBlock[]): readonly D
   let y = 0;
   let rowHeight = 0;
   return blocks.map((block) => {
+    if (block.type === "page_break") {
+      if (x > 0) {
+        x = 0;
+        y += rowHeight;
+        rowHeight = 0;
+      }
+      const placed = { ...block, columns: 12, x: 0, y, w: 12, h: 1 };
+      y += 1;
+      return placed;
+    }
     const w = Math.min(12, Math.max(1, block.w ?? block.columns));
     const h = Math.max(1, block.h ?? 4);
     if (x + w > 12) {
@@ -44,10 +54,13 @@ export function reorderDraftBlocks(
 }
 
 function minimumDraftWidth(block: ReportBlock): number {
-  return block.type === "text" ? 4 : 6;
+  return block.type === "page_break" ? 12 : block.type === "text" ? 4 : 6;
 }
 
 function normalizedDraftBlock(block: ReportBlock): DraftLayoutBlock {
+  if (block.type === "page_break") {
+    return { ...block, columns: 12, x: 0, y: Math.max(0, block.y ?? 0), w: 12, h: 1 };
+  }
   const w = Math.min(12, Math.max(minimumDraftWidth(block), block.w ?? block.columns));
   return {
     ...block,
@@ -60,7 +73,7 @@ function normalizedDraftBlock(block: ReportBlock): DraftLayoutBlock {
 }
 
 function minimumDraftHeight(block: ReportBlock): number {
-  return block.type === "artifact" ? 12 : block.type === "chart" ? 7 : block.type === "table" ? 5 : 4;
+  return block.type === "page_break" ? 1 : block.type === "artifact" ? 12 : block.type === "chart" ? 7 : block.type === "table" ? 5 : 4;
 }
 
 /** 모든 좌표 범위와 블록 간 겹침이 유효한지 순수 함수로 검사한다. */
@@ -138,6 +151,12 @@ export function compactDraftLayout(blocks: readonly ReportBlock[]): readonly Dra
   };
 
   for (const { block } of ordered) {
+    if (block.type === "page_break") {
+      if (row.length) finishRow();
+      resolved.set(block.id, { ...block, columns: 12, x: 0, y: rowY, w: 12, h: 1 });
+      rowY += 1;
+      continue;
+    }
     const width = block.w;
     if (rowX > 0 && width > 12 - rowX) finishRow();
 

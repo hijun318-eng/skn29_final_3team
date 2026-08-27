@@ -89,6 +89,27 @@ REPORT_ASSISTANT_TURN_RESPONSE = {
     "suggestions": ["현재 보고서 제목을 더 간결하게 바꿔 줘"],
 }
 
+REPORT_ASSISTANT_WIRE_OPERATION = {
+    "op": None,
+    "block_id": None,
+    "artifact_ref": None,
+    "view": None,
+    "title": None,
+    "content": None,
+    "orientation": None,
+    "currency_display_unit": None,
+    "after_block_id": None,
+    "width": None,
+    "block_width": None,
+    "block_height": None,
+    "chart_type": None,
+    "show_legend": None,
+    "density": None,
+    "show_row_numbers": None,
+    "size_mode": None,
+    "evidence_refs": [],
+}
+
 REPORT_ASSISTANT_EXISTING_RESPONSE = {
     "change_kind": "existing_artifact",
     "message": "승인된 근거로 차트를 추가합니다.",
@@ -96,15 +117,13 @@ REPORT_ASSISTANT_EXISTING_RESPONSE = {
     "patch": {
         "summary": "기존 근거 차트 추가",
         "operations": [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
             "op": "add_artifact_view",
-            "block_id": None,
             "artifact_ref": "source_artifact",
             "view": "chart",
             "title": "승인 지표 차트",
-            "content": None,
             "after_block_id": "block-one",
             "width": "full",
-            "evidence_refs": [],
         }],
     },
     "suggestions": ["승인 지표를 설명하는 텍스트 블록을 추가해 줘"],
@@ -255,13 +274,10 @@ class ReportAssistantContractTests(unittest.TestCase):
 
         text_response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
         text_response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
             "op": "add_text",
-            "block_id": None,
-            "artifact_ref": None,
-            "view": None,
             "title": "근거 요약",
             "content": "승인된 근거를 요약합니다.",
-            "after_block_id": None,
             "width": "full",
             "evidence_refs": ["artifact_narrative"],
         }]
@@ -357,15 +373,10 @@ class ReportAssistantContractTests(unittest.TestCase):
 
         response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
         response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
             "op": "reposition_block",
             "block_id": "block-one",
-            "artifact_ref": None,
-            "view": None,
-            "title": None,
-            "content": None,
-            "after_block_id": None,
             "width": "half",
-            "evidence_refs": [],
         }]
         validate_payload("report_assistant_turn_response", response)
 
@@ -376,19 +387,11 @@ class ReportAssistantContractTests(unittest.TestCase):
     def test_existing_turn_supports_remove_duplicate_and_revision_restore(self):
         """삭제·복제는 기존 block만 가리키고 revision 복원은 식별자 없는 단독 의도로 전달한다."""
 
-        base = {
-            "artifact_ref": None,
-            "view": None,
-            "title": None,
-            "content": None,
-            "after_block_id": None,
-            "width": None,
-            "evidence_refs": [],
-        }
+        base = {**REPORT_ASSISTANT_WIRE_OPERATION}
         for operation in (
-            {"op": "remove_block", "block_id": "block-one", **base},
-            {"op": "duplicate_block", "block_id": "block-one", **base},
-            {"op": "restore_previous_revision", "block_id": None, **base},
+            {**base, "op": "remove_block", "block_id": "block-one"},
+            {**base, "op": "duplicate_block", "block_id": "block-one"},
+            {**base, "op": "restore_previous_revision", "block_id": None},
         ):
             with self.subTest(operation=operation["op"]):
                 response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
@@ -397,12 +400,37 @@ class ReportAssistantContractTests(unittest.TestCase):
 
         invalid_restore = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
         invalid_restore["patch"]["operations"] = [{
+            **base,
             "op": "restore_previous_revision",
             "block_id": "model-owned",
-            **base,
         }]
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_response", invalid_restore)
+
+    def test_existing_turn_supports_report_orientation_change(self):
+        """가로·세로 변경은 block 식별자 없이 문서 전체 방향만 전달한다."""
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "set_report_orientation",
+            "orientation": "landscape",
+        }]
+        validate_payload("report_assistant_turn_response", response)
+
+        response["patch"]["operations"][0]["orientation"] = None
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", response)
+
+    def test_existing_turn_supports_one_blank_page_addition(self):
+        """빈 페이지 추가는 모델 식별자나 filler block 없이 단일 구조 operation으로 전달한다."""
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "add_report_page",
+        }]
+        validate_payload("report_assistant_turn_response", response)
 
     def test_turn_history_is_bounded_and_clarification_has_no_action(self):
         """최근 대화는 role/content만 허용하고 clarification은 실행 계획과 patch를 갖지 않는다."""
@@ -428,10 +456,13 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 단일 Artifact 묶음은 과거 clarification·분해 operation보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.8.6", prompt.version)
+        self.assertEqual("PROMPT-v1.9.5", prompt.version)
+        self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
         self.assertIn("current instruction is authoritative", prompt.text)
         self.assertIn("ignore any unresolved earlier clarification", prompt.text)
         self.assertIn("exactly one add_artifact_view operation with view artifact", prompt.text)
+        self.assertIn("Use set_report_orientation with portrait or landscape", prompt.text)
+        self.assertIn("return exactly one operation total: add_report_page", prompt.text)
         self.assertIn("Account for every requested effect", prompt.text)
         self.assertIn("never silently omit the unsupported part", prompt.text)
         self.assertIn("a block is positioned relative to itself", prompt.text)
@@ -439,8 +470,42 @@ class ReportAssistantContractTests(unittest.TestCase):
         self.assertIn("do not treat preserve or stay unchanged as a no-op", prompt.text)
         self.assertIn("Evidence refs and their ordering are server-managed", prompt.text)
         self.assertIn("never reinterpret it as block movement", prompt.text)
-        self.assertIn("cannot rename the title of an existing chart, table, or whole Artifact block", prompt.text)
-        self.assertIn("never suggest an existing chart, table, or Artifact title edit", prompt.text)
+        self.assertIn("Use update_block_title for any existing text, chart, table, or Artifact block title", prompt.text)
+        self.assertIn("Use update_chart_settings only for chart blocks", prompt.text)
+        self.assertIn("duplicate_block is an exact copy", prompt.text)
+        self.assertIn("do not ask whether those values should remain the same", prompt.text)
+        self.assertIn("require only duplicate_block", prompt.text)
+        self.assertIn("Never add reposition_block for the source", prompt.text)
+
+    def test_turn_contract_supports_persisted_editor_settings(self):
+        """문서·블록·차트·표 설정은 임의 JSON 없이 strict typed operation으로 표현한다."""
+
+        operations = (
+            {"op": "set_currency_display_unit", "currency_display_unit": "million"},
+            {"op": "compact_report_layout"},
+            {"op": "update_block_title", "block_id": "block-one", "title": "월간 매출 추이"},
+            {"op": "resize_block", "block_id": "block-one", "block_width": 12, "block_height": 9},
+            {
+                "op": "update_chart_settings", "block_id": "block-one",
+                "chart_type": "horizontal-bar", "show_legend": False, "size_mode": "auto",
+            },
+            {"op": "set_block_size_mode", "block_id": "block-one", "size_mode": "manual"},
+        )
+        for values in operations:
+            with self.subTest(operation=values["op"]):
+                response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+                response["patch"]["operations"] = [{**REPORT_ASSISTANT_WIRE_OPERATION, **values}]
+                validate_payload("report_assistant_turn_response", response)
+
+        invalid = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        invalid["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "update_chart_settings",
+            "block_id": "block-one",
+            "chart_type": "radar",
+        }]
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", invalid)
 
     def test_turn_serving_schema_keeps_analysis_plan_nullable(self):
         """OpenAI strict 변환 뒤에도 existing_artifact가 null 계획을 반환할 수 있어야 한다."""
@@ -519,15 +584,10 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
         response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
             "op": "reposition_block",
             "block_id": "block-one",
-            "artifact_ref": None,
-            "view": None,
-            "title": None,
-            "content": None,
-            "after_block_id": None,
             "width": "half",
-            "evidence_refs": [],
         }]
         route = SimpleNamespace(
             endpoint="https://model.invalid/v1",
@@ -562,6 +622,74 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             },
             proposal["patch"]["operations"][0],
         )
+
+    async def test_editor_setting_wire_operation_becomes_typed_patch(self):
+        """GPT의 strict 차트 설정은 임의 settings 객체 없이 typed 서버 patch로 변환된다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "update_chart_settings",
+            "block_id": "block-one",
+            "title": "operation과 무관한 wire 값",
+            "chart_type": "horizontal-bar",
+            "show_legend": False,
+            "size_mode": "auto",
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1", token="test-token",
+            model="test-model", provider="openai",
+        )
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.openai_transport", new=AsyncMock(return_value=response)),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual(
+            {
+                "op": "update_chart_settings", "block_id": "block-one",
+                "chart_type": "horizontal-bar", "show_legend": False,
+                "size_mode": "auto",
+            },
+            proposal["patch"]["operations"][0],
+        )
+
+    async def test_table_view_drops_irrelevant_chart_wire_fields(self):
+        """표 추가 응답의 chart용 nullable 오염값은 table typed patch에 전달하지 않는다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "add_artifact_view", "artifact_ref": "source_artifact",
+            "view": "table", "title": "승인 매출 표", "chart_type": "bar",
+            "density": "compact", "show_row_numbers": True, "size_mode": "auto",
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1", token="test-token",
+            model="test-model", provider="openai",
+        )
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.openai_transport", new=AsyncMock(return_value=response)),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        operation = proposal["patch"]["operations"][0]
+        self.assertEqual("table", operation["view"])
+        self.assertEqual("compact", operation["density"])
+        self.assertTrue(operation["show_row_numbers"])
+        self.assertIsNone(operation["chart_type"])
 
 
 if __name__ == "__main__":

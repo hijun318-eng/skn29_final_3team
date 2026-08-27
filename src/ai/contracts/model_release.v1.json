@@ -1,9 +1,9 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.38.0",
+  "manifest_version": "MODEL-RELEASE-v1.45.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.25.0",
-  "schema_sha256": "d7160a2af0ca4df3df3df874116afff052fc79bb03164dbdad99f8c21ac87e48",
+  "schema_version": "MODEL-v1.28.0",
+  "schema_sha256": "ecfd93c37d9acf95b12af04bfa8ec40c5b3379613f189da94443d5f8e564a046",
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
@@ -42,8 +42,8 @@
     },
     "report_assistant_turn": {
       "prompt_id": "report.assistant.turn",
-      "prompt_version": "PROMPT-v1.8.6",
-      "prompt_sha256": "60797f5e4da82ec49b9269bd16fda9b7a818a25bb3ce4a8847369bd7b05c5fce",
+      "prompt_version": "PROMPT-v1.9.5",
+      "prompt_sha256": "6727705e368c2adaa1439153e33bdcb560609d3122ba601fd496976f50dec813",
       "request_definition": "report_assistant_turn_request",
       "response_definition": "report_assistant_turn_response"
     },

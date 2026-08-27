@@ -8,10 +8,10 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 132 |
-| documentation | 171 |
+| documentation | 195 |
 | production | 311 |
 | project-config | 42 |
-| runtime-config | 77 |
+| runtime-config | 78 |
 | runtime-contract | 10 |
 | test | 146 |
 
@@ -219,6 +219,7 @@
 | `app/backend/migrations/versions/20260826_38_report_assistant_artifact_bindings.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260826_39_report_block_evidence_refs.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260826_40_report_assistant_patch_selection.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260827_41_report_page_break_blocks.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -418,6 +419,12 @@
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/12-report-drag-layout.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/13-admin-role-navigation.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/14-lan-agent-success.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-editor-parity-block-completed.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-editor-parity-chart-completed.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-editor-parity-document-completed.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-editor-parity-document-proposal.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-editor-parity-partial-approval.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-editor-parity-table-completed.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s01-ready-state.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s02-quality-review.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s03-noop-title.png` | documentation | REFERENCE_NON_RUNTIME |
@@ -433,6 +440,24 @@
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s12-safe-retry.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s13-responsive-450px.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s14-artifact-prerequisite.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/CHROME_current_report_before.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-1_after.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-1_before.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-1_input.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-1_proposal.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_after.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_before.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_input.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_retest2_after.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_retest2_before.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_retest2_input.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_retest_after.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_retest_before.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O01-2_retest_input.jpg` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O13-1_backend_restart_login_required_chrome.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O13-1_before_chrome.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O13-1_input_chrome.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/scenario-matrix/O13-1_transport_failed_chrome.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/V4_통합_개발계획.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/LOCAL_SETUP.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/README.md` | documentation | REFERENCE_NON_RUNTIME |

@@ -37,7 +37,7 @@ export function seoulWallClockToIso(value: string): string {
   return new Date(wallClock.getTime() - 9 * 60 * 60 * 1000).toISOString();
 }
 
-/** 보고서 API가 영속화하는 블록 타입 집합이다. */ export const REPORT_BLOCK_TYPES = ["table", "chart", "text", "artifact"] as const;
+/** 보고서 API가 영속화하는 블록 타입 집합이다. */ export const REPORT_BLOCK_TYPES = ["table", "chart", "text", "artifact", "page_break"] as const;
 /** 영속 블록 타입의 리터럴 타입이다. */ export type ReportBlockType = typeof REPORT_BLOCK_TYPES[number];
 
 /** 보고서 정의에 저장되는 블록과 선택적 grid 좌표 계약이다. */ export interface ReportBlock {
@@ -293,7 +293,10 @@ export interface ReportAssistantAnalysisPlan {
 export interface ReportAssistantPatchPreviewItem {
   readonly index: number;
   readonly operation:
-    | "set_report_title" | "add_text" | "update_text" | "add_artifact_view"
+    | "set_report_title" | "set_report_orientation" | "set_currency_display_unit"
+    | "compact_report_layout" | "add_report_page" | "update_block_title" | "resize_block"
+    | "update_chart_settings" | "update_table_settings" | "set_block_size_mode"
+    | "add_text" | "update_text" | "add_artifact_view"
     | "reposition_block" | "remove_block" | "duplicate_block"
     | "restore_previous_revision";
   readonly target: string;
@@ -317,7 +320,10 @@ export interface ReportAssistantSessionResponse {
   readonly patch_request_id: string | null;
   readonly patch_summary: string | null;
   readonly patch_operations: readonly (
-    | "set_report_title" | "add_text" | "update_text" | "add_artifact_view"
+    | "set_report_title" | "set_report_orientation" | "set_currency_display_unit"
+    | "compact_report_layout" | "add_report_page" | "update_block_title" | "resize_block"
+    | "update_chart_settings" | "update_table_settings" | "set_block_size_mode"
+    | "add_text" | "update_text" | "add_artifact_view"
     | "reposition_block" | "remove_block" | "duplicate_block"
     | "restore_previous_revision"
   )[];

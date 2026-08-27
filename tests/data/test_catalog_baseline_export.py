@@ -20,6 +20,7 @@ from src.data.governance_contract import canonical_sha256  # noqa: E402
 from export_catalog_baseline import (  # noqa: E402
     BASELINE_SCOPE,
     build_catalog_baseline,
+    read_catalog_retirement_scope,
     validate_catalog_baseline,
 )
 
@@ -41,8 +42,15 @@ class Hit:
 
 
 class BaselineClient:
-    def __init__(self, *, reverse: bool = False, orphaned: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        reverse: bool = False,
+        orphaned: bool = False,
+        status_removed: bool = False,
+    ) -> None:
         self.reverse = reverse
+        self.status_removed = status_removed
         self.terms = {
             TECHNICAL_URN: {
                 "urn": TECHNICAL_URN,
@@ -136,7 +144,7 @@ class BaselineClient:
         return self.terms[urn]
 
     async def get_entity_status(self, urn: str) -> dict[str, object]:
-        return {"urn": urn, "status": {"removed": False}}
+        return {"urn": urn, "status": {"removed": self.status_removed}}
 
     async def list_datasets(self) -> tuple[Hit, ...]:
         urns = sorted(self.datasets, reverse=self.reverse)
@@ -189,3 +197,17 @@ def test_baseline_records_orphaned_technical_terms_without_fake_dataset_links() 
     assert document["inventory"]["affected_datasets"] == 0
     assert document["datasets"] == []
     validate_catalog_baseline(document)
+
+
+def test_exact_retirement_read_keeps_soft_deleted_targets_outside_search() -> None:
+    scope = asyncio.run(
+        read_catalog_retirement_scope(
+            BaselineClient(orphaned=True, status_removed=True),
+            [TECHNICAL_URN],
+        )
+    )
+
+    assert scope["scope"] == BASELINE_SCOPE
+    assert scope["terms"][0]["urn"] == TECHNICAL_URN
+    assert scope["terms"][0]["removed"] is True
+    assert scope["datasets"] == []

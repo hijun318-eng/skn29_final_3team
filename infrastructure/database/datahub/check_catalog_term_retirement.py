@@ -32,6 +32,7 @@ RETIREMENT_CHECK_SCHEMA_VERSION = (
 )
 RETIREMENT_ACTION = "SOFT_DELETE_STATUS_PRESERVING_IDENTITY"
 _MAX_BASELINE_BYTES = 2_000_000
+_MAX_CHECK_BYTES = 100_000
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -48,6 +49,22 @@ def load_catalog_baseline(path: Path) -> dict[str, Any]:
     if not isinstance(document, dict):
         raise ValueError("catalog baseline must be an object")
     validate_catalog_baseline(document)
+    return document
+
+
+def load_retirement_check(path: Path) -> dict[str, Any]:
+    """크기가 제한된 절대 경로의 retirement check를 checksum까지 검증한다."""
+
+    if not path.is_absolute():
+        raise ValueError("retirement check path must be absolute")
+    target = path.resolve(strict=True)
+    if not target.is_file() or target.stat().st_size > _MAX_CHECK_BYTES:
+        raise ValueError("retirement check is unavailable or too large")
+    with target.open("r", encoding="utf-8") as stream:
+        document = json.load(stream)
+    if not isinstance(document, dict):
+        raise ValueError("retirement check must be an object")
+    validate_retirement_check(document)
     return document
 
 

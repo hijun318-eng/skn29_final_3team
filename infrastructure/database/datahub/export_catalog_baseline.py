@@ -60,23 +60,15 @@ async def build_catalog_baseline(client: Any) -> dict[str, Any]:
     ]
     technical_urns = {term["urn"] for term in terms}
 
-    dataset_hits = await client.list_datasets()
-    dataset_urns = tuple(sorted(hit.urn for hit in dataset_hits))
-    dataset_values = await _bounded_read(dataset_urns, client.get_dataset)
-    affected_datasets: list[dict[str, Any]] = []
-    for expected_urn, raw in zip(dataset_urns, dataset_values, strict=True):
-        value = _mapping(raw, "dataset")
-        if value.get("urn") != expected_urn:
-            raise ValueError("DataHub dataset identity changed during baseline read")
-        snapshot = _dataset_snapshot(value)
-        if _dataset_term_urns(snapshot) & technical_urns:
-            affected_datasets.append(snapshot)
+    scanned_datasets, affected_datasets = await _affected_dataset_snapshots(
+        client, technical_urns
+    )
 
     payload = {
         "schema_version": BASELINE_SCHEMA_VERSION,
         "scope": BASELINE_SCOPE,
         "inventory": {
-            "scanned_datasets": len(dataset_urns),
+            "scanned_datasets": scanned_datasets,
             "scanned_glossary_terms": len(term_urns),
             "affected_datasets": len(affected_datasets),
             "technical_terms": len(terms),
@@ -87,6 +79,54 @@ async def build_catalog_baseline(client: Any) -> dict[str, Any]:
     document = {**payload, "content_sha256": canonical_sha256(payload)}
     validate_catalog_baseline(document)
     return document
+
+
+async def read_catalog_retirement_scope(
+    client: Any, term_urns: Sequence[str]
+) -> dict[str, Any]:
+    """search 결과와 무관하게 baseline의 exact URN 상태·연결을 다시 읽는다."""
+
+    identities = tuple(sorted(_text(urn, "term URN") for urn in term_urns))
+    if not identities or len(identities) != len(set(identities)):
+        raise ValueError("retirement term identities must be non-empty and unique")
+    term_values = await _bounded_read(identities, client.get_glossary_term)
+    technical_values: list[tuple[str, Mapping[str, Any]]] = []
+    for expected_urn, raw in zip(identities, term_values, strict=True):
+        value = _mapping(raw, "glossary term")
+        if value.get("urn") != expected_urn:
+            raise ValueError("DataHub glossary term identity changed during exact read")
+        kind = _technical_term_kind(value)
+        if kind is None:
+            raise ValueError("retirement scope contains a non-technical term")
+        technical_values.append((kind, value))
+
+    status_values = await _bounded_read(identities, client.get_entity_status)
+    terms = [
+        _term_snapshot(kind, value, status)
+        for (kind, value), status in zip(
+            technical_values, status_values, strict=True
+        )
+    ]
+    _scanned_datasets, datasets = await _affected_dataset_snapshots(
+        client, set(identities)
+    )
+    return {"scope": BASELINE_SCOPE, "terms": terms, "datasets": datasets}
+
+
+async def read_visible_technical_term_urns(client: Any) -> tuple[str, ...]:
+    """DataHub 기본 활성 열거에 노출되는 생성형 기술 Term URN만 반환한다."""
+
+    term_hits = await client.list_glossary_terms()
+    term_urns = tuple(sorted(hit.urn for hit in term_hits))
+    term_values = await _bounded_read(term_urns, client.get_glossary_term)
+    visible = []
+    for expected_urn, raw in zip(term_urns, term_values, strict=True):
+        value = _mapping(raw, "glossary term")
+        if value.get("urn") != expected_urn:
+            raise ValueError("DataHub glossary term identity changed during visible read")
+        if _technical_term_kind(value) is not None:
+            visible.append(expected_urn)
+    return tuple(visible)
 
 
 def validate_catalog_baseline(document: Mapping[str, Any]) -> None:
@@ -167,6 +207,23 @@ async def _bounded_read(
             return await reader(identity)
 
     return tuple(await asyncio.gather(*(read(identity) for identity in identities)))
+
+
+async def _affected_dataset_snapshots(
+    client: Any, technical_urns: set[str]
+) -> tuple[int, list[dict[str, Any]]]:
+    dataset_hits = await client.list_datasets()
+    dataset_urns = tuple(sorted(hit.urn for hit in dataset_hits))
+    dataset_values = await _bounded_read(dataset_urns, client.get_dataset)
+    affected_datasets: list[dict[str, Any]] = []
+    for expected_urn, raw in zip(dataset_urns, dataset_values, strict=True):
+        value = _mapping(raw, "dataset")
+        if value.get("urn") != expected_urn:
+            raise ValueError("DataHub dataset identity changed during baseline read")
+        snapshot = _dataset_snapshot(value)
+        if _dataset_term_urns(snapshot) & technical_urns:
+            affected_datasets.append(snapshot)
+    return len(dataset_urns), affected_datasets
 
 
 def _technical_term_kind(value: Mapping[str, Any]) -> str | None:

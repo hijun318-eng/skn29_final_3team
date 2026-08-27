@@ -1340,9 +1340,20 @@ async def review_assistant_report(
         finally:
             execution_gate.release()
     except ReportAssistantModelError as error:
+        error_code = error.code
+        await _observe_assistant(
+            repository,
+            "upsert_assistant_evaluation",
+            assistant_request_id,
+            contract_valid=False,
+            model_attempts=error.attempts,
+            latency_ms=error.duration_ms,
+            error_code=error_code,
+            accumulate_usage=True,
+        )
         raise HTTPException(
             status_code=502,
-            detail={"code": "REPORT_ASSISTANT_REVIEW_MODEL_FAILED", "assistant_request_id": assistant_request_id},
+            detail={"code": error_code, "assistant_request_id": assistant_request_id},
         ) from error
     if trace.get("output_tokens") is not None and int(trace["output_tokens"]) > max_output_tokens:
         await _observe_assistant(
@@ -1546,21 +1557,24 @@ async def submit_assistant_message(
         finally:
             execution_gate.release()
     except ReportAssistantModelError as error:
+        error_code = error.code
         if not refining_patch:
             await repository.fail_assistant_request(
-                assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_FAILED"
+                assistant_request_id, error_code
             )
         await _observe_assistant(
             repository,
             "upsert_assistant_evaluation",
             assistant_request_id,
             contract_valid=False,
-            error_code="REPORT_ASSISTANT_TURN_MODEL_FAILED",
+            model_attempts=error.attempts,
+            latency_ms=error.duration_ms,
+            error_code=error_code,
         )
         raise HTTPException(
             status_code=502,
             detail={
-                "code": "REPORT_ASSISTANT_TURN_MODEL_FAILED",
+                "code": error_code,
                 "assistant_request_id": assistant_request_id,
             },
         ) from error

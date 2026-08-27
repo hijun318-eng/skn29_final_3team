@@ -50,6 +50,12 @@ class ModelRateLimitError(OSError):
     retryable = True
 
 
+class ModelRequestRejectedError(ValueError):
+    """provider가 요청 형식·정책을 거부했으며 같은 payload 재시도가 무의미함을 나타낸다."""
+    code = "MODEL_REQUEST_REJECTED"
+    retryable = False
+
+
 class AsyncProductionModelClient(ProductionModelClient):
     """비동기 transport에 schema·전체 deadline·retry·circuit 계약을 적용한다.
 
@@ -247,5 +253,6 @@ __all__ = [
     "ModelContractInvalidError",
     "ModelEndpointUnavailableError",
     "ModelRateLimitError",
+    "ModelRequestRejectedError",
     "ModelTimeoutError",
 ]

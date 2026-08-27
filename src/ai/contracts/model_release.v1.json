@@ -1,5 +1,5 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.37.0",
+  "manifest_version": "MODEL-RELEASE-v1.38.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
   "schema_version": "MODEL-v1.25.0",
@@ -42,15 +42,15 @@
     },
     "report_assistant_turn": {
       "prompt_id": "report.assistant.turn",
-      "prompt_version": "PROMPT-v1.8.5",
-      "prompt_sha256": "5ac54d39cac18ad4457830d66115425a1f0b057ed32226d295c3d39b6e23dab3",
+      "prompt_version": "PROMPT-v1.8.6",
+      "prompt_sha256": "60797f5e4da82ec49b9269bd16fda9b7a818a25bb3ce4a8847369bd7b05c5fce",
       "request_definition": "report_assistant_turn_request",
       "response_definition": "report_assistant_turn_response"
     },
     "report_assistant_review": {
       "prompt_id": "report.assistant.review",
-      "prompt_version": "PROMPT-v1.2.0",
-      "prompt_sha256": "4de7e0900b2a56a643381a1cd18fab166142f74bce82572d7f2d7c6116614728",
+      "prompt_version": "PROMPT-v1.2.1",
+      "prompt_sha256": "530423a5b8d82a6cb93872ed5b1cdf2cebaeee981cdf234e737bf93f533635b7",
       "request_definition": "report_assistant_review_request",
       "response_definition": "report_assistant_review_response"
     }

@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 132 |
-| documentation | 166 |
+| documentation | 171 |
 | production | 311 |
 | project-config | 42 |
-| runtime-config | 75 |
+| runtime-config | 77 |
 | runtime-contract | 10 |
-| test | 145 |
+| test | 146 |
 
 운영 무결성 위반: **0건**
 
@@ -217,6 +217,8 @@
 | `app/backend/migrations/versions/20260825_36_report_assistant_retry_lineage.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260826_37_report_assistant_turn_retention.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260826_38_report_assistant_artifact_bindings.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_39_report_block_evidence_refs.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_40_report_assistant_patch_selection.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -416,6 +418,21 @@
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/12-report-drag-layout.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/13-admin-role-navigation.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/14-lan-agent-success.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s01-ready-state.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s02-quality-review.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s03-noop-title.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s04-rejected-compound-patch.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s05-partial-approval.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s06-revised-patch.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s07-after-refresh-recovered.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s07-before-refresh.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s08-duplicate-approval.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s09-security-boundary.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s10-conflicting-instruction.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s11-cancelled-ready-session.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s12-safe-retry.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s13-responsive-450px.png` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/derived/runtime_evidence/2026-08-27/report-assistant-s14-artifact-prerequisite.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/V4_통합_개발계획.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/LOCAL_SETUP.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/README.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -448,17 +465,7 @@
 | `docs/reference/Walkerhill_V4.3_교체_검토_및_실행_보고서.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/멀티턴_발화이해_BP_벤치마크.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/목업_하드코딩_감사_2026-08-19.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Agent_실구현_계획_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_5단계_로컬배포_검증보고서_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_GPT_고도화_기획_20260826.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_개발자_가이드_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_구현_진행_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_기능_설명서_20260826.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_다음_작업_계획서_20260824.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_다음단계_인수인계_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_고도화_현황_및_반응_정의_20260825.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_실연동_인프라_복구_실행_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_실화면_독립검증_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_통합_가이드.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/report_builder/BACKEND_DEVELOPER_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/report_builder/BACKEND_EVOLUTION_ROADMAP.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/report_builder/FRONTEND_ENHANCEMENT_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -830,6 +837,7 @@
 | `tests/backend/test_readiness.py` | test | TEST_ONLY |
 | `tests/backend/test_report_assistant_operations.py` | test | TEST_ONLY |
 | `tests/backend/test_report_assistant_patch.py` | test | TEST_ONLY |
+| `tests/backend/test_report_assistant_postgres_concurrency.py` | test | TEST_ONLY |
 | `tests/backend/test_report_assistant_session.py` | test | TEST_ONLY |
 | `tests/backend/test_report_document.py` | test | TEST_ONLY |
 | `tests/backend/test_report_execution.py` | test | TEST_ONLY |

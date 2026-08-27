@@ -350,6 +350,9 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
         "ASSISTANT_EXECUTION_INTERRUPTED",
         "ASSISTANT_RATE_LIMITED",
         "REPORT_ASSISTANT_COMPOSE_FAILED",
+        "REPORT_ASSISTANT_MODEL_RATE_LIMITED",
+        "REPORT_ASSISTANT_MODEL_TIMEOUT",
+        "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED",
         "REPORT_ASSISTANT_TURN_MODEL_FAILED",
         "REPORT_ASSISTANT_TURN_MODEL_INVALID",
     }
@@ -363,6 +366,10 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
         "ASSISTANT_STATE_CONFLICT": ReportAssistantRequiredAction.REFRESH,
         "ASSISTANT_TOKEN_BUDGET_EXCEEDED": ReportAssistantRequiredAction.CONTACT_ADMIN,
         "REPORT_REVISION_CONFLICT": ReportAssistantRequiredAction.REOPEN_LATEST_REPORT,
+        "REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "REPORT_ASSISTANT_MODEL_REQUEST_REJECTED": ReportAssistantRequiredAction.CONTACT_ADMIN,
     }
     if error_code in retryable:
         return ReportAssistantRetryPolicy(

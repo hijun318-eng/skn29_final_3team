@@ -6,6 +6,11 @@ import os
 from time import perf_counter
 from typing import Any
 
+from app.adapters.async_model_client import (
+    ModelAuthenticationError,
+    ModelRateLimitError,
+    ModelRequestRejectedError,
+)
 from app.adapters.contract_model import openai_transport
 from app.adapters.model_schemas import PROMPT_IDS, request_definition, response_definition
 from app.report_contracts import ReportAssistantPatch
@@ -20,7 +25,70 @@ from src.modelops.runtime_config import (
 
 class ReportAssistantModelError(RuntimeError):
     """보고서 제안 모델의 구성·transport·schema 검증 실패로 draft를 신뢰할 수 없음을 알린다."""
-    pass
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "REPORT_ASSISTANT_TURN_MODEL_FAILED",
+        attempts: int | None = None,
+        duration_ms: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.attempts = attempts
+        self.duration_ms = duration_ms
+
+
+def _model_failure(
+    error: Exception | None,
+    *,
+    message: str,
+    attempts: int | None,
+    started: float | None,
+) -> ReportAssistantModelError:
+    """provider 원문을 노출하지 않고 실패 종류와 안전한 관측치만 보존한다."""
+
+    if isinstance(error, ModelAuthenticationError):
+        code = "REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED"
+    elif isinstance(error, ModelRateLimitError):
+        code = "REPORT_ASSISTANT_MODEL_RATE_LIMITED"
+    elif isinstance(error, ModelRequestRejectedError):
+        code = "REPORT_ASSISTANT_MODEL_REQUEST_REJECTED"
+    elif isinstance(error, TimeoutError):
+        code = "REPORT_ASSISTANT_MODEL_TIMEOUT"
+    elif isinstance(error, OSError):
+        code = "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED"
+    elif isinstance(error, (ContractError, TypeError, ValueError)):
+        code = "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID"
+    else:
+        code = "REPORT_ASSISTANT_TURN_MODEL_FAILED"
+    duration_ms = None if started is None else round((perf_counter() - started) * 1000, 3)
+    return ReportAssistantModelError(
+        message,
+        code=code,
+        attempts=attempts,
+        duration_ms=duration_ms,
+    )
+
+
+def _model_runtime_limits() -> tuple[float, int]:
+    """Report Assistant 공통 timeout·시도 제한을 한 번 검증해 반환한다."""
+
+    try:
+        timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
+        max_attempts = int(os.getenv("REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS", "2"))
+    except ValueError as error:
+        raise ReportAssistantModelError(
+            "Report Assistant model limits are invalid",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+        ) from error
+    if timeout <= 0 or not 1 <= max_attempts <= 4:
+        raise ReportAssistantModelError(
+            "Report Assistant model limits are invalid",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+        )
+    return timeout, max_attempts
 
 
 def report_evidence_catalog(
@@ -119,24 +187,19 @@ async def generate_report_draft(
         )
     except (OSError, ValueError) as error:
         raise ReportAssistantModelError(
-            "Report Assistant model configuration is unavailable"
+            "Report Assistant model configuration is unavailable",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
         ) from error
     try:
         validate_payload(request_definition("report_assistant"), payload)
     except (ContractError, TypeError, ValueError) as error:
         raise ReportAssistantModelError(
-            "Report Assistant request violates the active model contract"
+            "Report Assistant request violates the active model contract",
+            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
         ) from error
-    timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
+    timeout, max_attempts = _model_runtime_limits()
     started = perf_counter()
     last_error: Exception | None = None
-    raw_attempts = os.getenv("REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS", "2")
-    try:
-        max_attempts = int(raw_attempts)
-    except ValueError as error:
-        raise ReportAssistantModelError("Report Assistant attempt limit is invalid") from error
-    if not 1 <= max_attempts <= 4:
-        raise ReportAssistantModelError("Report Assistant attempt limit is invalid")
     for attempt in range(1, max_attempts + 1):
         try:
             result = await openai_transport(
@@ -170,7 +233,14 @@ async def generate_report_draft(
             )
         except (OSError, TimeoutError, TypeError, ValueError) as error:
             last_error = error
-    raise ReportAssistantModelError("Report Assistant model call failed") from last_error
+            if isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError)):
+                break
+    raise _model_failure(
+        last_error,
+        message="Report Assistant model call failed",
+        attempts=attempt,
+        started=started,
+    ) from last_error
 
 
 async def generate_report_change_proposal(
@@ -185,21 +255,21 @@ async def generate_report_change_proposal(
     node = "report_assistant_turn"
     try:
         route = active_route_for_node(resolve_active_model_routes(), node)
-        validate_payload(request_definition(node), payload)
-    except (ContractError, OSError, TypeError, ValueError) as error:
+    except (OSError, ValueError) as error:
         raise ReportAssistantModelError(
-            "Report Assistant turn configuration or request is invalid"
+            "Report Assistant turn configuration is invalid",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
         ) from error
-    timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
+    try:
+        validate_payload(request_definition(node), payload)
+    except (ContractError, TypeError, ValueError) as error:
+        raise ReportAssistantModelError(
+            "Report Assistant turn request is invalid",
+            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
+        ) from error
+    timeout, max_attempts = _model_runtime_limits()
     started = perf_counter()
     last_error: Exception | None = None
-    raw_attempts = os.getenv("REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS", "2")
-    try:
-        max_attempts = int(raw_attempts)
-    except ValueError as error:
-        raise ReportAssistantModelError("Report Assistant attempt limit is invalid") from error
-    if not 1 <= max_attempts <= 4:
-        raise ReportAssistantModelError("Report Assistant attempt limit is invalid")
     for attempt in range(1, max_attempts + 1):
         try:
             result = await openai_transport(
@@ -270,7 +340,14 @@ async def generate_report_change_proposal(
             )
         except (ContractError, OSError, TimeoutError, TypeError, ValueError) as error:
             last_error = error
-    raise ReportAssistantModelError("Report Assistant turn model call failed") from last_error
+            if isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError)):
+                break
+    raise _model_failure(
+        last_error,
+        message="Report Assistant turn model call failed",
+        attempts=attempt,
+        started=started,
+    ) from last_error
 
 
 async def generate_report_quality_review(
@@ -281,20 +358,21 @@ async def generate_report_quality_review(
     node = "report_assistant_review"
     try:
         route = active_route_for_node(resolve_active_model_routes(), node)
-        validate_payload(request_definition(node), payload)
-    except (ContractError, OSError, TypeError, ValueError) as error:
+    except (OSError, ValueError) as error:
         raise ReportAssistantModelError(
-            "Report Assistant review configuration or request is invalid"
+            "Report Assistant review configuration is invalid",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
         ) from error
-    timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
+    try:
+        validate_payload(request_definition(node), payload)
+    except (ContractError, TypeError, ValueError) as error:
+        raise ReportAssistantModelError(
+            "Report Assistant review request is invalid",
+            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
+        ) from error
+    timeout, max_attempts = _model_runtime_limits()
     started = perf_counter()
     last_error: Exception | None = None
-    try:
-        max_attempts = int(os.getenv("REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS", "2"))
-    except ValueError as error:
-        raise ReportAssistantModelError("Report Assistant attempt limit is invalid") from error
-    if not 1 <= max_attempts <= 4:
-        raise ReportAssistantModelError("Report Assistant attempt limit is invalid")
     for attempt in range(1, max_attempts + 1):
         try:
             result = await openai_transport(
@@ -325,4 +403,11 @@ async def generate_report_quality_review(
             )
         except (ContractError, OSError, TimeoutError, TypeError, ValueError) as error:
             last_error = error
-    raise ReportAssistantModelError("Report Assistant review model call failed") from last_error
+            if isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError)):
+                break
+    raise _model_failure(
+        last_error,
+        message="Report Assistant review model call failed",
+        attempts=attempt,
+        started=started,
+    ) from last_error

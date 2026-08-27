@@ -107,7 +107,7 @@ REPORT_ASSISTANT_EXISTING_RESPONSE = {
             "evidence_refs": [],
         }],
     },
-    "suggestions": ["선택한 차트 제목을 더 간결하게 바꿔 줘"],
+    "suggestions": ["승인 지표를 설명하는 텍스트 블록을 추가해 줘"],
 }
 
 REPORT_ASSISTANT_CLARIFICATION_RESPONSE = {
@@ -126,10 +126,10 @@ REPORT_ASSISTANT_REVIEW_RESPONSE = {
         "block_id": "block-one",
         "title": "차트 제목 확인",
         "detail": "차트 제목이 승인된 지표 표현과 다릅니다.",
-        "suggested_instruction": "차트 제목을 승인된 지표 표현에 맞춰 바꿔 줘",
+        "suggested_instruction": "보고서 요약을 승인된 지표 표현에 맞춰 바꿔 줘",
         "evidence_refs": ["artifact_narrative"],
     }],
-    "suggestions": ["선택한 차트 제목을 승인 지표에 맞춰 바꿔 줘"],
+    "suggestions": ["보고서 요약을 승인 지표에 맞춰 바꿔 줘"],
 }
 
 
@@ -428,7 +428,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 단일 Artifact 묶음은 과거 clarification·분해 operation보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.8.5", prompt.version)
+        self.assertEqual("PROMPT-v1.8.6", prompt.version)
         self.assertIn("current instruction is authoritative", prompt.text)
         self.assertIn("ignore any unresolved earlier clarification", prompt.text)
         self.assertIn("exactly one add_artifact_view operation with view artifact", prompt.text)
@@ -439,6 +439,8 @@ class ReportAssistantContractTests(unittest.TestCase):
         self.assertIn("do not treat preserve or stay unchanged as a no-op", prompt.text)
         self.assertIn("Evidence refs and their ordering are server-managed", prompt.text)
         self.assertIn("never reinterpret it as block movement", prompt.text)
+        self.assertIn("cannot rename the title of an existing chart, table, or whole Artifact block", prompt.text)
+        self.assertIn("never suggest an existing chart, table, or Artifact title edit", prompt.text)
 
     def test_turn_serving_schema_keeps_analysis_plan_nullable(self):
         """OpenAI strict 변환 뒤에도 existing_artifact가 null 계획을 반환할 수 있어야 한다."""

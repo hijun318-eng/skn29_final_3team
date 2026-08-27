@@ -15,6 +15,7 @@ from app.adapters.async_model_client import (
     AsyncProductionModelClient,
     ModelAuthenticationError,
     ModelRateLimitError,
+    ModelRequestRejectedError,
 )
 from app.adapters.model_schemas import (
     openai_payload,
@@ -90,7 +91,7 @@ async def _request_json(
         if status_code == 429:
             raise ModelRateLimitError("model endpoint rate limit was reached") from error
         if 400 <= status_code < 500:
-            raise ValueError(
+            raise ModelRequestRejectedError(
                 f"model endpoint rejected the request with HTTP {status_code}"
             ) from error
         raise OSError(f"model endpoint returned HTTP {status_code}") from error

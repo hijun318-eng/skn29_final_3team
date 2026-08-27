@@ -14,6 +14,7 @@ from app.adapters.async_model_client import (
     ModelCircuitOpenError,
     ModelContractInvalidError,
     ModelEndpointUnavailableError,
+    ModelRequestRejectedError,
 )
 from app.adapters.model_transport import OpenAITransport, openai_transport
 from app.adapters.report_assistant import generate_report_draft
@@ -311,6 +312,28 @@ class AsyncModelTransportTests(unittest.IsolatedAsyncioTestCase):
             await http.aclose()
 
         self.assertEqual(1, calls)
+
+    async def test_provider_request_rejection_has_a_non_retryable_type(self) -> None:
+        """인증·한도 외 4xx를 schema 오류와 섞지 않고 안전한 provider 거절로 보존한다."""
+
+        async def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": "rejected"})
+
+        http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with self.assertRaises(ModelRequestRejectedError):
+                await openai_transport(
+                    "https://model.internal",
+                    "token",
+                    "node3",
+                    VALID_PAYLOADS["node3_request"],
+                    1,
+                    model="gpt-5.4-mini",
+                    provider="openai",
+                    client=http,
+                )
+        finally:
+            await http.aclose()
 
     async def test_malformed_choice_is_a_contract_error(self) -> None:
         async def handler(_request: httpx.Request) -> httpx.Response:

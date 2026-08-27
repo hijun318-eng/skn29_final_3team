@@ -510,6 +510,7 @@ class ReportArtifactRepositoryMixin:
                            report_patch_json, status, instruction_hash,
                            decision_hash, model_version, prompt_id,
                            prompt_version, prompt_hash,
+                           output_hash,
                            approved_at, rejected_at,
                            retry_of_assistant_request_id, retry_created_at,
                            patch_preview_json, approved_operation_indexes
@@ -544,6 +545,34 @@ class ReportArtifactRepositoryMixin:
         result = dict(row)
         result["artifact_bindings"] = tuple(dict(binding) for binding in bindings)
         return result
+
+    async def _completed_assistant_revision(
+        self,
+        assistant_request_id: str,
+        output_hash: str,
+        *,
+        decision_hash: str | None = None,
+        data_request_id: str | None = None,
+    ) -> dict[str, object] | None:
+        """동일 저장 경쟁에서 먼저 완료된 session만 멱등 성공으로 다시 읽는다."""
+
+        current = await self.get_assistant_session(assistant_request_id)
+        if (
+            current.get("phase") != "completed"
+            or current.get("status") != "success"
+            or current.get("result_revision") is None
+            or str(current.get("output_hash")) != output_hash
+            or (
+                decision_hash is not None
+                and str(current.get("decision_hash")) != decision_hash
+            )
+            or (
+                data_request_id is not None
+                and str(current.get("data_request_id")) != data_request_id
+            )
+        ):
+            return None
+        return current
 
     async def get_assistant_artifacts(
         self,
@@ -1135,8 +1164,18 @@ class ReportArtifactRepositoryMixin:
                         assistant_message=assistant_message,
                         change_kind=change_kind,
                     )
-        except IntegrityError as error:
-            raise ValueError("REPORT_REVISION_CONFLICT") from error
+        except (IntegrityError, ValueError) as error:
+            completed = await self._completed_assistant_revision(
+                assistant_request_id,
+                output_hash,
+                decision_hash=decision_hash,
+                data_request_id=data_request_id,
+            )
+            if completed is not None:
+                return completed
+            if isinstance(error, IntegrityError):
+                raise ValueError("REPORT_REVISION_CONFLICT") from error
+            raise
         return await self.get_assistant_session(assistant_request_id)
 
     async def get_assistant_turn_history(
@@ -1580,8 +1619,17 @@ class ReportArtifactRepositoryMixin:
                 )).scalar_one_or_none()
                 if completed is None:
                     raise ValueError("REPORT_REVISION_CONFLICT")
-        except IntegrityError as error:
-            raise ValueError("REPORT_REVISION_CONFLICT") from error
+        except (IntegrityError, ValueError) as error:
+            completed = await self._completed_assistant_revision(
+                assistant_request_id,
+                output_hash,
+                data_request_id=data_request_id,
+            )
+            if completed is not None:
+                return completed
+            if isinstance(error, IntegrityError):
+                raise ValueError("REPORT_REVISION_CONFLICT") from error
+            raise
         return await self.get_assistant_session(assistant_request_id)
 
     async def _transition_assistant_phase(

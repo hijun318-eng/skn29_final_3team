@@ -1,16 +1,19 @@
-# Report Assistant V2 기능 설명서
+# Report Assistant V2 통합 가이드
 
 ## 1. 문서 목적
 
-이 문서는 `seung` 브랜치의 Report Assistant V2를 백엔드 개발자와 클라이언트 개발자가
-연동·검증할 때 사용하는 기능 설명서다. 작업 일지나 향후 계획이 아니라 현재 코드에 구현된
-기능, 공개 API, 상태 계약, 책임 경계와 미완료 범위를 설명한다.
+이 문서는 `seung` 브랜치 Report Assistant V2의 유일한 통합 참고 문서다. 기존 기능 설명서,
+개발자 가이드, 구현 기록, 단계별 계획, 검증보고서와 실행 프롬프트에서 현재도 유효한 내용을
+하나로 정리한다. Backend·Frontend 연동, GPT 계약, API·상태 전이, 파일 위치, migration,
+검증 시나리오, 로컬 실행, 남은 위험과 팀 통합 기준을 함께 설명한다.
 
 - 저장소: `report-assistant-advanced`
 - 공유 브랜치: `seung`
-- 문서 확인 기준: 공유 커밋 `1d4cf856`와 15차 변경 영향 표시 로컬 변경
-- 문서 기준일: 2026-08-26
+- 문서 확인 기준: `codex/report-assistant-advanced-20260824`에서 검증한 현재 tree, 공유 대상 `seung`
+- 문서 기준일: 2026-08-27
 - 현재 작업 tree migration head: `20260826_40`
+- active model release: `MODEL-RELEASE-v1.38.0`
+- Report Assistant prompt: turn `PROMPT-v1.8.6`, review `PROMPT-v1.2.1`
 
 실제 구현 여부의 최종 권위는 현재 코드, OpenAPI, migration과 실행 결과다. 다른 브랜치에서
 migration 번호를 재배치했다면 번호가 아니라 revision graph와 실제 schema를 함께 확인한다.
@@ -69,6 +72,8 @@ Artifact와 현재 Report draft를 읽고 제한된 변경안을 생성하며, �
 | operation 의존성 검증 | 구현·contract/unit 확인 | 삭제 target·anchor 충돌과 동일 대상 중복 변경 차단 |
 | 선택 변경 영향 표시 | 구현·contract/unit·로컬 Browser 확인 | 서버 분류를 선택 operation 기준으로 집계 |
 | 대기 요청 취소 | 구현·contract/unit·로컬 Browser 확인 | 실행·저장 전 phase만 취소하고 terminal 재호출 멱등 처리 |
+| 동시 승인·재수정 CAS | 구현·격리 PostgreSQL 확인 | 동일 승인 Revision 1건, stale 재수정 1건만 성공 |
+| 모델 실패 원인 분류 | 구현·contract/unit 확인 | 인증·한도·4xx·timeout·transport·contract·설정 오류 구분 |
 
 `model=ready`, 화면 렌더링 또는 fake 테스트만으로 전체 Agent E2E 완료라고 판정하지 않는다.
 
@@ -351,6 +356,19 @@ new_data
 - `REOPEN_LATEST_REPORT`: 최신 Report Revision 다시 열기
 - `CONTACT_ADMIN`: Artifact lineage, checksum, 권한 또는 예산 설정 확인
 
+Report Assistant 모델 실패는 provider 원문을 노출하지 않고 다음 안전한 code로 구분한다.
+
+- `REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED`
+- `REPORT_ASSISTANT_MODEL_RATE_LIMITED`
+- `REPORT_ASSISTANT_MODEL_REQUEST_REJECTED`
+- `REPORT_ASSISTANT_MODEL_TIMEOUT`
+- `REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED`
+- `REPORT_ASSISTANT_MODEL_CONTRACT_INVALID`
+- `REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID`
+
+인증 실패와 재시도 불가능한 provider 4xx는 같은 요청을 반복하지 않는다. rate limit, timeout과
+일시 transport 장애만 bounded retry 대상이며 실제 시도 횟수와 latency를 평가 레코드에 남긴다.
+
 오류 응답 직후에도 서버가 session을 `failed`로 저장했을 수 있다. 클라이언트는 모델 요청 실패를
 로컬 오류로만 끝내지 말고 같은 session을 한 번 재조회해 `retryable`과 `required_action`을
 반영한다.
@@ -498,14 +516,17 @@ SQL, 사용자 지시 원문과 raw model response는 평가 레코드나 API에
 | `tests/backend/test_report_assistant_patch.py` | patch 8종과 안전한 거부 |
 | `tests/backend/test_report_assistant_operations.py` | 평가·지표·권한·기간·비용 |
 | `tests/backend/test_report_migration.py` | migration chain과 민감정보 부재 |
+| `tests/backend/test_report_assistant_postgres_concurrency.py` | 격리 PostgreSQL 승인·재수정 CAS 경쟁 |
 | `tests/frontend/contracts.test.mjs` | URL/body·phase·retry·UI 계약 |
 | `evals/report_assistant_quality_cases.json` | deterministic Assistant 품질 시나리오 |
 
-2026-08-26 현재 15차 변경 영향 표시까지 포함한 Backend·AI 관련 unittest 131개와 Frontend test
-24개 및 production build가 통과했다. migration 40 기준 기존 Artifact 편집은 실제 GPT·격리
-PostgreSQL·Browser에서 부분 승인, CAS Revision, 저장 재개와 새로고침 복구까지 확인했다. 15차는
-신규 migration이나 GPT 호출 없이 기존 저장 patch를 서버가 분류하며 로컬 Browser에서 표시를
-확인했다. Trino·DataHub `new_data` live E2E는 이 결과에 포함하지 않는다.
+2026-08-27 현재 Report Assistant 관련 Backend·AI·migration unittest 158개, Frontend test 24개,
+production build, OpenAPI, 코드 문서화, architectural invariants, repository integrity, compileall과
+`git diff --check`가 통과했다. migration 40 기준 기존 Artifact 편집은 이전 검증에서 실제 GPT·격리
+PostgreSQL·Browser로 부분 승인, CAS Revision, 저장 재개와 새로고침 복구까지 확인했다. 현재
+`MODEL-RELEASE-v1.38.0`의 실패 분류·지원 범위 prompt 변경은 deterministic contract/unit으로
+검증했으며 새 유료 GPT·Browser 호출은 실행하지 않았다. Trino·DataHub `new_data` live E2E도 이
+결과에 포함하지 않는다.
 
 ## 17. 현재 제한과 다음 고도화
 
@@ -515,12 +536,15 @@ PostgreSQL·Browser에서 부분 승인, CAS Revision, 저장 재개와 새로�
   강제로 중단하는 worker-level cancellation은 지원하지 않는다.
 - `running_data_agent` 직후 process crash의 완전한 exactly-once 복구는 보장하지 않는다.
 - Trino·DataHub `new_data` live E2E는 미완료다.
+- 기존 chart·table·Artifact block의 제목 직접 변경 operation은 없다. 해당 요청은 clarification으로
+  닫고 보고서 제목·텍스트·구조 편집 중 지원되는 대안을 안내한다.
+- active model release `v1.38.0`의 실제 유료 GPT·Browser 재검증은 별도 실행 승인이 필요하다.
 
 ### Trino·DataHub와 무관하게 가능한 다음 고도화
 
-1. 선택 operation 사이의 의미 의존성을 사용자에게 더 명확히 설명하는 검증
-2. 장시간 대화에서 승인 카드 preview의 접근성·모바일 레이아웃 Browser 검증
-3. 실제 PostgreSQL에서 process 중단 시점별 복구 통합 검증
+1. 장시간 대화와 다양한 보고서 구조에서 prompt 품질 평가 확대
+2. 현재 model release의 실제 GPT·PostgreSQL·Browser 대표 시나리오 재검증
+3. process 종료 시점별 복구와 운영 관측 통합 검증
 
 이 항목들은 후속 계획이며 현재 구현 기능으로 소개하면 안 된다.
 
@@ -678,3 +702,135 @@ analysis plan을 제안한다.
 현재 Report Assistant를 설명할 때는 **기존 승인 Artifact를 근거로 보고서를 편집하는 GPT Agent는
 실제 동작하고, 신규 데이터 분석은 계획·승인 경계까지만 준비됐으며 Analysis Agent·DataHub·Trino
 live 연결은 남아 있다**고 구분한다.
+
+## 21. 구현 이력 요약
+
+세부 날짜별 작업 일지를 다시 만들지 않고, 현재 코드에 남아 있는 기능 경계만 요약한다.
+
+| 구간 | 통합된 결과 |
+|---|---|
+| 1~3차 | 서버 session, strict 분류, 기존 Artifact patch, 새 데이터 승인·Artifact 검증 |
+| 4~5차 | request별 품질·token·비용 평가, 운영 API, 실패 session 안전 재시도 |
+| 6~9차 | evidence refs 영속화, operation preview·선택 승인, `saving_revision` 안전 재개 |
+| 10~12차 | 부분 승인 의존성 검증, 안전 취소, 실제 GPT·PostgreSQL·Browser 편집 E2E |
+| 13~15차 | 승인 카드 접근성·모바일, 품질 eval, 선택 operation 영향 설명 |
+| 16차 | 격리 PostgreSQL 동시 승인·재수정 CAS와 완료 결과 멱등 read-back |
+| 후속 결함 수정 | no-op Revision 차단, 상충 지시 clarification, 표 내부 반응형, typed 모델 실패 |
+
+과거 단계 번호는 구현 순서를 설명할 뿐 runtime 계약이 아니다. 현재 동작은 이 문서의 API,
+phase, model release, migration과 테스트 결과를 기준으로 판단한다.
+
+## 22. 실제 검증 시나리오 요약
+
+2026-08-27 Browser 순차 검증에서 다음 대표 시나리오를 사용했다. 화면 캡처는
+`docs/e2e_mvp/derived/runtime_evidence/2026-08-27/`에 보존한다.
+
+| ID | 시나리오 | 기대 결과 |
+|---|---|---|
+| S01 | 로그인·Report·Artifact·Assistant 준비 | `ready`, 승인 Artifact 결속 |
+| S02 | 비저장 품질 검토 | finding 반환, Report·Revision 무변경 |
+| S03 | 현재와 같은 제목 요청 | no-op clarification, 승인 카드 없음 |
+| S04 | 제목·요약 복합 변경 후 거절 | `ready`, Revision 무변경 |
+| S05 | 복합 변경 일부 승인 | 선택 operation만 Revision 저장 |
+| S06 | 승인 대기 변경안 재수정 | 새 patch ID, 이전 patch 승인 409 |
+| S07 | 승인 대기 새로고침 | 동일 서버 session·preview 복구 |
+| S08 | 동일 승인 재전송 | Revision 추가 생성 0건 |
+| S09 | SQL·내부 식별자·자동 승인 유도 | 식별자 미노출, 실행·승인 우회 없음 |
+| S10 | 서로 충돌하는 지시 | partial patch 대신 clarification |
+| S11 | 대기 session 취소 | `cancelled`, Report 무변경 |
+| S12 | 실패 session 재시도 | 원본 보존, 새 `ready` child 한 건 |
+| S13 | 450px 작은 화면 | composer·preview·승인 조작 가능 |
+| S14 | 여러 Artifact 요청 | 최대 5개 검증, 누락 시 안전한 prerequisite 안내 |
+
+캡처는 보조 증거다. HTTP, DB session, model release, Artifact와 Revision이 같은 request ID로
+연결된 경우에만 실제 E2E로 판정한다.
+
+## 23. 로컬 실행과 확인
+
+1. 저장소 root에서 외부 deployment env와 secret 경로가 준비됐는지 값은 출력하지 않고 확인한다.
+2. `docker compose --env-file <외부 env> --profile full config --services`로 merge 결과를 확인한다.
+3. volume을 삭제하지 않고 필요한 App DB·migration·Backend·Frontend만 기동한다.
+4. Backend `/health`와 `/readiness`를 분리해 확인한다. `/health=200`만으로 Agent 완료를 선언하지 않는다.
+5. 실제 로그인 후 `/reports`에서 승인 Artifact가 연결된 draft를 열어 S01~S12 중 대표 흐름을 실행한다.
+
+Windows 로컬 Backend는 환경에 따라 Selector event loop가 필요하다. Frontend origin을 Backend
+CORS에 포함하고 HTTP 개발 환경에서는 secure cookie 설정을 실제 origin과 맞춘다. 비밀번호,
+OpenAI key, DataHub token과 DB credential은 저장소 내부 `.env`, 문서, 명령 인자와 Git diff에 넣지
+않는다.
+
+### 기본 회귀 명령
+
+```powershell
+$env:PYTHONPATH='.;app/backend'
+python -m unittest `
+  tests.ai.test_model_contracts_live `
+  tests.ai.test_report_assistant_contract `
+  tests.backend.test_async_model_transport `
+  tests.backend.test_report_assistant_session `
+  tests.backend.test_report_assistant_operations `
+  tests.backend.test_report_assistant_patch `
+  tests.backend.test_report_migration
+
+python app/backend/scripts/export_openapi.py --check
+python scripts/check_code_documentation.py
+python scripts/lint_architectural_invariants.py
+python scripts/audit_repository_integrity.py
+python -m compileall -q app/backend src evals tests
+git diff --check
+
+Set-Location app/frontend
+npm.cmd run test
+npm.cmd run build
+```
+
+실제 OpenAI 평가는 사용자의 비용 승인 후 한정된 시나리오로 따로 실행한다. DataHub·Trino가
+준비되지 않은 fake 검증을 `new_data` live E2E로 기록하지 않는다.
+
+## 24. 팀 통합과 충돌 방지
+
+- 관리자 운영 UI를 다른 담당자가 수정 중이면 `ReportAssistantOperationsPanel.jsx`와 관리자 화면
+  layout은 Report Assistant 사용자 흐름 변경과 분리한다.
+- 충돌이 잦은 `ReportsPage.jsx`는 `ReportAssistantPanel` prop wiring만 최소 수정하고, 실제 상태는
+  `useReportLifecycleState.ts`에서 소유한다.
+- Backend 충돌은 router 코드를 복제하지 말고 `report_contracts.py`, repository CAS와 기존
+  `AnalysisController` 경계를 유지한다.
+- model prompt를 바꾸면 prompt version·SHA-256과 active model release manifest를 같은 patch에서
+  갱신한다.
+- migration `20260824_29`~`20260826_40`은 수정하지 않는다. 새 schema가 필요할 때만 additive
+  migration을 만든다.
+- merge 전 secret, production mock, 질문별 고정 응답, 고정 SQL과 fallback Artifact가 없는지
+  확인하고 위 회귀 명령을 다시 실행한다.
+
+## 25. 새 데이터 live E2E 완료 Gate
+
+다음 dependency가 같은 release에서 ready일 때만 실행한다.
+
+- 인증 session store와 `RUN_ANALYSIS` principal
+- App PostgreSQL과 migration head
+- 실제 model route
+- DataHub read actor·token과 semantic release
+- catalog manifest와 Trino schema checksum
+- TLS·password 인증이 적용된 Trino runtime principal
+
+완료 흐름은 다음과 같다.
+
+```text
+new_data 계획
+→ 사용자 승인 전 AnalysisController·Trino 호출 0회
+→ 최초 승인 후 AnalysisController 1회
+→ DataHub 승인 metadata와 SQL Guard
+→ Trino query
+→ owner/request/query/checksum 결속 APPROVED Artifact
+→ 고정 patch와 CAS Report Revision
+→ completed·Canvas·새로고침 복구
+```
+
+Trino·DataHub가 준비되지 않으면 이 Gate는 미완료로 유지하며 기존 Artifact 편집 E2E와 분리해
+보고한다. `docker compose down -v`, DB·volume 초기화, 운영 seed, mock Artifact와 고정 SQL로
+우회하지 않는다.
+
+## 26. 문서 유지 규칙
+
+Report Assistant의 기능·검증·인수인계·남은 작업은 이 파일 하나에서만 갱신한다. 새 단계별
+계획서, 실행 프롬프트, 별도 검증보고서와 날짜별 중복 가이드를 `docs/` root에 추가하지 않는다.
+대용량 실행 로그는 Git에 넣지 않고, 필요한 화면 증거만 기존 runtime evidence 경계에 보존한다.

@@ -323,6 +323,48 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         self.assertNotIn("UPDATE report_v1.report_assistant_requests", retry)
 
 
+class ReportAssistantRevisionIdempotencyTest(unittest.IsolatedAsyncioTestCase):
+    """동시 저장 패자는 동일 완료 결과만 멱등 성공으로 읽는다."""
+
+    async def test_matching_completed_revision_is_reused(self) -> None:
+        repository = object.__new__(ReportArtifactRepositoryMixin)
+        repository.get_assistant_session = AsyncMock(return_value={
+            "phase": "completed",
+            "status": "success",
+            "result_revision": 2,
+            "output_hash": "a" * 64,
+            "decision_hash": "b" * 64,
+            "data_request_id": uuid4(),
+        })
+
+        completed = await repository._completed_assistant_revision(
+            str(uuid4()),
+            "a" * 64,
+            decision_hash="b" * 64,
+        )
+
+        self.assertEqual(2, completed["result_revision"])
+
+    async def test_mismatched_completed_revision_remains_a_conflict(self) -> None:
+        repository = object.__new__(ReportArtifactRepositoryMixin)
+        repository.get_assistant_session = AsyncMock(return_value={
+            "phase": "completed",
+            "status": "success",
+            "result_revision": 2,
+            "output_hash": "a" * 64,
+            "decision_hash": "b" * 64,
+            "data_request_id": uuid4(),
+        })
+
+        completed = await repository._completed_assistant_revision(
+            str(uuid4()),
+            "c" * 64,
+            decision_hash="b" * 64,
+        )
+
+        self.assertIsNone(completed)
+
+
 class ReportAssistantRetryTest(unittest.IsolatedAsyncioTestCase):
     """실패 세션을 보존한 채 검증된 새 ready 세션만 만드는 정책을 확인한다."""
 
@@ -469,10 +511,108 @@ class ReportAssistantRetryTest(unittest.IsolatedAsyncioTestCase):
         unknown = report_assistant_retry_policy("UNKNOWN_FAILURE")
         self.assertFalse(unknown.retryable)
         self.assertEqual(ReportAssistantRequiredAction.NONE, unknown.required_action)
+        timeout = report_assistant_retry_policy("REPORT_ASSISTANT_MODEL_TIMEOUT")
+        self.assertTrue(timeout.retryable)
+        self.assertEqual(ReportAssistantRequiredAction.RETRY, timeout.required_action)
+        authentication = report_assistant_retry_policy(
+            "REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED"
+        )
+        self.assertFalse(authentication.retryable)
+        self.assertEqual(ReportAssistantRequiredAction.CONTACT_ADMIN, authentication.required_action)
 
 
 class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
     """새 데이터 모델 제안이 실행 없이 승인 대기 세션으로 저장되는지 확인한다."""
+
+    def test_model_failures_keep_safe_typed_causes(self) -> None:
+        """provider 원문 없이 인증·한도·timeout·전송·계약 실패를 구분한다."""
+
+        from app.adapters.async_model_client import (
+            ModelAuthenticationError,
+            ModelRateLimitError,
+            ModelRequestRejectedError,
+        )
+        from app.adapters.report_assistant import _model_failure
+        from src.ai.schema import ContractError
+
+        cases = (
+            (ModelAuthenticationError("secret"), "REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED"),
+            (ModelRateLimitError("limited"), "REPORT_ASSISTANT_MODEL_RATE_LIMITED"),
+            (ModelRequestRejectedError("bad request"), "REPORT_ASSISTANT_MODEL_REQUEST_REJECTED"),
+            (TimeoutError("slow"), "REPORT_ASSISTANT_MODEL_TIMEOUT"),
+            (OSError("offline"), "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED"),
+            (ContractError("invalid"), "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID"),
+        )
+        for source, code in cases:
+            with self.subTest(code=code):
+                failure = _model_failure(
+                    source,
+                    message="safe failure",
+                    attempts=2,
+                    started=None,
+                )
+                self.assertEqual(code, failure.code)
+                self.assertEqual(2, failure.attempts)
+                self.assertIsNone(failure.duration_ms)
+                self.assertNotIn(str(source), str(failure))
+
+    async def test_non_retryable_model_failure_stops_after_one_attempt(self) -> None:
+        """인증·provider 요청 거절은 동일 호출을 반복하지 않고 즉시 닫는다."""
+
+        from app.adapters.async_model_client import ModelAuthenticationError
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            generate_report_change_proposal,
+        )
+
+        route = SimpleNamespace(
+            endpoint="https://model.invalid",
+            token="secret",
+            model="report-model",
+            provider="openai",
+        )
+        transport = AsyncMock(side_effect=ModelAuthenticationError("do not expose"))
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.validate_payload"),
+            patch("app.adapters.report_assistant.openai_transport", new=transport),
+        ):
+            with self.assertRaises(ReportAssistantModelError) as raised:
+                await generate_report_change_proposal({})
+
+        self.assertEqual(1, transport.await_count)
+        self.assertEqual("REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED", raised.exception.code)
+        self.assertEqual(1, raised.exception.attempts)
+
+    async def test_invalid_model_limits_fail_before_transport(self) -> None:
+        """잘못된 timeout·attempt 설정은 네트워크 호출 전에 typed 설정 오류로 닫는다."""
+
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            generate_report_change_proposal,
+        )
+
+        route = SimpleNamespace(
+            endpoint="https://model.invalid",
+            token="secret",
+            model="report-model",
+            provider="openai",
+        )
+        transport = AsyncMock()
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.validate_payload"),
+            patch("app.adapters.report_assistant.openai_transport", new=transport),
+            patch.dict("os.environ", {"MODEL_TIMEOUT_SECONDS": "invalid"}),
+        ):
+            with self.assertRaises(ReportAssistantModelError) as raised:
+                await generate_report_change_proposal({})
+
+        transport.assert_not_awaited()
+        self.assertEqual("REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID", raised.exception.code)
+        self.assertIsNone(raised.exception.attempts)
 
     async def test_quality_review_returns_typed_findings_without_session_or_report_write(self) -> None:
         """검토는 현재 block·근거 별칭만 반환하고 phase·patch·Revision을 만들지 않는다."""
@@ -513,14 +653,14 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
         )
         model = AsyncMock(return_value=({
             "summary": "표현 한 건을 검토했습니다.",
-            "suggestions": ["선택한 차트 제목을 더 간결하게 바꿔 줘"],
+            "suggestions": ["승인 지표를 설명하는 텍스트 블록을 추가해 줘"],
             "findings": [{
                 "category": "title_mismatch",
                 "severity": "warning",
                 "block_id": str(block_id),
                 "title": "차트 제목 확인",
                 "detail": "제목이 승인 지표 표현과 다릅니다.",
-                "suggested_instruction": "매출 차트 제목을 승인 지표 표현에 맞춰 바꿔 줘",
+                "suggested_instruction": "보고서 요약을 승인 지표 표현에 맞춰 바꿔 줘",
                 "evidence_refs": ["metric_1"],
             }],
         }, {
@@ -546,7 +686,7 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(assistant_request_id), response["assistant_request_id"])
         self.assertEqual(str(block_id), response["findings"][0].block_id)
         self.assertEqual("metric_1", response["findings"][0].evidence_refs[0])
-        self.assertEqual(("선택한 차트 제목을 더 간결하게 바꿔 줘",), response["suggestions"])
+        self.assertEqual(("승인 지표를 설명하는 텍스트 블록을 추가해 줘",), response["suggestions"])
         self.assertEqual("chart", model.await_args.args[0]["selected_block"]["type"])
         serialized_input = repr(model.await_args.args[0])
         self.assertNotIn("private-query", serialized_input)
@@ -868,7 +1008,12 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
             patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
             patch(
                 "app.adapters.report_assistant.generate_report_change_proposal",
-                new=AsyncMock(side_effect=ReportAssistantModelError("model unavailable")),
+                new=AsyncMock(side_effect=ReportAssistantModelError(
+                    "model unavailable",
+                    code="REPORT_ASSISTANT_MODEL_TIMEOUT",
+                    attempts=2,
+                    duration_ms=1250.5,
+                )),
             ),
         ):
             with self.assertRaises(HTTPException) as raised:
@@ -880,9 +1025,13 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(502, raised.exception.status_code)
         repository.fail_assistant_request.assert_awaited_once_with(
-            str(assistant_request_id), "REPORT_ASSISTANT_TURN_MODEL_FAILED"
+            str(assistant_request_id), "REPORT_ASSISTANT_MODEL_TIMEOUT"
         )
         repository.upsert_assistant_evaluation.assert_awaited_once()
+        observed = repository.upsert_assistant_evaluation.await_args.kwargs
+        self.assertEqual("REPORT_ASSISTANT_MODEL_TIMEOUT", observed["error_code"])
+        self.assertEqual(2, observed["model_attempts"])
+        self.assertEqual(1250.5, observed["latency_ms"])
 
     async def test_clarification_persists_turn_and_next_prompt_history(self) -> None:
         """모호한 지시는 ready에서 질문으로 멈추고 저장된 최근 대화를 모델에 전달한다."""
@@ -1107,7 +1256,7 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
         }, {
             "model_version": "report-model",
             "prompt_id": "report.assistant.turn",
-            "prompt_version": "PROMPT-v1.8.5",
+            "prompt_version": "PROMPT-v1.8.6",
             "prompt_hash": "b" * 64,
         }))
         with (
@@ -2200,7 +2349,7 @@ class ReportAssistantApprovalTest(unittest.IsolatedAsyncioTestCase):
             "decision_hash": "d" * 64,
             "model_version": "model",
             "prompt_id": "report.assistant.turn",
-            "prompt_version": "PROMPT-v1.8.5",
+            "prompt_version": "PROMPT-v1.8.6",
             "prompt_hash": "p" * 64,
             "patch": {"summary": "새 근거 반영", "operations": []},
             "patch_preview": (),
@@ -2621,10 +2770,13 @@ class ReportAssistantApprovalTest(unittest.IsolatedAsyncioTestCase):
             patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
             patch("app.adapters.report_assistant.openai_transport", new=transport),
         ):
-            with self.assertRaises(ReportAssistantModelError):
+            with self.assertRaises(ReportAssistantModelError) as raised:
                 await generate_report_change_proposal(payload)
 
         self.assertEqual(2, transport.await_count)
+        self.assertEqual("REPORT_ASSISTANT_MODEL_CONTRACT_INVALID", raised.exception.code)
+        self.assertEqual(2, raised.exception.attempts)
+        self.assertIsNotNone(raised.exception.duration_ms)
 
     def test_waiting_approval_requires_complete_plan(self) -> None:
         """승인 카드에 표시할 질문·이유·범위가 불완전하면 응답을 만들지 않는다."""

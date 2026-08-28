@@ -2,6 +2,32 @@
 import { OPENAPI_VERSION } from "../contracts/analysis.ts";
 
 
+/** ML 예측 응답을 기존 대화 실행 계약으로 변환한다. */
+export function mlRun(question, result) {
+  const forecasts = Array.isArray(result?.daily_forecasts) ? result.daily_forecasts : [];
+  const summary = result?.status === "NEEDS_CLARIFICATION"
+    ? result.answer_text
+    : `${result?.property_id || "선택한"} 호텔의 ${forecasts.length}일 객실 수요 예측입니다.`;
+  return {
+    requestId: result?.execution_id || "",
+    traceId: "",
+    status: result?.status === "NEEDS_CLARIFICATION" ? "blocked" : "success",
+    question,
+    summary,
+    metrics: [],
+    sources: [],
+    meta: {
+      asOf: result?.as_of || "",
+      timezone: "Asia/Seoul",
+      seed: "",
+      schemaVersion: result?.model_version || "",
+      contractVersion: OPENAPI_VERSION,
+    },
+    ml: result,
+  };
+}
+
+
 /** 내부 문서 답변과 인용 근거를 Agent의 성공 실행 상태로 변환한다. */
 export function ragRun(question, result) {
   const answerText = result?.answer?.text || result?.document?.body || "";

@@ -213,7 +213,7 @@ async def query_internal_manual(
                 raise HTTPException(status_code=404, detail="대화방을 찾을 수 없습니다.")
             result["turn_id"] = str(turn_id)
         return {"status": "SUCCESS", "data": result}
-    enabled = os.getenv("RAG_FEATURE_ENABLED", "1").strip().lower() in {"1", "true", "yes"}
+    enabled = os.getenv("RAG_FEATURE_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
     if not enabled:
         if payload.mode == "AUTO":
             return {"status": "SUCCESS", "data": {"status": "NO_EVIDENCE", "route": "DATA_ONLY", "trace_id": context.trace_id}}
@@ -260,6 +260,23 @@ async def query_internal_manual(
             raise HTTPException(status_code=404, detail="대화방을 찾을 수 없습니다.")
         result["turn_id"] = str(turn_id)
     return {"status": "SUCCESS", "data": result}
+
+
+@rag_router.get("/rag/documents", operation_id="listInternalManuals")
+async def list_internal_manuals(
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> dict:
+    """현재 역할이 열람할 수 있는 승인 문서 목록을 동적으로 반환한다."""
+    if not has_capability(context.role, Capability.RUN_ANALYSIS):
+        raise HTTPException(status_code=403, detail="RAG 문서 열람 권한이 없습니다.")
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="RAG Tool Registry를 사용할 수 없습니다.")
+    try:
+        documents = await RagGatewayTool(database_url).fetch_catalog(context.role.value)
+    except RagToolError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+    return {"status": "SUCCESS", "data": {"documents": documents}}
 
 
 @rag_router.get("/rag/documents/{manual_id}/source.pdf", operation_id="getInternalManualPdf")

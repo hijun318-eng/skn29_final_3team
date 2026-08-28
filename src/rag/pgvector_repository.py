@@ -235,6 +235,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                     JOIN documents d ON d.manual_id = c.manual_id
                     WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
                       AND d.document_status = 'WORKING_KNOWLEDGE'
+                      AND d.approval_status = 'APPROVED'
                       AND %s = ANY(d.role_scope)
                       AND (%s OR d.validity_status != 'UNRESOLVED')
                       AND (
@@ -351,6 +352,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                   AND d.manual_id=ANY(%s::text[])
                   AND %s=ANY(d.role_scope)
                   AND d.document_status='WORKING_KNOWLEDGE'
+                  AND d.approval_status='APPROVED'
                   AND (%s OR d.validity_status!='UNRESOLVED')
                   AND (d.effective_from IS NULL OR d.effective_from <= CURRENT_DATE)
                   AND (d.expires_at IS NULL OR d.expires_at >= CURRENT_DATE)
@@ -437,17 +439,42 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             ))
         return results
 
-    def catalog(self) -> list[dict[str, object]]:
+    def catalog(self, role: str, allow_unresolved: bool) -> list[dict[str, object]]:
         with psycopg.connect(self._database_url) as connection:
             rows = connection.execute(
-                """SELECT manual_id, title, version, document_type, owner_team
-                   FROM documents WHERE deleted_at IS NULL ORDER BY title, manual_id"""
+                """
+                SELECT manual_id, title, version, document_type, owner_team
+                FROM documents
+                WHERE deleted_at IS NULL
+                  AND document_status = 'WORKING_KNOWLEDGE'
+                  AND approval_status = 'APPROVED'
+                  AND %s = ANY(role_scope)
+                  AND (%s OR validity_status != 'UNRESOLVED')
+                  AND (effective_from IS NULL OR effective_from <= CURRENT_DATE)
+                  AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)
+                ORDER BY title, manual_id
+                """,
+                (role, allow_unresolved),
             ).fetchall()
         return [{"manual_id": row[0], "title": row[1], "version": row[2], "document_type": row[3], "owner_team": row[4]} for row in rows]
 
-    def source_path(self, manual_id: str) -> Path:
+    def source_path(self, manual_id: str, role: str, allow_unresolved: bool) -> Path:
         with psycopg.connect(self._database_url) as connection:
-            row = connection.execute("SELECT source_path FROM documents WHERE manual_id=%s AND deleted_at IS NULL", (manual_id,)).fetchone()
+            row = connection.execute(
+                """
+                SELECT source_path
+                FROM documents
+                WHERE manual_id = %s
+                  AND deleted_at IS NULL
+                  AND document_status = 'WORKING_KNOWLEDGE'
+                  AND approval_status = 'APPROVED'
+                  AND %s = ANY(role_scope)
+                  AND (%s OR validity_status != 'UNRESOLVED')
+                  AND (effective_from IS NULL OR effective_from <= CURRENT_DATE)
+                  AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)
+                """,
+                (manual_id, role, allow_unresolved),
+            ).fetchone()
         if row is None:
             raise FileNotFoundError(manual_id)
         return Path(row[0])

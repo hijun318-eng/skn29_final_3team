@@ -199,13 +199,16 @@ class InternalManualAgent:
                 result_by_evidence_id[evidence_id]
                 for evidence_id in dict.fromkeys(cited_ids)
             ]
-            displayed = cited_results[:2] if intent == "COMPARISON" else cited_results[:1]
+            displayed = cited_results[:document_limit]
             top = displayed[0]
             normalized_body = top.get("normalized_body") if isinstance(top.get("normalized_body"), dict) else {}
-            answer_body = self._answer_body(
-                str(answer.get("answer") or ""),
-                str(top.get("content") or top.get("snippet") or ""),
-            )
+            answer_body = self._answer_body(str(answer.get("answer") or ""))
+            if not answer_body:
+                raise RagToolError(
+                    "RAG_ANSWER_INVALID",
+                    "근거 답변 본문이 비어 있습니다.",
+                    502,
+                )
             answer_summary = [
                 paragraph.strip()
                 for paragraph in answer_body.split("\n\n")
@@ -434,13 +437,13 @@ class InternalManualAgent:
         }
 
     @staticmethod
-    def _answer_body(answer: str, fallback: str) -> str:
+    def _answer_body(answer: str) -> str:
         marker = "본문내용:\n"
         if marker not in answer:
-            body = answer.strip() or fallback
+            body = answer.strip()
         else:
             body = answer.split(marker, 1)[1]
-            body = body.rsplit("\n근거:", 1)[0].strip() or fallback
+            body = body.rsplit("\n근거:", 1)[0].strip()
         body = re.sub(
             r"\s*내부\s*업무지침\s*[·ㆍ]\s*현장\s*실행형\s*[·ㆍ]\s*의미전달\s*검증완료본",
             "",

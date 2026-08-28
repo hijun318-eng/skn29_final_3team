@@ -73,6 +73,12 @@ assert.match(source("App.jsx"), /answervice:clear-drafts/);
 
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
 assert.match(source("pages/AgentPage.jsx"), /analysisClient\.submitTurnCommand/);
+assert.match(source("pages/AgentPage.jsx"), /<MLPredictionCard/);
+assert.match(source("pages/AgentPage.jsx"), /turnItem\.run\.ml/);
+assert.match(source("pages/AgentPage.jsx"), /requested_route: "FORECAST"/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /MLPredictionWorkspace/);
+assert.match(source("api/analysisClient.ts"), /\/analysis\/ml\/chat/);
+assert.match(source("components/rag/RagEmptyState.jsx"), /documents\.map/);
 assert.equal(quickViewAction("SUMMARY"), null);
 assert.equal(quickViewAction("KPI"), null);
 assert.deepEqual(quickViewAction("CHART"), {

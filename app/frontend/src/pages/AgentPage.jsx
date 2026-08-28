@@ -4,16 +4,16 @@ import { Eye, FilePlus2, History, MessageSquareText, Plus, Save, Send, Sparkles,
 import { AnalysisApiError, createAnalysisClient } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
+import { MLPredictionCard } from "../components/ml/MLPredictionCard";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
-import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
 import { MetaStrip } from "../components/common/EnterpriseUi";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { ragRun } from "./agentResponseMappers";
+import { mlRun, ragRun } from "./agentResponseMappers";
 import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
@@ -30,6 +30,7 @@ export function AgentPage({ onNavigate }) {
   const [conversationId, setConversationId] = useState(() => window.sessionStorage.getItem(CONVERSATION_KEY) || "");
   const [turns, setTurns] = useState([]);
   const [emptyMode, setEmptyMode] = useState("analysis");
+  const [ragCatalog, setRagCatalog] = useState({ status: "idle", documents: [], error: "" });
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
@@ -90,6 +91,24 @@ export function AgentPage({ onNavigate }) {
         });
     }
   }, []);
+
+  useEffect(() => {
+    if (!emptyMode.startsWith("rag-")) return undefined;
+    let active = true;
+    setRagCatalog({ status: "loading", documents: [], error: "" });
+    analysisClient.listInternalManuals()
+      .then((documents) => {
+        if (active) setRagCatalog({ status: "ready", documents, error: "" });
+      })
+      .catch((error) => {
+        if (active) setRagCatalog({
+          status: "error",
+          documents: [],
+          error: error instanceof Error ? error.message : "내부 문서 목록을 불러오지 못했습니다.",
+        });
+      });
+    return () => { active = false; };
+  }, [analysisClient, emptyMode]);
 
   const handleCancelAnalysis = async (turnId) => {
     const cancelledTraceId = activeTraceId.current;
@@ -169,9 +188,12 @@ export function AgentPage({ onNavigate }) {
     const normalized = nextQuestion.trim();
     if (!normalized) { setInputError("분석할 질문을 입력해 주세요."); return; }
     if (requestInFlight.current) return;
-    const resolvedAction = action || (/^\[\s*내부\s*지침\s*\]/i.test(normalized)
-      ? { requested_route: "INTERNAL_GUIDELINE" }
-      : null);
+    const resolvedAction = action
+      || (/^\[\s*내부\s*지침\s*\]/i.test(normalized)
+        ? { requested_route: "INTERNAL_GUIDELINE" }
+        : /^\[\s*객실\s*예측\s*\]/i.test(normalized)
+          ? { requested_route: "FORECAST" }
+          : null);
     const isPresentationAction = resolvedAction?.requested_route === "PRESENTATION";
     const sourceRun = sourceTurn?.run || latestArtifactTurn?.run || null;
     if (isPresentationAction && !hasReusablePresentationArtifact(sourceRun)) {
@@ -240,6 +262,16 @@ export function AgentPage({ onNavigate }) {
     };
 
     try {
+      if (resolvedAction?.requested_route === "FORECAST") {
+        const mlChatResponse = await analysisClient.executeMlChat(normalized, commandOptions);
+        const finalRun = mlRun(normalized, mlChatResponse.ml_response);
+        if (requestGeneration.current !== generation) return;
+        setTurns((prev) => prev.map((turn) => turn.turnId === optimisticTurn.turnId
+          ? { ...turn, run: finalRun, viewType: "ML", reusePending: false }
+          : turn));
+        window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+        return;
+      }
       let activeConvId = conversationId;
       if (!activeConvId) activeConvId = await initConversation(generation);
       if (!activeConvId || requestGeneration.current !== generation) return;
@@ -420,7 +452,10 @@ export function AgentPage({ onNavigate }) {
   const submitQuestion = (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void analyzeQuestion(String(form.get("question") || question).trim());
+    const action = emptyMode.startsWith("rag-")
+      ? { requested_route: "INTERNAL_GUIDELINE" }
+      : null;
+    void analyzeQuestion(String(form.get("question") || question).trim(), action);
   };
 
   const saveAnalysis = async (targetRun) => {
@@ -518,22 +553,24 @@ export function AgentPage({ onNavigate }) {
         {turns.length === 0 && !submitting && (
           emptyMode.startsWith("rag-") ? (
             <RagEmptyState
-              key={emptyMode}
-              initialView={emptyMode === "rag-documents" ? "documents" : "examples"}
-              onAsk={(ragQuestion) => void analyzeQuestion(ragQuestion)}
+              documents={ragCatalog.documents}
+              loading={ragCatalog.status === "loading"}
+              error={ragCatalog.error}
               onBack={() => setEmptyMode("analysis")}
             />
           ) : (
             <section className="chat-empty-state" aria-labelledby="chat-empty-title">
               <small>대화형 데이터 분석</small>
               <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
-              <p>호텔 운영 데이터 분석과 내부 업무지침 검색을 한 화면에서 이용할 수 있습니다.</p>
+              <p>호텔 운영 데이터 분석, ML 객실 수요 예측, 내부 업무지침 검색을 한 대화창에서 이용할 수 있습니다.</p>
               {exampleQuestions.length > 0 && (
                 <div aria-label="추천 질문">
                   {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
                 </div>
               )}
               <div className="chat-support-links" aria-label="도움말">
+                <button type="button" onClick={() => void analyzeQuestion("[객실 예측] 향후 7일 객실 수요를 알려줘")}>객실 수요 예측</button>
+                <span aria-hidden="true">·</span>
                 <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부문서 보기</button>
                 <span aria-hidden="true">·</span>
                 <button type="button" onClick={() => setEmptyMode("rag-examples")}>내부지침 질문 예시</button>
@@ -558,7 +595,12 @@ export function AgentPage({ onNavigate }) {
                 <div className="message message--agent">
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
-                    {turnItem.run.rag ? (
+                    {turnItem.run.ml ? (
+                      <>
+                        <small className="agent-result-type">객실 수요 예측</small>
+                        <MLPredictionCard prediction={turnItem.run.ml} onFollowUp={(followUp) => void analyzeQuestion(`[객실 예측] ${followUp}`)} />
+                      </>
+                    ) : turnItem.run.rag ? (
                       <>
                         <small className="agent-result-type">내부지침</small>
                         <RagAnswerCard
@@ -567,7 +609,7 @@ export function AgentPage({ onNavigate }) {
                             label: item.document_name || "근거 문서",
                             url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
                           }))}
-                          onFollowUp={(followUp) => void analyzeQuestion(followUp)}
+                          onFollowUp={(followUp) => void analyzeQuestion(followUp, { requested_route: "INTERNAL_GUIDELINE" })}
                         />
                       </>
                     ) : <AnalysisStatePanel
@@ -638,7 +680,9 @@ export function AgentPage({ onNavigate }) {
               value={question}
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder="데이터 분석 또는 내부 지침 질문을 입력하세요"
+              placeholder={emptyMode.startsWith("rag-")
+                ? "승인된 내부 지침에 질문하세요"
+                : "데이터 분석, 객실 수요 예측 또는 내부 지침 질문을 입력하세요"}
               aria-describedby="question-help"
               aria-invalid={Boolean(inputError)}
               disabled={submitting}
@@ -682,8 +726,6 @@ export function AgentPage({ onNavigate }) {
           </details>
         )}
       </main>
-
-      <MLPredictionWorkspace conversationId={conversationId || null} />
 
       {/* 우측 슬라이드: 분석 근거 서랍 */}
       <TurnEvidenceDrawer

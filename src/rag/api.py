@@ -162,7 +162,7 @@ def create_app(project_root: Path | None = None) -> FastAPI:
             if not audit.reserve_request_id(str(request_id)):
                 raise GatewayAuthenticationError("Replayed gateway request")
             audit.record(request_id, role, hashlib.sha256(b"{}").hexdigest(), "AUTHORIZED", "SIGNED_GATEWAY_REQUEST")
-            return {"documents": service.catalog()}
+            return {"documents": service.catalog(role)}
         except GatewayAuthenticationError as error:
             raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 
@@ -179,7 +179,7 @@ def create_app(project_root: Path | None = None) -> FastAPI:
             role = authenticator.verify(verified_role, timestamp, request_id, signature, canonical)
             if not audit.reserve_request_id(str(request_id)):
                 raise GatewayAuthenticationError("Replayed gateway request")
-            content, filename = service.source_pdf(manual_id)
+            content, filename = service.source_pdf(manual_id, role)
             audit.record(request_id, role, hashlib.sha256(canonical.encode()).hexdigest(), "AUTHORIZED", "SIGNED_GATEWAY_REQUEST")
             return Response(content=content, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
         except GatewayAuthenticationError as error:

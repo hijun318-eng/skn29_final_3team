@@ -36,6 +36,7 @@ export interface AnalysisClient {
     parameters?: Record<string, AnalysisValue>,
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
+  listInternalManuals(): Promise<InternalManualSummary[]>;
   manualPdfUrl(documentId: string): string;
   cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
@@ -43,6 +44,7 @@ export interface AnalysisClient {
   replayDefinition(definitionId: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisRun>;
   getRunArtifact(requestId: string): Promise<AnalysisRun>;
   listRuns(): Promise<SavedAnalysisRun[]>;
+  executeMlChat(question: string, options?: SubmitTurnCommandOptions): Promise<any>;
   createConversation(): Promise<{ conversation_id: string; created_at: string }>;
   getConversationTurns(conversationId: string): Promise<ConversationTurnWire[]>;
   executeTurnCommand(
@@ -55,6 +57,14 @@ export interface AnalysisClient {
     payload: ConversationCommandPayload,
     options?: SubmitTurnCommandOptions,
   ): Promise<any>;
+}
+
+export interface InternalManualSummary {
+  manual_id: string;
+  title: string;
+  version: string;
+  document_type: string;
+  owner_team: string;
 }
 
 /**
@@ -271,6 +281,20 @@ function authenticationHeaders(explicitToken = "") {
   return explicitToken ? { Authorization: `Bearer ${explicitToken}` } : {};
 }
 
+function normalizeInternalManuals(value: unknown): InternalManualSummary[] {
+  if (!Array.isArray(value)) throw new Error("내부 문서 API 응답이 올바르지 않습니다.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object") throw new Error("내부 문서 API 응답이 올바르지 않습니다.");
+    const document = item as Record<string, unknown>;
+    for (const field of ["manual_id", "title", "version", "document_type", "owner_team"] as const) {
+      if (typeof document[field] !== "string" || !document[field].trim()) {
+        throw new Error("내부 문서 API 응답이 올바르지 않습니다.");
+      }
+    }
+    return document as unknown as InternalManualSummary;
+  });
+}
+
 /** 명시된 backend origin에만 cookie 인증 요청을 보내며 origin 누락 시 즉시 실패하는 분석 클라이언트다. */
 export function createHttpAnalysisClient(
   baseUrl = env.VITE_BACKEND_BASE_URL,
@@ -365,6 +389,13 @@ export function createHttpAnalysisClient(
         if (poll !== undefined) window.clearInterval(poll);
       }
     },
+    async listInternalManuals() {
+      const payload = await parse<{ data?: { documents?: unknown } }>(await request(
+        endpoint("/rag/documents"),
+        { credentials: "include", headers: headers() },
+      ));
+      return normalizeInternalManuals(payload?.data?.documents);
+    },
     manualPdfUrl(documentId) {
       return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source.pdf`);
     },
@@ -426,6 +457,17 @@ export function createHttpAnalysisClient(
       return (await parse<{ items: SavedAnalysisRun[] }>(
         await request(endpoint("/analysis/runs"), { credentials: "include", headers: headers() }),
       )).items;
+    },
+    async executeMlChat(question, options = {}) {
+      return parse<any>(
+        await request(endpoint("/analysis/ml/chat"), {
+          method: "POST",
+          credentials: "include",
+          headers: headers(true, options.traceId || createUuid()),
+          body: JSON.stringify({ question }),
+          signal: options.signal,
+        }),
+      );
     },
     async createConversation() {
       const payload = await parse<{ status: string; data: { conversation_id: string; created_at: string } }>(

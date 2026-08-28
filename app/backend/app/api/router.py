@@ -78,7 +78,6 @@ from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis import AnalysisService, analysis_progress
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.readiness import AppDatabaseReadiness
-from app.services.unified_chat_router import ChatIntent, UnifiedChatRouter
 
 
 @lru_cache(maxsize=1)
@@ -556,15 +555,7 @@ async def execute_conversation_command(
             "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
             409,
         )
-    previous_turns = await orch._repo.list_turns(conversation_id)
-    routing = UnifiedChatRouter().classify(payload.user_message, previous_turns)
-    if (
-        payload.requested_route == "INTERNAL_GUIDELINE"
-        or (
-            payload.requested_route is None
-            and routing.intent is ChatIntent.INTERNAL_GUIDELINE
-        )
-    ):
+    if payload.requested_route == "INTERNAL_GUIDELINE":
         rag_envelope = await query_internal_manual(
             RagQueryRequest(
                 question=payload.user_message,
@@ -580,7 +571,7 @@ async def execute_conversation_command(
             "status": "SUCCESS",
             "data": {
                 "status": "COMPLETED",
-                "type": ChatIntent.INTERNAL_GUIDELINE.value,
+                "type": "INTERNAL_GUIDELINE",
                 "turn": next(
                     (
                         item

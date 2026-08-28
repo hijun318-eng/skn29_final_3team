@@ -195,7 +195,7 @@ class VectorRagApplication:
         domain_manual_ids: dict[str, tuple[str, ...]] = {}
         explicit_manual_ids: tuple[str, ...] = ()
         if domains and not selected_ids:
-            catalog = self._repository.catalog()
+            catalog = self._repository.catalog(role, decision.allow_unresolved)
             explicit_manual_ids = tuple(
                 str(document["manual_id"])
                 for document in catalog
@@ -524,11 +524,15 @@ class VectorRagApplication:
     def _embedding_metadata(self) -> dict[str, object]:
         return {"provider": self._settings.embedding_provider, "model": self._settings.model_id, "dimensions": self._settings.dimension, "version": self._settings.model_revision}
 
-    def catalog(self) -> list[dict[str, object]]:
-        return self._repository.catalog()
+    def catalog(self, role: str) -> list[dict[str, object]]:
+        decision = self._policy.decide(role, 1)
+        return self._repository.catalog(role, decision.allow_unresolved)
 
-    def source_pdf(self, manual_id: str) -> tuple[bytes, str]:
-        source = self._repository.source_path(manual_id).resolve()
+    def source_pdf(self, manual_id: str, role: str) -> tuple[bytes, str]:
+        decision = self._policy.decide(role, 1)
+        source = self._repository.source_path(
+            manual_id, role, decision.allow_unresolved
+        ).resolve()
         manuals_root = self._settings.manuals_dir.resolve()
         if source.suffix.lower() != ".pdf" or manuals_root not in source.parents or not source.is_file():
             raise FileNotFoundError(manual_id)
@@ -556,8 +560,10 @@ class VectorRagApplication:
             answer_config = {}
 
         # Also, check answer endpoint and api key from ENV
-        api_key = os.getenv("RAG_ANSWER_API_KEY", "dummy-key")
-        endpoint = os.getenv("RAG_ANSWER_ENDPOINT", "http://localhost:8080/v1/chat/completions")
+        api_key = os.getenv("RAG_ANSWER_API_KEY", "").strip()
+        endpoint = os.getenv("RAG_ANSWER_ENDPOINT", "").strip()
+        if not api_key or not endpoint:
+            raise RuntimeError("RAG answer transport is not configured")
 
         answer_service = AnswerService(answer_config, api_key, endpoint)
 

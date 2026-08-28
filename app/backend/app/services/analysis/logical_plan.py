@@ -56,7 +56,7 @@ class AnalysisTimeMode(str, Enum):
 ACTIVE_ANALYSIS_TIME_MODES = frozenset(
     {AnalysisTimeMode.RANGE, AnalysisTimeMode.LATEST_SNAPSHOT}
 )
-PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS = frozenset({"exists", "ratio"})
+PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS = frozenset({"exists"})
 
 
 def active_analysis_capabilities() -> dict[str, object]:

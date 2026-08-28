@@ -142,6 +142,56 @@ class MetricReductionTests(unittest.TestCase):
         )
         self.assertNotIn("alpha_value__comparison", rows[1])
 
+    def test_ratio_period_comparison_preserves_business_values_and_hides_operands(self):
+        numerator = ContextMetric(
+            "numerator", "serving.metrics", "numerator", "sum", "business_date", (),
+            "internal_numerator", "units", visibility="SUPPORT",
+        )
+        denominator = ContextMetric(
+            "denominator", "serving.metrics", "denominator", "sum", "business_date", (),
+            "internal_denominator", "units", visibility="SUPPORT",
+        )
+        ratio = ContextMetric(
+            "ratio", "", "", "ratio", "", (), "business_ratio", "ratio",
+            numerator_metric_id="numerator",
+            denominator_metric_id="denominator",
+            zero_policy="null_on_zero_denominator",
+        )
+        package = SimpleNamespace(
+            metrics=(numerator, denominator, ratio),
+            metric_terms=(SimpleNamespace(id="ratio"),),
+        )
+        source_rows = (
+            {
+                "business_ratio": 2.0,
+                "business_ratio__comparison": 3.0,
+                "internal_numerator": 10,
+                "internal_numerator__comparison": 9,
+                "internal_denominator": 5,
+                "internal_denominator__comparison": 3,
+            },
+        )
+
+        self.assertFalse(
+            PipelineResultValidator._ratio_value_violation(list(source_rows), package)
+        )
+        self.assertEqual(
+            Decimal("3"),
+            _reduce_context_metric(ratio, package, source_rows, "__comparison"),
+        )
+        self.assertEqual(
+            (
+                {"period": "2042-06-01", "business_ratio": 2.0},
+                {"period": "2042-05-01", "business_ratio": 3.0},
+            ),
+            _presentation_rows(
+                package,
+                source_rows,
+                PeriodEvidence(start="2042-06-01", end_exclusive="2042-07-01"),
+                PeriodEvidence(start="2042-05-01", end_exclusive="2042-06-01"),
+            ),
+        )
+
     def test_narrative_rejects_inclusive_wording_for_exclusive_period_end(self):
         query = {
             "rows": [{"hotel_code": "VISTA", "revenue": 10}],

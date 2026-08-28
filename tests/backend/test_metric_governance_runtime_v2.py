@@ -595,8 +595,19 @@ def test_pre_resolved_ratio_keeps_an_independent_business_operand_term() -> None
     } == {"amount_per_event", "amount_total"}
 
 
-def test_pre_resolved_ratio_period_comparison_is_a_typed_unsupported_strategy() -> None:
-    """미승인 ratio 기간 비교는 지표 모호성이 아니라 실행 전 semantic 차단이다."""
+def _add_comparison_window(assets: list[dict]) -> None:
+    for asset in assets:
+        asset["time_metadata"] = {
+            **deepcopy(asset["time_metadata"]),
+            "comparison_window": {
+                "start_parameter": "comparison_start_at",
+                "end_parameter": "comparison_end_at",
+            },
+        }
+
+
+def test_pre_resolved_ratio_period_comparison_uses_the_approved_runtime_scope() -> None:
+    """동일 asset·time·filter 계약과 comparison window가 있는 ratio는 실행 요청으로 확정한다."""
 
     engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
     assets = asyncio.run(
@@ -610,11 +621,98 @@ def test_pre_resolved_ratio_period_comparison_is_a_typed_unsupported_strategy() 
             },
         )
     )
+    _add_comparison_window(assets)
     model = _Normalizer()
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000023"),
         trace_id="v2-runtime-pre-resolved-ratio-comparison",
         user_id=UUID("20000000-0000-0000-0000-000000000024"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    selected_assets, _question, structured = asyncio.run(
+        MetricResolver(engine, model).resolve(
+            AnalysisRequest(
+                question="selected intervals only",
+                resolved_slots=ResolvedSlots(
+                    metric_id="amount_per_event",
+                    metric_ids=("amount_per_event",),
+                    period_start="2026-08-01",
+                    period_end_exclusive="2026-08-02",
+                    comparison_period_start="2026-07-01",
+                    comparison_period_end_exclusive="2026-07-02",
+                    analysis_operation="period_comparison",
+                ),
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert model.input is None
+    assert structured["analysis_operation"] == "period_comparison"
+    assert structured["period_relationship"] == "comparison"
+    assert len(structured["period_candidates"]) == 2
+    assert set(structured["metric_ids"]) == {
+        "amount_per_event",
+        "amount_total",
+        "event_count",
+    }
+    assert {
+        metric["id"]
+        for asset in selected_assets
+        for metric in asset["metrics"]
+    } == {"amount_per_event", "amount_total", "event_count"}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing_window", "different_asset", "different_time", "different_filters"],
+)
+def test_pre_resolved_ratio_period_comparison_fails_closed_on_scope_mismatch(
+    mutation: str,
+) -> None:
+    engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "selected intervals only",
+            {
+                "role": "analyst",
+                "parameters": {},
+                "preferred_metric_ids": ["amount_per_event"],
+            },
+        )
+    )
+    if mutation != "missing_window":
+        _add_comparison_window(assets)
+    metrics = {
+        metric["id"]: metric
+        for asset in assets
+        for metric in asset["metrics"]
+    }
+    denominator = metrics["event_count"]
+    if mutation == "different_asset":
+        denominator["asset_fqn"] = "other.core.events"
+    elif mutation == "different_time":
+        denominator["time_field"] = "other_event_at"
+    elif mutation == "different_filters":
+        denominator["required_filters"] = [
+            {
+                "field": "active",
+                "operator": "eq",
+                "value_type": "boolean",
+                "value": True,
+                "parameter": "active_flag",
+            }
+        ]
+
+    model = _Normalizer()
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000025"),
+        trace_id=f"v2-runtime-ratio-comparison-{mutation}",
+        user_id=UUID("20000000-0000-0000-0000-000000000026"),
         role=Role.ANALYST,
         as_of=date(2026, 8, 19),
     )
@@ -2338,7 +2436,7 @@ def test_cross_metric_comparison_uses_one_shared_period_without_requesting_a_sec
     ]
 
 
-def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
+def test_two_period_ratio_comparison_rejects_a_different_asset_output() -> None:
     engine = _engine(_runtime_bundle())
     question = "Amount per Event and Account Count across two periods"
     assets = asyncio.run(
@@ -2348,6 +2446,7 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
             {"role": "analyst", "parameters": {"active": True}},
         )
     )
+    _add_comparison_window(assets)
     resolver = MetricResolver(engine, _TwoPeriodMultiMetricNormalizer())
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000001"),
@@ -2357,7 +2456,7 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
         as_of=date(2026, 8, 19),
     )
 
-    with pytest.raises(ContextBuildError, match="Ratio metric"):
+    with pytest.raises(ContextBuildError) as raised:
         asyncio.run(
             resolver.resolve(
                 AnalysisRequest(question=question, parameters={"active": True}),
@@ -2365,6 +2464,8 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
                 assets,
             )
         )
+
+    assert raised.value.code is ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED
 
 
 def test_support_metric_search_reaches_asset_and_returns_typed_unavailable_error() -> None:

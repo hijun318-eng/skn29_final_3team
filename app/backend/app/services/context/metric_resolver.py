@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections import Counter
 from datetime import date, datetime, time, timedelta
+import json
 import os
 import re
 from time import monotonic
@@ -59,6 +60,7 @@ from app.services.context.node1_interpretation import (
     build_node1_interpretation_context,
 )
 from app.services.context.runtime_contracts import (
+    comparison_time_parameter_names,
     time_parameter_names,
     time_selection_mode,
 )
@@ -930,15 +932,14 @@ def _finalize_metric_scope(
 
     keep_ids = set(selected_metric_ids)
     synthetic: list[dict[str, object]] = []
+    has_comparison_ratio = False
     for metric_id in selected_metric_ids:
         ratio = _ratio_reference(metric_terms, executable_by_id, metric_id)
         if ratio is None:
             continue
         if is_period_comparison:
-            raise ContextBuildError(
-                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
-                "Ratio metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
-            )
+            _validate_ratio_comparison_operands(ratio, executable_by_id)
+            has_comparison_ratio = True
         keep_ids.update(
             {
                 ratio["numerator_metric_id"],
@@ -958,7 +959,89 @@ def _finalize_metric_scope(
         keep_ids,
         tuple(synthetic),
     )
+    if has_comparison_ratio:
+        selected_asset_fqns = {
+            str(asset.get("fqn") or "")
+            for asset in selected_assets
+        }
+        if len(selected_asset_fqns) != 1 or "" in selected_asset_fqns:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "Ratio 기간 비교는 단일 승인 asset 실행 범위만 지원합니다.",
+            )
+        try:
+            comparison_parameters = comparison_time_parameter_names(selected_assets)
+        except ContextBuildError as error:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "Ratio 기간 비교의 공통 시간 계약이 유효하지 않습니다.",
+            ) from error
+        if comparison_parameters is None:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "Ratio 기간 비교에는 승인된 comparison window가 필요합니다.",
+            )
     return selected_assets, keep_ids, time_selection_mode(selected_assets)
+
+
+def _validate_ratio_comparison_operands(
+    ratio: dict[str, str],
+    executable_by_id: dict[str, dict[str, object]],
+) -> None:
+    """Ratio 비교를 동일 asset·time field·filter 의미의 두 operand로 제한한다."""
+
+    numerator = executable_by_id.get(ratio["numerator_metric_id"])
+    denominator = executable_by_id.get(ratio["denominator_metric_id"])
+    if numerator is None or denominator is None:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교 operand가 현재 실행 registry에 없습니다.",
+        )
+    numerator_scope = _ratio_operand_scope(numerator)
+    denominator_scope = _ratio_operand_scope(denominator)
+    if numerator_scope != denominator_scope:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교의 분자·분모는 동일 asset·시간·필터 계약이어야 합니다.",
+        )
+
+
+def _ratio_operand_scope(
+    metric: dict[str, object],
+) -> tuple[str, str, tuple[str, ...]]:
+    asset_fqn = metric.get("asset_fqn")
+    time_field = metric.get("time_field")
+    raw_filters = metric.get("required_filters")
+    if (
+        not isinstance(asset_fqn, str)
+        or not asset_fqn
+        or not isinstance(time_field, str)
+        or not time_field
+        or not isinstance(raw_filters, (list, tuple))
+        or any(not isinstance(item, dict) for item in raw_filters)
+    ):
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교 operand의 실행 scope가 불완전합니다.",
+        )
+    try:
+        filters = tuple(
+            sorted(
+                json.dumps(
+                    item,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                for item in raw_filters
+            )
+        )
+    except (TypeError, ValueError) as error:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교 operand의 필터 계약이 유효하지 않습니다.",
+        ) from error
+    return asset_fqn, time_field, filters
 
 
 def _structured_request(

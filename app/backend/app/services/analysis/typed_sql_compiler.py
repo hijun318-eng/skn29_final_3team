@@ -199,10 +199,34 @@ def compile_typed_sql(
             group_expressions[field].copy().as_(dimension_aliases[field])
         )
     for metric_id in projection_ids:
+        result_alias = metric_aliases[metric_id]
+        if comparison is not None and _source_kind(rules[metric_id]) == "ratio":
+            primary_ratio = _metric_expression(
+                metric_id,
+                rules,
+                table_alias,
+                frozenset(),
+                aggregate_filter=primary,
+            )
+            comparison_ratio = _metric_expression(
+                metric_id,
+                rules,
+                table_alias,
+                frozenset(),
+                aggregate_filter=comparison,
+            )
+            if primary_ratio is None or comparison_ratio is None:
+                return None
+            projections.extend(
+                (
+                    primary_ratio.as_(result_alias),
+                    comparison_ratio.as_(f"{result_alias}__comparison"),
+                )
+            )
+            continue
         expression = _metric_expression(metric_id, rules, table_alias, frozenset())
         if expression is None:
             return None
-        result_alias = metric_aliases[metric_id]
         if comparison is None:
             projections.append(expression.as_(result_alias))
         else:
@@ -1000,6 +1024,8 @@ def _metric_expression(
     rules: Mapping[str, Mapping[str, Any]],
     table_alias: str,
     visiting: frozenset[str],
+    *,
+    aggregate_filter: exp.Expression | None = None,
 ) -> exp.Expression | None:
     if metric_id in visiting or metric_id not in rules:
         return None
@@ -1014,12 +1040,14 @@ def _metric_expression(
             rules,
             table_alias,
             visiting | {metric_id},
+            aggregate_filter=aggregate_filter,
         )
         denominator = _metric_expression(
             str(source.get("denominator_metric_id") or ""),
             rules,
             table_alias,
             visiting | {metric_id},
+            aggregate_filter=aggregate_filter,
         )
         if (
             numerator is None
@@ -1043,20 +1071,38 @@ def _metric_expression(
     column = exp.column(field.column, table=table_alias)
     aggregation = str(rule.get("aggregation") or "").casefold()
     if aggregation == "sum":
-        return exp.Sum(this=column)
-    if aggregation == "count":
-        return exp.Count(this=column)
-    if aggregation == "count_distinct":
-        return exp.Count(this=exp.Distinct(expressions=[column]))
-    if aggregation == "average":
-        return exp.Avg(this=column)
-    if aggregation == "min":
-        return exp.Min(this=column)
-    if aggregation == "max":
-        return exp.Max(this=column)
-    if aggregation == "exists":
+        aggregate: exp.Expression | None = exp.Sum(this=column)
+    elif aggregation == "count":
+        aggregate = exp.Count(this=column)
+    elif aggregation == "count_distinct":
+        aggregate = exp.Count(this=exp.Distinct(expressions=[column]))
+    elif aggregation == "average":
+        aggregate = exp.Avg(this=column)
+    elif aggregation == "min":
+        aggregate = exp.Min(this=column)
+    elif aggregation == "max":
+        aggregate = exp.Max(this=column)
+    elif aggregation == "exists":
+        aggregate = exp.Count(this=column)
+        aggregate = _with_aggregate_filter(aggregate, aggregate_filter)
         return exp.GT(
-            this=exp.Count(this=column),
+            this=aggregate,
             expression=exp.Literal.number(0),
         )
-    return None
+    else:
+        aggregate = None
+    return _with_aggregate_filter(aggregate, aggregate_filter)
+
+
+def _with_aggregate_filter(
+    aggregate: exp.Expression | None,
+    predicate: exp.Expression | None,
+) -> exp.Expression | None:
+    """기간 비교 ratio의 leaf 집계에만 동일한 반개방 기간 FILTER를 결속한다."""
+
+    if aggregate is None or predicate is None:
+        return aggregate
+    return exp.Filter(
+        this=aggregate,
+        expression=exp.Where(this=predicate.copy()),
+    )

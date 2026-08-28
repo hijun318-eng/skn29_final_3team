@@ -100,6 +100,27 @@ def time_rule_violation(
     if selected is None:
         return "지표별 시간 규칙이 필요합니다."
     if not selected.time_field:
+        if str(getattr(selected, "aggregation", "")).casefold() != "ratio":
+            return None
+        metrics_by_id = {str(item.id): item for item in package.metrics}
+        operands = (
+            metrics_by_id.get(str(selected.numerator_metric_id)),
+            metrics_by_id.get(str(selected.denominator_metric_id)),
+        )
+        if any(item is None or not item.time_field for item in operands):
+            return "Ratio 지표의 시간 규칙 operand가 불완전합니다."
+        for operand in operands:
+            assert operand is not None
+            violation = time_rule_violation(
+                package,
+                comparisons,
+                assets,
+                operand,
+                window,
+                result,
+            )
+            if violation is not None:
+                return violation
         return None
 
     field = field_identity(f"{selected.asset_fqn}.{selected.time_field}", assets)
@@ -128,7 +149,23 @@ def time_rule_violation(
         (field, "gte", f":{start_parameter}"),
         (field, "lt", f":{end_parameter}"),
     }
-    if not start_parameter or not end_parameter or not required.issubset(comparisons):
+    comparison = time_rules.get("comparison_window") or {}
+    governed_parameters = {
+        f":{name}"
+        for name in (
+            str(time_rules.get("start_parameter") or ""),
+            str(time_rules.get("end_parameter") or ""),
+            str(comparison.get("start_parameter") or ""),
+            str(comparison.get("end_parameter") or ""),
+        )
+        if name
+    }
+    actual_window = {
+        item
+        for item in comparisons
+        if item[0] == field and item[2] in governed_parameters
+    }
+    if not start_parameter or not end_parameter or actual_window != required:
         return "지표 시간 필드는 거버넌스 승인을 받은 반개방 기간 파라미터(>= start AND < end)를 반드시 사용해야 합니다."
     return None
 

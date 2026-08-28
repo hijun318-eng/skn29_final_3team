@@ -49,6 +49,16 @@ class VectorRagApplication:
         """명시적 비교와 두 문서 후속 문맥은 답변 hydration에서 보존한다."""
         return 2 if intent == "COMPARISON" or len(selected_document_ids) > 1 else 1
 
+    @staticmethod
+    def answer_document_ids(
+        selected_document_ids: tuple[str, ...],
+        routed_document_ids: tuple[str, ...],
+        retrieved_document_ids: tuple[str, ...],
+        limit: int,
+    ) -> tuple[str, ...]:
+        """검증된 대화 문서 선택을 라우팅·벡터 순위보다 우선한다."""
+        return (selected_document_ids or routed_document_ids or retrieved_document_ids)[:limit]
+
     def __init__(self, project_root: Path) -> None:
         self._settings = VectorSettings.load(project_root)
         self._repository = PgVectorRepository(self._settings.database_url)
@@ -303,10 +313,12 @@ class VectorRagApplication:
             routed_manual_ids = tuple(
                 dict.fromkeys((*explicit_manual_ids, *domain_preferred_ids))
             )
-            manual_ids = (
-                routed_manual_ids
-                or tuple(dict.fromkeys(item.manual_id for item in results))
-            )[:document_limit]
+            manual_ids = self.answer_document_ids(
+                selected_ids,
+                routed_manual_ids,
+                tuple(dict.fromkeys(item.manual_id for item in results)),
+                document_limit,
+            )
             article_context = self._repository.article_context(
                 manual_ids,
                 article_numbers,

@@ -148,6 +148,15 @@ class OperationalControlTest(unittest.TestCase):
                 ("MANUAL-FACILITY",),
             ),
         )
+        self.assertEqual(
+            ("MANUAL-FACILITY", "MANUAL-SAFETY"),
+            VectorRagApplication.answer_document_ids(
+                ("MANUAL-FACILITY", "MANUAL-SAFETY"),
+                (),
+                ("MANUAL-FACILITY",),
+                2,
+            ),
+        )
 
     def test_quality_suite_has_more_than_80_positive_queries(self) -> None:
         sources = [

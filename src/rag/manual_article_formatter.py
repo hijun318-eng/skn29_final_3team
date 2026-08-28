@@ -167,6 +167,8 @@ class ManualArticleFormatter:
     @staticmethod
     def specific_numbers(question: str) -> tuple[int, ...]:
         text = " ".join(question.lower().split())
+        if any(term in text for term in ("승인 담당자", "승인담당자", "승인권자", "누가 승인")):
+            return (2,)
         if any(term in text for term in ("적용 조건", "적용 대상", "적용 범위", "사용 조건", "사용 상황")):
             return (1,)
         risk_classification = (

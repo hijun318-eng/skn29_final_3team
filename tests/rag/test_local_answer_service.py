@@ -84,6 +84,31 @@ class EvidenceBoundAnswerComposerTest(unittest.TestCase):
             {"EV-FAC-5", "EV-SAFE-5"},
         )
 
+    def test_approval_owner_does_not_invent_an_approver(self) -> None:
+        answer = EvidenceBoundAnswerComposer().compose([{
+            "role": "user",
+            "content": (
+                "질문: 예약·결제 정정 승인 담당자를 알려줘\n"
+                "요청 의도: REGULATION_CHECK\n\n"
+                "제공된 근거(evidence):\n"
+                "ID: EV-PAYMENT\n"
+                "문서명: 09 입실 퇴실 예약 결제\n"
+                "지침번호: MANUAL-PAYMENT\n"
+                "영역: 제2조 시작 전에 확인할 사항\n"
+                "근거: [09 입실 퇴실 예약 결제]\n"
+                "본문내용:\n"
+                "주관 담당\n프런트 운영 관리자\n"
+                "협조 담당\n운영 총괄 관리자\n"
+                "• 정정·취소·환불은 승인 담당자의 결정에 따른다.\n"
+                "END_EVIDENCE"
+            ),
+        }])
+
+        self.assertIn("주관 담당: 프런트 운영 관리자", answer["answer"])
+        self.assertIn("협조 담당: 운영 총괄 관리자", answer["answer"])
+        self.assertIn("구체 직책은 문서에 별도로 명시", answer["answer"])
+        self.assertEqual(answer["citations"][0]["evidence_id"], "EV-PAYMENT")
+
 
 if __name__ == "__main__":
     unittest.main()

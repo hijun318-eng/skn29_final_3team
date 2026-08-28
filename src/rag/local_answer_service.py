@@ -22,6 +22,7 @@ class EvidenceBoundAnswerComposer:
     _QUERY_PATTERN = re.compile(r"질문:\s*(?P<query>.*?)(?:\n요청 의도:\s*[A-Z_]+)?\n\n제공된 근거", re.DOTALL)
     _INTENT_PATTERN = re.compile(r"요청 의도:\s*(?P<intent>[A-Z_]+)")
     _COMPARISON_PATTERN = re.compile(r"비교|차이|다른 점|어떻게 달라|vs\.?", re.IGNORECASE)
+    _APPROVAL_OWNER_PATTERN = re.compile(r"승인\s*담당자|승인권자|누가\s*승인")
     _ANSWER_TYPE_BY_INTENT = {
         "PROCESS": "PROCEDURE",
         "IMMEDIATE_ACTION": "IMMEDIATE",
@@ -66,6 +67,8 @@ class EvidenceBoundAnswerComposer:
                 "limitations": ["로컬 근거 기반 응답 모드"],
                 "model_version": "rag-local-answer-v1",
             }
+        if self._APPROVAL_OWNER_PATTERN.search(query):
+            return self._approval_owner_answer(evidence, query, requested_answer_type)
         formatter = ManualArticleFormatter()
         comparison_items = self._best_items_by_title(
             evidence,
@@ -170,6 +173,61 @@ class EvidenceBoundAnswerComposer:
             "citations": citations,
             "conflicts": [],
             "limitations": ["로컬 근거 기반 응답 모드: 제공된 검색 근거만 사용"],
+            "model_version": "rag-local-answer-v1",
+        }
+
+    def _approval_owner_answer(
+        self,
+        evidence: list[dict[str, str]],
+        query: str,
+        answer_type: str,
+    ) -> dict[str, Any]:
+        candidates = [item for item in evidence if "승인 담당" in item["body"]] or evidence
+        role_candidates = [
+            item
+            for item in candidates
+            if "주관 담당" in item["body"] and "협조 담당" in item["body"]
+        ]
+        item = self._best_item(role_candidates or candidates, query)
+        lines = [line.strip(" \t-•") for line in item["body"].splitlines() if line.strip()]
+
+        def labeled_value(label: str) -> str | None:
+            for index, line in enumerate(lines[:-1]):
+                if re.sub(r"\s+", " ", line) == label:
+                    value = re.sub(r"\s+", " ", lines[index + 1]).strip()
+                    return value if value and value not in self._LABELS else None
+            return None
+
+        claims = []
+        owner = labeled_value("주관 담당")
+        supporter = labeled_value("협조 담당")
+        if owner:
+            claims.append(f"주관 담당: {owner}")
+        if supporter:
+            claims.append(f"협조 담당: {supporter}")
+        claims.extend(
+            line
+            for line in lines
+            if "승인 담당" in line and 8 <= len(line) <= 240
+        )
+        claims = list(dict.fromkeys(claims))
+        if not re.search(r"승인\s*담당자\s*[:：]", item["body"]):
+            claims.append("승인 담당자의 구체 직책은 문서에 별도로 명시되어 있지 않습니다.")
+        answer = "[담당자 확인]\n\n" + "\n\n".join(f"- {claim}" for claim in claims)
+        citation = {
+            "evidence_id": item["evidence_id"],
+            "citation": item["citation"] or self._readable_excerpt(item["body"], query, 1)[0][:240],
+        }
+        return {
+            "request_id": "local-answer",
+            "trace_id": "local-answer",
+            "status": "ANSWER",
+            "answer": answer,
+            "answer_type": answer_type,
+            "summary": claims,
+            "citations": [citation],
+            "conflicts": [],
+            "limitations": ["승인 담당자의 구체 직책은 제공된 문서에 별도 명시되지 않음"],
             "model_version": "rag-local-answer-v1",
         }
 

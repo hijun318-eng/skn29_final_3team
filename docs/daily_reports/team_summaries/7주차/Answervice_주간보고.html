@@ -1,0 +1,1271 @@
+<!doctype html>
+<html lang="ko"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Answervice 주간보고 · 2026.08.24–08.27</title>
+  <style>
+    :root {
+      --ink: #18263a;
+      --muted: #68788d;
+      --dim: #8292a6;
+      --navy: #f4f7fb;
+      --navy-2: #ffffff;
+      --line: #d8e1ec;
+      --cyan: #176fe5;
+      --cyan-soft: rgba(23, 111, 229, .11);
+      --amber: #e54b3d;
+      --amber-soft: rgba(229, 75, 61, .1);
+      --rose: #c4453d;
+      --white: #ffffff;
+      --shadow: 0 8px 24px rgba(31, 55, 86, .07);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; overflow: hidden; }
+    body {
+      background: #eef3f8;
+      color: var(--ink);
+      font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      text-rendering: optimizeLegibility;
+    }
+    button { font: inherit; }
+
+    .deck {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 87% 8%, rgba(23, 111, 229, .09), transparent 30rem),
+        radial-gradient(circle at 4% 96%, rgba(229, 75, 61, .045), transparent 28rem),
+        var(--navy);
+    }
+
+    .deck::before {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      content: "";
+      opacity: 1;
+      background-image:
+        linear-gradient(rgba(48, 78, 113, .04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(48, 78, 113, .055) 1px, transparent 1px);
+      background-size: 280px 180px;
+      mask-image: linear-gradient(to bottom, #000, transparent 84%);
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      padding: clamp(42px, 5.5vh, 72px) clamp(52px, 6.2vw, 108px) clamp(66px, 8vh, 92px);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: clamp(24px, 4vh, 46px);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(32px);
+      transition: opacity .38s ease, transform .38s ease, visibility .38s;
+    }
+    .slide.active { opacity: 1; visibility: visible; transform: none; }
+
+    .slide-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 32px;
+    }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--cyan);
+      font-size: clamp(12px, 1.15vw, 17px);
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      margin-bottom: 20px;
+      max-width: 11ch;
+      font-size: clamp(58px, 8vw, 126px);
+      line-height: .97;
+      letter-spacing: -.055em;
+      font-weight: 850;
+    }
+    h2 {
+      margin-bottom: 0;
+      max-width: 19ch;
+      font-size: clamp(34px, 4.2vw, 66px);
+      line-height: 1.07;
+      letter-spacing: -.04em;
+      font-weight: 820;
+    }
+
+    #slide-3-title,
+    #slide-5-title,
+    #slide-7-title {
+      max-width: none;
+    }
+
+    #slide-7-title {
+      font-size: clamp(34px, 3.8vw, 60px);
+    }
+
+    #slide-3-title .title-line,
+    #slide-5-title .title-line,
+    #slide-7-title .title-line {
+      display: block;
+      white-space: nowrap;
+    }
+    h3 {
+      margin-bottom: 10px;
+      color: var(--ink);
+      font-size: clamp(19px, 1.8vw, 28px);
+      line-height: 1.3;
+    }
+    .subtitle {
+      max-width: 46rem;
+      color: var(--muted);
+      font-size: clamp(18px, 1.7vw, 26px);
+      line-height: 1.58;
+    }
+    .slide-index {
+      padding-top: 5px;
+      color: var(--dim);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 15px;
+      letter-spacing: .1em;
+    }
+
+    .title-slide { grid-template-rows: 1fr auto; }
+    .title-wrap {
+      align-self: center;
+      position: relative;
+      padding-left: clamp(24px, 3vw, 46px);
+    }
+    .title-wrap h1 {
+      max-width: none;
+      margin: 0;
+      font-size: clamp(72px, 10.5vw, 158px);
+      line-height: .88;
+      letter-spacing: -.065em;
+      text-transform: uppercase;
+    }
+    .title-wrap::before {
+      position: absolute;
+      inset: 3px auto 5px 0;
+      width: 6px;
+      content: "";
+      border-radius: 0;
+      background: linear-gradient(var(--cyan) 0 72%, var(--amber) 72% 82%, var(--ink) 82%);
+    }
+    .title-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding-top: 18px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: clamp(13px, 1.15vw, 17px);
+    }
+    .title-meta strong { color: var(--ink); }
+    .signal {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--cyan);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 13px;
+      letter-spacing: .08em;
+    }
+    .signal::before {
+      width: 9px;
+      height: 9px;
+      content: "";
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 0 4px rgba(23,111,229,.12);
+    }
+
+    .week-track {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      align-items: stretch;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .day {
+      position: relative;
+      padding: clamp(22px, 3.2vh, 38px) clamp(18px, 2.3vw, 34px);
+      display: grid;
+      align-content: center;
+      gap: 18px;
+      border-right: 1px solid var(--line);
+    }
+    .day:last-child { border-right: 0; }
+    .day::after {
+      position: absolute;
+      top: -5px;
+      left: clamp(18px, 2.3vw, 34px);
+      width: 9px;
+      height: 9px;
+      content: "";
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 0 5px var(--cyan-soft);
+    }
+    .day:nth-child(4)::after { background: var(--amber); box-shadow: 0 0 0 5px var(--amber-soft); }
+    .date {
+      color: var(--cyan);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: clamp(14px, 1.25vw, 18px);
+      font-weight: 800;
+    }
+    .day:nth-child(4) .date { color: var(--amber); }
+    .day p {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(15px, 1.35vw, 20px);
+      line-height: 1.55;
+    }
+    .day strong { color: var(--ink); }
+
+    .workstreams {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: clamp(34px, 5vw, 72px);
+      align-items: stretch;
+    }
+    .stream-primary {
+      padding-right: clamp(22px, 3vw, 46px);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      border-right: 1px solid var(--line);
+    }
+    .big-claim {
+      margin: 0 0 22px;
+      font-size: clamp(27px, 3vw, 48px);
+      line-height: 1.2;
+      letter-spacing: -.035em;
+      font-weight: 800;
+    }
+    .big-claim em { color: var(--cyan); font-style: normal; }
+    .flow {
+      display: grid;
+      align-content: center;
+      gap: 0;
+    }
+    .flow-row {
+      min-height: 60px;
+      display: grid;
+      grid-template-columns: 50px 1fr;
+      align-items: center;
+      gap: 16px;
+    }
+    .flow-row + .flow-row { border-top: 1px solid var(--line); }
+    .flow-no {
+      color: var(--cyan);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 13px;
+    }
+    .flow-row p {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(15px, 1.35vw, 20px);
+    }
+    .flow-row strong { color: var(--ink); }
+    .stream-list {
+      display: grid;
+      grid-template-rows: repeat(3, 1fr);
+    }
+    .stream-item {
+      padding: clamp(14px, 2vh, 24px) 0;
+      display: grid;
+      align-content: center;
+      grid-template-columns: 12px 1fr;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .stream-item:last-child { border-bottom: 0; }
+    .stream-item::before {
+      width: 4px;
+      height: 100%;
+      min-height: 44px;
+      content: "";
+      border-radius: 6px;
+      background: var(--amber);
+      opacity: .78;
+    }
+    .stream-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(14px, 1.25vw, 19px);
+      line-height: 1.5;
+    }
+
+    .evidence-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1.08fr .92fr;
+      gap: clamp(34px, 5vw, 74px);
+      align-items: center;
+    }
+    .model-compare {
+      display: grid;
+      gap: 22px;
+    }
+    .model-row {
+      display: grid;
+      grid-template-columns: 72px 1fr 94px;
+      align-items: center;
+      gap: 18px;
+    }
+    .model-row b {
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: clamp(20px, 2vw, 30px);
+    }
+    .bar {
+      height: 14px;
+      overflow: hidden;
+      border-radius: 12px;
+      background: #e7edf4;
+    }
+    .bar > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #176fe5, #5b9cff);
+    }
+    .model-row:last-child .bar > span { background: linear-gradient(90deg, #e54b3d, #f07a71); }
+    .model-row strong { text-align: right; font-size: clamp(20px, 1.8vw, 28px); }
+    .model-detail {
+      padding-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: clamp(14px, 1.25vw, 18px);
+    }
+    .model-detail strong { color: var(--ink); }
+    .decision {
+      margin-top: 28px;
+      padding: 20px 22px;
+      color: var(--ink);
+      border-left: 4px solid var(--cyan);
+      background: linear-gradient(90deg, var(--cyan-soft), transparent);
+      font-size: clamp(16px, 1.45vw, 22px);
+      line-height: 1.55;
+    }
+    .test-ledger {
+      padding-left: clamp(22px, 3vw, 44px);
+      border-left: 1px solid var(--line);
+    }
+    .test-ledger dl { margin: 0; }
+    .test-ledger dl > div {
+      padding: clamp(16px, 2.2vh, 24px) 0;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: baseline;
+      gap: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .test-ledger dt { color: var(--muted); font-size: clamp(15px, 1.3vw, 19px); }
+    .test-ledger dd {
+      margin: 0;
+      color: var(--ink);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: clamp(28px, 3.4vw, 52px);
+      font-weight: 800;
+    }
+    .test-ledger small {
+      display: block;
+      margin-top: 20px;
+      color: var(--dim);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .risk-layout {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: .88fr 1.12fr;
+      gap: clamp(38px, 6vw, 86px);
+      align-items: center;
+    }
+    .risk-number {
+      padding-right: clamp(30px, 4vw, 60px);
+      border-right: 1px solid var(--line);
+    }
+    .risk-number strong {
+      display: block;
+      color: var(--amber);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: clamp(72px, 10vw, 152px);
+      line-height: .9;
+      letter-spacing: -.07em;
+    }
+    .risk-number p {
+      margin: 22px 0 0;
+      color: var(--muted);
+      font-size: clamp(18px, 1.7vw, 26px);
+      line-height: 1.55;
+    }
+    .risk-list { display: grid; gap: 0; }
+    .risk-item {
+      padding: clamp(16px, 2.2vh, 24px) 0;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .risk-item:last-child { border-bottom: 0; }
+    .risk-item span {
+      color: var(--rose);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .risk-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(15px, 1.32vw, 20px);
+      line-height: 1.55;
+    }
+    .risk-item strong { color: var(--ink); }
+
+    .merge-plan {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 clamp(38px, 5vw, 76px);
+      align-content: center;
+    }
+    .merge-step {
+      min-height: 72px;
+      display: grid;
+      grid-template-columns: 42px minmax(150px, .58fr) 1.42fr;
+      align-items: center;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .merge-step:nth-child(5), .merge-step:nth-child(6) { border-bottom: 0; }
+    .merge-step > span {
+      color: var(--cyan);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .merge-step h3 { margin: 0; font-size: clamp(16px, 1.45vw, 22px); }
+    .merge-step div { min-width: 0; }
+    .merge-step code {
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      color: var(--amber);
+      font: 700 clamp(11px, .95vw, 14px)/1.35 "IBM Plex Mono", Consolas, monospace;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .merge-step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(12px, 1.02vw, 15px);
+      line-height: 1.4;
+    }
+    .merge-banner {
+      grid-column: 1 / -1;
+      margin-top: 28px;
+      padding-top: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 22px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: clamp(14px, 1.2vw, 18px);
+    }
+    .merge-banner strong { color: var(--ink); }
+    .merge-banner em { color: var(--cyan); font-style: normal; }
+
+    .closing {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1.18fr .82fr;
+      gap: clamp(34px, 5vw, 72px);
+      align-items: center;
+    }
+    .closing-proof { min-width: 0; margin: 0; }
+    .screen-frame {
+      overflow: hidden;
+      border: 1px solid #c9d6e5;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 22px 55px rgba(31, 55, 86, .16);
+    }
+    .screen-chrome {
+      height: 30px;
+      padding: 0 11px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid var(--line);
+      background: #eef3f8;
+    }
+    .screen-chrome i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #b7c4d3;
+    }
+    .screen-chrome i:first-child { background: var(--amber); }
+    .screen-chrome i:last-child { background: var(--cyan); }
+    .screen-frame img {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 10;
+      display: block;
+      object-fit: contain;
+      object-position: center;
+      background: #fff;
+    }
+    .closing-proof figcaption {
+      margin-top: 15px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .closing-proof figcaption strong { color: var(--ink); font-size: 15px; }
+    .next-actions {
+      padding-left: clamp(28px, 4vw, 58px);
+      border-left: 1px solid var(--line);
+    }
+    .next-actions ol { margin: 0; padding: 0; list-style: none; counter-reset: action; }
+    .next-actions li {
+      padding: 18px 0;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      counter-increment: action;
+      font-size: clamp(15px, 1.35vw, 20px);
+      line-height: 1.5;
+    }
+    .next-actions li::before {
+      color: var(--amber);
+      content: counter(action, decimal-leading-zero);
+      font: 800 13px/1.6 "IBM Plex Mono", Consolas, monospace;
+    }
+    .next-actions strong { color: var(--ink); }
+
+    .chrome {
+      position: fixed;
+      z-index: 8;
+      right: clamp(22px, 2.5vw, 40px);
+      bottom: clamp(18px, 2.4vh, 30px);
+      left: clamp(22px, 2.5vw, 40px);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 18px;
+    }
+    .brand-mini {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .brand-mini::before {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      content: "AS";
+      color: var(--white);
+      border: 1px solid var(--cyan);
+      background: var(--cyan);
+      font-size: 10px;
+      letter-spacing: 0;
+    }
+    .progress {
+      height: 2px;
+      overflow: hidden;
+      background: #d8e1ec;
+    }
+    .progress span {
+      display: block;
+      width: 16.6667%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--amber));
+      transition: width .3s ease;
+    }
+    .controls { display: flex; align-items: center; gap: 8px; }
+    .controls button {
+      width: 36px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, .96);
+      cursor: pointer;
+    }
+    .controls button:hover, .controls button:focus-visible { color: var(--cyan); border-color: var(--cyan); background: #eef5ff; outline: 0; }
+    .controls button[aria-pressed="true"] { color: #fff; border-color: var(--cyan); background: var(--cyan); }
+    .controls button[hidden] { display: none; }
+    body.editing .slide.active [contenteditable="true"] { cursor: text; border-radius: 4px; outline: 1px dashed transparent; }
+    body.editing .slide.active [contenteditable="true"]:hover { outline-color: rgba(23, 111, 229, .45); }
+    body.editing .slide.active [contenteditable="true"]:focus {
+      outline: 2px solid var(--cyan);
+      outline-offset: 4px;
+      background: rgba(238, 245, 255, .72);
+    }
+    .counter {
+      min-width: 52px;
+      color: var(--muted);
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .notes-panel {
+      position: fixed;
+      z-index: 20;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      max-height: 44vh;
+      padding: 22px clamp(28px, 5vw, 80px) 28px;
+      overflow: auto;
+      color: #24354c;
+      border-top: 4px solid var(--cyan);
+      background: rgba(255, 255, 255, .98);
+      box-shadow: 0 -18px 48px rgba(31,55,86,.14);
+      transform: translateY(105%);
+      transition: transform .28s ease;
+    }
+    .notes-panel.open { transform: none; }
+    .notes-panel header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 12px;
+    }
+    .notes-panel h3 { margin: 0; color: var(--ink); font-size: 20px; }
+    .notes-panel button { color: var(--cyan); border: 0; background: transparent; cursor: pointer; }
+    .notes-panel .script { margin: 0; font-size: 16px; line-height: 1.7; }
+    .notes-panel .sources { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .speaker-notes { display: none; }
+
+    .help {
+      position: fixed;
+      z-index: 22;
+      inset: 0;
+      padding: 24px;
+      display: none;
+      place-items: center;
+      background: rgba(24, 38, 58, .32);
+      backdrop-filter: blur(9px);
+    }
+    .help.open { display: grid; }
+    .help-card {
+      width: min(560px, 100%);
+      padding: 30px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: var(--shadow);
+    }
+    .help-card h3 { margin-bottom: 18px; }
+    .help-card dl { margin: 0; display: grid; grid-template-columns: 90px 1fr; gap: 12px 18px; }
+    .help-card dt { color: var(--cyan); font-family: Consolas, monospace; }
+    .help-card dd { margin: 0; color: var(--muted); }
+    .help-card p { margin: 22px 0 0; color: var(--dim); font-size: 13px; }
+
+    /* 슬라이드 제목을 제외한 발표용 본문 가독성 확대 */
+    .eyebrow { font-size: clamp(14px, 1.3vw, 20px); }
+    h3 { font-size: clamp(21px, 2vw, 32px); }
+    .subtitle { font-size: clamp(21px, 1.9vw, 30px); }
+    .slide-index { font-size: 17px; }
+    .title-meta { font-size: clamp(15px, 1.3vw, 20px); }
+    .signal { font-size: 15px; }
+    .date { font-size: clamp(16px, 1.4vw, 21px); }
+    .day p,
+    .flow-row p,
+    .stream-item p,
+    .risk-item p,
+    .next-actions li { font-size: clamp(17px, 1.5vw, 23px); }
+    .big-claim { font-size: clamp(30px, 3.2vw, 52px); }
+    .flow-no,
+    .risk-item span,
+    .merge-step > span { font-size: 15px; }
+    .model-row b,
+    .model-row strong { font-size: clamp(22px, 2.2vw, 34px); }
+    .model-detail { font-size: clamp(16px, 1.4vw, 21px); }
+    .decision { font-size: clamp(18px, 1.6vw, 25px); }
+    .test-ledger dt { font-size: clamp(17px, 1.45vw, 22px); }
+    .test-ledger dd { font-size: clamp(32px, 3.7vw, 58px); }
+    .test-ledger small { font-size: 15px; }
+    .risk-number strong { font-size: clamp(80px, 10.5vw, 160px); }
+    .risk-number p { font-size: clamp(20px, 1.9vw, 30px); }
+    .merge-step h3 { font-size: clamp(18px, 1.6vw, 25px); }
+    .merge-step p { font-size: clamp(15px, 1.25vw, 18px); }
+    .merge-banner { font-size: clamp(16px, 1.35vw, 21px); }
+    .closing-proof figcaption { font-size: 15px; }
+    .closing-proof figcaption strong { font-size: 17px; }
+    .next-actions li::before { font-size: 15px; }
+    .brand-mini { font-size: 14px; }
+    .brand-mini::before { font-size: 12px; }
+    .counter { font-size: 14px; }
+    .controls button { font-size: 18px; }
+    .notes-panel h3 { font-size: 22px; }
+    .notes-panel .script { font-size: 18px; }
+    .notes-panel .sources { font-size: 14px; }
+    .help-card { font-size: 18px; }
+    .help-card p { font-size: 15px; }
+
+    @media (max-width: 920px) {
+      .slide { padding-inline: 42px; }
+      .week-track { grid-template-columns: 1fr 1fr; }
+      .day:nth-child(2) { border-right: 0; }
+      .day:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .workstreams, .evidence-grid, .risk-layout, .closing { grid-template-columns: 1fr; gap: 24px; }
+      .stream-primary, .test-ledger, .risk-number, .next-actions { padding: 0 0 22px; border: 0; border-bottom: 1px solid var(--line); }
+      .stream-list { grid-template-columns: repeat(3, 1fr); grid-template-rows: auto; gap: 18px; }
+      .stream-item { border: 0; }
+      .merge-plan { grid-template-columns: 1fr; overflow: auto; }
+      .merge-step:nth-child(5) { border-bottom: 1px solid var(--line); }
+      .merge-banner { grid-column: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+
+    @media print {
+      @page { size: 13.333in 7.5in; margin: 0; }
+      html, body { overflow: visible; background: var(--navy); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .deck { width: auto; height: auto; overflow: visible; }
+      .deck::before, .chrome, .notes-panel, .help { display: none !important; }
+      .slide {
+        position: relative;
+        width: 13.333in;
+        height: 7.5in;
+        page-break-after: always;
+        opacity: 1 !important;
+        visibility: visible !important;
+        transform: none !important;
+      }
+      .slide:last-of-type { page-break-after: auto; }
+    }
+  </style>
+</head>
+<body class="">
+  <main class="deck" aria-label="Answervice 2026년 8월 24일부터 27일까지 주간보고 발표 자료">
+    <section class="slide title-slide" aria-labelledby="slide-1-title" data-time="20초">
+      <div class="title-wrap">
+        <h1 id="slide-1-title">Answervice<br>Weekly Review</h1>
+      </div>
+      <footer class="title-meta">
+        <span><strong>3팀 주간보고</strong> · 2026.08.24–08.27</span>
+        <span class="signal">INTEGRATION READY</span>
+      </footer>
+      <aside class="speaker-notes">
+        <p class="script">안녕하세요, 3팀 주간보고 시작하겠습니다. 
+
+
+이번 주에는 분석, 문서 검색, 수요예측, 보고서, 관리자 기능을 하나의 서비스 흐름으로 연결하고 오류 없이 합치는 작업에 집중했습니다.</p>
+        <p class="sources">[Sources] 사용자 제공 2026-08-24~27 일일보고; Git 작업 이력 검토.</p>
+      </aside>
+    </section>
+
+    <section class="slide" aria-labelledby="slide-2-title" data-time="40초">
+      <header class="slide-head">
+        <div>
+          <p class="eyebrow">01 · 이번 주 작업 방향</p>
+          <h2 id="slide-2-title">네 가지 작업 축을 <br>하나의 서비스 흐름으로 연결</h2>
+        </div>
+        <span class="slide-index">02 / 06</span>
+      </header>
+      <div class="week-track">
+        <article class="day">
+          <span class="date">분석</span>
+          <h3>분석 경험 개선</h3>
+          <p>요약과 주요 지표를 먼저 보여주고, 요청에 따라 <strong>표와 그래프를 추가</strong>하도록 구성했습니다.</p>
+        </article>
+        <article class="day">
+          <span class="date">보고서</span>
+          <h3>안전한 편집 흐름</h3>
+          <p>AI 수정은 <strong>제안 → 사용자 승인 → 반영</strong> 순서로 처리하고 변경 기록을 보존했습니다.</p>
+        </article>
+        <article class="day">
+          <span class="date">연결</span>
+          <h3>기능 간 연결</h3>
+          <p>관리자·문서 검색·수요예측·보고서를 실제 시스템에 연결하고 <strong>권한과 오류 처리</strong>를 보완했습니다.</p>
+        </article>
+        <article class="day">
+          <span class="date">운영</span>
+          <h3>통합 기준 정리</h3>
+          <p>작업 기록, DataHub 정리, 가벼운 AI 모델 전환과 <strong>단계별 통합 기준</strong>을 정리했습니다.</p>
+        </article>
+      </div>
+      <aside class="speaker-notes">
+        <p class="script">이번 주 작업은 네 가지 축으로 정리할 수 있습니다. 
+먼저 분석 화면은 요약과 주요 지표를 우선 제공하고, 추가 요청에 따라 표와 그래프를 보여주도록 개선했습니다. 보고서는 AI가 바로 수정하지 않고 사용자가 승인한 내용만 반영하도록 만들었습니다. 관리자, 문서 검색, 수요예측과 보고서 기능은 실제 시스템에 연결했습니다. 
+마지막으로 작업 기록과 DataHub 관리 기준, 가벼운 AI 모델 전환과 단계별 통합 방법을 정리했습니다.</p>
+        <p class="sources">[Sources] 사용자 제공 2026-08-24, 25, 26, 27 일일보고.</p>
+      </aside>
+    </section>
+
+    <section class="slide" aria-labelledby="slide-3-title" data-time="55초">
+      <header class="slide-head">
+        <div>
+          <p class="eyebrow">02 · 이번 주 성과</p>
+          <h2 id="slide-3-title"><span class="title-line">분석 결과가 보고서가 되기까지</span></h2>
+        </div>
+        <span class="slide-index">03 / 06</span>
+      </header>
+      <div class="workstreams">
+        <section class="stream-primary">
+          <p class="big-claim">핵심은 “AI가 작성”이 아니라<br><em>사용자가 확인하고 승인</em>하는 흐름</p>
+          <div class="flow" aria-label="보고서 편집 흐름">
+            <div class="flow-row"><span class="flow-no">01</span><p><strong>요약·주요 지표 우선</strong> — 필요한 표와 그래프는 후속 요청으로 추가</p></div>
+            <div class="flow-row"><span class="flow-no">02</span><p><strong>자연어 수정 제안</strong> — 방향·통화·표·차트·레이아웃·페이지까지 확장</p></div>
+            <div class="flow-row"><span class="flow-no">03</span><p><strong>승인 후 반영</strong> — 결과 확인과 변경 이력 저장</p></div>
+            <div class="flow-row"><span class="flow-no">04</span><p><strong>실패해도 안전하게</strong> — 기존 내용 보존, 중복 실행 차단, 재시도 기록</p></div>
+          </div>
+        </section>
+        <section class="stream-list" aria-label="병렬 작업 성과">
+          <article class="stream-item">
+            <div><h3>관리자·작업 기록</h3><p>계정 생성·수정·삭제·비밀번호 변경, 연결 상태, 작업 성공·실패 기록 조회를 연결했습니다.</p></div>
+          </article>
+          <article class="stream-item">
+            <div><h3>문서 검색·수요예측</h3><p>내부지침 검색과 7일 객실 수요예측 기능을 다시 연결하고, 근거에 맞는 답변을 보완했습니다.</p></div>
+          </article>
+          <article class="stream-item">
+            <div><h3>DataHub·분석</h3><p>자동 용어 생성을 중단하고 1,258건을 정리했으며, 기간 비교·조건 검증·오류 추적을 강화했습니다.</p></div>
+          </article>
+        </section>
+      </div>
+      <aside class="speaker-notes">
+        <p class="script">가장 큰 성과는 분석 결과와 보고서 수정 과정에 사용자 확인 단계를 만든 것입니다. 화면에서는 요약과 주요 지표를 먼저 보여주고, 추가 요청에 따라 표와 그래프를 제공합니다. 보고서 편집 기능은 문서 방향, 금액 단위, 표와 그래프, 배치와 페이지 수정안을 제안하고, 사용자가 승인한 뒤 반영합니다. 실패하면 기존 문서와 변경 기록을 보존합니다. 이와 함께 관리자 계정, 작업 기록, 문서 검색, 7일 객실 수요예측, DataHub 용어 정리와 오류 추적도 진행했습니다.</p>
+        <p class="sources">[Sources] 사용자 제공 일일보고; 보고서·화면·문서 검색·분석 기능 작업 이력 검토.</p>
+      </aside>
+    </section>
+
+    <section class="slide" aria-labelledby="slide-5-title" data-time="45초">
+      <header class="slide-head">
+        <div>
+          <p class="eyebrow">03 · 남은 문제</p>
+          <h2 id="slide-5-title"><span class="title-line">기능은 연결됐지만,</span><span class="title-line">전체 시스템 확인이 남았습니다</span></h2>
+        </div>
+        <span class="slide-index">04 / 06</span>
+      </header>
+      <div class="risk-layout">
+        <section class="risk-number">
+          <strong>3</strong>
+          <p>통합 전 반드시 닫아야 할<br>검증 경계</p>
+        </section>
+        <section class="risk-list">
+          <article class="risk-item"><span>R1</span><p><strong>문서 검색 정확도</strong> — 질문과 맞지 않는 답변을 줄이고, 실제로 찾은 자료 안에서만 답하도록 보완해야 합니다.</p></article>
+          <article class="risk-item"><span>R2</span><p><strong>실제 분석 연결</strong> — 인증 설정을 정리한 뒤 DataHub·Trino·데이터베이스를 같은 버전과 계정 권한으로 확인해야 합니다.</p></article>
+          <article class="risk-item"><span>R3</span><p><strong>Neo4j 범위</strong> — 8월 26일 선택형 그래프 이식 후 되돌린 이력이 있어, 핵심 경로와 분리한 상태로 재검토합니다.</p></article>
+        </section>
+      </div>
+      <aside class="speaker-notes">
+        <p class="script">남은 문제는 세 가지입니다. 
+첫째, 일부 질문에서 맞지 않는 답변이 나와 문서 검색 정확도를 높여야 합니다. 
+둘째, 인증 설정을 해결하고 DataHub, Trino, 데이터베이스와 AI 모델을 같은 버전과 같은 계정 권한으로 연결해 실제 분석을 확인해야 합니다. 
+셋째, Neo4j 기능은 한 번 적용했다가 다시 제외한 기록이 있습니다. 
+따라서 현재 완료된 기능으로 보지 않고, 꼭 필요한 기능인지와 어떤 방식으로 연결할지를 다시 검토하겠습니다.</p>
+        <p class="sources">[Sources] 사용자 제공 2026-08-25·26 일일보고; 선택 기능 적용·되돌림 이력; 저장소 AGENTS.md의 same-release live 검증 규칙.</p>
+      </aside>
+    </section>
+
+    <section class="slide active" aria-labelledby="slide-6-title" data-time="70초">
+      <header class="slide-head">
+        <div>
+          <p class="eyebrow">04 · 단계별 통합 계획</p>
+          <h2 id="slide-6-title">병합은 기능 단위로,&nbsp;<div>매 단계 계약을 다시 확인</div></h2>
+        </div>
+        <span class="slide-index">05 / 06</span>
+      </header>
+      <div class="merge-plan">
+        <article class="merge-step"><span>00</span><h3>분석 요청 규칙</h3><div><p>변경 내용 정리 · 규칙과 테스트 확정</p></div></article>
+        <article class="merge-step"><span>01</span><h3>문서 검색·예측</h3><div><p>기존 이력 보존 · 검색과 예측 기능 연결</p></div></article>
+        <article class="merge-step"><span>02</span><h3>기능 연결</h3><div><p>AI 내부가 아닌 연결 지점에서 결합</p></div></article>
+        <article class="merge-step"><span>03</span><h3>보고서</h3><div><p>보고서 관련 파일만 선별해 가져오기</p></div></article>
+        <article class="merge-step"><span>04</span><h3>화면</h3><div><p>현재 화면을 기준으로 최종 서버와 연결</p></div></article>
+        <article class="merge-step"><span>05</span><h3>배포 후보</h3><div><p>전체 테스트 · DB 변경 · 브라우저 · 외부 시스템 확인</p></div></article>
+        <div class="merge-banner"><span><strong>핵심 원칙:</strong> 각 단계는 <em>변경 내용 정리 → 규칙 확인 → 다시 테스트</em> 후 다음 단계로 이동</span><span>기존 동작을 비교 기준으로 활용</span></div>
+      </div>
+      <aside class="speaker-notes">
+        <p class="script">통합은 첨부 계획대로 여섯 단계로 진행합니다. 먼저 분석 요청 처리 규칙을 확정하고 변경 내용을 정리합니다. 다음은 기존 이력을 보존하면서 문서 검색과 수요예측 기능을 연결합니다. 여러 AI 기능은 내부 코드를 직접 섞지 않고 연결 지점에서 결합합니다. 보고서 기능은 관련 파일만 선별해 충돌 범위를 줄입니다. 화면은 현재 디자인을 기준으로 최종 서버 기능과 연결합니다. 마지막으로 배포 후보를 만들고 전체 테스트, 데이터베이스 변경, 브라우저와 실제 외부 시스템 연결을 확인합니다. 기존 동작은 통합 결과를 비교하는 기준으로 사용하겠습니다.</p>
+        <p class="sources">[Sources] 사용자 첨부 이미지 ‘단계별 통합 방식’; Git 작업 이력과 통합 계획 검토.</p>
+      </aside>
+    </section>
+
+    <section class="slide" aria-labelledby="slide-7-title" data-time="25초">
+      <header class="slide-head">
+        <div>
+          <p class="eyebrow">05 · 다음 주</p>
+          <h2 id="slide-7-title"><span class="title-line">다음 목표는 “통합 완료”가 아니라</span><span class="title-line">“검증된 하나의 릴리스”</span></h2>
+        </div>
+        <span class="slide-index">06 / 06</span>
+      </header>
+      <div class="closing">
+        <figure class="closing-proof">
+          <div class="screen-frame">
+            <div class="screen-chrome" aria-hidden="true"><i></i><i></i><i></i></div>
+            <img src="Answervice_weekly_assets/analysis-result.png" alt="질문과 분석 요약, 주요 지표가 표시된 Answervice 분석 결과 화면">
+          </div>
+          <figcaption>
+            <strong>분석 결과 화면 예시</strong>
+            <span>질문 → 요약 → 주요 지표 → 근거 확인</span>
+          </figcaption>
+        </figure>
+        <section class="next-actions">
+          <ol>
+            <li><span><strong>단계별 통합 과정</strong>에서 충돌과 오류를 나누어 확인합니다.</span></li>
+            <li><span><strong>문서 검색 정확도와 예측 결과</strong>를 실제 질문과 조회 결과로 다시 확인합니다.</span></li>
+            <li><span><strong>전체 시스템 연결 테스트</strong>를 통과한 뒤 최종 배포 후보를 확정합니다.</span></li>
+          </ol>
+        </section>
+      </div>
+      <aside class="speaker-notes">
+        <p class="script">화면처럼 이번 주에는 질문부터 분석 요약, 주요 지표와 근거 확인까지 한 흐름으로 연결했습니다. 보고서 승인, 관리자·작업 기록, 문서 검색과 수요예측 기반도 마련했습니다. 다음은 기능을 단계별로 합치고, 실제 질문과 전체 시스템 연결 테스트를 통과한 결과만 최종 배포 후보로 확정하겠습니다. 이상입니다.</p>
+        <p class="sources">[Sources] 사용자 제공 일일보고와 병합 계획; 저장소 AGENTS.md Release 검증 원칙; 화면 예시: 현재 로컬 프론트 라이트 테마 렌더링 (2026-08-28, 화면 데이터는 발표용 예시).</p>
+      </aside>
+    </section>
+
+    <nav class="chrome" aria-label="슬라이드 제어">
+      <span class="brand-mini">Answervice · Team 3</span>
+      <span class="progress" aria-hidden="true"><span id="progress-bar" style="width: 83.3333%;"></span></span>
+      <span class="controls">
+        <button id="prev" type="button" aria-label="이전 슬라이드">←</button>
+        <span class="counter" id="counter" aria-live="polite">05 / 06</span>
+        <button id="next" type="button" aria-label="다음 슬라이드">→</button>
+        <button id="notes" type="button" aria-label="발표자 전용 화면 열기" title="발표자 전용 화면 열기 (N)" aria-expanded="false">N</button>
+        <button id="edit" type="button" aria-label="글자 편집 모드" aria-pressed="false" title="글자 편집 모드 (E)">E</button>
+        <button id="save" type="button" aria-label="수정된 HTML 저장" title="수정된 HTML 저장 (Ctrl+S)" hidden="">S</button>
+        <button id="help" type="button" aria-label="도움말 열기" aria-expanded="false">?</button>
+      </span>
+    </nav>
+  </main>
+
+  <aside class="notes-panel" id="notes-panel" aria-live="polite" aria-label="현재 슬라이드 발표자 노트">
+    <header><h3 id="notes-title">발표 대본 · 70초</h3><button id="notes-close" type="button">닫기 N</button></header>
+    <p class="script" id="notes-script">통합은 첨부 계획대로 여섯 단계로 진행합니다. 먼저 분석 요청 처리 규칙을 확정하고 변경 내용을 정리합니다. 다음은 기존 이력을 보존하면서 문서 검색과 수요예측 기능을 연결합니다. 여러 AI 기능은 내부 코드를 직접 섞지 않고 연결 지점에서 결합합니다. 보고서 기능은 관련 파일만 선별해 충돌 범위를 줄입니다. 화면은 현재 디자인을 기준으로 최종 서버 기능과 연결합니다. 마지막으로 배포 후보를 만들고 전체 테스트, 데이터베이스 변경, 브라우저와 실제 외부 시스템 연결을 확인합니다. 기존 동작은 통합 결과를 비교하는 기준으로 사용하겠습니다.</p>
+    <p class="sources" id="notes-sources">[Sources] 사용자 첨부 이미지 ‘단계별 통합 방식’; Git 작업 이력과 통합 계획 검토.</p>
+  </aside>
+
+  <div class="help" id="help-panel" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="help-card">
+      <h3 id="help-title">발표 조작</h3>
+      <dl>
+        <dt>← / →</dt><dd>이전·다음 슬라이드</dd>
+        <dt>Home / End</dt><dd>첫·마지막 슬라이드</dd>
+        <dt>N</dt><dd>대본 편집과 글자 크기 조절이 가능한 발표자 화면 열기</dd>
+        <dt>E</dt><dd>슬라이드 글자 편집 시작·종료</dd>
+        <dt>S / Ctrl+S</dt><dd>수정된 HTML 파일 저장</dd>
+        <dt>F</dt><dd>전체 화면 전환</dd>
+        <dt>P</dt><dd>인쇄 또는 PDF 저장</dd>
+        <dt>?</dt><dd>이 도움말 열기·닫기</dd>
+      </dl>
+      <p>발표 시간 합계 약 4분 15초 · 각 페이지 시간은 발표자 노트에 표시됩니다.</p>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll('.slide')];
+      const progress = document.getElementById('progress-bar');
+      const counter = document.getElementById('counter');
+      const notesPanel = document.getElementById('notes-panel');
+      const notesTitle = document.getElementById('notes-title');
+      const notesScript = document.getElementById('notes-script');
+      const notesSources = document.getElementById('notes-sources');
+      const helpPanel = document.getElementById('help-panel');
+      const editButton = document.getElementById('edit');
+      const saveButton = document.getElementById('save');
+      const editableSelector = [
+        'h1', 'h2', 'h3', 'p:not(.script):not(.source):not(.sources)',
+        'li', 'dt', 'dd', 'figcaption', '.date', '.slide-index',
+        '.model-row b', '.model-row strong', '.model-detail span', '.title-meta span'
+      ].map(selector => `.slide ${selector}`).join(',');
+      let editing = false;
+      let presenterWindow = null;
+      let index = Math.max(0, Math.min(slides.length - 1, Number(location.hash.slice(1)) - 1 || 0));
+
+      function syncNotes() {
+        const source = slides[index].querySelector('.speaker-notes');
+        notesTitle.textContent = `발표 대본 · ${slides[index].dataset.time}`;
+        notesScript.textContent = source.querySelector('.script').textContent;
+        notesSources.textContent = source.querySelector('.sources').textContent;
+      }
+
+      function show(nextIndex, updateHash = true) {
+        index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+        slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        counter.textContent = `${String(index + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')}`;
+        syncNotes();
+        syncPresenterView();
+        if (updateHash) history.replaceState(null, '', `#${index + 1}`);
+      }
+
+      function toggleNotes(force) {
+        const open = typeof force === 'boolean' ? force : !notesPanel.classList.contains('open');
+        notesPanel.classList.toggle('open', open);
+        document.getElementById('notes').setAttribute('aria-expanded', String(open));
+      }
+
+      function toggleHelp(force) {
+        const open = typeof force === 'boolean' ? force : !helpPanel.classList.contains('open');
+        helpPanel.classList.toggle('open', open);
+        document.getElementById('help').setAttribute('aria-expanded', String(open));
+      }
+
+      function presenterMarkup() {
+        return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Answervice · 발표자 화면</title><style>
+          :root{color-scheme:dark;font-family:Pretendard,"Noto Sans KR","Malgun Gothic",sans-serif;background:#0d1521;color:#eef5ff}
+          *{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(135deg,#0d1521,#14243a)}
+          header{height:84px;padding:0 34px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2a3d57;background:rgba(9,16,27,.88)}
+          header small,.label{color:#67a7ff;font-size:14px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}header h1{margin:5px 0 0;font-size:23px}#presenter-status{color:#9eb1c8;font:700 15px Consolas,monospace}
+          main{min-height:calc(100vh - 126px);padding:30px 34px;display:grid;grid-template-columns:minmax(320px,.8fr) minmax(520px,1.2fr);gap:26px}
+          section{min-width:0;padding:28px;border:1px solid #2a3d57;border-radius:14px;background:rgba(16,28,45,.9);box-shadow:0 20px 50px rgba(0,0,0,.22)}
+          h2{margin:18px 0 22px;font-size:clamp(30px,3.8vw,54px);line-height:1.08;letter-spacing:-.04em;white-space:pre-line}h3{margin:0 0 18px;font-size:24px}
+          .meta{display:flex;gap:10px;flex-wrap:wrap}.meta span{padding:8px 10px;border:1px solid #36506f;border-radius:7px;color:#c4d2e3;background:#16263b;font:700 15px Consolas,monospace}
+          .bar{height:5px;margin:24px 0;background:#26384f;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#2e7df0,#ef5b4c)}
+          .actions{display:flex;gap:10px}.actions button,header button,.note-tools button{padding:10px 14px;color:#e9f2ff;border:1px solid #47617f;border-radius:8px;background:#1a2d46;cursor:pointer;font-size:16px;font-weight:800}.actions button:hover,header button:hover,.note-tools button:hover{border-color:#67a7ff;background:#203a5c}
+          .next{margin-top:28px;padding-top:22px;border-top:1px solid #2a3d57}.next p{margin:9px 0 0;color:#b7c7da;font-size:21px;line-height:1.5;white-space:pre-line}
+          .note-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:18px}.note-head h3{margin-bottom:0}.note-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.note-tools output{min-width:50px;color:#9eb1c8;font:700 14px Consolas,monospace;text-align:center}
+          #presenter-script{min-height:300px;padding:18px;color:#edf4fc;border:1px solid #36506f;border-radius:10px;background:#101e30;font-size:31px;line-height:1.72;letter-spacing:-.02em;white-space:pre-wrap;outline:none}#presenter-script:focus{border-color:#67a7ff;box-shadow:0 0 0 3px rgba(103,167,255,.18)}
+          .note-hint{margin:10px 2px 0;color:#91a6be;font-size:14px;line-height:1.5}
+          details{margin-top:24px;padding-top:18px;border-top:1px solid #2a3d57;color:#91a6be}summary{cursor:pointer;font-size:17px;font-weight:800}#presenter-sources{margin-top:12px;font-size:15px;line-height:1.6;white-space:pre-wrap}
+          footer{height:42px;padding:0 34px;display:flex;align-items:center;color:#7f94ac;border-top:1px solid #2a3d57;font-size:14px}
+          @media(max-width:850px){main{grid-template-columns:1fr}header{padding:0 20px}main{padding:20px}section{padding:22px}}
+        </style></head><body>
+          <header><div><small>Answervice · Team 3</small><h1>발표자 화면</h1></div><div><span id="presenter-status"></span> <button type="button" onclick="window.close()">닫기</button></div></header>
+          <main><section><p class="label">현재 슬라이드</p><h2 id="presenter-title"></h2><div class="meta"><span id="presenter-index"></span><span id="presenter-time"></span><span id="presenter-remaining"></span></div><div class="bar"><i id="presenter-progress"></i></div><div class="actions"><button type="button" onclick="sendPresenterAction('prev')">← 이전</button><button type="button" onclick="sendPresenterAction('next')">다음 →</button></div><div class="next"><span class="label">다음 슬라이드</span><p id="presenter-next"></p></div></section>
+          <section><div class="note-head"><div><p class="label">발표 대본</p><h3>말할 내용</h3></div><div class="note-tools" role="group" aria-label="대본 편집 도구"><button id="script-smaller" type="button" aria-label="대본 글자 작게">가−</button><output id="script-size-label">31px</output><button id="script-larger" type="button" aria-label="대본 글자 크게">가+</button><button id="save-script" type="button">HTML 저장</button></div></div><div id="presenter-script" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="발표 대본 직접 편집"></div><p class="note-hint">대본을 눌러 바로 수정할 수 있습니다. 수정 후 HTML 저장을 누르면 변경된 파일을 저장합니다.</p><details><summary>출처와 확인 근거</summary><div id="presenter-sources"></div></details></section></main>
+          <footer>대본 편집 중에는 화살표가 커서 이동에 사용됩니다. 대본 밖에서는 화살표 또는 Space로 발표 화면을 제어합니다.</footer>
+          <script>
+            const sendPresenterAction = (action, detail = {}) => opener && opener.postMessage({ type: 'answervice-presenter-action', action, ...detail }, '*');
+            const presenterScript = document.getElementById('presenter-script');
+            let scriptSize = 31;
+            const setScriptSize = nextSize => {
+              scriptSize = Math.max(18, Math.min(44, nextSize));
+              presenterScript.style.fontSize = scriptSize + 'px';
+              document.getElementById('script-size-label').textContent = scriptSize + 'px';
+            };
+            document.getElementById('script-smaller').addEventListener('click', () => setScriptSize(scriptSize - 2));
+            document.getElementById('script-larger').addEventListener('click', () => setScriptSize(scriptSize + 2));
+            document.getElementById('save-script').addEventListener('click', () => sendPresenterAction('save-script'));
+            presenterScript.addEventListener('input', () => sendPresenterAction('update-script', { script: presenterScript.innerText }));
+            window.addEventListener('keydown', event => {
+              if (event.target.closest?.('[contenteditable="true"]')) return;
+              if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') { event.preventDefault(); sendPresenterAction('next'); }
+              else if (event.key === 'ArrowLeft' || event.key === 'PageUp') { event.preventDefault(); sendPresenterAction('prev'); }
+            });
+            window.addEventListener('message', event => {
+              if (event.source !== opener || event.data?.type !== 'answervice-presenter-state') return;
+              const state = event.data;
+              const values = {
+                'presenter-title': state.title,
+                'presenter-index': state.index,
+                'presenter-time': state.time,
+                'presenter-remaining': state.remaining,
+                'presenter-next': state.next,
+                'presenter-sources': state.sources,
+                'presenter-status': state.status
+              };
+              Object.entries(values).forEach(([id, value]) => { document.getElementById(id).textContent = value; });
+              if (document.activeElement !== presenterScript || !presenterScript.textContent) presenterScript.textContent = state.script;
+              document.getElementById('presenter-progress').style.width = state.progress;
+            });
+            window.addEventListener('load', () => opener && opener.postMessage({ type: 'answervice-presenter-ready' }, '*'));
+          <\/script>
+        </body></html>`;
+      }
+
+      function syncPresenterView() {
+        if (!presenterWindow || presenterWindow.closed) return;
+        const slide = slides[index];
+        const nextSlide = slides[index + 1];
+        const source = slide.querySelector('.speaker-notes');
+        const titleOf = item => {
+          const heading = item?.querySelector('h1, h2');
+          if (!heading) return '';
+          const copy = heading.cloneNode(true);
+          copy.querySelectorAll('br').forEach(breakElement => breakElement.replaceWith('\n'));
+          copy.querySelectorAll('.title-line').forEach(line => line.append('\n'));
+          return copy.textContent.replace(/\n\s*\n/g, '\n').trim();
+        };
+        const remainingSeconds = slides.slice(index).reduce((sum, item) => sum + Number.parseInt(item.dataset.time, 10), 0);
+        presenterWindow.postMessage({
+          type: 'answervice-presenter-state',
+          title: titleOf(slide) || `슬라이드 ${index + 1}`,
+          index: `${String(index + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')}`,
+          time: slide.dataset.time,
+          remaining: `남은 시간 ${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`,
+          next: titleOf(nextSlide) || '마지막 슬라이드입니다.',
+          script: source.querySelector('.script').textContent,
+          sources: source.querySelector('.sources').textContent,
+          status: `LIVE · ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`,
+          progress: `${((index + 1) / slides.length) * 100}%`
+        }, '*');
+      }
+
+      function openPresenterView() {
+        toggleNotes(false);
+        if (presenterWindow && !presenterWindow.closed) {
+          presenterWindow.focus();
+          syncPresenterView();
+          return;
+        }
+        const presenterUrl = URL.createObjectURL(new Blob([presenterMarkup()], { type: 'text/html;charset=utf-8' }));
+        presenterWindow = window.open(presenterUrl, 'answervice-presenter', 'popup=yes,width=1180,height=780,resizable=yes,scrollbars=yes');
+        if (!presenterWindow) {
+          URL.revokeObjectURL(presenterUrl);
+          window.alert('발표자 화면을 열 수 없습니다. 이 파일의 팝업 허용 후 N을 다시 눌러 주세요.');
+          return;
+        }
+        window.setTimeout(() => {
+          URL.revokeObjectURL(presenterUrl);
+          syncPresenterView();
+        }, 200);
+        presenterWindow.focus();
+      }
+
+      window.addEventListener('message', event => {
+        if (event.source !== presenterWindow) return;
+        if (event.data?.type === 'answervice-presenter-ready') syncPresenterView();
+        if (event.data?.type !== 'answervice-presenter-action') return;
+        if (event.data.action === 'prev') show(index - 1);
+        if (event.data.action === 'next') show(index + 1);
+        if (event.data.action === 'update-script') {
+          const script = String(event.data.script ?? '');
+          slides[index].querySelector('.speaker-notes .script').textContent = script;
+          notesScript.textContent = script;
+        }
+        if (event.data.action === 'save-script') saveEditedHtml();
+      });
+
+      function setEditing(enabled) {
+        editing = Boolean(enabled);
+        document.body.classList.toggle('editing', editing);
+        document.querySelectorAll(editableSelector).forEach(element => {
+          if (editing) {
+            element.setAttribute('contenteditable', 'true');
+            element.setAttribute('spellcheck', 'true');
+          } else {
+            element.removeAttribute('contenteditable');
+            element.removeAttribute('spellcheck');
+          }
+        });
+        editButton.setAttribute('aria-pressed', String(editing));
+        saveButton.hidden = !editing;
+      }
+
+      function serializedHtml() {
+        const clone = document.documentElement.cloneNode(true);
+        clone.querySelector('body').classList.remove('editing');
+        clone.querySelectorAll('[contenteditable], [spellcheck]').forEach(element => {
+          element.removeAttribute('contenteditable');
+          element.removeAttribute('spellcheck');
+        });
+        clone.querySelector('#edit').setAttribute('aria-pressed', 'false');
+        clone.querySelector('#save').setAttribute('hidden', '');
+        clone.querySelector('#notes-panel').classList.remove('open');
+        clone.querySelector('#help-panel').classList.remove('open');
+        return `<!doctype html>\n${clone.outerHTML}`;
+      }
+
+      async function saveEditedHtml() {
+        setEditing(false);
+        const html = serializedHtml();
+        const suggestedName = 'Answervice_주간보고_수정본.html';
+        if ('showSaveFilePicker' in window) {
+          try {
+            const handle = await window.showSaveFilePicker({
+              suggestedName,
+              types: [{ description: 'HTML 문서', accept: { 'text/html': ['.html'] } }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(html);
+            await writable.close();
+            return;
+          } catch (error) {
+            if (error?.name === 'AbortError') return;
+          }
+        }
+        const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = suggestedName;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      document.getElementById('prev').addEventListener('click', () => show(index - 1));
+      document.getElementById('next').addEventListener('click', () => show(index + 1));
+      document.getElementById('notes').addEventListener('click', openPresenterView);
+      document.getElementById('notes-close').addEventListener('click', () => toggleNotes(false));
+      document.getElementById('help').addEventListener('click', () => toggleHelp());
+      editButton.addEventListener('click', () => setEditing(!editing));
+      saveButton.addEventListener('click', saveEditedHtml);
+      helpPanel.addEventListener('click', event => { if (event.target === helpPanel) toggleHelp(false); });
+
+      document.addEventListener('keydown', event => {
+        const key = event.key.toLowerCase();
+        const editingText = event.target instanceof HTMLElement && event.target.isContentEditable;
+        if ((event.ctrlKey || event.metaKey) && key === 's' && editing) {
+          event.preventDefault();
+          saveEditedHtml();
+          return;
+        }
+        if (editingText) {
+          if (event.key === 'Escape') { event.preventDefault(); setEditing(false); }
+          return;
+        }
+        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') { event.preventDefault(); show(index + 1); }
+        else if (event.key === 'ArrowLeft' || event.key === 'PageUp') { event.preventDefault(); show(index - 1); }
+        else if (event.key === 'Home') { event.preventDefault(); show(0); }
+        else if (event.key === 'End') { event.preventDefault(); show(slides.length - 1); }
+        else if (key === 'n') openPresenterView();
+        else if (key === 'e') setEditing(!editing);
+        else if (key === 's' && editing) saveEditedHtml();
+        else if (key === 'f') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+        else if (key === 'p') window.print();
+        else if (event.key === '?') toggleHelp();
+        else if (event.key === 'Escape') { setEditing(false); toggleNotes(false); toggleHelp(false); }
+      });
+
+      document.addEventListener('input', event => {
+        if (event.target instanceof HTMLElement && event.target.isContentEditable) syncPresenterView();
+      });
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement) toggleNotes(false);
+      });
+      window.addEventListener('hashchange', () => show(Number(location.hash.slice(1)) - 1 || 0, false));
+      show(index, false);
+    })();
+  </script>
+
+
+
+</body></html>

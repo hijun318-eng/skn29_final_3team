@@ -22,24 +22,35 @@ def test_immediate_safety_intent_overrides_location_domain() -> None:
     assert decision.domains == ("SAFETY",)
 
 
-def test_abstract_multi_domain_policy_requires_clarification() -> None:
+def test_risk_classification_question_uses_decision_criteria() -> None:
+    for question in (
+        "[내부 지침] 시설 문제를 위험 상황으로 보는 기준이 뭐야?",
+        "[내부 지침] 시설 문제를 긴급 장애로 보는 기준이 뭐야?",
+    ):
+        decision = RagQueryRouter().classify(question, "DOCUMENT_ONLY")
+
+        assert decision.intent is RagIntent.DECISION_CRITERIA
+        assert decision.domains == ("FACILITY",)
+
+
+def test_compensation_policy_routes_without_clarification() -> None:
     decision = RagQueryRouter().classify(
         "[내부 지침] 고객 보상은 어떤 조건에서 가능한가?",
         "DOCUMENT_ONLY",
     )
 
-    assert decision.clarification is not None
-    assert decision.clarification_options
+    assert decision.domains == ("CANCELLATION_REFUND_COMPENSATION",)
+    assert decision.clarification is None
 
 
-def test_unknown_topic_requires_clarification_instead_of_random_document() -> None:
+def test_lost_property_routes_to_parking_event_lobby_domain() -> None:
     decision = RagQueryRouter().classify(
         "[내부 지침] 분실물 접수 후 처리 순서를 알려줘",
         "DOCUMENT_ONLY",
     )
 
-    assert decision.domains == ()
-    assert decision.clarification is not None
+    assert decision.domains == ("PARKING_EVENT_LOBBY",)
+    assert decision.clarification is None
 
 
 def test_follow_up_inherits_previous_rag_domains() -> None:

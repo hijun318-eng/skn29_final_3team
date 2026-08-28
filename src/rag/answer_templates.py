@@ -25,6 +25,12 @@ class AnswerTemplateSelector:
         """복합 질문은 우선순위가 높은 유형부터 최대 두 개까지 선택한다."""
         text = " ".join(question.lower().split())
         selected: list[AnswerType] = []
+        risk_criteria = (
+            self._contains(text, "위험", "긴급 장애", "긴급 상황", "중대 사안", "중대 상황")
+            and self._contains(text, "판단", "기준", "구분", "분류", "보는")
+        )
+        if risk_criteria:
+            selected.append(AnswerType.CRITERIA)
         if self._contains(text, "지금", "즉시", "긴급", "사고", "위험", "쓰러", "누출", "노출", "유출", "잘못 전달", "위생 문제", "개인정보 문제"):
             selected.append(AnswerType.IMMEDIATE)
         if self._contains(text, "요약", "핵심", "주요 내용", "간단히", "전체적으로"):

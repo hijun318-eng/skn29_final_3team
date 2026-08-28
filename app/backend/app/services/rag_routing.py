@@ -199,6 +199,12 @@ class RagQueryRouter:
     def _intent(query: str) -> RagIntent:
         if any(term in query for term in ("차이", "비교", "달라", "두 기준", "각각", "구분해")):
             return RagIntent.COMPARISON
+        risk_criteria = (
+            any(term in query for term in ("위험", "긴급 장애", "긴급 상황", "중대 사안", "중대 상황"))
+            and any(term in query for term in ("판단", "기준", "구분", "분류", "보는"))
+        )
+        if risk_criteria:
+            return RagIntent.DECISION_CRITERIA
         if any(
             term in query
             for term in (

@@ -54,7 +54,8 @@ def test_lost_property_routes_to_parking_event_lobby_domain() -> None:
 
 
 def test_follow_up_inherits_previous_rag_domains() -> None:
-    decision = RagQueryRouter().classify(
+    router = RagQueryRouter()
+    decision = router.classify(
         "[내부 지침] 각각의 즉시 보고 기준을 알려줘",
         "DOCUMENT_ONLY",
         ("시설 장애와 안전사고 대응은 어떻게 달라?",),
@@ -63,3 +64,4 @@ def test_follow_up_inherits_previous_rag_domains() -> None:
     assert decision.requires_context is True
     assert decision.domains == ("FACILITY", "SAFETY")
     assert decision.clarification is None
+    assert router.context_document_limit(decision) == 2

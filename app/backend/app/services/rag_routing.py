@@ -84,6 +84,13 @@ class RagQueryRouter:
         """요청 모드와 질문 분류 결과에서 최종 RAG 실행 경로를 반환한다."""
         return self.classify(query, requested_mode).route
 
+    @staticmethod
+    def context_document_limit(decision: RagRoutingDecision) -> int:
+        """비교 문맥이 상속한 두 문서는 후속 질문에서도 함께 유지한다."""
+        if not decision.requires_context:
+            return 0
+        return 2 if decision.intent is RagIntent.COMPARISON or len(decision.domains) > 1 else 1
+
     def classify(
         self,
         query: str,

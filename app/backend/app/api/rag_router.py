@@ -172,7 +172,7 @@ async def query_internal_manual(
     decision = RagQueryRouter().classify(payload.question, payload.mode, recent_utterances)
     selected_document_ids: tuple[str, ...] = ()
     if decision.requires_context and previous_document_ids:
-        limit = 2 if decision.intent is RagIntent.COMPARISON else 1
+        limit = RagQueryRouter.context_document_limit(decision)
         selected_document_ids = previous_document_ids[:limit]
     if decision.route is RagRoute.DATA_ONLY:
         return {"status": "SUCCESS", "data": {"status": "NO_EVIDENCE", "route": decision.route.value, "trace_id": context.trace_id}}

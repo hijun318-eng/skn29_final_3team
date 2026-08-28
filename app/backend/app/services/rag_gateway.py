@@ -58,6 +58,14 @@ class RagToolError(RuntimeError):
 class InternalManualAgent:
     """App role을 RAG role로 변환하고 승인된 검색·답변 Tool 호출을 조정한다."""
 
+    @staticmethod
+    def selected_document_limit(
+        intent: str,
+        selected_document_ids: tuple[str, ...],
+    ) -> int:
+        """Preserve two validated documents across comparison follow-up turns."""
+        return 2 if intent == "COMPARISON" or len(selected_document_ids) > 1 else 1
+
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
         self._base_url = os.getenv("RAG_API_URL", "http://rag-api:8000").rstrip("/")
@@ -94,7 +102,7 @@ class InternalManualAgent:
             for utterance in recent_utterances[-3:]
             if utterance.strip() and utterance.strip() != normalized
         )
-        document_limit = 2 if intent == "COMPARISON" else 1
+        document_limit = self.selected_document_limit(intent, selected_document_ids)
         selected_ids = tuple(dict.fromkeys(
             document_id.strip()
             for document_id in selected_document_ids

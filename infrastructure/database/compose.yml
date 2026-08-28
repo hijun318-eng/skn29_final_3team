@@ -40,6 +40,9 @@ services:
     <<: *db
     profiles: [full, split-host]
     container_name: pms-postgres
+    networks:
+      database-network:
+        aliases: [answervice-pms-source]
     image: "postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60"
     environment:
       POSTGRES_DB: ${PMS_DB_NAME:-pms_db}
@@ -68,6 +71,9 @@ services:
     <<: *db
     profiles: [full, split-host]
     container_name: banquet-postgres
+    networks:
+      database-network:
+        aliases: [answervice-banquet-source]
     image: "postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60"
     environment:
       POSTGRES_DB: ${BANQUET_DB_NAME:-banquet_db}
@@ -96,6 +102,9 @@ services:
     <<: *db
     profiles: [full, split-host]
     container_name: pos-mysql
+    networks:
+      database-network:
+        aliases: [answervice-pos-source]
     image: "mysql:8.4.6@sha256:869218921e61d6c3c89820955d63cca42971f0e3e6c1e2792247bbd944ebc6e9"
     environment:
       MYSQL_DATABASE: ${POS_DB_NAME:-pos_db}
@@ -122,6 +131,9 @@ services:
     <<: *db
     profiles: [full, split-host]
     container_name: crm-mssql
+    networks:
+      database-network:
+        aliases: [answervice-crm-source]
     image: "mcr.microsoft.com/mssql/server:2022-CU17-ubuntu-22.04@sha256:d252932ef839c24c61c1139cc98f69c85ca774fa7c6bfaaa0015b7eb02b9dc87"
     environment:
       ACCEPT_EULA: "Y"
@@ -150,6 +162,9 @@ services:
     <<: *db
     profiles: [full, split-host]
     container_name: facility-clickhouse
+    networks:
+      database-network:
+        aliases: [answervice-facility-source]
     image: "clickhouse/clickhouse-server:24.8.4.13@sha256:b2c51583a6df9c19d613b579a03f237b92e0dfc63433b3fdb567ce223e0fb0f7"
     environment:
       CLICKHOUSE_DB: ${FACILITY_DB_NAME:-facility}

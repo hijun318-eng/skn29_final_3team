@@ -218,6 +218,47 @@ def build_canonical_metadata_apply_plan(
                 current,
                 _desired_upstream_urns(document, str(dataset["dataset_id"])),
             )
+        elif aspect == "domains":
+            if fields != ["domain_urn"]:
+                raise ValueError(
+                    "canonical metadata apply contains unsupported Dataset domain"
+                )
+            desired = deepcopy(current)
+            desired["domains"] = [str(dataset["domain_urn"])]
+        elif aspect == "ownership":
+            if fields != ["owner_group_urn"]:
+                raise ValueError(
+                    "canonical metadata apply contains unsupported Dataset ownership"
+                )
+            desired = deepcopy(current)
+            desired["owners"] = [
+                {
+                    "owner": str(dataset["owner_group_urn"]),
+                    "type": "TECHNICAL_OWNER",
+                }
+            ]
+        elif aspect == "status":
+            if fields != ["lifecycle"]:
+                raise ValueError(
+                    "canonical metadata apply contains unsupported Dataset status"
+                )
+            desired = deepcopy(current)
+            desired["removed"] = False
+            desired["lifecycleStage"] = str(
+                _mapping(dataset.get("authoring"), "canonical authoring")[
+                    "approved_lifecycle_urn"
+                ]
+            )
+        elif aspect == "glossaryTerms":
+            if fields != ["terms"]:
+                raise ValueError(
+                    "canonical metadata apply contains unsupported Dataset terms"
+                )
+            desired = deepcopy(current)
+            desired["terms"] = [
+                {"urn": urn}
+                for urn in _desired_dataset_term_urns(document, dataset)
+            ]
         else:
             raise ValueError("canonical metadata apply contains an unsupported aspect")
         if canonical_sha256(current) == canonical_sha256(desired):
@@ -252,27 +293,34 @@ def _merge_column_descriptions(
     dataset: Mapping[str, Any],
     fields: Sequence[str],
 ) -> dict[str, Any]:
-    """기존 editable field metadata를 보존하며 승인된 설명 필드만 병합한다."""
+    """기존 editable field metadata를 보존하며 승인 설명과 Term만 병합한다."""
 
     columns = {
         str(item["column_name"]): item
         for item in _list(dataset.get("columns"), "canonical columns")
     }
-    requested: dict[str, str] = {}
+    requested_descriptions: dict[str, str] = {}
+    requested_terms: dict[str, tuple[str, ...]] = {}
     for field in fields:
         name, separator, attribute = field.rpartition(".")
-        if (
-            not separator
-            or attribute != "description"
-            or name not in columns
-            or not isinstance(columns[name].get("description"), str)
-        ):
+        if not separator or name not in columns:
             raise ValueError(
                 "canonical metadata apply contains an unsupported Column field"
             )
-        requested[name] = str(columns[name]["description"])
-    if not requested or len(requested) != len(fields):
-        raise ValueError("canonical metadata Column description fields are invalid")
+        if attribute == "description" and isinstance(
+            columns[name].get("description"), str
+        ):
+            requested_descriptions[name] = str(columns[name]["description"])
+        elif attribute == "glossaryTerms":
+            requested_terms[name] = tuple(
+                sorted(map(str, columns[name].get("term_urns", [])))
+            )
+        else:
+            raise ValueError(
+                "canonical metadata apply contains an unsupported Column field"
+            )
+    if not fields or len(requested_descriptions) + len(requested_terms) != len(fields):
+        raise ValueError("canonical metadata Column fields are invalid")
 
     infos = _list(
         current.get("editableSchemaFieldInfo", []), "editable schema fields"
@@ -285,11 +333,22 @@ def _merge_column_descriptions(
         if not name or name in seen:
             raise ValueError("editable schema fields are missing or duplicated")
         seen.add(name)
-        if name in requested:
-            item["description"] = requested[name]
+        if name in requested_descriptions:
+            item["description"] = requested_descriptions[name]
+        if name in requested_terms:
+            item["glossaryTerms"] = {
+                "terms": [{"urn": urn} for urn in requested_terms[name]]
+            }
         merged_infos.append(item)
-    for name in sorted(set(requested) - seen):
-        merged_infos.append({"fieldPath": name, "description": requested[name]})
+    for name in sorted((set(requested_descriptions) | set(requested_terms)) - seen):
+        item: dict[str, Any] = {"fieldPath": name}
+        if name in requested_descriptions:
+            item["description"] = requested_descriptions[name]
+        if name in requested_terms:
+            item["glossaryTerms"] = {
+                "terms": [{"urn": urn} for urn in requested_terms[name]]
+            }
+        merged_infos.append(item)
     desired = deepcopy(dict(current))
     desired["editableSchemaFieldInfo"] = merged_infos
     return desired
@@ -677,6 +736,31 @@ def _desired_upstream_urns(
     return tuple(
         sorted(datasets[str(item)] for item in lineage.get("upstream_dataset_ids", []))
     )
+
+
+def _desired_dataset_term_urns(
+    document: Mapping[str, Any], dataset: Mapping[str, Any]
+) -> tuple[str, ...]:
+    """Dataset column과 BUSINESS Metric에서 승인된 Term 집합을 재구성한다."""
+
+    desired = {
+        str(term_urn)
+        for column in _list(dataset.get("columns"), "canonical columns")
+        for term_urn in column.get("term_urns", [])
+    }
+    rules = {
+        str(item["metric_id"]): _mapping(item.get("runtime_rule"), "runtime rule")
+        for item in _list(document.get("metrics"), "canonical metrics")
+    }
+    fqn = str(dataset["fqn"])
+    for metric in _list(document.get("metrics"), "canonical metrics"):
+        if metric.get("visibility") != "BUSINESS":
+            continue
+        if fqn in metric_asset_fqns(
+            _mapping(metric.get("runtime_rule"), "runtime rule"), rules
+        ):
+            desired.add(str(metric["term_urn"]))
+    return tuple(sorted(desired))
 
 
 def _plan_term_changes(

@@ -481,6 +481,74 @@ def test_apply_plan_is_checksum_bound_and_preserves_unmanaged_aspect_fields() ->
         )
 
 
+def test_apply_plan_converges_dataset_association_aspects() -> None:
+    baseline = _apply_plan_to_baseline(
+        _baseline(),
+        {
+            "mutations": [
+                {"urn": DATASET, "aspect": "domains", "value": {"domains": []}},
+                {"urn": DATASET, "aspect": "ownership", "value": {"owners": []}},
+                {"urn": DATASET, "aspect": "status", "value": {"removed": False}},
+                {
+                    "urn": DATASET,
+                    "aspect": "glossaryTerms",
+                    "value": {"terms": []},
+                },
+                {
+                    "urn": DATASET,
+                    "aspect": "editableSchemaMetadata",
+                    "value": {
+                        "editableSchemaFieldInfo": [
+                            {
+                                "fieldPath": "business_date",
+                                "description": "영업일자",
+                                "glossaryTerms": {
+                                    "terms": [{"urn": EXTERNAL_TERM}]
+                                },
+                            }
+                        ]
+                    },
+                },
+            ]
+        },
+    )
+    manifest = _manifest(baseline["content_sha256"])
+    check = build_canonical_metadata_check(manifest, baseline)
+
+    plan = build_canonical_metadata_apply_plan(
+        manifest,
+        baseline,
+        expected_check_sha256=check["check_sha256"],
+    )
+    values = {
+        mutation["aspect"]: mutation["value"] for mutation in plan["mutations"]
+    }
+
+    assert values["domains"] == {"domains": [DOMAIN]}
+    assert values["ownership"] == {
+        "owners": [{"owner": OWNER, "type": "TECHNICAL_OWNER"}]
+    }
+    assert values["status"] == {
+        "removed": False,
+        "lifecycleStage": LIFECYCLE,
+    }
+    assert values["glossaryTerms"] == {"terms": [{"urn": TERM}]}
+    assert values["editableSchemaMetadata"] == {
+        "editableSchemaFieldInfo": [
+            {
+                "fieldPath": "business_date",
+                "description": "영업일자",
+                "glossaryTerms": {"terms": [{"urn": TERM}]},
+            }
+        ]
+    }
+
+    readback = _apply_plan_to_baseline(baseline, plan)
+    assert build_canonical_metadata_check(manifest, readback)[
+        "planned_change_count"
+    ] == 0
+
+
 def test_applied_manifest_converges_and_second_plan_has_zero_mutations() -> None:
     baseline = _baseline(dataset_name="Old Name")
     manifest = _manifest(

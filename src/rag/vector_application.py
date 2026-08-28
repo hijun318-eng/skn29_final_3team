@@ -41,6 +41,14 @@ DOMAIN_DOCUMENT_TITLE_PREFIXES: dict[str, tuple[str, ...]] = {
 
 
 class VectorRagApplication:
+    @staticmethod
+    def answer_document_limit(
+        intent: str,
+        selected_document_ids: tuple[str, ...],
+    ) -> int:
+        """명시적 비교와 두 문서 후속 문맥은 답변 hydration에서 보존한다."""
+        return 2 if intent == "COMPARISON" or len(selected_document_ids) > 1 else 1
+
     def __init__(self, project_root: Path) -> None:
         self._settings = VectorSettings.load(project_root)
         self._repository = PgVectorRepository(self._settings.database_url)
@@ -269,7 +277,7 @@ class VectorRagApplication:
             }.get(intent, "POLICY")
             formatter = ManualArticleFormatter()
             article_numbers = formatter.target_numbers(query, answer_type)
-            document_limit = 2 if intent == "COMPARISON" else 1
+            document_limit = self.answer_document_limit(intent, selected_ids)
             allowed_domain_manual_ids = {
                 manual_id
                 for manual_ids in domain_manual_ids.values()

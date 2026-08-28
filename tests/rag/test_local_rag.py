@@ -24,6 +24,7 @@ from src.rag.request_auth import (
 )
 from src.rag.text_processing import SecurityScanner
 from src.rag.vector_settings import VectorSettings
+from src.rag.vector_application import VectorRagApplication
 from src.rag.p2_contracts import (
     EvidenceType,
     P2GateStatus,
@@ -131,6 +132,22 @@ class OperationalControlTest(unittest.TestCase):
 
     def test_top_k_is_bounded_by_server_policy(self) -> None:
         self.assertEqual(self.policy.decide("SYSTEM_ADMIN", 999).top_k, 10)
+
+    def test_two_document_follow_up_keeps_comparison_document_limit(self) -> None:
+        self.assertEqual(
+            2,
+            VectorRagApplication.answer_document_limit(
+                "IMMEDIATE_ACTION",
+                ("MANUAL-FACILITY", "MANUAL-SAFETY"),
+            ),
+        )
+        self.assertEqual(
+            1,
+            VectorRagApplication.answer_document_limit(
+                "IMMEDIATE_ACTION",
+                ("MANUAL-FACILITY",),
+            ),
+        )
 
     def test_quality_suite_has_more_than_80_positive_queries(self) -> None:
         sources = [

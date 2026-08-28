@@ -338,7 +338,11 @@ class AsyncRuntimeDataPlatform:
         self.last_execution_selection = None
         self.execute_count = 0
         self.cancelled = []
+        self.bound_generation_modes = []
         self.closed = False
+
+    def bind_query_generation_mode(self, generation_mode):
+        self.bound_generation_modes.append(generation_mode)
 
     async def _candidate_assets(self, query, context):
         self.search_count += 1
@@ -671,6 +675,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, adapter.execute_count)
         self.assertEqual(["node1", "node3"], [node for node, _ in model.calls])
         self.assertEqual("typed_sql_compiler", execution["plan"]["plan_source"])
+        self.assertEqual(["COMPILER", None], adapter.bound_generation_modes)
         self.assertIn("SUM", execution["plan"]["sql"])
         model_traces = [
             step.detail

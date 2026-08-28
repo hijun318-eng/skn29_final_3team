@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from enum import Enum
+from typing import Mapping
 
 
 SQL_GENERATION_MODE_ENV = "ANALYSIS_SQL_GENERATION_MODE"
@@ -14,6 +15,14 @@ class SqlGenerationMode(str, Enum):
 
     HYBRID = "hybrid"
     COMPILER_ONLY = "compiler_only"
+
+
+class SqlGenerationEvidenceMode(str, Enum):
+    """실제로 SQL 후보를 만든 경로를 실행 영수증에 기록하는 값이다."""
+
+    LLM = "LLM"
+    TEMPLATE = "TEMPLATE"
+    COMPILER = "COMPILER"
 
 
 def parse_sql_generation_mode(value: str | None) -> SqlGenerationMode:
@@ -35,3 +44,15 @@ def configured_sql_generation_mode() -> SqlGenerationMode:
     """현재 process 환경에서 SQL 후보 생성 모드를 읽는다."""
 
     return parse_sql_generation_mode(os.getenv(SQL_GENERATION_MODE_ENV))
+
+
+def plan_generation_evidence_mode(
+    plan: Mapping[str, object],
+) -> SqlGenerationEvidenceMode:
+    """검증된 실행 plan의 provenance를 DB 영수증 값으로 변환한다."""
+
+    if plan.get("plan_source") == "typed_sql_compiler":
+        return SqlGenerationEvidenceMode.COMPILER
+    if str(plan.get("model_version", "")).startswith("TEMPLATE"):
+        return SqlGenerationEvidenceMode.TEMPLATE
+    return SqlGenerationEvidenceMode.LLM

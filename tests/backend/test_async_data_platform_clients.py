@@ -586,6 +586,7 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
             lifecycle_events.append(event)
 
         adapter.bind_query_lifecycle(lifecycle_sink)
+        adapter.bind_query_generation_mode("COMPILER")
 
         sql = "SELECT 1"
         result = await adapter.execute_query(
@@ -617,6 +618,9 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [event["event_type"] for event in lifecycle_events],
             ["SUBMITTED", "HEARTBEAT", "TERMINAL"],
+        )
+        self.assertTrue(
+            all(event["generation_mode"] == "COMPILER" for event in lifecycle_events)
         )
         self.assertTrue(all("sql" not in event for event in lifecycle_events))
         self.assertTrue(datahub.closed)

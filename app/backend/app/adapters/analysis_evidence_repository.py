@@ -16,6 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.analysis_repository_common import AnalysisRepositoryUnavailable, _hash
 from app.analysis_contracts import ANALYSIS_PERSISTENCE_VERSION
 from app.contracts import AnalysisResponse, AnalysisStatus
+from app.services.analysis.sql_generation_mode import (
+    SqlGenerationEvidenceMode,
+    plan_generation_evidence_mode,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -259,6 +263,14 @@ class AnalysisEvidenceRepositoryMixin:
                 if event_type == "SUBMITTED":
                     cancel_uri = str(event.get("cancel_uri") or "")
                     sql_hash = str(event.get("sql_hash") or "")
+                    try:
+                        generation_mode = SqlGenerationEvidenceMode(
+                            str(event.get("generation_mode") or "LLM")
+                        ).value
+                    except ValueError as error:
+                        raise ValueError(
+                            "RUNNING query generation mode가 유효하지 않습니다."
+                        ) from error
                     if not cancel_uri or len(cancel_uri) > 4096:
                         raise ValueError("RUNNING query의 durable cancel URI가 없습니다.")
                     if not re.fullmatch(r"[0-9a-f]{64}", sql_hash):
@@ -277,7 +289,7 @@ class AnalysisEvidenceRepositoryMixin:
                                     execution_status, row_count, scan_bytes,
                                     source_urns_json, source_cutoff_json
                                 ) VALUES (
-                                    :query_execution_id, :request_id, 1, 'LLM',
+                                    :query_execution_id, :request_id, 1, :generation_mode,
                                     '[REDACTED]', :sql_hash,
                                     '{"status":"CAPABILITY_BOUND"}'::jsonb,
                                     '{"status":"PENDING_TERMINAL_EVIDENCE"}'::jsonb,
@@ -294,6 +306,7 @@ class AnalysisEvidenceRepositoryMixin:
                                 "sql_hash": sql_hash,
                                 "query_id": query_id,
                                 "cancel_uri": cancel_uri,
+                                "generation_mode": generation_mode,
                             },
                         )
                     else:
@@ -461,9 +474,7 @@ class AnalysisEvidenceRepositoryMixin:
             source_cutoff["comparison_period"] = evidence["comparison_period"]
         query_values = {
             "request_id": request_id,
-            "generation_mode": (
-                "TEMPLATE" if str(plan.get("model_version", "")).startswith("TEMPLATE") else "LLM"
-            ),
+            "generation_mode": plan_generation_evidence_mode(plan).value,
             "sql_hash": sql_hash,
             "ast": json.dumps({"status": "PASSED"}),
             "joins": json.dumps({"status": "PASSED"}),

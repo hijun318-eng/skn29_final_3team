@@ -21,6 +21,7 @@ from app.contracts import (
 from app.ports.data_platform import DataPlatformAdapter, UnsupportedSemanticError
 from app.services.analysis.pipeline_state import AnalysisPipelineState
 from app.services.analysis.responses import AnalysisResponseFactory
+from app.services.analysis.sql_generation_mode import plan_generation_evidence_mode
 from app.services.context.builder import ContextPackage
 from app.services.execution_control import IsolatedExecutionCache, secure_cache_key
 from app.services.analysis.pipeline_support import PipelineSupport
@@ -80,8 +81,15 @@ class AnalysisQueryStage:
         try:
             if cached_query is None:
                 bind_cancellation = getattr(self._adapter, "bind_cancellation", None)
+                bind_generation_mode = getattr(
+                    self._adapter,
+                    "bind_query_generation_mode",
+                    None,
+                )
                 if bind_cancellation is not None:
                     bind_cancellation(state.cancel_check)
+                if bind_generation_mode is not None:
+                    bind_generation_mode(plan_generation_evidence_mode(plan).value)
                 try:
                     query = await self._adapter.execute_query(
                         executable_sql,
@@ -91,6 +99,8 @@ class AnalysisQueryStage:
                 finally:
                     if bind_cancellation is not None:
                         bind_cancellation(None)
+                    if bind_generation_mode is not None:
+                        bind_generation_mode(None)
                 query = await self._adapter.get_query_status(query["query_id"])
             else:
                 query = cached_query

@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS query.query_executions (
     query_execution_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id uuid NOT NULL REFERENCES chat.analysis_requests(request_id),
     attempt_no smallint NOT NULL CHECK (attempt_no > 0),
-    generation_mode varchar(20) NOT NULL CHECK (generation_mode IN ('LLM','TEMPLATE')),
+    generation_mode varchar(20) NOT NULL CHECK (generation_mode IN ('LLM','TEMPLATE','COMPILER')),
     generated_sql_redacted text NOT NULL,
     sql_hash varchar(64) NOT NULL,
     ast_validation_json jsonb NOT NULL,

@@ -213,6 +213,17 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("generation_mode IN ('LLM', 'TEMPLATE')", upgrade)
         self.assertIn("FALLBACK query history must be reviewed", upgrade)
 
+    def test_query_generation_mode_distinguishes_typed_compiler(self):
+        source = (
+            MIGRATIONS / "20260828_47_query_generation_mode_compiler.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('revision = "20260828_47"', source)
+        self.assertIn('down_revision = "20260826_46"', source)
+        upgrade, downgrade = source.split("def downgrade", 1)
+        self.assertIn("generation_mode IN ('LLM', 'TEMPLATE', 'COMPILER')", upgrade)
+        self.assertIn("COMPILER query history must be preserved", downgrade)
+        self.assertNotIn("SET generation_mode", downgrade)
+
     def test_report_replay_migration_persists_lineage_and_typed_failure(self):
         source = (MIGRATIONS / "20260814_20_report_replay_lineage.py").read_text(
             encoding="utf-8"

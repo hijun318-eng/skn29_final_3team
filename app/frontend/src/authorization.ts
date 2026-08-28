@@ -6,6 +6,7 @@ export const CAPABILITY = {
   draftReport: "report.draft",
   manageReport: "report.manage",
   manageData: "data.manage",
+  manageSystem: "system.manage",
 } as const;
 
 /** Backend 공개 계약이 반환할 수 있는 서비스 Capability 문자열의 허용 집합이다. */

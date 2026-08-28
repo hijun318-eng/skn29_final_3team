@@ -21,8 +21,8 @@ const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
 
-/** 대화형 분석 워크스페이스 최상위 화면을 렌더링한다. */
-export function AgentPage({ onNavigate }) {
+/** 대화형 분석 워크스페이스를 렌더링하고 Report 작업은 서버 Capability가 있을 때만 노출한다. */
+export function AgentPage({ canDraftReport = false, onNavigate }) {
   const analysisClient = useMemo(() => createAnalysisClient(fetch), []);
   const reportClient = useMemo(() => createReportClient(undefined, fetch), []);
   const [question, setQuestion] = useState(() => window.sessionStorage.getItem(QUESTION_DRAFT_KEY) || "");
@@ -49,6 +49,13 @@ export function AgentPage({ onNavigate }) {
   const activeTraceId = useRef("");
   const activeCommandAbortController = useRef(null);
   const threadEndRef = useRef(null);
+
+  const scrollToLatestTurn = () => window.requestAnimationFrame(() => {
+    threadEndRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "end",
+    });
+  });
 
   const activeEvidenceRun = selectedEvidenceRun || turns.at(-1)?.run || transientRun("");
 
@@ -213,7 +220,7 @@ export function AgentPage({ onNavigate }) {
         viewSpecId: null,
       };
       setTurns((prev) => [...prev, unavailableTurn]);
-      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      scrollToLatestTurn();
       return;
     }
     const generation = requestGeneration.current + 1;
@@ -245,7 +252,7 @@ export function AgentPage({ onNavigate }) {
       viewSpecId: null,
     };
     setTurns((prev) => [...prev, optimisticTurn]);
-    window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    scrollToLatestTurn();
 
     const commandOptions = {
       traceId,
@@ -431,7 +438,7 @@ export function AgentPage({ onNavigate }) {
         if (activeTraceId.current === traceId) activeTraceId.current = "";
         requestInFlight.current = false;
         setSubmitting(false);
-        window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+        scrollToLatestTurn();
       }
     }
   };
@@ -486,11 +493,12 @@ export function AgentPage({ onNavigate }) {
       requestInFlight.current = false;
       setSavedBusy(false);
       setSubmitting(false);
-      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      scrollToLatestTurn();
     }
   };
 
   const createReportDraft = async () => {
+    if (!canDraftReport) return;
     const artId = reportModalRun?.artifact?.artifactId || reportModalRun?.artifact?.artifact_id;
     if (!artId) return;
     setMessage("");
@@ -617,12 +625,12 @@ export function AgentPage({ onNavigate }) {
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
                       onSave={["success", "partial"].includes(turnItem.run.status) ? () => void saveAnalysis(turnItem.run) : undefined}
                       saveDisabled={savedBusy}
-                      onCreateReportDraft={turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
+                      onCreateReportDraft={canDraftReport && turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
                         setReportModalRun(turnItem.run);
                         setReportTitle(reportTitleForAnalysis(turnItem.run));
                         setReportModal("draft");
                       } : undefined}
-                      onPreview={turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
+                      onPreview={canDraftReport && turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
                         setReportModalRun(turnItem.run);
                         setReportModal("preview");
                       } : undefined}
@@ -631,7 +639,7 @@ export function AgentPage({ onNavigate }) {
                         setEvidenceOpen(true);
                       } : undefined}
                     />}
-                    {turnItem.run.reportDefinitionId && (
+                    {canDraftReport && turnItem.run.reportDefinitionId && (
                       <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                         <button
                           type="button"
@@ -648,7 +656,7 @@ export function AgentPage({ onNavigate }) {
                 </div>
               </div>
             ))}
-            <div ref={threadEndRef} />
+            <div ref={threadEndRef} className="conversation-end" aria-hidden="true" />
           </div>
         )}
 
@@ -720,7 +728,7 @@ export function AgentPage({ onNavigate }) {
       />
 
       {/* 보고서 초안 생성 모달 */}
-      <TurnReportModal
+      {canDraftReport && <TurnReportModal
         mode={reportModal}
         run={reportModalRun || activeEvidenceRun}
         title={reportTitle}
@@ -729,7 +737,7 @@ export function AgentPage({ onNavigate }) {
         onPreviewMode={() => { setReportTitle(reportTitleForAnalysis(reportModalRun || activeEvidenceRun)); setReportModal("draft"); }}
         onClose={() => setReportModal("")}
         isSubmitting={false}
-      />
+      />}
     </div>
   );
 }

@@ -1,6 +1,153 @@
 {
   "components": {
     "schemas": {
+      "AccountData": {
+        "additionalProperties": false,
+        "description": "verifier와 세션 정보 없이 관리자 화면에 공개할 계정 상태를 표현한다.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "subject": {
+            "format": "uuid",
+            "title": "Subject",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "username",
+          "role",
+          "active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AccountData",
+        "type": "object"
+      },
+      "AccountListData": {
+        "additionalProperties": false,
+        "description": "계정 목록과 1-based pagination 위치 및 전체 건수를 함께 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "AccountListData",
+        "type": "object"
+      },
+      "AccountListResponse": {
+        "additionalProperties": false,
+        "description": "계정 목록 결과를 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccountListData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AccountListResponse",
+        "type": "object"
+      },
+      "AccountResponse": {
+        "additionalProperties": false,
+        "description": "단일 계정 변경 결과를 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccountData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AccountResponse",
+        "type": "object"
+      },
       "AnalysisData": {
         "additionalProperties": false,
         "description": "현재 상태, 전이 이력, 선택 경로, 게이트, 결과와 산출물 참조를 분석 응답 본문에 담는다.",
@@ -771,6 +918,604 @@
         "title": "ArtifactReference",
         "type": "object"
       },
+      "AuditActorData": {
+        "additionalProperties": false,
+        "description": "계정 verifier나 세션 없이 감사 수행자의 공개 식별 정보만 표현한다.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "subject",
+          "display_name",
+          "role"
+        ],
+        "title": "AuditActorData",
+        "type": "object"
+      },
+      "AuditCorrelationData": {
+        "additionalProperties": false,
+        "description": "여러 append-only 이벤트를 하나의 작업 이력으로 묶은 서버 기준을 표현한다.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "AuditCorrelationData",
+        "type": "object"
+      },
+      "AuditEventData": {
+        "additionalProperties": false,
+        "description": "append-only 감사 이벤트에서 자격 증명을 제외한 관리 조회 필드만 투영한다.",
+        "properties": {
+          "action_code": {
+            "title": "Action Code",
+            "type": "string"
+          },
+          "actor_subject": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Subject"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "occurred_at",
+          "actor_subject",
+          "action_code",
+          "target_type",
+          "target_id",
+          "result",
+          "details"
+        ],
+        "title": "AuditEventData",
+        "type": "object"
+      },
+      "AuditEventListData": {
+        "additionalProperties": false,
+        "description": "감사 이벤트 목록과 1-based pagination 위치 및 전체 건수를 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "AuditEventListData",
+        "type": "object"
+      },
+      "AuditEventListResponse": {
+        "additionalProperties": false,
+        "description": "감사 이벤트 목록을 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuditEventListData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AuditEventListResponse",
+        "type": "object"
+      },
+      "AuditEvidenceData": {
+        "additionalProperties": false,
+        "description": "감사 이벤트와 실행·정책·산출물을 연결하는 비밀정보 없는 식별자를 표현한다.",
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "context_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Release Id"
+          },
+          "model_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version Id"
+          },
+          "query_execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Execution Id"
+          },
+          "query_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Id"
+          },
+          "report_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Run Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "sql_policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql Policy Version"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "request_id",
+          "trace_id",
+          "query_execution_id",
+          "query_id",
+          "artifact_id",
+          "report_run_id",
+          "context_release_id",
+          "model_version_id",
+          "sql_policy_version"
+        ],
+        "title": "AuditEvidenceData",
+        "type": "object"
+      },
+      "AuditObjectData": {
+        "additionalProperties": false,
+        "description": "감사 이벤트가 직접 다룬 객체의 종류와 불변 식별자를 표현한다.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "AuditObjectData",
+        "type": "object"
+      },
+      "AuditTrailDetailData": {
+        "additionalProperties": false,
+        "description": "선택한 trail의 시간 범위와 발생 순서대로 정렬된 이벤트를 반환한다.",
+        "properties": {
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditTrailEventData"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "SUCCEEDED",
+              "FAILED",
+              "DENIED",
+              "CANCELLED",
+              "IN_PROGRESS",
+              "CLARIFICATION_REQUIRED",
+              "UNKNOWN"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "trail_id": {
+            "title": "Trail Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trail_id",
+          "headline",
+          "started_at",
+          "ended_at",
+          "outcome",
+          "events"
+        ],
+        "title": "AuditTrailDetailData",
+        "type": "object"
+      },
+      "AuditTrailDetailResponse": {
+        "additionalProperties": false,
+        "description": "단일 감사 trail 상세를 공통 요청 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuditTrailDetailData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AuditTrailDetailResponse",
+        "type": "object"
+      },
+      "AuditTrailEventData": {
+        "additionalProperties": false,
+        "description": "단일 trail 안의 순서와 redacted 기술 근거가 검증된 이벤트를 표현한다.",
+        "properties": {
+          "action_code": {
+            "title": "Action Code",
+            "type": "string"
+          },
+          "action_label": {
+            "title": "Action Label",
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditActorData"
+          },
+          "details_redacted": {
+            "additionalProperties": true,
+            "title": "Details Redacted",
+            "type": "object"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/AuditEvidenceData"
+          },
+          "object": {
+            "$ref": "#/components/schemas/AuditObjectData"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "SUCCEEDED",
+              "FAILED",
+              "DENIED",
+              "CANCELLED",
+              "IN_PROGRESS",
+              "CLARIFICATION_REQUIRED",
+              "UNKNOWN"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "occurred_at",
+          "sequence",
+          "action_code",
+          "action_label",
+          "summary",
+          "outcome",
+          "actor",
+          "object",
+          "evidence",
+          "details_redacted"
+        ],
+        "title": "AuditTrailEventData",
+        "type": "object"
+      },
+      "AuditTrailPageData": {
+        "additionalProperties": false,
+        "description": "감사 trail 요약과 다음 keyset 위치를 나타내는 불투명 cursor를 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditTrailSummaryData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AuditTrailPageData",
+        "type": "object"
+      },
+      "AuditTrailPageResponse": {
+        "additionalProperties": false,
+        "description": "감사 trail 목록을 공통 요청 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuditTrailPageData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AuditTrailPageResponse",
+        "type": "object"
+      },
+      "AuditTrailSummaryData": {
+        "additionalProperties": false,
+        "description": "최신순 감사 trail 목록에서 선택에 필요한 요약 필드만 표현한다.",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/AuditActorData"
+          },
+          "correlation": {
+            "$ref": "#/components/schemas/AuditCorrelationData"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "event_count": {
+            "minimum": 1.0,
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "SUCCEEDED",
+              "FAILED",
+              "DENIED",
+              "CANCELLED",
+              "IN_PROGRESS",
+              "CLARIFICATION_REQUIRED",
+              "UNKNOWN"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "primary_object": {
+            "$ref": "#/components/schemas/AuditObjectData"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "trail_id": {
+            "title": "Trail Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trail_id",
+          "headline",
+          "started_at",
+          "ended_at",
+          "outcome",
+          "event_count",
+          "actor",
+          "primary_object",
+          "correlation"
+        ],
+        "title": "AuditTrailSummaryData",
+        "type": "object"
+      },
       "BlockFailureCode": {
         "description": "블록 재실행 실패를 인증·문맥·모델·SQL·쿼리·증거·계약 범주로 안정적으로 분류한다.",
         "enum": [
@@ -810,7 +1555,8 @@
           "analysis.read",
           "report.draft",
           "report.manage",
-          "data.manage"
+          "data.manage",
+          "system.manage"
         ],
         "title": "Capability",
         "type": "string"
@@ -851,6 +1597,92 @@
         ],
         "title": "ClarificationType",
         "type": "string"
+      },
+      "ConnectionData": {
+        "additionalProperties": false,
+        "description": "승인된 고정 dependency의 공개 이름·상태·지연시간만 노출한다.",
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "latency_ms": {
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "down"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "status",
+          "latency_ms",
+          "checked_at"
+        ],
+        "title": "ConnectionData",
+        "type": "object"
+      },
+      "ConnectionListData": {
+        "additionalProperties": false,
+        "description": "한 번의 관리자 점검에서 확인한 고정 dependency 상태 목록을 담는다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionData"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConnectionListData",
+        "type": "object"
+      },
+      "ConnectionListResponse": {
+        "additionalProperties": false,
+        "description": "연결 상태 목록을 공통 추적 메타데이터와 함께 반환한다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConnectionListData"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ConnectionListResponse",
+        "type": "object"
       },
       "ConversationCommandRequest": {
         "additionalProperties": false,
@@ -931,6 +1763,37 @@
         "title": "ConversationCommandRequest",
         "type": "object"
       },
+      "CreateAccountRequest": {
+        "additionalProperties": false,
+        "description": "정규화된 login ID, 초기 비밀번호와 현재 서비스 Role만 계정 생성에 허용한다.",
+        "properties": {
+          "password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "default": "analyst"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z0-9._-]+$",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "CreateAccountRequest",
+        "type": "object"
+      },
       "CreateAnalysisDefinitionRequest": {
         "additionalProperties": false,
         "description": "기존 분석 요청을 재사용 가능한 정의로 저장할 때 제목과 원본 요청 ID만 수신한다.",
@@ -1007,8 +1870,18 @@
       },
       "CreateReportAssistantSessionRequest": {
         "additionalProperties": false,
-        "description": "보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다.",
+        "description": "보고서 초안과 대표·추가 승인 Artifact 최대 다섯 개를 Assistant 세션에 결속한다.",
         "properties": {
+          "additional_artifact_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Additional Artifact Ids",
+            "type": "array"
+          },
           "artifact_id": {
             "format": "uuid",
             "title": "Artifact Id",
@@ -1343,6 +2216,7 @@
           "SCHEMA_VERSION_MISMATCH",
           "RESOURCE_NOT_FOUND",
           "RESOURCE_CONFLICT",
+          "LAST_ADMIN_REQUIRED",
           "CONVERSATION_CONFLICT",
           "CONVERSATION_BUSY",
           "CONVERSATION_ARCHIVED",
@@ -2319,13 +3193,8 @@
       },
       "ReportArtifactResponse": {
         "additionalProperties": false,
-        "description": "보고서가 참조할 분석 요약·지표·표·차트·증거를 산출물 ID 및 checksum과 반환한다.",
+        "description": "보고서가 렌더링할 분석 내용과 공개 가능한 증거만 반환한다.\n\nquery ID와 checksum은 저장소 내부 lineage 검증에만 사용하며 브라우저 계약에는 넣지 않는다.",
         "properties": {
-          "artifact_checksum": {
-            "pattern": "^[0-9a-f]{64}$",
-            "title": "Artifact Checksum",
-            "type": "string"
-          },
           "artifact_id": {
             "format": "uuid",
             "title": "Artifact Id",
@@ -2356,10 +3225,6 @@
             "title": "Metrics",
             "type": "array"
           },
-          "query_id": {
-            "title": "Query Id",
-            "type": "string"
-          },
           "summary": {
             "title": "Summary",
             "type": "string"
@@ -2375,12 +3240,10 @@
         "required": [
           "contract_version",
           "artifact_id",
-          "query_id",
           "title",
           "summary",
           "table",
-          "evidence",
-          "artifact_checksum"
+          "evidence"
         ],
         "title": "ReportArtifactResponse",
         "type": "object"
@@ -2810,13 +3673,38 @@
       },
       "ReportAssistantMessageRequest": {
         "additionalProperties": false,
-        "description": "ready 세션에 500자 이하의 보고서 변경 지시를 제출한다.",
+        "description": "새 요청 또는 현재 patch를 교체할 500자 이하의 보고서 변경 지시를 제출한다.",
         "properties": {
+          "expected_patch_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Patch Request Id"
+          },
           "instruction": {
             "maxLength": 500,
             "minLength": 1,
             "title": "Instruction",
             "type": "string"
+          },
+          "selected_block_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Block Id"
           }
         },
         "required": [
@@ -2998,6 +3886,137 @@
         "title": "ReportAssistantOperationsSummaryResponse",
         "type": "object"
       },
+      "ReportAssistantPatchApprovalRequest": {
+        "additionalProperties": false,
+        "description": "patch 승인 시 선택할 0-based operation 인덱스를 정렬된 고유 목록으로 받는다.",
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "operation_indexes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 12,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Indexes"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "approved"
+        ],
+        "title": "ReportAssistantPatchApprovalRequest",
+        "type": "object"
+      },
+      "ReportAssistantPatchPreviewItem": {
+        "additionalProperties": false,
+        "description": "식별자·SQL 없이 사용자가 승인 전에 확인할 operation별 변경 전후를 반환한다.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "evidence_count": {
+            "maximum": 16.0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "impact_category": {
+            "enum": [
+              "CONTENT",
+              "LAYOUT",
+              "DESTRUCTIVE"
+            ],
+            "title": "Impact Category",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 11.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "operation": {
+            "enum": [
+              "set_report_title",
+              "set_report_orientation",
+              "set_currency_display_unit",
+              "compact_report_layout",
+              "add_report_page",
+              "update_block_title",
+              "resize_block",
+              "update_chart_settings",
+              "update_table_settings",
+              "set_block_size_mode",
+              "add_text",
+              "update_text",
+              "add_artifact_view",
+              "reposition_block",
+              "remove_block",
+              "duplicate_block",
+              "restore_previous_revision"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "operation",
+          "target",
+          "impact_category",
+          "evidence_required",
+          "evidence_count"
+        ],
+        "title": "ReportAssistantPatchPreviewItem",
+        "type": "object"
+      },
       "ReportAssistantProposalResponse": {
         "additionalProperties": false,
         "description": "검증된 변경 종류·사용자 메시지와 저장된 서버 세션 상태를 함께 반환한다.",
@@ -3019,6 +4038,15 @@
           },
           "session": {
             "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+          },
+          "suggestions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Suggestions",
+            "type": "array"
           }
         },
         "required": [
@@ -3042,6 +4070,144 @@
         "title": "ReportAssistantRequiredAction",
         "type": "string"
       },
+      "ReportAssistantReviewFinding": {
+        "additionalProperties": false,
+        "description": "현재 보고서를 저장하지 않고 발견한 품질 문제와 사용자가 선택할 수정 지시다.",
+        "properties": {
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "category": {
+            "enum": [
+              "duplicate_text",
+              "verbose_summary",
+              "title_mismatch",
+              "inconsistent_metric_expression",
+              "unsupported_claim"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "detail": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "suggested_instruction": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Suggested Instruction",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "severity",
+          "title",
+          "detail",
+          "suggested_instruction"
+        ],
+        "title": "ReportAssistantReviewFinding",
+        "type": "object"
+      },
+      "ReportAssistantReviewRequest": {
+        "additionalProperties": false,
+        "description": "비저장 품질 검토가 참고할 현재 편집기 선택 블록을 선택적으로 지정한다.",
+        "properties": {
+          "selected_block_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Block Id"
+          }
+        },
+        "title": "ReportAssistantReviewRequest",
+        "type": "object"
+      },
+      "ReportAssistantReviewResponse": {
+        "additionalProperties": false,
+        "description": "세션 상태나 Report revision을 바꾸지 않는 bounded 품질 검토 결과다.",
+        "properties": {
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantReviewFinding"
+            },
+            "maxItems": 10,
+            "title": "Findings",
+            "type": "array"
+          },
+          "suggestions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/ReportAssistantTraceResponse"
+          }
+        },
+        "required": [
+          "assistant_request_id",
+          "summary",
+          "findings",
+          "trace"
+        ],
+        "title": "ReportAssistantReviewResponse",
+        "type": "object"
+      },
       "ReportAssistantSessionResponse": {
         "additionalProperties": false,
         "description": "서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다.",
@@ -3056,10 +4222,27 @@
               }
             ]
           },
+          "approved_operation_indexes": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Approved Operation Indexes",
+            "type": "array"
+          },
           "artifact_id": {
             "format": "uuid",
             "title": "Artifact Id",
             "type": "string"
+          },
+          "artifact_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
           },
           "assistant_request_id": {
             "format": "uuid",
@@ -3090,11 +4273,28 @@
             ],
             "title": "Error Code"
           },
+          "patch_evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Patch Evidence Refs",
+            "type": "array"
+          },
           "patch_operations": {
             "default": [],
             "items": {
               "enum": [
                 "set_report_title",
+                "set_report_orientation",
+                "set_currency_display_unit",
+                "compact_report_layout",
+                "add_report_page",
+                "update_block_title",
+                "resize_block",
+                "update_chart_settings",
+                "update_table_settings",
+                "set_block_size_mode",
                 "add_text",
                 "update_text",
                 "add_artifact_view",
@@ -3106,6 +4306,14 @@
               "type": "string"
             },
             "title": "Patch Operations",
+            "type": "array"
+          },
+          "patch_preview": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantPatchPreviewItem"
+            },
+            "title": "Patch Preview",
             "type": "array"
           },
           "patch_request_id": {
@@ -3282,6 +4490,15 @@
             "title": "Content",
             "type": "string"
           },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
           "h": {
             "default": 1,
             "minimum": 1.0,
@@ -3310,7 +4527,8 @@
               "table",
               "chart",
               "artifact",
-              "text"
+              "text",
+              "page_break"
             ],
             "title": "Type",
             "type": "string"
@@ -3387,20 +4605,17 @@
             "title": "Content",
             "type": "string"
           },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
           "h": {
             "title": "H",
             "type": "integer"
-          },
-          "query_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Query Id"
           },
           "title": {
             "title": "Title",
@@ -3411,7 +4626,8 @@
               "table",
               "chart",
               "artifact",
-              "text"
+              "text",
+              "page_break"
             ],
             "title": "Type",
             "type": "string"
@@ -3445,7 +4661,6 @@
           "title",
           "artifact_id",
           "columns",
-          "query_id",
           "view_spec_id",
           "type",
           "x",
@@ -3934,6 +5149,25 @@
         "title": "RequiredAction",
         "type": "string"
       },
+      "ResetPasswordRequest": {
+        "additionalProperties": false,
+        "description": "관리자가 지정 계정에 발급할 새 비밀번호를 길이 제한과 함께 수신한다.",
+        "properties": {
+          "password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "ResetPasswordRequest",
+        "type": "object"
+      },
       "ResolvedSlots": {
         "additionalProperties": false,
         "description": "멀티턴 대화에서 이전 턴의 슬롯을 구조화된 형태로 상속할 때 사용한다.\n\n지표가 확정된 슬롯은 MetricResolver의 pre-resolved fast-path로 전달해 Node 1\n재해석을 생략하고, 지표가 비어 있는 슬롯은 직전 기간·결과 형태만 Node 1의 typed\n대화 컨텍스트로 제공한다. 두 경로 모두 active governance 대조 검증을 유지한다.",
@@ -4416,6 +5650,49 @@
         "title": "TraceStep",
         "type": "object"
       },
+      "UpdateAccountRequest": {
+        "additionalProperties": false,
+        "description": "username·Role·활성 상태 중 명시적으로 전달된 필드만 변경한다.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 3,
+                "pattern": "^[a-z0-9._-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "title": "UpdateAccountRequest",
+        "type": "object"
+      },
       "UpdateReportScheduleRequest": {
         "additionalProperties": false,
         "description": "기존 스케줄의 활성화 여부만 변경하도록 제한된 입력을 받는다.",
@@ -4486,6 +5763,565 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/accounts": {
+      "get": {
+        "description": "삭제되지 않은 서비스 계정을 login ID로 검색해 페이지 단위로 반환한다.",
+        "operationId": "listAdminAccounts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 128,
+              "title": "Search",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Accounts",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "현재 허용 Role의 계정을 생성하고 verifier 원문 없이 단일 상태만 반환한다.",
+        "operationId": "createAdminAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Account",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/accounts/{subject}": {
+      "delete": {
+        "description": "마지막 활성 관리자 보호 후 계정을 soft-delete하고 모든 session을 폐기한다.",
+        "operationId": "deleteAdminAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete Account",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "username·Role·활성 상태를 변경하고 권한 변경 session을 즉시 폐기한다.",
+        "operationId": "updateAdminAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Update Account",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/accounts/{subject}/password": {
+      "post": {
+        "description": "새 PBKDF2 verifier로 비밀번호를 교체하고 대상의 모든 기존 session을 폐기한다.",
+        "operationId": "resetAdminAccountPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Reset Account Password",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit-events": {
+      "get": {
+        "description": "append-only 감사 로그를 action·대상·actor·결과로 검색해 최신순 반환한다.",
+        "operationId": "listAdminAuditEvents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 128,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^(|SUCCESS|SUCCEEDED|FAILED|DENIED|UNKNOWN)$",
+              "title": "Result",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Audit Events",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit-trails": {
+      "get": {
+        "description": "append-only 이벤트를 서버 correlation 기준으로 묶어 최신 trail부터 반환한다.",
+        "operationId": "listAdminAuditTrails",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1024,
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 128,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^(|SUCCEEDED|FAILED|DENIED|CANCELLED|IN_PROGRESS|CLARIFICATION_REQUIRED|UNKNOWN)$",
+              "title": "Outcome",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 96,
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditTrailPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Audit Trails",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit-trails/{trail_id}": {
+      "get": {
+        "description": "선택한 서버 grouping trail의 redacted 이벤트와 근거 식별자를 순서대로 반환한다.",
+        "operationId": "getAdminAuditTrail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trail_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 3,
+              "title": "Trail Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditTrailDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Audit Trail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/connections": {
+      "get": {
+        "description": "서버 고정 dependency를 실제로 probe하고 URL 없는 결과를 감사한 뒤 반환한다.",
+        "operationId": "listAdminConnections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Connections",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/analysis": {
       "post": {
         "description": "호텔 분석가의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.\n\n진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로\n덮지 않으며 재시도 가능한 typed 503으로 반환한다.",
@@ -7427,6 +9263,78 @@
         "summary": "Decide Assistant Plan"
       }
     },
+    "/reports/assistant/sessions/{assistant_request_id}/cancel": {
+      "post": {
+        "description": "대기 중인 소유자 세션만 취소하고 실행·Revision 저장 중인 요청은 그대로 둔다.",
+        "operationId": "reportAssistantCancelSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel Assistant Session"
+      }
+    },
     "/reports/assistant/sessions/{assistant_request_id}/evaluation": {
       "get": {
         "description": "분석가는 자신의 평가만, 관리자는 전체 평가를 안전한 계약으로 조회한다.",
@@ -7501,7 +9409,7 @@
     },
     "/reports/assistant/sessions/{assistant_request_id}/messages": {
       "post": {
-        "description": "ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
+        "description": "새 지시 또는 승인 대기 patch 재수정을 strict 모델 계약으로 처리한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
         "operationId": "reportAssistantSubmitMessage",
         "parameters": [
           {
@@ -7627,7 +9535,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReportAssistantApprovalRequest"
+                "$ref": "#/components/schemas/ReportAssistantPatchApprovalRequest"
               }
             }
           },
@@ -7733,6 +9641,95 @@
           }
         ],
         "summary": "Retry Assistant Session"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/review": {
+      "post": {
+        "description": "현재 Report와 승인 Artifact를 읽기만 하고 typed 품질 finding을 반환한다.",
+        "operationId": "reportAssistantReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReportAssistantReviewRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Review Assistant Report"
       }
     },
     "/reports/definitions": {

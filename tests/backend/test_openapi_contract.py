@@ -33,6 +33,13 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual("OPENAPI-v1.0.0", CONTRACT_VERSION)
         self.assertEqual(
             {
+                "/admin/accounts",
+                "/admin/accounts/{subject}",
+                "/admin/accounts/{subject}/password",
+                "/admin/audit-events",
+                "/admin/audit-trails",
+                "/admin/audit-trails/{trail_id}",
+                "/admin/connections",
                 "/analysis",
                 "/analysis/ml",
                 "/analysis/progress/{trace_id}",
@@ -80,10 +87,12 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/assistant/sessions",
                 "/reports/assistant/sessions/{assistant_request_id}",
                 "/reports/assistant/sessions/{assistant_request_id}/approval",
+                "/reports/assistant/sessions/{assistant_request_id}/cancel",
                 "/reports/assistant/sessions/{assistant_request_id}/evaluation",
                 "/reports/assistant/sessions/{assistant_request_id}/messages",
                 "/reports/assistant/sessions/{assistant_request_id}/patch-approval",
                 "/reports/assistant/sessions/{assistant_request_id}/retry",
+                "/reports/assistant/sessions/{assistant_request_id}/review",
             },
             set(committed["paths"]),
         )
@@ -94,6 +103,15 @@ class OpenApiContractTest(unittest.TestCase):
         }
         self.assertEqual(
             {
+                "listAdminAccounts",
+                "createAdminAccount",
+                "updateAdminAccount",
+                "deleteAdminAccount",
+                "resetAdminAccountPassword",
+                "listAdminConnections",
+                "listAdminAuditEvents",
+                "listAdminAuditTrails",
+                "getAdminAuditTrail",
                 "getHealth",
                 "getReadiness",
                 "getAuthenticatedSession",
@@ -142,8 +160,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportAssistantOperationsSummary",
                 "reportAssistantCreateSession",
                 "reportAssistantGetSession",
+                "reportAssistantCancelSession",
                 "reportAssistantDecidePlan",
                 "reportAssistantGetEvaluation",
+                "reportAssistantReview",
                 "reportAssistantSubmitMessage",
                 "reportAssistantDecidePatch",
                 "reportAssistantRetrySession",

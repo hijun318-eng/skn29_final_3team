@@ -264,7 +264,10 @@ class FastApiRuntimeTest(unittest.TestCase):
                     allowed_methods = {
                         item.strip() for item in response.headers["Access-Control-Allow-Methods"].split(",")
                     }
-                    self.assertEqual({"GET", "POST", "PUT", "OPTIONS"}, allowed_methods)
+                    self.assertEqual(
+                        {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+                        allowed_methods,
+                    )
                     allowed_headers = {
                         item.strip().lower()
                         for item in response.headers["Access-Control-Allow-Headers"].split(",")

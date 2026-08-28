@@ -161,6 +161,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             "REPORT_DRAFT_CONFLICT",
             "RESOURCE_NOT_FOUND",
             "RESOURCE_CONFLICT",
+            "LAST_ADMIN_REQUIRED",
             "DEPENDENCY_UNAVAILABLE",
             "INTERNAL_ERROR",
         }

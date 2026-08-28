@@ -49,7 +49,7 @@ from app.contracts import (
     SessionResponse,
     response_meta,
 )
-from app.auth import AuthenticationError, authenticate_credentials, issue_session_token, register_session, revoke_session
+from app.auth import AuthenticationError, create_authenticated_session, revoke_session
 from app.authorization import capabilities_for, has_capability, permission_snapshot_id
 from app.conversation_contracts import ConversationCommandRequest
 from app.api.analysis_router_runtime import (
@@ -203,9 +203,9 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
     정상 로그인으로 가장하지 않고 dependency 오류로 변환한다.
     """
     try:
-        principal = await authenticate_credentials(payload.username, payload.password)
-        session_token = issue_session_token(principal)
-        await register_session(session_token, principal)
+        principal, session_token = await create_authenticated_session(
+            payload.username, payload.password
+        )
     except AuthenticationError as exc:
         code = ErrorCode.DEPENDENCY_UNAVAILABLE if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc

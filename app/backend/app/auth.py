@@ -11,6 +11,7 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from secrets import token_bytes
 from uuid import UUID, uuid4
 
 from app.auth_principal_store import (
@@ -25,6 +26,10 @@ from app.authorization import has_capability
 from app.contracts import Capability, Role
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+PASSWORD_ITERATIONS = 210_000
 
 
 @dataclass(frozen=True)
@@ -74,7 +79,7 @@ async def _load_account(username: str) -> _AccountCredential | None:
                     SELECT password_salt, password_hash, password_iterations,
                            subject, role, active
                     FROM security.auth_accounts
-                    WHERE username = :username
+                    WHERE username = :username AND deleted_at IS NULL
                     """
                 ),
                 {"username": username},
@@ -95,7 +100,7 @@ async def _load_active_principal(subject: UUID) -> Principal | None:
                     """
                     SELECT subject, role
                     FROM security.auth_accounts
-                    WHERE subject = :subject AND active
+                    WHERE subject = :subject AND active AND deleted_at IS NULL
                     """
                 ),
                 {"subject": subject},
@@ -119,7 +124,10 @@ async def auth_account_store_ready(database_url: str) -> bool:
     try:
         async with session_scope(database_url) as session:
             result = await session.execute(
-                text("SELECT EXISTS (SELECT 1 FROM security.auth_accounts WHERE active)")
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM security.auth_accounts "
+                    "WHERE active AND deleted_at IS NULL)"
+                )
             )
             return bool(result.scalar_one())
     except (DatabaseConfigurationError, SQLAlchemyError) as exc:
@@ -130,6 +138,59 @@ def _derive_password_hash(password: str, salt: bytes, iterations: int) -> str:
     return hashlib.pbkdf2_hmac(
         "sha256", password.encode("utf-8"), salt, iterations
     ).hex()
+
+
+async def create_password_verifier(password: str) -> tuple[str, str, int]:
+    """관리 계정 저장용 random salt와 PBKDF2 verifier를 event loop 밖에서 생성한다."""
+
+    if not 12 <= len(password) <= 128:
+        raise ValueError("새 비밀번호는 12~128자여야 합니다.")
+    salt = token_bytes(32)
+    digest = await asyncio.to_thread(
+        _derive_password_hash, password, salt, PASSWORD_ITERATIONS
+    )
+    encoded_salt = urlsafe_b64encode(salt).decode("ascii").rstrip("=")
+    return encoded_salt, digest, PASSWORD_ITERATIONS
+
+
+async def _authenticate_credentials_in_session(
+    session: AsyncSession, username: str, password: str
+) -> Principal:
+    """계정 row를 공유 잠금한 채 credential을 검증해 session 등록과 직렬화한다."""
+
+    normalized_username = username.strip().lower()
+    if not normalized_username or not password:
+        raise _authentication_error()
+    result = await session.execute(
+        text(
+            """
+            SELECT password_salt, password_hash, password_iterations,
+                   subject, role, active, deleted_at
+            FROM security.auth_accounts
+            WHERE username = :username
+            FOR SHARE
+            """
+        ),
+        {"username": normalized_username},
+    )
+    row = result.mappings().one_or_none()
+    matched = _account_credential(row) if row is not None else None
+    salt = urlsafe_b64decode(
+        (matched.password_salt if matched else "AAAAAAAAAAAAAAAAAAAAAA") + "=="
+    )
+    iterations = matched.password_iterations if matched else PASSWORD_ITERATIONS
+    supplied_hash = await asyncio.to_thread(
+        _derive_password_hash, password, salt, iterations
+    )
+    expected_hash = matched.password_hash if matched else "0" * 64
+    if (
+        matched is None
+        or not matched.active
+        or row["deleted_at"] is not None
+        or not hmac.compare_digest(expected_hash, supplied_hash)
+    ):
+        raise _authentication_error()
+    return matched.principal
 
 
 async def authenticate_credentials(username: str, password: str) -> Principal:
@@ -143,7 +204,7 @@ async def authenticate_credentials(username: str, password: str) -> Principal:
         raise _authentication_error()
     matched = await _load_account(normalized_username)
     salt = urlsafe_b64decode((matched.password_salt if matched else "AAAAAAAAAAAAAAAAAAAAAA") + "==")
-    iterations = matched.password_iterations if matched else 210_000
+    iterations = matched.password_iterations if matched else PASSWORD_ITERATIONS
     # 존재하지 않는 계정도 동일 PBKDF2 경로를 수행해야 사용자명 존재 여부가 응답 시간으로
     # 새지 않는다. 마지막 비교 역시 constant-time으로 수행해 해시 prefix 추측을 차단한다.
     supplied_hash = await asyncio.to_thread(
@@ -223,35 +284,54 @@ def _session_window(token: str) -> tuple[datetime, datetime]:
         raise _authentication_error() from exc
 
 
-async def register_session(token: str, principal: Principal) -> None:
-    """세션의 SHA-256 식별자와 권한·유효기간을 한 DB transaction으로 등록한다.
+async def _insert_session(
+    session: AsyncSession, token: str, principal: Principal
+) -> None:
+    """호출자가 소유한 transaction에 원문 token 없는 session digest를 등록한다."""
 
-    원문 bearer token은 저장하지 않으며 DB가 없거나 쓰기에 실패하면 503 인증 오류로
-    닫아 revocation을 보장할 수 없는 세션이 발급되지 않게 한다.
-    """
-    database_url = _required_session_store_url()
-    if not database_url:
-        return
     issued_at, expires_at = _session_window(token)
+    await session.execute(text("""
+        INSERT INTO security.auth_sessions (
+            token_sha256, subject, role, issued_at, expires_at
+        ) VALUES (
+            :token_sha256, :subject, :role, :issued_at, :expires_at
+        )
+    """), {
+        "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+        "subject": principal.subject,
+        "role": principal.role.value,
+        "issued_at": issued_at,
+        "expires_at": expires_at,
+    })
+
+
+async def register_session(token: str, principal: Principal) -> None:
+    """기존 호출자를 위해 독립 transaction으로 session digest를 등록한다."""
+
     try:
-        async with session_scope(database_url) as session:
-            # 원문 bearer token은 인증 자격 증명이므로 DB에 저장하지 않는다. revocation 조회에는
-            # 단방향 SHA-256 식별자만 필요하며 유출 시에도 원문 세션을 바로 재사용할 수 없다.
-            await session.execute(text("""
-                INSERT INTO security.auth_sessions (
-                    token_sha256, subject, role, issued_at, expires_at
-                ) VALUES (
-                    :token_sha256, :subject, :role, :issued_at, :expires_at
-                )
-            """), {
-                "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
-                "subject": principal.subject,
-                "role": principal.role.value,
-                "issued_at": issued_at,
-                "expires_at": expires_at,
-            })
-    except SQLAlchemyError as exc:
+        async with session_scope(_required_session_store_url()) as session:
+            await _insert_session(session, token, principal)
+    except (DatabaseConfigurationError, SQLAlchemyError) as exc:
         raise _authentication_error(503) from exc
+
+
+async def create_authenticated_session(
+    username: str, password: str
+) -> tuple[Principal, str]:
+    """credential 검증과 session 등록을 같은 계정 잠금 transaction으로 완료한다."""
+
+    try:
+        async with session_scope(_required_session_store_url()) as session:
+            principal = await _authenticate_credentials_in_session(
+                session, username, password
+            )
+            token = issue_session_token(principal)
+            await _insert_session(session, token, principal)
+    except AuthenticationError:
+        raise
+    except (DatabaseConfigurationError, SQLAlchemyError) as exc:
+        raise _authentication_error(503) from exc
+    return principal, token
 
 
 async def revoke_session(token: str | None) -> None:

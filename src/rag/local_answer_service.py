@@ -67,7 +67,11 @@ class EvidenceBoundAnswerComposer:
                 "model_version": "rag-local-answer-v1",
             }
         formatter = ManualArticleFormatter()
-        comparison_items = self._best_items_by_title(evidence, query)
+        comparison_items = self._best_items_by_title(
+            evidence,
+            query,
+            requested_answer_type,
+        )
         is_comparison = (
             requested_answer_type == "COMPARE" or bool(self._COMPARISON_PATTERN.search(query))
         ) and len(comparison_items) >= 2
@@ -254,11 +258,27 @@ class EvidenceBoundAnswerComposer:
         self,
         evidence: list[dict[str, str]],
         query: str,
+        answer_type: str,
     ) -> list[dict[str, str]]:
         grouped: dict[str, list[dict[str, str]]] = {}
         for item in evidence:
             grouped.setdefault(item["title"].strip(), []).append(item)
-        return [self._best_item(items, query) for items in grouped.values() if items]
+        targets = ManualArticleFormatter().target_numbers(query, answer_type)
+        selected = []
+        for items in grouped.values():
+            targeted = [
+                item
+                for item in items
+                if any(
+                    re.search(
+                        rf"제\s*{number}\s*조",
+                        f"{item['section_title']}\n{item['body']}",
+                    )
+                    for number in targets
+                )
+            ]
+            selected.append(self._best_item(targeted or items, query))
+        return selected
 
     @staticmethod
     def _best_item(evidence: list[dict[str, str]], query: str) -> dict[str, str]:

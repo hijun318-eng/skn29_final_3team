@@ -390,25 +390,13 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                         selected_rows.append((row, 4, content))
                         selected_count += 1
                 continue
-            current_article: int | None = None
             selected_count = 0
             for row in manual_rows:
                 content = str(row[6])
                 numbers = [int(value) for value in article_pattern.findall(content)]
                 matched_numbers = [number for number in numbers if number in targets]
-                article_number = (
-                    matched_numbers[-1]
-                    if matched_numbers
-                    else current_article if current_article in targets else None
-                )
-                bounded_content = content
-                if article_number is not None and not matched_numbers and numbers:
-                    marker = article_pattern.search(content)
-                    bounded_content = content[:marker.start()].strip() if marker else content
-                if numbers:
-                    current_article = numbers[-1]
-                if article_number is not None and bounded_content and selected_count < maximum_chunks_per_document:
-                    selected_rows.append((row, article_number, bounded_content))
+                if matched_numbers and content and selected_count < maximum_chunks_per_document:
+                    selected_rows.append((row, matched_numbers[-1], content))
                     selected_count += 1
 
         snippet_limit_raw = os.getenv("RAG_SNIPPET_MAX_CHARS", "1800").strip()

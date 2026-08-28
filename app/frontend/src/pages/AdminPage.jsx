@@ -85,7 +85,6 @@ export function AdminPage({ role, client: suppliedClient }) {
   const [section, setSection] = useState("connections");
   const activeSectionRef = useRef(section);
   activeSectionRef.current = section;
-  const [apiState, setApiState] = useState("checking");
   const [loading, setLoading] = useState({ connections: false, accounts: false });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -103,17 +102,14 @@ export function AdminPage({ role, client: suppliedClient }) {
     const requestId = ++requestIds.current.connections;
     setLoading((current) => ({ ...current, connections: true }));
     setError("");
-    setApiState("checking");
     try {
       const items = await client.listConnections();
       if (requestIds.current.connections !== requestId || activeSectionRef.current !== "connections") return;
       setConnections(items);
-      setApiState("connected");
     } catch (nextError) {
       if (requestIds.current.connections !== requestId || activeSectionRef.current !== "connections") return;
       setConnections([]);
       setError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       if (requestIds.current.connections === requestId) setLoading((current) => ({ ...current, connections: false }));
     }
@@ -123,17 +119,14 @@ export function AdminPage({ role, client: suppliedClient }) {
     const requestId = ++requestIds.current.accounts;
     setLoading((current) => ({ ...current, accounts: true }));
     setError("");
-    setApiState("checking");
     try {
       const page = await client.listAccounts(accountPage, accountSearch);
       if (requestIds.current.accounts !== requestId || activeSectionRef.current !== "accounts") return;
       setAccounts(page);
-      setApiState("connected");
     } catch (nextError) {
       if (requestIds.current.accounts !== requestId || activeSectionRef.current !== "accounts") return;
       setAccounts({ ...EMPTY_PAGE, page: accountPage });
       setError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       if (requestIds.current.accounts === requestId) setLoading((current) => ({ ...current, accounts: false }));
     }
@@ -201,11 +194,9 @@ export function AdminPage({ role, client: suppliedClient }) {
         setNotice("비밀번호를 변경했습니다. 해당 계정의 기존 세션은 종료됩니다.");
       }
       await refreshAccountsAfterMutation();
-      setApiState("connected");
       setModal(null);
     } catch (nextError) {
       setDialogError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       setSaving(false);
     }
@@ -219,10 +210,8 @@ export function AdminPage({ role, client: suppliedClient }) {
       await client.deleteAccount(account.subject);
       await refreshAccountsAfterMutation();
       setNotice("계정을 삭제했습니다.");
-      setApiState("connected");
     } catch (nextError) {
       setError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       setSaving(false);
     }
@@ -234,7 +223,6 @@ export function AdminPage({ role, client: suppliedClient }) {
   return <div className="page-content admin-console">
     <section className="admin-console__status" aria-label="관리자 시스템 상태">
       <div><ShieldCheck size={18} /><span><b>{roleLabel(role)}</b><small>현재 세션 권한으로 접근 중</small></span></div>
-      <strong className={apiState === "connected" ? "is-online" : "is-pending"}><i />{apiState === "connected" ? "ADMIN API 연결됨" : apiState === "error" ? "ADMIN API 응답 오류" : "ADMIN API 확인 중"}</strong>
     </section>
 
     {error && <p className="admin-feedback admin-feedback--error" role="alert"><AlertTriangle size={17} />{error}</p>}
@@ -264,7 +252,7 @@ export function AdminPage({ role, client: suppliedClient }) {
       <div className="admin-pagination"><span>총 {accounts.total.toLocaleString()}개 · {accounts.page}/{accountPageCount} 페이지</span><div><button type="button" disabled={accountPage <= 1 || loading.accounts} onClick={() => setAccountPage((current) => current - 1)}><ChevronLeft size={15} />이전</button><button type="button" disabled={accountPage >= accountPageCount || loading.accounts} onClick={() => setAccountPage((current) => current + 1)}>다음<ChevronRight size={15} /></button></div></div>
     </section>}
 
-    {section === "audit" && <AuditTrailPanel client={client} onApiStateChange={setApiState} />}
+    {section === "audit" && <AuditTrailPanel client={client} />}
 
     {modal && <AccountDialog account={modal.account} form={accountForm} mode={modal.mode} pending={saving} error={dialogError} onChange={setAccountForm} onClose={() => setModal(null)} onSubmit={submitAccount} />}
   </div>;

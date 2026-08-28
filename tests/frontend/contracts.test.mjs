@@ -178,7 +178,7 @@ assert.match(source("pages/AdminPage.jsx"), /계정 관리/);
 assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(\)/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
-assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\} onApiStateChange=\{setApiState\}/);
+assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\}/);
 assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.listAuditTrails\(filters, cursor\)/);
 assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.getAuditTrail\(selectedTrailId\)/);
 assert.match(source("pages/AdminPage.jsx"), /client\.resetPassword/);

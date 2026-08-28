@@ -74,6 +74,24 @@ function defaultNextStep(run: AnalysisRun) {
   return REQUIRED_ACTION_COPY[action] ?? "";
 }
 
+function filterSummary(filters: Record<string, unknown> | undefined) {
+  const entries = Object.entries(filters ?? {}).map(([field, value]) => {
+    const column = field.split(".").at(-1)?.replace(/_/g, " ") ?? field;
+    return `${column}: ${String(value ?? "없음")}`;
+  });
+  return entries.length ? [...new Set(entries)].join(" · ") : "추가 필터 없음";
+}
+
+function timeEvidenceSummary(run: AnalysisRun) {
+  if (run.evidence?.period) {
+    return `${run.evidence.period.start} ~ ${run.evidence.period.endExclusive} 미포함`;
+  }
+  if (run.evidence?.snapshot) {
+    return `${run.evidence.snapshot.cutoff} 이전 최신 스냅샷`;
+  }
+  return "확인된 기간 없음";
+}
+
 /**
  * 분석 실행의 typed failure를 원인·다음 행동이 분리된 사용자 표시 모델로 변환한다.
  * @param run 서버 응답을 정규화한 분석 실행.
@@ -154,6 +172,16 @@ export function analysisFailurePresentation(
     };
   }
 
+  if (code === "EMPTY_RESULT") {
+    return {
+      tone: "empty",
+      category: "결과 없음",
+      title: "조건에 맞는 결과가 없습니다",
+      reason: messageOr("입력한 기간과 분석 조건에 해당하는 데이터가 없습니다.", error?.message),
+      nextStep: "기간을 넓히거나 호텔·분류 조건을 바꿔 다시 분석해 주세요.",
+    };
+  }
+
   if (code === "FILTER_VALUE_NOT_FOUND") {
     return {
       tone: "empty",
@@ -181,6 +209,19 @@ export function analysisFailurePresentation(
       title: "요청한 분석 단위를 함께 사용할 수 없습니다",
       reason: messageOr("지표와 분류 기준의 분석 단위가 서로 맞지 않습니다.", error?.message),
       nextStep: "비교할 지표나 분류 기준을 줄여 다시 분석해 주세요.",
+    };
+  }
+
+  if (code === "SEMANTIC_CONTRACT_INVALID") {
+    return {
+      tone: "restricted",
+      category: "분석 계약 확인",
+      title: "이 지표 조합을 안전하게 분석할 수 없습니다",
+      reason: messageOr(
+        "선택한 지표와 분류 기준을 연결하는 승인 관계 또는 분석 단위 계약이 없습니다.",
+        error?.message,
+      ),
+      nextStep: "지표나 분류 기준을 줄여 다시 질문하거나, 필요한 관계 계약의 승인을 요청해 주세요.",
     };
   }
 
@@ -292,6 +333,7 @@ export function AnalysisFailureState({
   const presentation = analysisFailurePresentation(run, viewState);
   const Icon = TONE_ICON[presentation.tone];
   const options = selectableOptions(run);
+  const emptyEvidence = run.error?.code === "EMPTY_RESULT" ? run.evidence : undefined;
 
   return (
     <article className="analysis-diagnostic" data-tone={presentation.tone}>
@@ -319,6 +361,16 @@ export function AnalysisFailureState({
           <p>{presentation.nextStep}</p>
         </section>
       </div>
+      {emptyEvidence && (
+        <section className="analysis-diagnostic__evidence" aria-label="결과 없음 조회 근거">
+          <span className="analysis-diagnostic__label"><SearchX size={13} aria-hidden="true" />확인한 범위</span>
+          <dl>
+            <div><dt>기간</dt><dd>{timeEvidenceSummary(run)}</dd></div>
+            <div><dt>조건</dt><dd>{filterSummary(emptyEvidence.filters)}</dd></div>
+            <div><dt>데이터 출처</dt><dd>{run.sources.map((source) => source.name).join(" · ") || "확인된 출처 없음"}</dd></div>
+          </dl>
+        </section>
+      )}
       {options.length > 0 && (
         <section className="analysis-diagnostic__choices" aria-label={run.error?.clarification_type === "period" ? "분석 기간 선택" : "분석 지표 선택"}>
           <div className="analysis-diagnostic__choices-heading">

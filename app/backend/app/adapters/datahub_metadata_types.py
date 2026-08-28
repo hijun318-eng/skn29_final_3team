@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
 
 from app.adapters.datahub_metadata_values import GovernedMetadataError, clone_mapping
@@ -14,6 +15,9 @@ from src.data.governance_contract import (
     metric_source_kind,
     ratio_operand_ids,
 )
+
+
+DERIVED_DIMENSION_ID_PREFIX = "derived_"
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,25 @@ class GlossaryMetricTerm:
     def searchable_text(self) -> str:
         """label·aliases·definition을 결합해 정적 키워드 사전 없이 Unicode lexical matching에 사용할 문자열을 만든다."""
         return " ".join((self.label, *self.aliases, self.definition))
+
+
+@dataclass(frozen=True)
+class GlossaryDimensionMemberTerm:
+    """승인 Dimension Member의 canonical value와 DataHub native governance receipt다."""
+
+    id: str
+    dimension_id: str
+    urn: str
+    label: str
+    aliases: tuple[str, ...]
+    definition: str
+    canonical_value: str
+    version: str
+    checksum: str
+    catalog_checksum: str
+    owner_urns: frozenset[str]
+    domain_urn: str
+    lifecycle_urn: str
 
 
 @dataclass(frozen=True)
@@ -135,6 +158,23 @@ class GovernedDataset:
             decisions.append(bool(self.allowed_domains & domains))
         return any(decisions)
 
+    def candidate_asset(
+        self,
+        terms: dict[str, GlossaryMetricTerm],
+        join_ids: tuple[str, ...],
+        join_graph: dict[str, Any],
+        request_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """실행 파라미터를 요구하지 않는 Node 1용 최소권한 후보 projection을 반환한다."""
+
+        return self._project_asset(
+            terms,
+            join_ids,
+            join_graph,
+            parameters=None,
+            request_context=request_context,
+        )
+
     def runtime_asset(
         self,
         terms: dict[str, GlossaryMetricTerm],
@@ -143,7 +183,27 @@ class GovernedDataset:
         parameters: dict[str, Any],
         request_context: dict[str, Any],
     ) -> dict[str, Any]:
-        """검증된 term·join·typed parameter를 결합해 SQL 생성기가 소비할 asset context를 만들고 누락 입력은 거부한다."""
+        """검증된 term·join·typed parameter를 결합해 SQL 생성기가 소비할 asset context를 만든다."""
+
+        return self._project_asset(
+            terms,
+            join_ids,
+            join_graph,
+            parameters=parameters,
+            request_context=request_context,
+        )
+
+    def _project_asset(
+        self,
+        terms: dict[str, GlossaryMetricTerm],
+        join_ids: tuple[str, ...],
+        join_graph: dict[str, Any],
+        *,
+        parameters: dict[str, Any] | None,
+        request_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """후보와 실행 projection의 공통 필드를 만들고 실행 단계에서만 필터 값을 바인딩한다."""
+
         parameter_types = _parameter_types(self.parameter_contract)
         raw_role = request_context.get("role")
         role = str(getattr(raw_role, "value", raw_role) or "")
@@ -157,10 +217,14 @@ class GovernedDataset:
                 raise GovernedMetadataError(
                     "DataHub business metric is missing its Glossary term"
                 )
-            filters = [
-                _runtime_filter(item, parameter_types, parameters)
-                for item in raw["required_filters"]
-            ]
+            filters = (
+                []
+                if parameters is None
+                else [
+                    _runtime_filter(item, parameter_types, parameters)
+                    for item in raw["required_filters"]
+                ]
+            )
             raw_rule = raw.get("metric_rule")
             raw_governance = (
                 raw_rule.get("governance")
@@ -197,6 +261,7 @@ class GovernedDataset:
                     "semantic": clone_mapping(semantic) if isinstance(semantic, dict) else None,
                 }
             )
+        dimensions = self._project_dimensions(metrics)
         return {
             "urn": self.urn,
             "fqn": self.fqn,
@@ -215,11 +280,83 @@ class GovernedDataset:
             "entitled_metric_ids": sorted(
                 item["id"] for item in metrics if item["visibility"] == "BUSINESS"
             ),
-            "dimensions": [dict(item) for item in self.dimensions],
+            "dimensions": dimensions,
             "required_filters": [],
             "time_metadata": clone_mapping(self.time_metadata),
             "query_policy": clone_mapping(self.query_policy),
         }
+
+    def _project_dimensions(
+        self,
+        metrics: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Metric binding에 선언된 local typed dimension을 후보 projection에 보완한다.
+
+        전역 dimension registry를 바꾸지 않는다. 현재 dataset의 실행 Metric이 실제로
+        선언한 필드 중 typed catalog column role이 ``dimension``이거나 grain key
+        ``identifier``인 필드만 release-bound lexical evidence와 함께 추가한다. 컬럼은
+        하나의 role만 가질 수 있으므로, metric이 명시적으로 dimension으로 결속한 grain
+        key까지 거부하면 승인된 다중 grain metric을 후보로 만들 수 없다. 임의 attribute는
+        계속 열지 않는다.
+        """
+
+        result = [clone_mapping(item) for item in self.dimensions]
+        existing_fields = {
+            (str(item.get("asset_fqn") or ""), str(item.get("column") or ""))
+            for item in result
+        }
+        typed_columns = {
+            str(item.get("name") or ""): item
+            for item in self.catalog_asset.get("columns", ())
+            if isinstance(item, dict) and item.get("name")
+        }
+        declared_fields = {
+            (str(item.get("asset_fqn") or ""), str(item.get("column") or ""))
+            for metric in metrics
+            for item in metric.get("dimensions", ())
+            if isinstance(item, dict)
+        }
+        for asset_fqn, column in sorted(declared_fields):
+            if asset_fqn != self.fqn or (asset_fqn, column) in existing_fields:
+                continue
+            typed = typed_columns.get(column)
+            description = typed.get("description") if isinstance(typed, dict) else None
+            if (
+                not isinstance(typed, dict)
+                or typed.get("role") not in {"dimension", "identifier"}
+                or not isinstance(description, str)
+                or not description.strip()
+            ):
+                raise GovernedMetadataError(
+                    "Metric dimension lacks a typed governed catalog column"
+                )
+            identity = f"{asset_fqn}.{column}"
+            aliases = list(
+                dict.fromkeys(
+                    value
+                    for value in (
+                        column,
+                        column.replace("_", " "),
+                        description.strip(),
+                    )
+                    if value
+                )
+            )
+            result.append(
+                {
+                    "id": f"{DERIVED_DIMENSION_ID_PREFIX}{sha256(identity.encode('utf-8')).hexdigest()[:16]}",
+                    "aliases": aliases,
+                    "definition": description.strip(),
+                    "asset_fqn": asset_fqn,
+                    "column": column,
+                }
+            )
+            existing_fields.add((asset_fqn, column))
+        if len(result) > 64:
+            raise GovernedMetadataError(
+                "Projected DataHub dimensions exceed the bounded contract"
+            )
+        return result
 
     def schema_payload(self) -> dict[str, Any]:
         """검증된 dataset URN과 column 계약의 방어적 복사본을 schema 조회 응답으로 반환한다."""

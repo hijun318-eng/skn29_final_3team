@@ -23,6 +23,7 @@ from app.services.sql_guard.schema import (
     column_violation,
     declared_assets,
     declared_metrics,
+    field_identity,
 )
 from app.services.analysis.logical_plan import (
     AnalysisOperation,
@@ -180,6 +181,7 @@ def validate_parsed_semantics(
             except AnalysisPlanError as error:
                 return _semantic_blocked("ANALYSIS_PLAN_MISMATCH", error.code.value)
         assets = approved_assets(package)
+        unique_fields = _runtime_unique_fields(package, assets)
         physical_tables = set(result.physical_tables)
 
         # 1. 물리 테이블 카탈로그 및 스키마 검증
@@ -202,6 +204,15 @@ def validate_parsed_semantics(
 
         # 2. 사용 함수 화이트리스트 검증
         allowed_functions = {str(item).upper() for item in policy["allowed_functions"]} | {"CAST", "TRY_CAST"}
+        if (
+            logical_plan is not None
+            and logical_plan.operation is AnalysisOperation.TIME_TREND
+            and logical_plan.time_bucket in {"week", "month", "quarter", "year"}
+        ):
+            # DATE_TRUNC는 일반 query policy를 넓히지 않는다. 서버가 검증한 coarser
+            # time_trend 계획에서만 parser의 canonical function 이름을 임시 허용하고,
+            # 아래 operation semantics가 field·unit·CAST·GROUP BY 형태를 정확히 대조한다.
+            allowed_functions.add("TIMESTAMP_TRUNC")
         if not set(result.functions).issubset(allowed_functions):
             return _semantic_blocked(
                 "FUNCTION_POLICY_MISMATCH",
@@ -274,7 +285,14 @@ def validate_parsed_semantics(
             if is_comparison:
                 scope = projection_scope_evidence(result, metric.result_field)
                 match = (
-                    match_metric(scope, metric, assets, metrics_by_id, filtered=True)
+                    match_metric(
+                        scope,
+                        metric,
+                        assets,
+                        metrics_by_id,
+                        filtered=True,
+                        unique_fields=unique_fields,
+                    )
                     if scope is not None
                     else None
                 )
@@ -288,6 +306,7 @@ def validate_parsed_semantics(
                         metrics_by_id,
                         filtered=True,
                         expected_alias=comparison_alias,
+                        unique_fields=unique_fields,
                     )
                     if comparison_scope is not None
                     else None
@@ -314,17 +333,37 @@ def validate_parsed_semantics(
                 ):
                     return _semantic_blocked("REQUIRED_FILTER_MISSING", error)
                 if error := time_rule_violation(
-                    package, primary_comparisons, assets, metric, window="primary"
+                    package,
+                    primary_comparisons,
+                    assets,
+                    metric,
+                    window="primary",
+                    result=result,
                 ):
                     return _semantic_blocked("TIME_RULE_MISMATCH", error)
                 if error := time_rule_violation(
-                    package, comparison_comparisons, assets, metric, window="comparison"
+                    package,
+                    comparison_comparisons,
+                    assets,
+                    metric,
+                    window="comparison",
+                    result=result,
                 ):
                     return _semantic_blocked("TIME_RULE_MISMATCH", error)
                 continue
 
             scope = projection_scope_evidence(result, metric.result_field)
-            match = match_metric(scope, metric, assets, metrics_by_id) if scope is not None else None
+            match = (
+                match_metric(
+                    scope,
+                    metric,
+                    assets,
+                    metrics_by_id,
+                    unique_fields=unique_fields,
+                )
+                if scope is not None
+                else None
+            )
             if scope is None or match is None:
                 return _semantic_blocked(
                     "METRIC_RULE_MISMATCH",
@@ -344,7 +383,9 @@ def validate_parsed_semantics(
                 str(metric.id),
             ):
                 return _semantic_blocked("REQUIRED_FILTER_MISSING", error)
-            if error := time_rule_violation(package, comparisons, assets, metric):
+            if error := time_rule_violation(
+                package, comparisons, assets, metric, result=result
+            ):
                 return _semantic_blocked("TIME_RULE_MISMATCH", error)
 
         # 6. 논리 연산의 출력 grain·정렬·순위 LIMIT 검증
@@ -359,9 +400,30 @@ def validate_parsed_semantics(
                 return _semantic_blocked("ANALYSIS_OPERATION_MISMATCH", error)
 
         # 7. 조인 위상(Join Graph Topology) 검증
-        join = join_violation(package, physical_tables, output_scope, assets)
+        join = join_violation(
+            package,
+            physical_tables,
+            output_scope,
+            assets,
+            result=result,
+            logical_plan=logical_plan,
+        )
         if join.violation:
             return _semantic_blocked(join.code, join.violation)
+        if logical_plan is not None and (
+            tuple(
+                (item.join_id, item.plan, item.reason)
+                for item in logical_plan.joins
+            )
+            != tuple(
+                (item.join_id, item.plan.value, item.reason.value)
+                for item in join.fanout_decisions
+            )
+        ):
+            return _semantic_blocked(
+                "ANALYSIS_PLAN_MISMATCH",
+                "AnalysisPlan fan-out 결정과 실제 SQL AST 증거가 일치하지 않습니다.",
+            )
 
         if plan is not None:
             error = _declared_lineage_violation(plan, result, join.used_join_ids)
@@ -408,6 +470,35 @@ def apply_guard_decision(plan: dict[str, Any], decision: GuardDecision) -> None:
     plan["references"] = [dict(item) for item in decision.references]
     plan["parameters"] = dict(decision.parameters or {})
     plan["ast_evidence"] = dict(decision.ast_evidence or {})
+
+
+def _runtime_unique_fields(
+    package: Any,
+    assets: dict[str, tuple[Any, frozenset[str]]],
+) -> frozenset[str]:
+    """사전집계 COUNT DISTINCT rollup에 사용할 release grain key만 반환한다."""
+
+    contracts = getattr(package, "runtime_contracts", None)
+    schema_context = (
+        contracts.get("schema_context") if isinstance(contracts, dict) else None
+    )
+    values = (
+        schema_context.get("assets") if isinstance(schema_context, dict) else None
+    )
+    if not isinstance(values, list):
+        raise ValueError("런타임 grain 계약이 유효하지 않습니다.")
+    result: set[str] = set()
+    for item in values:
+        grain = item.get("grain") if isinstance(item, dict) else None
+        fqn = str(item.get("fqn") or "") if isinstance(item, dict) else ""
+        keys = grain.get("keys") if isinstance(grain, dict) else None
+        if not fqn or not isinstance(keys, list) or not keys:
+            raise ValueError("런타임 grain key 계약이 유효하지 않습니다.")
+        # 복합 grain은 키 조합만 고유하므로 개별 컬럼을 COUNT DISTINCT
+        # rollup의 전역 고유 필드로 간주하면 안 된다.
+        if len(keys) == 1:
+            result.add(field_identity(f"{fqn}.{keys[0]}", assets))
+    return frozenset(result)
 
 
 def _query_policy(package: Any) -> dict[str, Any]:

@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import httpx
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,7 +27,7 @@ from src.data.governance_contract import (  # noqa: E402
     trino_schema_hash,
 )
 from metadata_contract import SemanticMetadataError, validate_bundle  # noqa: E402
-from metadata_graphql import _assert_release_membership  # noqa: E402
+from metadata_graphql import _assert_release_membership, _dataset_terms  # noqa: E402
 from metadata_rest import assert_contains, preflight_owner_entities  # noqa: E402
 from metadata_wire import metadata_change_proposals  # noqa: E402
 from publish_semantic_catalog import publish_bundle  # noqa: E402
@@ -258,6 +259,88 @@ def arbitrary_bundle():
     }
 
 
+def bundle_with_dimension_members():
+    bundle = arbitrary_bundle()
+    bundle["dimensions"][0]["members"] = [
+        {
+            "id": "enterprise",
+            "urn": "urn:li:glossaryTerm:segment_enterprise",
+            "name": "ENTERPRISE",
+            "definition": "Approved enterprise account segment.",
+            "aliases": ["ENTERPRISE", "기업 고객"],
+            "canonical_value": "ENTERPRISE",
+            "version": "glossary-r4",
+            "approval_status": "APPROVED",
+            "owner_urn": OWNER,
+            "domain_urn": DOMAIN,
+            "approved_lifecycle_urn": LIFECYCLE,
+        },
+        {
+            "id": "consumer",
+            "urn": "urn:li:glossaryTerm:segment_consumer",
+            "name": "CONSUMER",
+            "definition": "Approved consumer account segment.",
+            "aliases": ["CONSUMER", "개인 고객"],
+            "canonical_value": "CONSUMER",
+            "version": "glossary-r4",
+            "approval_status": "APPROVED",
+            "owner_urn": OWNER,
+            "domain_urn": DOMAIN,
+            "approved_lifecycle_urn": LIFECYCLE,
+        },
+    ]
+    return bundle
+
+
+def test_dimension_members_are_hashed_and_associated_to_the_governed_field():
+    bundle = bundle_with_dimension_members()
+
+    validate_bundle(bundle)
+    manifest = release_manifest(bundle)
+    aspects = _aspect_index(bundle)
+    asset = bundle["schema_context"]["assets"][1]
+    editable = aspects[asset["urn"]]["editableSchemaMetadata"]
+    segment = next(
+        item
+        for item in editable["editableSchemaFieldInfo"]
+        if item["fieldPath"] == "segment"
+    )
+    field_terms = {
+        item["urn"] for item in segment["glossaryTerms"]["terms"]
+    }
+
+    assert manifest["dimension_member_term_count"] == 2
+    assert {item["member_id"] for item in manifest["dimension_member_terms"]} == {
+        "consumer",
+        "enterprise",
+    }
+    assert field_terms == {
+        "urn:li:glossaryTerm:segment_consumer",
+        "urn:li:glossaryTerm:segment_enterprise",
+    }
+    assert all(urn in aspects for urn in field_terms)
+
+
+def test_dimension_member_alias_collisions_fail_closed():
+    bundle = bundle_with_dimension_members()
+    bundle["dimensions"][0]["members"][1]["aliases"].append("기업 고객")
+
+    with pytest.raises(SemanticMetadataError, match="approved, unique"):
+        validate_bundle(bundle)
+
+
+def test_graphql_dataset_terms_exclude_support_metrics_without_native_terms():
+    bundle = arbitrary_bundle()
+    support = deepcopy(bundle["metric_rules"][0])
+    support["id"] = "amount_support_operand"
+    metrics = [*bundle["metric_rules"], support]
+    terms = {item["id"]: item for item in bundle["metric_terms"]}
+
+    assert _dataset_terms(bundle["schema_context"]["assets"][0], metrics, terms) == {
+        "urn:li:glossaryTerm:amount_total"
+    }
+
+
 def arbitrary_ratio_bundle():
     """같은 계산 범위의 두 column metric과 derived ratio를 가진 일반 publication fixture를 만든다."""
 
@@ -372,6 +455,20 @@ def _native(entity, definition):
 def _graphql_dataset(asset, bundle, aspects):
     properties = aspects[asset["urn"]]["datasetProperties"]
     dataset_terms = aspects[asset["urn"]]["glossaryTerms"]["terms"]
+    editable_fields = []
+    for raw in aspects[asset["urn"]]["editableSchemaMetadata"][
+        "editableSchemaFieldInfo"
+    ]:
+        value = deepcopy(raw)
+        raw_terms = value.get("glossaryTerms")
+        if raw_terms is not None:
+            value["glossaryTerms"] = {
+                "terms": [
+                    {"term": {"urn": item["urn"]}}
+                    for item in raw_terms.get("terms", [])
+                ]
+            }
+        editable_fields.append(value)
     entity = {
         "urn": asset["urn"],
         "name": asset["fqn"],
@@ -404,11 +501,7 @@ def _graphql_dataset(asset, bundle, aspects):
             ],
         },
         "editableSchemaMetadata": {
-            "editableSchemaFieldInfo": deepcopy(
-                aspects[asset["urn"]]["editableSchemaMetadata"][
-                    "editableSchemaFieldInfo"
-                ]
-            )
+            "editableSchemaFieldInfo": editable_fields
         },
         "glossaryTerms": {
             "terms": [

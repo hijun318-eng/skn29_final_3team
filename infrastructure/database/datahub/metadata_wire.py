@@ -10,6 +10,10 @@ from typing import Any
 ENTITY_PATHS = {
     "dataset": "dataset",
     "glossaryTerm": "glossaryterm",
+    "metric": "metric",
+    "schemaField": "schemafield",
+    "semanticModel": "semanticmodel",
+    "structuredProperty": "structuredproperty",
     "domain": "domain",
     "tag": "tag",
     "lifecycleStageType": "lifecyclestagetype",
@@ -26,6 +30,21 @@ _SUPPORTED_ASPECTS = frozenset(
         "glossaryTerms",
         "glossaryTermKey",
         "glossaryTermInfo",
+        "metricKey",
+        "metricInfo",
+        "aiContext",
+        "metricRelationships",
+        "metricUpstreams",
+        "schemaFieldKey",
+        "semanticFieldAnnotation",
+        "semanticModelKey",
+        "semanticModelInfo",
+        "semanticModelProperties",
+        "structuredPropertyKey",
+        "propertyDefinition",
+        "structuredProperties",
+        "subTypes",
+        "upstreamLineage",
         "domainKey",
         "domainProperties",
         "tagKey",
@@ -122,6 +141,32 @@ def _proposal_aspect_value(
                 )
     elif name == "glossaryTerms":
         value = _proposal_glossary_terms(value, audit)
+    elif name == "metricInfo":
+        value.setdefault("created", dict(audit))
+        value.setdefault("lastModified", dict(audit))
+    elif name == "semanticModelInfo":
+        value.setdefault("created", dict(audit))
+        value.setdefault("lastModified", dict(audit))
+    elif name == "propertyDefinition":
+        value.setdefault("created", dict(audit))
+        value.setdefault("lastModified", dict(audit))
+    elif name == "structuredProperties":
+        for assignment in value.get("properties", []):
+            assignment.setdefault("created", dict(audit))
+            assignment.setdefault("lastModified", dict(audit))
+    elif name == "upstreamLineage":
+        for upstream in value.get("upstreams", []):
+            upstream.setdefault("auditStamp", dict(audit))
+    elif name == "aiContext":
+        value = _validated_ai_context(value)
+    elif name == "metricRelationships":
+        for edge in (*value.get("derivedFrom", []), *value.get("relatedMetrics", [])):
+            edge.setdefault("created", dict(audit))
+            edge.setdefault("lastModified", dict(audit))
+    elif name == "metricUpstreams":
+        for edge in (*value.get("datasetUpstreams", []), *value.get("fieldUpstreams", [])):
+            edge.setdefault("created", dict(audit))
+            edge.setdefault("lastModified", dict(audit))
     elif name == "domainProperties":
         value.setdefault("customProperties", {})
         value.setdefault("created", dict(audit))
@@ -131,6 +176,46 @@ def _proposal_aspect_value(
         value.setdefault("created", dict(audit))
         value.setdefault("lastModified", dict(audit))
     return value
+
+
+def _validated_ai_context(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Pinned v1.7 ``aiContext``의 선택 필드만 bounded 문자열로 직렬화한다."""
+
+    allowed = {"synonyms", "instructions", "examples", "customInstructions"}
+    if not value or set(value) - allowed:
+        raise ValueError("DataHub aiContext contains unsupported fields")
+    result: dict[str, Any] = {}
+    for name, limit in (("synonyms", 32), ("examples", 16)):
+        if name not in value:
+            continue
+        rows = value[name]
+        if (
+            not isinstance(rows, list)
+            or len(rows) > limit
+            or any(not _bounded_text(item, 256) for item in rows)
+            or len(set(rows)) != len(rows)
+        ):
+            raise ValueError(f"DataHub aiContext {name} is invalid")
+        result[name] = list(rows)
+    for name in ("instructions", "customInstructions"):
+        if name not in value:
+            continue
+        text = value[name]
+        if not _bounded_text(text, 2_000):
+            raise ValueError(f"DataHub aiContext {name} is invalid")
+        result[name] = text
+    if not result:
+        raise ValueError("DataHub aiContext must contain at least one value")
+    return result
+
+
+def _bounded_text(value: object, limit: int) -> bool:
+    return (
+        isinstance(value, str)
+        and value == value.strip()
+        and 0 < len(value) <= limit
+        and "\x00" not in value
+    )
 
 
 def _proposal_glossary_terms(

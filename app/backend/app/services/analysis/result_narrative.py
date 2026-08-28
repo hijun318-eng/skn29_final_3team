@@ -12,6 +12,12 @@ from app.services.analysis.evidence import _reduce_context_metric
 
 
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
+_UNSUPPORTED_INFERENCE = re.compile(
+    r"(?:때문|원인|기인|영향으로|덕분|로\s*인해|추정|예상|전망|예측|권장|제안|"
+    r"\bbecause\b|\bdue\s+to\b|\bdriven\s+by\b|\bcaused\s+by\b|"
+    r"\blikely\b|\bsuggests?\b|\bforecast\w*\b|\brecommend\w*\b)",
+    re.IGNORECASE,
+)
 
 
 def _decimal(value: object) -> Decimal | None:
@@ -74,6 +80,16 @@ def _period_numbers(period: object) -> set[Decimal]:
     return result
 
 
+def _snapshot_numbers(snapshot: object) -> set[Decimal]:
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("cutoff"), str):
+        return set()
+    try:
+        value = date.fromisoformat(str(snapshot["cutoff"])[:10])
+    except ValueError:
+        return set()
+    return {Decimal(value.year), Decimal(value.month), Decimal(value.day)}
+
+
 def explanation_is_grounded(
     summary: str,
     query: dict[str, Any],
@@ -86,9 +102,15 @@ def explanation_is_grounded(
         return False
     mentioned = _numbers(summary)
     result_numbers = _derived_numbers(rows)
-    allowed = result_numbers | _period_numbers(query.get("period"))
-    period = query.get("period")
-    if isinstance(period, dict):
+    allowed = (
+        result_numbers
+        | _period_numbers(query.get("period"))
+        | _period_numbers(query.get("comparison_period"))
+        | _snapshot_numbers(query.get("snapshot"))
+    )
+    for period in (query.get("period"), query.get("comparison_period")):
+        if not isinstance(period, dict):
+            continue
         compact = summary.replace(" ", "")
         start = str(period.get("start") or "")[:10]
         end = str(period.get("end_exclusive") or "")[:10]
@@ -103,10 +125,21 @@ def explanation_is_grounded(
         return False
     if package is not None:
         metrics = _business_metrics(package)
+        terms = tuple(getattr(package, "metric_terms", ()))
+        if terms:
+            terms_by_id = {term.id: term for term in terms}
+            summary_key = summary.casefold()
+            if any(
+                terms_by_id[metric.id].label.casefold() not in summary_key
+                for metric in metrics
+            ):
+                return False
         if any((metric.unit or "").casefold() == "ratio" for metric in metrics) and (
             "%" not in summary or "ratio" in summary.casefold()
         ):
             return False
+    if _UNSUPPORTED_INFERENCE.search(summary):
+        return False
     if not mentioned or any(value not in allowed for value in mentioned):
         return False
     return not result_numbers or any(value in result_numbers for value in mentioned)
@@ -134,19 +167,13 @@ def _business_metrics(package: ContextPackage) -> tuple[ContextMetric, ...]:
     return metrics
 
 
-def _selected_business_metric(package: ContextPackage) -> ContextMetric:
-    metrics = _business_metrics(package)
-    if len(metrics) != 1:
-        raise ValueError("grounded narrative requires exactly one BUSINESS metric")
-    return metrics[0]
-
-
 def _metric_value(
     metric: ContextMetric,
     package: ContextPackage,
     rows: list[dict[str, Any]],
+    result_suffix: str = "",
 ) -> Decimal | None:
-    return _reduce_context_metric(metric, package, rows)
+    return _reduce_context_metric(metric, package, rows, result_suffix)
 
 
 def _period_label(period: object) -> str:
@@ -167,6 +194,18 @@ def _period_label(period: object) -> str:
     return f"{start.isoformat()}부터 {end.isoformat()} 전까지"
 
 
+def _time_label(query: dict[str, Any]) -> str:
+    snapshot = query.get("snapshot")
+    if isinstance(snapshot, dict) and isinstance(snapshot.get("cutoff"), str):
+        try:
+            cutoff = date.fromisoformat(str(snapshot["cutoff"])[:10])
+        except ValueError:
+            pass
+        else:
+            return f"{cutoff.isoformat()} 이전 최신 스냅샷"
+    return _period_label(query.get("period"))
+
+
 def _format_value(value: Decimal, unit: str) -> str:
     displayed = value * 100 if unit.lower() == "ratio" else value
     if unit.lower() == "ratio":
@@ -184,9 +223,42 @@ def grounded_summary(query: dict[str, Any], package: ContextPackage) -> str:
     rows = query.get("rows")
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ValueError("grounded narrative rows are invalid")
-    period = _period_label(query.get("period"))
+    period = _time_label(query)
     metrics = _business_metrics(package)
     terms = {term.id: term for term in package.metric_terms}
+    comparison_period = query.get("comparison_period")
+    if isinstance(comparison_period, dict):
+        def period_clause(period_value: object, result_suffix: str) -> str:
+            label = _period_label(period_value)
+            values = [
+                (
+                    terms[metric.id].label,
+                    _metric_value(metric, package, rows, result_suffix),
+                    metric.unit or terms[metric.id].unit,
+                )
+                for metric in metrics
+            ]
+            available = [
+                f"{metric_label} {_format_value(value, unit)}"
+                for metric_label, value, unit in values
+                if value is not None
+            ]
+            missing = [
+                metric_label
+                for metric_label, value, _unit in values
+                if value is None
+            ]
+            if not available:
+                return f"{label}에는 요청 지표의 표시 가능한 관측값이 없습니다"
+            clause = f"{label} 기준 계산 결과는 {', '.join(available)}"
+            if missing:
+                clause += f"이며 {', '.join(missing)}에는 표시 가능한 관측값이 없습니다"
+            return clause
+
+        return (
+            f"{period_clause(query.get('period'), '')}. "
+            f"{period_clause(comparison_period, '__comparison')}."
+        )
     if len(metrics) > 1:
         values = [
             (

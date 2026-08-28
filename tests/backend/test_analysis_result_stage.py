@@ -42,6 +42,33 @@ class AnalysisResultStageChartTest(unittest.TestCase):
 
         self.assertIsNone(chart)
 
+    def test_internal_comparison_value_does_not_become_an_axis(self) -> None:
+        chart = _chart_spec(
+            [
+                {
+                    "governed_value": 42,
+                    "governed_value__comparison": 39,
+                }
+            ],
+            ("governed_value",),
+        )
+
+        self.assertIsNone(chart)
+
+    def test_period_with_an_extra_dimension_does_not_drop_that_dimension(self) -> None:
+        chart = _chart_spec(
+            [
+                {
+                    "period": "2042-06-01",
+                    "segment": "alpha",
+                    "governed_value": 42,
+                }
+            ],
+            ("governed_value",),
+        )
+
+        self.assertIsNone(chart)
+
 
 if __name__ == "__main__":
     unittest.main()

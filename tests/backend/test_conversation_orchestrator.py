@@ -6,12 +6,16 @@ CAS(expected_head_turn_id) 검사, 동시성 Lease, Idempotency 보장,
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import sys
 import unittest
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
+
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "app" / "backend"
@@ -32,7 +36,78 @@ from app.contracts import (
     RequestContext,
     Role,
 )
-from app.services.conversation.orchestrator import ConversationOrchestrator
+from app.authorization import permission_snapshot_id as compute_permission_snapshot_id
+from app.ports.data_platform import AssetCandidateSet, NoEntitledAssetsError
+from app.services.conversation.orchestrator import (
+    ConversationOrchestrator,
+    _business_terms_for_turn,
+    _safe_analysis_observation,
+)
+
+
+TEST_PRODUCT_RELEASE = "product-release:test"
+TEST_SEMANTIC_RELEASE = "semantic-release:test"
+
+
+def test_safe_analysis_observation_excludes_sql_rows_and_parameters() -> None:
+    metric = SimpleNamespace(
+        id="sample_revenue",
+        asset_fqn="serving.sample.daily",
+        numerator_metric_id="",
+        denominator_metric_id="",
+    )
+    result = _safe_analysis_observation(
+        {
+            "plan": {
+                "sql": "SELECT secret",
+                "parameters": {"hidden": "value"},
+                "analysis_plan": {
+                    "output_metric_ids": ["sample_revenue"],
+                    "joins": [
+                        {
+                            "join_id": "approved_join",
+                            "plan": "PREAGGREGATE",
+                            "reason": "MULTI_FACT_COMMON_GRAIN",
+                        }
+                    ],
+                    "query_strategy": "VIEW_REUSE",
+                    "time_bucket": "month",
+                    "checksum": "a" * 64,
+                },
+            },
+            "package": SimpleNamespace(metrics=(metric,)),
+            "query": {"rows": [{"secret": "value"}]},
+        }
+    )
+
+    assert result == {
+        "query_strategy": "VIEW_REUSE",
+        "source_assets": ["serving.sample.daily"],
+        "join_ids": ["approved_join"],
+        "join_plans": [
+            {"join_id": "approved_join", "plan": "PREAGGREGATE"}
+        ],
+        "time_bucket": "month",
+        "analysis_plan_sha256": "a" * 64,
+    }
+    assert "sql" not in result and "rows" not in result and "parameters" not in result
+
+
+def test_business_term_evidence_uses_observed_or_inherited_spans_only() -> None:
+    current = SimpleNamespace(is_inherited_metric=False, route="ANALYSIS")
+    inherited = SimpleNamespace(is_inherited_metric=True, route="PRESENTATION")
+
+    assert _business_terms_for_turn(
+        {"measurement_source_texts": ["객실 매출"]}, {}, current
+    ) == ["객실 매출"]
+    assert _business_terms_for_turn(
+        {"measurement_source_texts": []},
+        {"business_terms": ["객실 매출"]},
+        inherited,
+    ) == ["객실 매출"]
+    assert _business_terms_for_turn(
+        {"measurement_source_texts": ["duplicate", "duplicate"]}, {}, current
+    ) == []
 
 
 class FakeConversationRepository:
@@ -44,6 +119,7 @@ class FakeConversationRepository:
         self.commands: dict[tuple[UUID, str], dict[str, Any]] = {}
         self.view_specs: dict[UUID, dict[str, Any]] = {}
         self.existing_artifacts: set[UUID] = set()
+        self.artifact_payloads: dict[UUID, dict[str, Any]] = {}
 
     async def get_conversation(self, conversation_id: UUID, user_id: UUID) -> dict[str, Any] | None:
         conv = self.conversations.get(conversation_id)
@@ -51,8 +127,21 @@ class FakeConversationRepository:
             return conv
         return None
 
-    async def create_conversation(self, user_id: UUID, title: str) -> dict[str, Any]:
+    async def create_conversation(
+        self,
+        user_id: UUID,
+        title: str,
+        *,
+        product_release_id: str = TEST_PRODUCT_RELEASE,
+        permission_snapshot_id: str | None = None,
+        semantic_release_id: str = TEST_SEMANTIC_RELEASE,
+        wall_clock_anchor: date | None = None,
+    ) -> dict[str, Any]:
         conv_id = uuid4()
+        permission_receipt = permission_snapshot_id or compute_permission_snapshot_id(
+            user_id,
+            Role.ANALYST,
+        )
         conv = {
             "conversation_id": conv_id,
             "owner_user_id": user_id,
@@ -62,6 +151,14 @@ class FakeConversationRepository:
             "turn_count": 0,
             "active_command_id": None,
             "lease_expires_at": None,
+            "product_release_id": product_release_id,
+            "permission_snapshot_id": permission_receipt,
+            "semantic_release_id": semantic_release_id,
+            "wall_clock_anchor": wall_clock_anchor or date(2026, 8, 18),
+            "data_focus_turn_id": None,
+            "data_focus_artifact_id": None,
+            "view_focus_turn_id": None,
+            "view_focus_spec_id": None,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
         }
@@ -70,7 +167,13 @@ class FakeConversationRepository:
         return conv
 
     async def list_turns(self, conversation_id: UUID) -> list[dict[str, Any]]:
-        return list(self.turns.get(conversation_id, []))
+        return [
+            {
+                **turn,
+                **self.artifact_payloads.get(turn.get("artifact_id"), {}),
+            }
+            for turn in self.turns.get(conversation_id, [])
+        ]
 
     async def get_command(self, conversation_id: UUID, idempotency_key: str) -> dict[str, Any] | None:
         return self.commands.get((conversation_id, idempotency_key))
@@ -82,6 +185,10 @@ class FakeConversationRepository:
         command_id: UUID,
         idempotency_key: str,
         input_hash: str,
+        effective_subject_id: UUID,
+        product_release_id: str,
+        permission_snapshot_id: str,
+        semantic_release_id: str,
         lease_seconds: int = 60,
     ) -> tuple[bool, str | None]:
         conv = self.conversations.get(conversation_id)
@@ -91,8 +198,24 @@ class FakeConversationRepository:
             return False, "CONVERSATION_ARCHIVED"
 
         # CAS check
-        if expected_head_turn_id is not None and conv["head_turn_id"] != expected_head_turn_id:
+        if conv["head_turn_id"] != expected_head_turn_id:
             return False, "CONVERSATION_CONFLICT"
+
+        if conv["product_release_id"] != product_release_id:
+            return False, "PRODUCT_RELEASE_MISMATCH"
+        if conv["permission_snapshot_id"] != permission_snapshot_id:
+            return False, "PERMISSION_SNAPSHOT_MISMATCH"
+        if conv["semantic_release_id"] != semantic_release_id:
+            return False, "SEMANTIC_RELEASE_MISMATCH"
+
+        existing = self.commands.get((conversation_id, idempotency_key))
+        if existing is not None:
+            return (
+                False,
+                "IDEMPOTENCY_EXISTS"
+                if existing["canonical_input_hash"] == input_hash
+                else "IDEMPOTENCY_PAYLOAD_MISMATCH",
+            )
 
         # Lease check
         now = datetime.now(timezone.utc)
@@ -108,6 +231,11 @@ class FakeConversationRepository:
             "status": "RUNNING",
             "turn_id": None,
             "error_response": None,
+            "expected_head_turn_id": expected_head_turn_id,
+            "effective_subject_id": effective_subject_id,
+            "product_release_id": product_release_id,
+            "permission_snapshot_id": permission_snapshot_id,
+            "semantic_release_id": semantic_release_id,
         }
 
         # Acquire lease
@@ -130,7 +258,30 @@ class FakeConversationRepository:
         view_spec_id: UUID | None,
         report_definition_id: UUID | None,
         resolved_slots: dict[str, Any],
+        product_release_id: str,
+        permission_snapshot_id: str,
+        semantic_release_id: str,
+        terminal_writer: Any = None,
+        *,
+        terminal_status: str = "SUCCEEDED",
+        reason_code: str | None = None,
+        clarifies_turn_id: UUID | None = None,
+        view_spec: dict[str, Any] | None = None,
     ) -> None:
+        if terminal_writer is not None:
+            await terminal_writer(None)
+        if view_spec is not None:
+            if view_spec_id is None or artifact_id not in self.existing_artifacts:
+                raise ValueError("ViewSpec requires an existing Artifact")
+            self.view_specs[view_spec_id] = {
+                "view_spec_id": view_spec_id,
+                "artifact_id": artifact_id,
+                "view_type": view_spec["view_type"],
+                "spec_json": view_spec["spec_json"],
+                "product_release_id": product_release_id,
+                "permission_snapshot_id": permission_snapshot_id,
+                "semantic_release_id": semantic_release_id,
+            }
         turn = {
             "turn_id": turn_id,
             "conversation_id": conversation_id,
@@ -141,8 +292,19 @@ class FakeConversationRepository:
             "request_id": request_id,
             "artifact_id": artifact_id,
             "view_spec_id": view_spec_id,
+            "view_type": view_spec.get("view_type") if view_spec else None,
+            "view_spec_json": view_spec.get("spec_json") if view_spec else None,
             "report_definition_id": report_definition_id,
             "resolved_slots": resolved_slots,
+            "product_release_id": product_release_id,
+            "permission_snapshot_id": permission_snapshot_id,
+            "semantic_release_id": semantic_release_id,
+            "reply_to_turn_id": self.conversations[conversation_id]["head_turn_id"],
+            "clarifies_turn_id": clarifies_turn_id,
+            "terminal_status": terminal_status,
+            "reason_code": reason_code,
+            "command_status": "COMPLETED",
+            "command_error": None,
             "created_at": datetime.now(timezone.utc),
         }
         self.turns[conversation_id].append(turn)
@@ -150,6 +312,12 @@ class FakeConversationRepository:
         conv = self.conversations[conversation_id]
         conv["head_turn_id"] = turn_id
         conv["turn_count"] += 1
+        if terminal_status == "SUCCEEDED" and route == "ANALYSIS" and artifact_id:
+            conv["data_focus_turn_id"] = turn_id
+            conv["data_focus_artifact_id"] = artifact_id
+        if terminal_status == "SUCCEEDED" and view_spec_id:
+            conv["view_focus_turn_id"] = turn_id
+            conv["view_focus_spec_id"] = view_spec_id
         conv["active_command_id"] = None
         conv["lease_expires_at"] = None
 
@@ -182,8 +350,14 @@ class FakeConversationRepository:
         turn_index: int,
         user_message: str,
         error_response: dict[str, Any],
+        *,
+        request_id: UUID | None = None,
+        terminal_writer: Any = None,
     ) -> None:
         """운영 저장소와 동일하게 typed 실패 turn과 command를 원자적으로 남긴다."""
+
+        if terminal_writer is not None:
+            await terminal_writer(None)
 
         turn = {
             "turn_id": turn_id,
@@ -192,13 +366,20 @@ class FakeConversationRepository:
             "user_message": user_message,
             "route": "ANALYSIS",
             "source_turn_ids": [],
-            "request_id": None,
+            "request_id": request_id,
             "artifact_id": None,
             "view_spec_id": None,
             "report_definition_id": None,
             "resolved_slots": {},
             "command_status": "FAILED",
             "command_error": error_response,
+            "reply_to_turn_id": self.conversations[conversation_id]["head_turn_id"],
+            "clarifies_turn_id": None,
+            "terminal_status": "FAILED",
+            "reason_code": error_response.get("code") or "CONVERSATION_COMMAND_FAILED",
+            "product_release_id": self.conversations[conversation_id]["product_release_id"],
+            "permission_snapshot_id": self.conversations[conversation_id]["permission_snapshot_id"],
+            "semantic_release_id": self.conversations[conversation_id]["semantic_release_id"],
             "created_at": datetime.now(timezone.utc),
         }
         self.turns[conversation_id].append(turn)
@@ -219,6 +400,10 @@ class FakeConversationRepository:
         view_type: str,
         spec_json: dict[str, Any],
         user_id: UUID | None = None,
+        *,
+        product_release_id: str,
+        permission_snapshot_id: str,
+        semantic_release_id: str,
     ) -> UUID:
         if artifact_id not in self.existing_artifacts:
             raise ValueError(f"Referenced artifact {artifact_id} does not exist.")
@@ -229,6 +414,9 @@ class FakeConversationRepository:
             "artifact_id": artifact_id,
             "view_type": view_type,
             "spec_json": spec_json,
+            "product_release_id": product_release_id,
+            "permission_snapshot_id": permission_snapshot_id,
+            "semantic_release_id": semantic_release_id,
         }
         return view_spec_id
 
@@ -243,22 +431,88 @@ class FakeDataPlatformAdapter:
     def __init__(self, assets: list[dict[str, Any]] | None = None) -> None:
         self.assets: list[dict[str, Any]] = list(assets or ())
         self.assets_by_query: dict[str, list[dict[str, Any]]] = {}
+        self.assets_by_preference: dict[
+            tuple[str, tuple[str, ...]], list[dict[str, Any]]
+        ] = {}
         self.queries: list[str] = []
+        self.search_contexts: list[dict[str, Any]] = []
+        self.query_lifecycle_sink: Any = None
+        self.lifecycle_bindings: list[bool] = []
         # 특정 발화에서 운영과 동일한 typed 실패를 재현하기 위한 프로그래밍 지점.
         self.search_error: Exception | None = None
+        self.active_product_release = TEST_PRODUCT_RELEASE
+        self.active_semantic_release = TEST_SEMANTIC_RELEASE
+        self.unavailable_product_releases: set[str] = set()
+
+    def bind_query_lifecycle(self, sink: Any) -> None:
+        self.query_lifecycle_sink = sink
+        self.lifecycle_bindings.append(sink is not None)
 
     def program_search(self, query: str, assets: list[dict[str, Any]]) -> None:
         """특정 검색어에 반환할 승인 자산을 등록한다."""
 
         self.assets_by_query[query] = list(assets)
 
-    async def search_assets(self, query: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+    def program_preferred_search(
+        self,
+        query: str,
+        preferred_metric_ids: tuple[str, ...],
+        assets: list[dict[str, Any]],
+    ) -> None:
+        """구조화된 이전 Metric 우선순위가 있을 때의 후보 검색 결과를 등록한다."""
+
+        self.assets_by_preference[(query, preferred_metric_ids)] = list(assets)
+
+    async def _candidate_assets(self, query: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
         self.queries.append(query)
+        self.search_contexts.append(dict(filters))
         if self.search_error is not None:
             raise self.search_error
+        preferred = tuple(filters.get("preferred_metric_ids") or ())
+        if (query, preferred) in self.assets_by_preference:
+            return list(self.assets_by_preference[(query, preferred)])
         if query in self.assets_by_query:
             return list(self.assets_by_query[query])
         return list(self.assets)
+
+    async def search_asset_candidates(
+        self,
+        query: str,
+        filters: dict[str, Any],
+    ) -> AssetCandidateSet:
+        """프로그래밍된 후보를 production과 같은 non-empty receipt 계약으로 감싼다."""
+
+        assets = await self._candidate_assets(query, filters)
+        if not assets:
+            raise NoEntitledAssetsError("no programmed entitled candidates")
+        return AssetCandidateSet(
+            assets=tuple(assets),
+            context_release=str(assets[0].get("context_release") or "test-release"),
+            catalog_checksum="1" * 64,
+            canonical_checksum="2" * 64,
+            product_release_id=TEST_PRODUCT_RELEASE,
+            runtime_projection_checksum="3" * 64,
+            source_authority="DATAHUB_NATIVE_METRIC_V1",
+            retrieval_mode="lexical",
+        )
+
+    async def get_active_context_release(self) -> str:
+        return self.active_semantic_release
+
+    async def get_catalog_readiness(self) -> tuple[dict[str, str], str | None]:
+        return (
+            {"catalog": "ready", "semantic": "ready", "query": "ready"},
+            self.active_product_release,
+        )
+
+    async def get_product_release_readiness(
+        self,
+        product_release_id: str,
+    ) -> tuple[dict[str, str], str | None, str | None]:
+        stages = {"catalog": "ready", "semantic": "ready", "query": "ready"}
+        if product_release_id in self.unavailable_product_releases:
+            return ({name: "not_ready" for name in stages}, None, None)
+        return stages, product_release_id, TEST_SEMANTIC_RELEASE
 
 
 from src.report.domain import (
@@ -356,6 +610,7 @@ class FakePipelineSupport:
     def __init__(self, structured: dict[str, Any] | None = None) -> None:
         self.structured: dict[str, Any] = dict(structured or {"selected_metric_id": "room_revenue"})
         self.questions: list[str] = []
+        self.budgets: list[Any] = []
         # 발화별로 Node1이 낼 신호(route, presentation_type 등)를 프로그래밍한다. 운영에서
         # route는 Node1 응답 계약으로만 전달되므로, 테스트도 문장이 아니라 이 신호로 라우팅한다.
         self.signals_by_message: dict[str, dict[str, Any]] = {}
@@ -368,13 +623,21 @@ class FakePipelineSupport:
     def program_error(self, message: str, error: Exception) -> None:
         self.errors_by_message[message] = error
 
-    async def select_metric(self, req: AnalysisRequest, context: RequestContext, assets: list[dict[str, Any]]):
+    async def select_metric(
+        self,
+        req: AnalysisRequest,
+        context: RequestContext,
+        candidates: AssetCandidateSet,
+        *,
+        budget=None,
+    ):
         self.questions.append(req.question)
+        self.budgets.append(budget)
         if req.question in self.errors_by_message:
             raise self.errors_by_message[req.question]
         structured = dict(self.structured)
         structured.update(self.signals_by_message.get(req.question, {}))
-        return assets, req.question, structured
+        return list(candidates.assets), req.question, structured
 
 
 class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
@@ -388,6 +651,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         )
         self.support = FakePipelineSupport()
         self.submitted_requests: list[AnalysisRequest] = []
+        self.submitted_contexts: list[RequestContext] = []
         self.support.program("표로 보여줘", requested_route="PRESENTATION", selected_metric_id=None, presentation_type="TABLE")
         self.support.program("차트로 나타내줘", requested_route="PRESENTATION", selected_metric_id=None, presentation_type="BAR")
         self.support.program("현재 내용을 보고서에 담아줘", requested_route="REPORT_ACTION", selected_metric_id=None)
@@ -402,15 +666,48 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             timezone="Asia/Seoul",
         )
 
-        async def mock_submit_analysis(req: AnalysisRequest, ctx: RequestContext):
+        self.submitted_controls: list[tuple[Any, Any, Any]] = []
+        self.submitted_budgets: list[Any] = []
+
+        async def mock_submit_analysis(
+            req: AnalysisRequest,
+            ctx: RequestContext,
+            execution_sink=None,
+            progress_sink=None,
+            cancel_check=None,
+            model_budget=None,
+        ):
             self.submitted_requests.append(req)
+            self.submitted_contexts.append(ctx)
+            self.submitted_controls.append(
+                (execution_sink, progress_sink, cancel_check)
+            )
+            self.submitted_budgets.append(model_budget)
             artifact_id = uuid4()
             self.repo.existing_artifacts.add(artifact_id)
             self.report_repo.register_artifact(
                 artifact_id,
                 title=f"{req.question[:30]} 분석",
                 narrative=f"{req.question}에 대한 데이터 분석 결과입니다.",
+                snapshot={
+                    "columns": ["period", "room_revenue_krw"],
+                    "rows": [
+                        {"period": "2025-07-01", "room_revenue_krw": 120000000}
+                    ],
+                },
+                chart_spec={
+                    "chart_type": "bar",
+                    "x_field": "period",
+                    "y_fields": ["room_revenue_krw"],
+                },
             )
+            artifact_payload = self.report_repo.artifacts[str(artifact_id)]
+            self.repo.artifact_payloads[artifact_id] = {
+                "data_snapshot_json": artifact_payload["data_snapshot_json"],
+                "chart_spec_json": artifact_payload["chart_spec_json"],
+                "narrative_markdown": artifact_payload["narrative_markdown"],
+                "evidence_json": artifact_payload["evidence_json"],
+            }
             # Minimal mock response with artifact
             class FakeResp:
                 def model_dump(self, **kwargs):
@@ -427,7 +724,27 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             data_platform=self.data_platform,
             support=self.support,
             submit_analysis=mock_submit_analysis,
-            report_repository_factory=lambda user_id, is_admin: self.report_repo,
+            report_repository_factory=lambda request_context, is_admin: self.report_repo,
+        )
+
+    async def execute_command(
+        self,
+        *,
+        conversation_id: UUID,
+        payload: dict[str, Any],
+        context: RequestContext,
+        analysis_gate: Any = None,
+    ) -> dict[str, Any]:
+        """기존 시나리오를 새 mandatory admission 필드로 명시적으로 감싼다."""
+
+        command = dict(payload)
+        command.setdefault("idempotency_key", f"test-{uuid4()}")
+        command.setdefault("expected_head_turn_id", None)
+        return await self.orchestrator.execute_command(
+            conversation_id=conversation_id,
+            payload=command,
+            context=context,
+            analysis_gate=analysis_gate,
         )
 
     async def test_analysis_route_passes_untampered_question_and_slots(self) -> None:
@@ -435,7 +752,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         conv = await self.repo.create_conversation(self.user_id, "매출 분석")
         conv_id = conv["conversation_id"]
 
-        result = await self.orchestrator.execute_command(
+        result = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "2025년 8월 1일 ~ 8월 15일 객실 매출 보여줘",
@@ -449,13 +766,827 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.submitted_requests), 1)
         self.assertEqual(self.submitted_requests[0].question, "2025년 8월 1일 ~ 8월 15일 객실 매출 보여줘")
 
+    async def test_analysis_gate_rejection_is_retryable_and_idempotent(self) -> None:
+        class RejectingGate:
+            def __init__(self) -> None:
+                self.acquire_count = 0
+
+            async def acquire(self, _wait_seconds: float) -> bool:
+                self.acquire_count += 1
+                return False
+
+            def release(self) -> None:
+                raise AssertionError("획득하지 못한 gate를 반환하면 안 됩니다.")
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "gate admission",
+        )
+        gate = RejectingGate()
+        payload = {
+            "user_message": "2025년 8월 객실 매출 보여줘",
+            "idempotency_key": "rate-limited-command",
+        }
+
+        first = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload=payload,
+            context=self.context,
+            analysis_gate=gate,
+        )
+        replay = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload=payload,
+            context=self.context,
+            analysis_gate=gate,
+        )
+
+        self.assertEqual("BUSY", first["status"])
+        self.assertEqual(ErrorCode.RATE_LIMITED.value, first["code"])
+        self.assertTrue(first["retryable"])
+        self.assertEqual("BUSY", replay["status"])
+        self.assertTrue(replay["is_idempotent_replay"])
+        self.assertEqual(1, gate.acquire_count)
+        self.assertEqual([], self.submitted_requests)
+        self.assertEqual([], await self.repo.list_turns(conversation["conversation_id"]))
+
+    async def test_analysis_gate_does_not_block_resolved_presentation(self) -> None:
+        class RejectingGate:
+            def __init__(self) -> None:
+                self.acquire_count = 0
+
+            async def acquire(self, _wait_seconds: float) -> bool:
+                self.acquire_count += 1
+                return False
+
+            def release(self) -> None:
+                raise AssertionError("PRESENTATION은 analysis gate를 사용하면 안 됩니다.")
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "presentation gate bypass",
+        )
+        analysis = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+            context=self.context,
+        )
+        gate = RejectingGate()
+
+        presentation = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": "표로 보여줘",
+                "expected_head_turn_id": str(analysis["turn"]["turn_id"]),
+            },
+            context=self.context,
+            analysis_gate=gate,
+        )
+
+        self.assertEqual("SUCCESS", presentation["status"])
+        self.assertEqual("PRESENTATION", presentation["turn"]["route"])
+        self.assertEqual(0, gate.acquire_count)
+
+    async def test_analysis_route_forwards_progress_and_cancel_controls(self) -> None:
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "분석 실행 제어",
+        )
+        progress_sink = lambda _stage, _outcome: None
+        cancel_check = lambda: False
+
+        result = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": "2025년 8월 객실 매출 보여줘",
+                "idempotency_key": "execution-controls",
+                "expected_head_turn_id": None,
+            },
+            context=self.context,
+            progress_sink=progress_sink,
+            cancel_check=cancel_check,
+        )
+
+        self.assertEqual("SUCCESS", result["status"])
+        execution_sink, forwarded_progress, forwarded_cancel = self.submitted_controls[-1]
+        self.assertTrue(callable(execution_sink))
+        self.assertIs(progress_sink, forwarded_progress)
+        self.assertIs(cancel_check, forwarded_cancel)
+        self.assertIs(self.support.budgets[-1], self.submitted_budgets[-1])
+
+    async def test_cancelled_command_releases_lease_with_timeout_reason(self) -> None:
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "전체 deadline",
+        )
+        submitted = asyncio.Event()
+
+        async def slow_submit(_request, _context):
+            submitted.set()
+            await asyncio.Event().wait()
+
+        self.orchestrator._submit_analysis = slow_submit
+        task = asyncio.create_task(
+            self.execute_command(
+                conversation_id=conversation["conversation_id"],
+                payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+                context=self.context,
+            )
+        )
+        await asyncio.wait_for(submitted.wait(), timeout=1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
+        command = next(iter(self.repo.commands.values()))
+        self.assertEqual("FAILED", command["status"])
+        self.assertEqual(
+            ErrorCode.QUERY_TIMEOUT.value,
+            command["error_response"]["code"],
+        )
+        self.assertIsNone(conversation["active_command_id"])
+        self.assertIsNone(conversation["lease_expires_at"])
+
+    async def test_pipeline_exception_separates_public_and_durable_error_codes(self) -> None:
+        """시스템 예외는 공개 command code와 별개인 RECOVERY Run 실패로 닫힌다."""
+
+        class AnalysisRepositoryStub:
+            def __init__(self) -> None:
+                self.begun: list[UUID] = []
+                self.failures: list[tuple[UUID, str]] = []
+
+            async def begin_request(self, _question, _parameters, context) -> None:
+                self.begun.append(context.request_id)
+
+            async def fail_run_in_session(
+                self,
+                _session,
+                request_id,
+                error_type,
+            ) -> None:
+                self.failures.append((request_id, error_type))
+
+        analysis_repository = AnalysisRepositoryStub()
+
+        async def submit_failure(
+            _request,
+            context,
+            run_admission_sink,
+            context_receipt_sink,
+        ):
+            self.assertTrue(callable(context_receipt_sink))
+            await run_admission_sink(context)
+            raise ValueError("injected pipeline failure")
+
+        orchestrator = ConversationOrchestrator(
+            repository=self.repo,
+            data_platform=self.data_platform,
+            support=self.support,
+            submit_analysis=submit_failure,
+            analysis_repository_factory=analysis_repository,
+        )
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "pipeline failure",
+        )
+
+        with self.assertRaisesRegex(ValueError, "injected pipeline failure"):
+            await orchestrator.execute_command(
+                conversation["conversation_id"],
+                {
+                    "user_message": "2025년 8월 객실 매출 보여줘",
+                    "idempotency_key": "pipeline-failure",
+                    "expected_head_turn_id": None,
+                },
+                self.context,
+            )
+
+        self.assertEqual([self.context.request_id], analysis_repository.begun)
+        self.assertEqual(
+            [(self.context.request_id, "RECOVERY")],
+            analysis_repository.failures,
+        )
+        command = next(iter(self.repo.commands.values()))
+        self.assertEqual("FAILED", command["status"])
+        self.assertEqual(
+            "CONVERSATION_COMMAND_FAILED",
+            command["error_response"]["code"],
+        )
+        turns = await self.repo.list_turns(conversation["conversation_id"])
+        self.assertEqual(1, len(turns))
+        self.assertEqual("FAILED", turns[0]["terminal_status"])
+        self.assertEqual("CONVERSATION_COMMAND_FAILED", turns[0]["reason_code"])
+
+    async def test_lease_heartbeat_renews_current_command(self) -> None:
+        renewed: list[tuple[UUID, UUID]] = []
+
+        async def renew_lease(conversation_id, command_id):
+            renewed.append((conversation_id, command_id))
+            return True
+
+        self.repo.renew_lease = renew_lease
+        conversation_id = uuid4()
+        command_id = uuid4()
+        stop = asyncio.Event()
+        lost = asyncio.Event()
+        task = asyncio.create_task(
+            self.orchestrator._renew_command_lease(
+                conversation_id,
+                command_id,
+                stop,
+                lost,
+            )
+        )
+        await asyncio.sleep(0)
+        stop.set()
+        await asyncio.wait_for(task, timeout=1)
+
+        self.assertEqual([(conversation_id, command_id)], renewed)
+        self.assertFalse(lost.is_set())
+
+    async def test_explicit_write_sql_is_blocked_before_model_and_query_pipeline(self) -> None:
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "SQL write 차단",
+        )
+
+        result = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "DELETE FROM voc_review를 실행해줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.SQL_POLICY_BLOCKED.value, result["code"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual(
+            ErrorCode.SQL_POLICY_BLOCKED.value,
+            result["turn"]["reason_code"],
+        )
+        self.assertEqual(
+            ["SQL 쓰기"],
+            result["turn"]["resolved_slots"]["business_terms"],
+        )
+        self.assertEqual([], self.support.questions)
+        self.assertEqual([], self.submitted_requests)
+
+    async def test_analysis_route_binds_and_clears_durable_query_lifecycle(self) -> None:
+        """실제 query service가 내는 lifecycle event가 admitted Run 저장소로 연결된다."""
+
+        class AnalysisRepositoryStub:
+            def __init__(self) -> None:
+                self.begun: list[UUID] = []
+                self.events: list[dict[str, Any]] = []
+                self.context_receipts: list[tuple[RequestContext, Any]] = []
+                self.finished = 0
+
+            async def begin_request(self, _question, _parameters, context) -> None:
+                self.begun.append(context.request_id)
+
+            async def record_query_lifecycle(self, _request_id, event) -> None:
+                self.events.append(dict(event))
+
+            async def persist_context_receipt(self, context, package) -> None:
+                self.context_receipts.append((context, package))
+
+            async def finish_run_in_session(
+                self,
+                _session,
+                _request_id,
+                _response,
+                _execution,
+            ) -> None:
+                self.finished += 1
+
+            async def fail_run_in_session(self, *_args) -> None:
+                raise AssertionError("success path must not fail the run")
+
+        analysis_repository = AnalysisRepositoryStub()
+
+        async def submit_with_lifecycle(
+            req,
+            _context,
+            execution_sink,
+            run_admission_sink,
+            context_receipt_sink,
+        ):
+            self.submitted_requests.append(req)
+            await run_admission_sink(_context)
+            await context_receipt_sink(_context, {"package_hash": "context-receipt"})
+            sink = self.data_platform.query_lifecycle_sink
+            self.assertIsNotNone(sink)
+            await sink(
+                {
+                    "event_type": "SUBMITTED",
+                    "query_id": "query-wired",
+                    "cancel_uri": "https://trino:8443/next/query-wired",
+                    "sql_hash": "a" * 64,
+                    "status": "RUNNING",
+                }
+            )
+            await sink(
+                {
+                    "event_type": "TERMINAL",
+                    "query_id": "query-wired",
+                    "sql_hash": "a" * 64,
+                    "status": "SUCCEEDED",
+                    "row_count": 1,
+                    "scan_bytes": 0,
+                }
+            )
+            execution_sink({})
+            artifact_id = uuid4()
+            self.repo.existing_artifacts.add(artifact_id)
+
+            class FakeResp:
+                def model_dump(self, **_kwargs):
+                    return {
+                        "data": {
+                            "artifact": {"artifact_id": str(artifact_id)},
+                            "status": "SUCCEEDED",
+                        }
+                    }
+
+            return FakeResp()
+
+        orchestrator = ConversationOrchestrator(
+            repository=self.repo,
+            data_platform=self.data_platform,
+            support=self.support,
+            submit_analysis=submit_with_lifecycle,
+            analysis_repository_factory=analysis_repository,
+        )
+        conversation = await self.repo.create_conversation(self.user_id, "lifecycle wire")
+        result = await orchestrator.execute_command(
+            conversation["conversation_id"],
+            {
+                "user_message": "2025년 8월 객실 매출 보여줘",
+                "idempotency_key": "lifecycle-wire-1",
+                "expected_head_turn_id": None,
+            },
+            self.context,
+        )
+
+        self.assertEqual(result["status"], "SUCCESS")
+        self.assertEqual([item["event_type"] for item in analysis_repository.events], [
+            "SUBMITTED",
+            "TERMINAL",
+        ])
+        self.assertEqual(analysis_repository.finished, 1)
+        self.assertEqual(len(analysis_repository.context_receipts), 1)
+        self.assertEqual(
+            analysis_repository.context_receipts[0][0].request_id,
+            self.context.request_id,
+        )
+        self.assertEqual(self.data_platform.lifecycle_bindings[-2:], [True, False])
+        self.assertIsNone(self.data_platform.query_lifecycle_sink)
+
+    async def test_pipeline_clarification_does_not_create_analysis_run(self) -> None:
+        """Context 명확화 응답은 durable Run이나 query lifecycle을 만들지 않는다."""
+
+        class AnalysisRepositoryStub:
+            def __init__(self) -> None:
+                self.begun: list[UUID] = []
+
+            async def begin_request(self, _question, _parameters, context) -> None:
+                self.begun.append(context.request_id)
+
+            async def finish_run_in_session(self, *_args) -> None:
+                raise AssertionError("clarification must not finish a Run")
+
+            async def fail_run_in_session(self, *_args) -> None:
+                raise AssertionError("clarification must not fail a Run")
+
+        analysis_repository = AnalysisRepositoryStub()
+
+        async def submit_clarification(
+            _request,
+            _context,
+            run_admission_sink,
+            context_receipt_sink,
+        ):
+            self.assertTrue(callable(run_admission_sink))
+            self.assertTrue(callable(context_receipt_sink))
+
+            class FakeClarificationResp:
+                data = AnalysisData(
+                    status=AnalysisStatus.CLARIFICATION_REQUIRED,
+                    transitions=(
+                        AnalysisStatus.RECEIVED,
+                        AnalysisStatus.ROUTED,
+                        AnalysisStatus.CLARIFICATION_REQUIRED,
+                    ),
+                )
+                error = ErrorBody(
+                    code=ErrorCode.CONTEXT_INCOMPLETE,
+                    message="분석할 지표를 선택해 주세요.",
+                    clarification_type=ClarificationType.METRIC,
+                )
+
+                def model_dump(self, **_kwargs):
+                    return {
+                        "data": {"status": "CLARIFICATION_REQUIRED"},
+                        "error": {"code": ErrorCode.CONTEXT_INCOMPLETE.value},
+                    }
+
+            return FakeClarificationResp()
+
+        orchestrator = ConversationOrchestrator(
+            repository=self.repo,
+            data_platform=self.data_platform,
+            support=self.support,
+            submit_analysis=submit_clarification,
+            analysis_repository_factory=analysis_repository,
+        )
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Run 없는 명확화",
+        )
+
+        result = await orchestrator.execute_command(
+            conversation["conversation_id"],
+            {
+                "user_message": "2025년 8월 객실 매출 보여줘",
+                "idempotency_key": "clarification-without-run",
+                "expected_head_turn_id": None,
+            },
+            self.context,
+        )
+
+        self.assertEqual("CLARIFICATION_REQUIRED", result["status"])
+        self.assertEqual([], analysis_repository.begun)
+        self.assertIsNone(result["turn"]["request_id"])
+        self.assertEqual([], self.data_platform.lifecycle_bindings)
+
+    async def test_existing_conversation_uses_immutable_wall_clock_anchor(self) -> None:
+        """새 요청의 clock이 달라도 기존 Conversation의 서버 anchor만 하류에 전달한다."""
+
+        anchor = date(2025, 9, 2)
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "wall clock anchor",
+            wall_clock_anchor=anchor,
+        )
+        question = "이번 달 객실 매출"
+        self.support.program(
+            question,
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2025-09-01",
+                    "end_exclusive": "2025-10-01",
+                    "source_text": "이번 달",
+                }
+            ],
+            analysis_operation="aggregate",
+            requested_route="ANALYSIS",
+        )
+
+        result = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": question},
+            context=self.context.model_copy(update={"as_of": date(2026, 8, 22)}),
+        )
+
+        self.assertEqual("SUCCESS", result["status"])
+        self.assertEqual(anchor, self.submitted_contexts[-1].as_of)
+        self.assertEqual(
+            "2025-09-01",
+            result["turn"]["resolved_slots"]["time_range"]["start"],
+        )
+
+    async def test_focus_transitions_follow_terminal_route_contract(self) -> None:
+        """Analysis·Presentation만 각 허용 focus를 바꾸고 Report·BLOCKED는 보존한다."""
+
+        conversation = await self.repo.create_conversation(self.user_id, "focus")
+        conv_id = conversation["conversation_id"]
+        analysis = await self.execute_command(
+            conversation_id=conv_id,
+            payload={"user_message": "2025년 8월 객실 매출"},
+            context=self.context,
+        )
+        first_turn = analysis["turn"]["turn_id"]
+        first_artifact = analysis["turn"]["artifact_id"]
+        first_view = analysis["turn"]["view_spec_id"]
+        self.assertEqual(first_turn, conversation["data_focus_turn_id"])
+        self.assertEqual(first_artifact, conversation["data_focus_artifact_id"])
+        self.assertEqual(first_turn, conversation["view_focus_turn_id"])
+        self.assertEqual(first_view, conversation["view_focus_spec_id"])
+
+        presentation = await self.execute_command(
+            conversation_id=conv_id,
+            payload={
+                "user_message": "표로 보여줘",
+                "expected_head_turn_id": str(first_turn),
+            },
+            context=self.context,
+        )
+        presentation_turn = presentation["turn"]["turn_id"]
+        presentation_view = presentation["turn"]["view_spec_id"]
+        self.assertEqual(first_turn, conversation["data_focus_turn_id"])
+        self.assertEqual(first_artifact, conversation["data_focus_artifact_id"])
+        self.assertEqual(presentation_turn, conversation["view_focus_turn_id"])
+        self.assertEqual(presentation_view, conversation["view_focus_spec_id"])
+
+        report = await self.execute_command(
+            conversation_id=conv_id,
+            payload={
+                "user_message": "현재 내용을 보고서에 담아줘",
+                "expected_head_turn_id": str(presentation_turn),
+            },
+            context=self.context,
+        )
+        self.assertEqual(first_turn, conversation["data_focus_turn_id"])
+        self.assertEqual(presentation_turn, conversation["view_focus_turn_id"])
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        blocked_message = "이번 달 객실 매출"
+        self.support.program_error(
+            blocked_message,
+            ContextBuildError(
+                ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                "승인된 데이터 범위 밖입니다.",
+            ),
+        )
+        blocked = await self.execute_command(
+            conversation_id=conv_id,
+            payload={
+                "user_message": blocked_message,
+                "expected_head_turn_id": str(report["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+        self.assertEqual("BLOCKED", blocked["status"])
+        self.assertEqual(first_turn, conversation["data_focus_turn_id"])
+        self.assertEqual(presentation_turn, conversation["view_focus_turn_id"])
+
+    async def test_clarification_resolution_links_parent_without_using_it_as_source(self) -> None:
+        """확인 응답은 clarifies lineage만 남기고 BLOCKED Turn을 데이터 source로 쓰지 않는다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        conversation = await self.repo.create_conversation(self.user_id, "clarification")
+        question = "매출을 보여줘"
+        option = DisambiguationOption(
+            label="객실 매출",
+            metric_id="room_revenue",
+            description="객실 운영 매출",
+            clarification_type=ClarificationType.METRIC,
+            value="room_revenue",
+        )
+        self.support.program_error(
+            question,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "지표를 선택해 주세요.",
+                ("객실 매출",),
+                disambiguation_options=(option,),
+                partial_context={
+                    "metric_resolution": "ambiguous",
+                    "metric_ids": ["room_revenue"],
+                    "metric_candidates": ["room_revenue"],
+                    "selected_metric_ids": [],
+                    "period_candidates": [
+                        {
+                            "start": "2025-08-01",
+                            "end_exclusive": "2025-09-01",
+                            "source_text": "2025년 8월",
+                        }
+                    ],
+                    "analysis_operation": "aggregate",
+                    "is_elliptical": False,
+                },
+            ),
+        )
+        clarification = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": question},
+            context=self.context,
+        )
+        clarification_turn = clarification["turn"]["turn_id"]
+        self.assertEqual("BLOCKED", clarification["turn"]["terminal_status"])
+        self.assertEqual([], clarification["turn"]["source_turn_ids"])
+
+        resolved = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": "객실 매출",
+                "expected_head_turn_id": str(clarification_turn),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("SUCCESS", resolved["status"])
+        self.assertEqual(clarification_turn, resolved["turn"]["clarifies_turn_id"])
+        self.assertEqual([], resolved["turn"]["source_turn_ids"])
+
+    async def test_golden_dialogue_period_comparison_uses_exactly_two_analysis_sources(self) -> None:
+        """8월→그 전 달→비교가 세 Run과 ordered 두 source Turn으로 수렴한다."""
+
+        conversation = await self.repo.create_conversation(self.user_id, "GD-01")
+        conv_id = conversation["conversation_id"]
+        first_message = "2025년 8월 인식 객실 매출을 보여줘."
+        second_message = "그 전 달은?"
+        third_message = "두 달 비교 분석해줘."
+        self.support.program(
+            first_message,
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2025-08-01",
+                    "end_exclusive": "2025-09-01",
+                    "source_text": "2025년 8월",
+                }
+            ],
+            analysis_operation="aggregate",
+            requested_route="ANALYSIS",
+            is_elliptical=False,
+        )
+        self.support.program(
+            second_message,
+            selected_metric_id=None,
+            selected_metric_ids=[],
+            metric_ids=[],
+            metric_resolution="missing",
+            measurement_source_texts=[],
+            period_candidates=[
+                {
+                    "start": "2025-07-01",
+                    "end_exclusive": "2025-08-01",
+                    "source_text": "그 전 달",
+                }
+            ],
+            analysis_operation="aggregate",
+            requested_route="ANALYSIS",
+            is_elliptical=True,
+        )
+        self.support.program(
+            third_message,
+            selected_metric_id=None,
+            selected_metric_ids=[],
+            metric_ids=[],
+            metric_resolution="missing",
+            measurement_source_texts=[],
+            period_candidates=[],
+            analysis_operation="period_comparison",
+            requested_route="ANALYSIS",
+            is_elliptical=True,
+        )
+
+        first = await self.execute_command(
+            conversation_id=conv_id,
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+        second = await self.execute_command(
+            conversation_id=conv_id,
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+        self.assertIn(
+            {
+                "field": "time_range",
+                "operation": "SET",
+                "value": {
+                    "start": "2025-07-01",
+                    "end_exclusive": "2025-08-01",
+                    "source_text": "그 전 달",
+                },
+            },
+            second["turn"]["resolved_slots"]["change_set"],
+        )
+        third = await self.execute_command(
+            conversation_id=conv_id,
+            payload={
+                "user_message": third_message,
+                "expected_head_turn_id": str(second["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual(3, len(self.submitted_requests))
+        self.assertEqual(
+            [
+                str(first["turn"]["turn_id"]),
+                str(second["turn"]["turn_id"]),
+            ],
+            third["turn"]["source_turn_ids"],
+        )
+        self.assertEqual(
+            "2025-07-01",
+            third["turn"]["resolved_slots"]["time_range"]["start"],
+        )
+        self.assertEqual(
+            "2025-08-01",
+            third["turn"]["resolved_slots"]["comparison_time_range"]["start"],
+        )
+
+    async def test_golden_dialogue_view_sequence_and_two_report_blocks(self) -> None:
+        """GD-02는 한 Artifact에서 line→bar→table 후 마지막 두 View만 보고서에 담는다."""
+
+        conversation = await self.repo.create_conversation(self.user_id, "GD-02")
+        conv_id = conversation["conversation_id"]
+        messages = [
+            "2025년 7월 인식 객실 매출을 보여줘.",
+            "그래프로 띄워줘.",
+            "다른 그래프로 띄워줘.",
+            "표로도 띄워줘.",
+            "현재 그래프와 표를 보고서에 담아줘.",
+        ]
+        self.support.program(
+            messages[0],
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2025-07-01",
+                    "end_exclusive": "2025-08-01",
+                    "source_text": "2025년 7월",
+                }
+            ],
+            analysis_operation="time_trend",
+            analysis_time_bucket="day",
+            requested_route="ANALYSIS",
+            is_elliptical=False,
+        )
+        for message, presentation_type in zip(
+            messages[1:4],
+            ("LINE", "BAR", "TABLE"),
+            strict=True,
+        ):
+            self.support.program(
+                message,
+                requested_route="PRESENTATION",
+                selected_metric_id=None,
+                selected_metric_ids=[],
+                presentation_type=presentation_type,
+                is_elliptical=True,
+            )
+        self.support.program(
+            messages[4],
+            requested_route="REPORT_ACTION",
+            selected_metric_id=None,
+            selected_metric_ids=[],
+            is_elliptical=True,
+        )
+
+        results = []
+        expected_head = None
+        for message in messages:
+            result = await self.execute_command(
+                conversation_id=conv_id,
+                payload={
+                    "user_message": message,
+                    "expected_head_turn_id": (
+                        str(expected_head) if expected_head is not None else None
+                    ),
+                },
+                context=self.context,
+            )
+            self.assertEqual("SUCCESS", result["status"])
+            results.append(result)
+            expected_head = result["turn"]["turn_id"]
+
+        artifact_id = results[0]["turn"]["artifact_id"]
+        self.assertEqual(1, len(self.submitted_requests))
+        self.assertEqual(5, len(self.repo.turns[conv_id]))
+        self.assertEqual(4, len(self.repo.view_specs))
+        self.assertEqual(
+            ["LINE", "BAR", "TABLE"],
+            [result["turn"]["view_type"] for result in results[1:4]],
+        )
+        self.assertTrue(
+            all(result["turn"]["artifact_id"] == artifact_id for result in results)
+        )
+
+        report_definition_id = results[4]["turn"]["report_definition_id"]
+        draft = await self.report_repo.get_version(str(report_definition_id), 1)
+        self.assertEqual(2, len(draft.blocks))
+        self.assertEqual([BlockType.CHART, BlockType.TABLE], [b.type for b in draft.blocks])
+        self.assertEqual(
+            [
+                str(results[2]["turn"]["view_spec_id"]),
+                str(results[3]["turn"]["view_spec_id"]),
+            ],
+            [block.view_spec_id for block in draft.blocks],
+        )
+
     async def test_presentation_route_creates_view_spec_with_zero_queries(self) -> None:
         """PRESENTATION 라우트 실행 시 추가 쿼리 없이 선행 아티팩트의 ViewSpec을 생성하는지 검증."""
         conv = await self.repo.create_conversation(self.user_id, "시각화 전환")
         conv_id = conv["conversation_id"]
 
         # Turn 1: ANALYSIS
-        res1 = await self.orchestrator.execute_command(
+        res1 = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "2025년 8월 객실 매출 보여줘"},
             context=self.context,
@@ -464,7 +1595,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         art_id = res1["turn"]["artifact_id"]
 
         # Turn 2: PRESENTATION ("표로 보여줘")
-        res2 = await self.orchestrator.execute_command(
+        res2 = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "표로 보여줘",
@@ -477,8 +1608,84 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res2["turn"]["route"], "PRESENTATION")
         self.assertEqual(res2["turn"]["artifact_id"], art_id)
         self.assertIsNotNone(res2["turn"]["view_spec_id"])
+        self.assertEqual(
+            res2["turn"]["resolved_slots"]["change_set"],
+            [
+                {
+                    "field": "target_chart_type",
+                    "operation": "SET",
+                    "value": "TABLE",
+                }
+            ],
+        )
         # submit_analysis는 Turn 1에서만 1회 호출됨
         self.assertEqual(len(self.submitted_requests), 1)
+
+    async def test_incompatible_presentation_commits_blocked_turn_without_focus_change(self) -> None:
+        """시간축 없는 Artifact의 LINE 요청은 typed BLOCKED 이력으로 닫는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "표현 schema 차단",
+        )
+        conversation_id = conversation["conversation_id"]
+        analysis = await self.execute_command(
+            conversation_id=conversation_id,
+            payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+            context=self.context,
+        )
+        artifact_id = analysis["turn"]["artifact_id"]
+        analysis_view_id = analysis["turn"]["view_spec_id"]
+        self.repo.artifact_payloads[artifact_id].update(
+            {
+                "data_snapshot_json": {
+                    "columns": ["hotel", "room_revenue_krw"],
+                    "rows": [
+                        {"hotel": "Grand", "room_revenue_krw": 120000000}
+                    ],
+                },
+                "chart_spec_json": {
+                    "chart_type": "bar",
+                    "x_field": "hotel",
+                    "y_fields": ["room_revenue_krw"],
+                },
+            }
+        )
+        self.support.program(
+            "선 그래프로 보여줘",
+            requested_route="PRESENTATION",
+            selected_metric_id=None,
+            selected_metric_ids=[],
+            presentation_type="LINE",
+            is_elliptical=True,
+        )
+
+        blocked = await self.execute_command(
+            conversation_id=conversation_id,
+            payload={
+                "user_message": "선 그래프로 보여줘",
+                "expected_head_turn_id": str(analysis["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", blocked["status"])
+        self.assertEqual(
+            ErrorCode.RESULT_VALIDATION_FAILED.value,
+            blocked["code"],
+        )
+        self.assertEqual("PRESENTATION", blocked["turn"]["route"])
+        self.assertEqual("BLOCKED", blocked["turn"]["terminal_status"])
+        self.assertIsNone(blocked["turn"]["view_spec_id"])
+        self.assertEqual(1, len(self.submitted_requests))
+        self.assertEqual(
+            analysis["turn"]["turn_id"],
+            self.repo.conversations[conversation_id]["view_focus_turn_id"],
+        )
+        self.assertEqual(
+            analysis_view_id,
+            self.repo.conversations[conversation_id]["view_focus_spec_id"],
+        )
 
     async def test_idempotent_command_replay(self) -> None:
         """동일한 idempotency_key로 요청 시 중복 실행 없이 이전 결과를 그대로 반환하는지 검증."""
@@ -486,7 +1693,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         conv_id = conv["conversation_id"]
 
         idemp_key = "idemp-unique-123"
-        res1 = await self.orchestrator.execute_command(
+        res1 = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "2025년 8월 객실 매출",
@@ -498,7 +1705,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res1.get("is_idempotent_replay", False))
 
         # Re-execute with identical key
-        res2 = await self.orchestrator.execute_command(
+        res2 = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "2025년 8월 객실 매출",
@@ -512,13 +1719,75 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         # Analysis should only have executed once
         self.assertEqual(len(self.submitted_requests), 1)
 
+    async def test_command_requires_explicit_idempotency_key_and_head_field(self) -> None:
+        """첫 턴도 key와 명시적 null CAS가 없으면 admission 전에 거부한다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "필수 admission")
+        with self.assertRaises(ValidationError):
+            await self.orchestrator.execute_command(
+                conv["conversation_id"],
+                {"user_message": "2025년 8월 객실 매출"},
+                self.context,
+            )
+        self.assertEqual(self.repo.commands, {})
+        self.assertEqual(self.submitted_requests, [])
+
+    async def test_same_idempotency_key_with_changed_payload_never_replays_or_queries(self) -> None:
+        """저장 hash 비교가 replay보다 앞서고 mismatch는 두 번째 실행을 만들지 않는다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "hash mismatch")
+        conv_id = conv["conversation_id"]
+        key = "stable-client-command"
+        first = await self.orchestrator.execute_command(
+            conv_id,
+            {
+                "user_message": "2025년 8월 객실 매출",
+                "idempotency_key": key,
+                "expected_head_turn_id": None,
+            },
+            self.context,
+        )
+        mismatch = await self.orchestrator.execute_command(
+            conv_id,
+            {
+                "user_message": "2025년 8월 식음 매출",
+                "idempotency_key": key,
+                "expected_head_turn_id": None,
+            },
+            self.context,
+        )
+
+        self.assertEqual(first["status"], "SUCCESS")
+        self.assertEqual(mismatch["status"], "CONFLICT")
+        self.assertEqual(mismatch["code"], ErrorCode.IDEMPOTENCY_CONFLICT.value)
+        self.assertEqual(len(self.submitted_requests), 1)
+        self.assertEqual(len(self.repo.turns[conv_id]), 1)
+
+    async def test_path_identity_must_equal_prebound_request_context(self) -> None:
+        """client 또는 상류가 다른 conversation identity를 주입해도 실행하지 않는다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "path binding")
+        mismatched = self.context.model_copy(update={"conversation_id": uuid4()})
+        with self.assertRaises(ValueError):
+            await self.orchestrator.execute_command(
+                conv["conversation_id"],
+                {
+                    "user_message": "2025년 8월 객실 매출",
+                    "idempotency_key": "path-mismatch",
+                    "expected_head_turn_id": None,
+                },
+                mismatched,
+            )
+        self.assertEqual(self.repo.commands, {})
+        self.assertEqual(self.submitted_requests, [])
+
     async def test_cas_conflict_detection(self) -> None:
         """expected_head_turn_id 불일치 시 409 CONFLICT를 반환하는지 검증."""
         conv = await self.repo.create_conversation(self.user_id, "CAS 테스트")
         conv_id = conv["conversation_id"]
 
         # Turn 1
-        res1 = await self.orchestrator.execute_command(
+        res1 = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "2025년 8월 객실 매출"},
             context=self.context,
@@ -526,7 +1795,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         # Stale CAS attempt (expected_head is wrong)
         wrong_head = uuid4()
-        res_conflict = await self.orchestrator.execute_command(
+        res_conflict = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "다음 달은?",
@@ -537,13 +1806,50 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_conflict["status"], "CONFLICT")
         self.assertEqual(res_conflict["code"], "CONVERSATION_CONFLICT")
 
+    async def test_active_pointer_change_keeps_executable_pinned_conversation(self) -> None:
+        """active 전진만으로 고정 Conversation을 다른 release로 재해석하거나 막지 않는다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "pinned release")
+        self.data_platform.active_product_release = "product-release:new-active"
+        self.data_platform.active_semantic_release = "semantic-release:new-active"
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "2025년 8월 객실 매출"},
+            context=self.context,
+        )
+
+        self.assertEqual("SUCCESS", result["status"])
+        self.assertEqual(
+            TEST_PRODUCT_RELEASE,
+            result["turn"]["product_release_id"],
+        )
+        self.assertEqual(TEST_SEMANTIC_RELEASE, result["turn"]["semantic_release_id"])
+
+    async def test_unavailable_pinned_release_blocks_before_command_and_run(self) -> None:
+        """고정 release가 실제로 실행 불가할 때만 새 Conversation 전환을 요구한다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "retired release")
+        self.data_platform.unavailable_product_releases.add(TEST_PRODUCT_RELEASE)
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "2025년 8월 객실 매출"},
+            context=self.context,
+        )
+
+        self.assertEqual("CONFLICT", result["status"])
+        self.assertEqual(ErrorCode.RESOURCE_CONFLICT.value, result["code"])
+        self.assertEqual({}, self.repo.commands)
+        self.assertEqual([], self.submitted_requests)
+
     async def test_fail_closed_without_antecedent_artifact(self) -> None:
         """선행 분석 결과가 없을 때 시각화 전환 요청이 Fail-closed 원칙에 따라 거부되는지 검증."""
         conv = await self.repo.create_conversation(self.user_id, "선행결과 없음")
         conv_id = conv["conversation_id"]
 
         with self.assertRaises(ValueError):
-            await self.orchestrator.execute_command(
+            await self.execute_command(
                 conversation_id=conv_id,
                 payload={"user_message": "차트로 나타내줘"},
                 context=self.context,
@@ -555,7 +1861,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         conv_id = conv["conversation_id"]
 
         # Turn 1: ANALYSIS ("2025년 8월 객실 매출 보여줘")
-        res1 = await self.orchestrator.execute_command(
+        res1 = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "2025년 8월 객실 매출 보여줘"},
             context=self.context,
@@ -565,7 +1871,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.submitted_requests), 1)
 
         # Turn 2: REPORT_ACTION ("현재 내용을 보고서에 담아줘")
-        res2 = await self.orchestrator.execute_command(
+        res2 = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "현재 내용을 보고서에 담아줘",
@@ -588,23 +1894,65 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(draft.definition_id, str(report_def_id))
         self.assertEqual(draft.version, 1)
         self.assertEqual(draft.status, DefinitionStatus.DRAFT)
-        self.assertTrue(len(draft.blocks) >= 2)
+        self.assertEqual(1, len(draft.blocks))
+        current_view_block = draft.blocks[0]
+        self.assertEqual(BlockType.TABLE, current_view_block.type)
+        self.assertEqual(current_view_block.artifact_id, str(art_id))
+        self.assertEqual(current_view_block.query_id, "trino-query-123")
+        self.assertEqual(
+            str(res1["turn"]["view_spec_id"]),
+            current_view_block.view_spec_id,
+        )
 
-        block_types = [b.type for b in draft.blocks]
-        self.assertIn(BlockType.TEXT, block_types)
-        self.assertIn(BlockType.CHART, block_types)
-        self.assertIn(BlockType.TABLE, block_types)
+    async def test_typed_reuse_routes_skip_analysis_preflight(self) -> None:
+        """명시적 View/Report action은 새 Metric 해석 없이 기존 lineage만 재사용한다."""
 
-        text_block = next(b for b in draft.blocks if b.type == BlockType.TEXT)
-        self.assertIn("데이터 분석 결과", text_block.content)
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "typed zero-query actions",
+        )
+        analysis = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+            context=self.context,
+        )
+        presentation_message = "현재 결과를 선 그래프로 전환"
+        report_message = "현재 그래프를 보고서에 추가"
+        self.support.program_error(
+            presentation_message,
+            AssertionError("typed Presentation must skip analysis preflight"),
+        )
+        self.support.program_error(
+            report_message,
+            AssertionError("typed Report action must skip analysis preflight"),
+        )
 
-        chart_block = next(b for b in draft.blocks if b.type == BlockType.CHART)
-        self.assertEqual(chart_block.artifact_id, str(art_id))
-        self.assertEqual(chart_block.query_id, "trino-query-123")
+        presentation = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": presentation_message,
+                "expected_head_turn_id": str(analysis["turn"]["turn_id"]),
+                "requested_route": "PRESENTATION",
+                "presentation_type": "LINE",
+            },
+            context=self.context,
+        )
+        report = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": report_message,
+                "expected_head_turn_id": str(presentation["turn"]["turn_id"]),
+                "requested_route": "REPORT_ACTION",
+            },
+            context=self.context,
+        )
 
-        table_block = next(b for b in draft.blocks if b.type == BlockType.TABLE)
-        self.assertEqual(table_block.artifact_id, str(art_id))
-        self.assertEqual(table_block.query_id, "trino-query-123")
+        self.assertEqual("SUCCESS", presentation["status"])
+        self.assertEqual("SUCCESS", report["status"])
+        self.assertEqual("PRESENTATION", presentation["turn"]["route"])
+        self.assertEqual("REPORT_ACTION", report["turn"]["route"])
+        self.assertEqual(["2025년 8월 객실 매출 보여줘"], self.support.questions)
+        self.assertEqual(1, len(self.submitted_requests))
 
     async def test_report_action_updates_existing_draft_in_subsequent_report_actions(self) -> None:
         """대화방에 이미 연결된 draft 보고서가 있을 때 후속 REPORT_ACTION이 새 uuid 생성 대신 기존 draft blocks를 원자적으로 갱신하는지 검증."""
@@ -612,7 +1960,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         conv_id = conv["conversation_id"]
 
         # Turn 1: ANALYSIS 1
-        res1 = await self.orchestrator.execute_command(
+        res1 = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "2025년 8월 객실 매출 보여줘"},
             context=self.context,
@@ -620,7 +1968,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         head1 = res1["turn"]["turn_id"]
 
         # Turn 2: REPORT_ACTION 1
-        res2 = await self.orchestrator.execute_command(
+        res2 = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "현재 내용을 보고서에 담아줘",
@@ -632,7 +1980,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         report_def_id_1 = res2["turn"]["report_definition_id"]
 
         # Turn 3: ANALYSIS 2 ("2025년 7월 식음 매출 보여줘")
-        res3 = await self.orchestrator.execute_command(
+        res3 = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "2025년 7월 식음 매출 보여줘",
@@ -643,7 +1991,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         head3 = res3["turn"]["turn_id"]
 
         # Turn 4: REPORT_ACTION 2 ("이 내용도 보고서에 담아줘")
-        res4 = await self.orchestrator.execute_command(
+        res4 = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": "이 내용도 보고서에 담아줘",
@@ -661,7 +2009,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         # Updated draft now contains blocks from both turns
         draft = await self.report_repo.get_version(str(report_def_id_1), 1)
-        self.assertTrue(len(draft.blocks) >= 4)
+        self.assertEqual(2, len(draft.blocks))
 
     async def test_report_action_fails_closed_when_artifact_lookup_fails(self) -> None:
         """보고서 저장소에서 아티팩트 조회가 실패할 때 에러를 발생시키고 Lease를 안전하게 해제하는지 검증."""
@@ -669,7 +2017,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         conv_id = conv["conversation_id"]
 
         # Turn 1: ANALYSIS
-        res1 = await self.orchestrator.execute_command(
+        res1 = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "2025년 8월 객실 매출 보여줘"},
             context=self.context,
@@ -681,7 +2029,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         del self.report_repo.artifacts[str(art_id)]
 
         with self.assertRaises(KeyError):
-            await self.orchestrator.execute_command(
+            await self.execute_command(
                 conversation_id=conv_id,
                 payload={
                     "user_message": "현재 내용을 보고서에 담아줘",
@@ -783,7 +2131,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             data_platform=self.data_platform,
             support=self.support,
             submit_analysis=dynamic_submit_analysis,
-            report_repository_factory=lambda user_id, is_admin: self.report_repo,
+            report_repository_factory=lambda request_context, is_admin: self.report_repo,
         )
 
         # Node1이 "2025년 8월"을 반개구간으로 해석해 typed 후보로 돌려주는 상황을 만든다.
@@ -806,6 +2154,8 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             conversation_id=conv_id,
             payload={
                 "user_message": "2025년 8월 매출 보여줘",
+                "expected_head_turn_id": None,
+                "idempotency_key": f"test-{uuid4()}",
             },
             context=self.context,
         )
@@ -828,6 +2178,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             payload={
                 "user_message": "객실 매출",
                 "expected_head_turn_id": str(turn1_id),
+                "idempotency_key": f"test-{uuid4()}",
             },
             context=self.context,
         )
@@ -876,17 +2227,21 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             is_elliptical=False,
             requested_route="ANALYSIS",
         )
-        first = await self.orchestrator.execute_command(
+        first = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": first_message},
             context=self.context,
         )
         head = first["turn"]["turn_id"]
 
-        # 새 주제 원문 검색은 비지만, 직전 지표를 붙인 보조 검색에서는 자산을 찾는 상황.
+        # 새 주제 원문 검색은 비지만, 직전 지표를 typed 우선순위로 준 검색에서는 자산을 찾는 상황.
         self.data_platform.assets = []
         self.data_platform.program_search(second_message, [])
-        self.data_platform.program_search(f"room_revenue {second_message}", [room_asset])
+        self.data_platform.program_preferred_search(
+            second_message,
+            ("room_revenue",),
+            [room_asset],
+        )
         self.support.program(
             second_message,
             selected_metric_id=None,
@@ -895,7 +2250,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             requested_route="ANALYSIS",
         )
 
-        second = await self.orchestrator.execute_command(
+        second = await self.execute_command(
             conversation_id=conv_id,
             payload={
                 "user_message": second_message,
@@ -906,13 +2261,204 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             self.data_platform.queries[-2:],
-            [second_message, f"room_revenue {second_message}"],
+            [second_message, second_message],
+        )
+        self.assertNotIn(
+            "preferred_metric_ids",
+            self.data_platform.search_contexts[-2],
+        )
+        self.assertEqual(
+            ["room_revenue"],
+            self.data_platform.search_contexts[-1]["preferred_metric_ids"],
         )
         self.assertEqual(self.support.questions[-1], second_message)
         slots = second["turn"]["resolved_slots"]
         self.assertIsNone(slots["metric_id"])
         self.assertFalse(slots["is_inherited_metric"])
         self.assertTrue(slots["is_inherited_period"])
+
+    async def test_period_only_followup_uses_typed_metric_hint_and_executes_inherited_metric(self) -> None:
+        """기간만 바꾼 생략문이 이전 Metric을 상속한 뒤 전체 분석 Gate를 다시 통과한다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "기간 변경 후속 질문",
+        )
+        first_message = "2026년 3월 호텔별 객실 매출"
+        second_message = "4월은?"
+        room_asset = {"urn": "urn:li:dataset:(serving,room_daily,PROD)"}
+        self.support.program(
+            first_message,
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2026-03-01",
+                    "end_exclusive": "2026-04-01",
+                    "source_text": "2026년 3월",
+                }
+            ],
+            dimension_fields=[
+                {
+                    "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+                    "column": "hotel_code",
+                }
+            ],
+            analysis_operation="breakdown",
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        first = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+
+        self.data_platform.assets = []
+        self.data_platform.program_search(second_message, [])
+        self.data_platform.program_preferred_search(
+            second_message,
+            ("room_revenue",),
+            [room_asset],
+        )
+        partial_context = {
+            "intent_candidates": [],
+            "metric_ids": [],
+            "metric_candidates": [],
+            "metric_resolution": "missing",
+            "measurement_source_text": None,
+            "measurement_source_texts": [],
+            "selected_metric_id": None,
+            "selected_metric_ids": [],
+            "analysis_operation": None,
+            "result_limit": None,
+            "dimension_candidates": [],
+            "dimension_fields": [],
+            "filter_fields": [],
+            "period_candidates": [
+                {
+                    "start": "2026-04-01T00:00:00+09:00",
+                    "end_exclusive": "2026-05-01T00:00:00+09:00",
+                    "source_text": "4월",
+                }
+            ],
+            "period_relationship": "single",
+            "requested_route": "ANALYSIS",
+            "presentation_type": None,
+            "is_elliptical": True,
+        }
+        self.support.program_error(
+            second_message,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문에 분석할 지표가 포함되지 않았습니다.",
+                partial_context=partial_context,
+            ),
+        )
+
+        second = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("SUCCESS", second["status"])
+        self.assertEqual(
+            [second_message, second_message],
+            self.data_platform.queries[-2:],
+        )
+        self.assertEqual(
+            ["room_revenue"],
+            self.data_platform.search_contexts[-1]["preferred_metric_ids"],
+        )
+        slots = second["turn"]["resolved_slots"]
+        self.assertEqual("room_revenue", slots["metric_id"])
+        self.assertEqual(["room_revenue"], slots["metric_ids"])
+        self.assertTrue(slots["is_inherited_metric"])
+        self.assertTrue(slots["is_inherited_dimension"])
+        self.assertFalse(slots["is_inherited_period"])
+        self.assertEqual("breakdown", slots["analysis_operation"])
+        self.assertEqual(
+            [
+                {
+                    "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+                    "column": "hotel_code",
+                }
+            ],
+            slots["dimension_fields"],
+        )
+        self.assertEqual("2026-04-01", slots["time_range"]["start"])
+        self.assertEqual("2026-05-01", slots["time_range"]["end_exclusive"])
+        self.assertEqual(2, len(self.submitted_requests))
+
+    async def test_latest_snapshot_topic_does_not_inherit_previous_range(self) -> None:
+        """새 snapshot 지표는 직전 range를 질문에 없던 cutoff로 재해석하지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "시간 mode 전환",
+        )
+        first_message = "show the governed period metric for August 2025"
+        self.support.program(
+            first_message,
+            selected_metric_id="period_metric",
+            metric_ids=["period_metric"],
+            period_candidates=[
+                {
+                    "start": "2025-08-01",
+                    "end_exclusive": "2025-09-01",
+                    "source_text": "August 2025",
+                }
+            ],
+            time_mode="range",
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        first = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+
+        second_message = "show the current snapshot metric by governed category"
+        self.support.program(
+            second_message,
+            selected_metric_id="current_snapshot_metric",
+            metric_ids=["current_snapshot_metric"],
+            dimension_fields=[
+                {
+                    "asset_fqn": "orion_catalog.analytics.current_snapshot",
+                    "column": "category_code",
+                }
+            ],
+            period_candidates=[],
+            time_mode="latest_snapshot",
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        second = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        slots = second["turn"]["resolved_slots"]
+        self.assertEqual("current_snapshot_metric", slots["metric_id"])
+        self.assertIsNone(slots["time_range"])
+        self.assertFalse(slots["is_inherited_period"])
+        request = self.submitted_requests[-1]
+        self.assertIsNotNone(request.resolved_slots)
+        self.assertIsNone(request.resolved_slots.period_start)
+        self.assertIsNone(request.resolved_slots.period_end_exclusive)
 
     async def test_off_topic_message_does_not_inherit_the_previous_analysis(self) -> None:
         """분석과 무관한 발화가 직전 분석을 물려받아 엉뚱한 답을 내지 않는지 검증.
@@ -924,7 +2470,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         conv = await self.repo.create_conversation(self.user_id, "오프토픽")
         conv_id = conv["conversation_id"]
 
-        first = await self.orchestrator.execute_command(
+        first = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "2025년 8월 객실 매출 보여줘"},
             context=self.context,
@@ -937,7 +2483,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         self.data_platform.search_error = NoEntitledAssetsError("no governed asset matches")
 
-        second = await self.orchestrator.execute_command(
+        second = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "오늘 날씨 어때?", "expected_head_turn_id": str(head)},
             context=self.context,
@@ -962,7 +2508,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         self.data_platform.search_error = MetadataUnavailableError("catalog unavailable")
 
-        result = await self.orchestrator.execute_command(
+        result = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "2025년 8월 객실 매출 보여줘"},
             context=self.context,
@@ -973,12 +2519,69 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["retryable"])
         self.assertEqual("CONTACT_SUPPORT", result["required_action"])
         self.assertEqual("FAILED", result["turn"]["command_status"])
+        self.assertEqual("FAILED", result["turn"]["terminal_status"])
         self.assertEqual(
             ErrorCode.CONTEXT_SOURCE_FAILED.value,
             result["turn"]["command_error"]["code"],
         )
         self.assertEqual(1, self.repo.conversations[conv_id]["turn_count"])
         # 분석은 실행되지 않아야 한다.
+        self.assertEqual([], self.submitted_requests)
+
+    async def test_dimensionless_breakdown_is_blocked_as_incomplete_context(self) -> None:
+        """재검토 뒤에도 차원이 없는 breakdown은 분석 Run 없이 수정 요청으로 닫는다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "결과 형태 확인")
+        question = "선택 기간의 지표를 분류해서 보여줘"
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        self.support.program_error(
+            question,
+            ContextBuildError(
+                ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED,
+                (
+                    "분석 결과 형태를 확정하지 못했습니다. 전체 값, 기간별 추이, "
+                    "승인된 분류 기준별 값 또는 순위 중 원하는 형태를 질문에 "
+                    "명확히 포함해 주세요."
+                ),
+                partial_context={
+                    "metric_ids": ["room_revenue"],
+                    "metric_candidates": ["room_revenue"],
+                    "metric_resolution": "selected",
+                    "measurement_source_texts": ["지표"],
+                    "selected_metric_id": "room_revenue",
+                    "selected_metric_ids": ["room_revenue"],
+                    "analysis_operation": "breakdown",
+                    "analysis_time_bucket": None,
+                    "dimension_fields": [],
+                    "period_candidates": [
+                        {
+                            "start": "2025-08-01",
+                            "end_exclusive": "2025-09-01",
+                            "source_text": "선택 기간",
+                        }
+                    ],
+                    "period_relationship": "single",
+                    "is_elliptical": False,
+                },
+            ),
+        )
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": question},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual(
+            ErrorCode.CONTEXT_INCOMPLETE.value,
+            result["turn"]["reason_code"],
+        )
+        self.assertEqual("breakdown", result["turn"]["resolved_slots"]["analysis_operation"])
         self.assertEqual([], self.submitted_requests)
 
     async def test_ambiguous_interpretation_returns_clarification_options(self) -> None:
@@ -1003,7 +2606,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        result = await self.orchestrator.execute_command(
+        result = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "매출 보여줘"},
             context=self.context,
@@ -1026,18 +2629,200 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             "요청한 '예약된 객실 수' 지표는 다른 지표 계산을 위한 내부 값이므로 직접 분석할 수 없습니다.",
         )
 
-        result = await self.orchestrator.execute_command(
+        result = await self.execute_command(
             conversation_id=conv_id,
             payload={"user_message": "이번 달 예약된 객실 수를 알려줘"},
             context=self.context,
         )
 
-        self.assertEqual("FAILED", result["status"])
+        self.assertEqual("BLOCKED", result["status"])
         self.assertEqual(ErrorCode.METRIC_NOT_AVAILABLE.value, result["code"])
         self.assertEqual("MODIFY_REQUEST", result["required_action"])
         self.assertNotIn("suggestions", result)
-        self.assertEqual("FAILED", result["turn"]["command_status"])
+        self.assertEqual("COMPLETED", result["turn"]["command_status"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
         self.assertEqual([], self.submitted_requests)
+
+    async def test_unapproved_dimension_member_is_a_typed_filter_error(self) -> None:
+        """승인되지 않은 member는 서비스 장애가 아니라 수정 가능한 조건 오류로 남긴다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "승인 조건 확인")
+        from app.services.context.builder import (
+            ContextBuildError,
+            ContextBuildErrorCode,
+        )
+
+        self.data_platform.search_error = ContextBuildError(
+            ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND,
+            (
+                "요청한 Observation Segment 값은 현재 승인된 값과 일치하지 않습니다. "
+                "승인된 값: OMEGA, SIGMA."
+            ),
+        )
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "선택 기간 DELTA 구간의 수율을 알려줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.FILTER_VALUE_NOT_FOUND.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
+        self.assertIn("OMEGA, SIGMA", result["message"])
+        self.assertEqual("COMPLETED", result["turn"]["command_status"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual(
+            ErrorCode.FILTER_VALUE_NOT_FOUND.value,
+            result["turn"]["reason_code"],
+        )
+        self.assertEqual([], self.submitted_requests)
+
+    async def test_future_period_is_failed_with_typed_range_error(self) -> None:
+        """데이터 기준일 이후 기간은 서비스 장애가 아니라 수정 가능한 범위 오류로 보존한다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "미래 기간")
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        self.data_platform.search_error = ContextBuildError(
+            ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+            "요청 기간은 데이터 기준일보다 이전에 시작해야 합니다.",
+        )
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "다음 분기 매출을 알려줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.OUT_OF_DATA_RANGE.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
+        self.assertEqual("COMPLETED", result["turn"]["command_status"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual([], self.submitted_requests)
+
+    async def test_out_of_range_turn_resumes_with_absolute_period_without_source_lineage(self) -> None:
+        """범위만 고친 다음 Turn은 pending Metric을 쓰되 차단 Turn을 source로 삼지 않는다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        first_message = "이번 달 인식 객실 매출을 보여줘."
+        second_message = "2025년 8월로 볼게."
+        first_partial = {
+            "intent_candidates": ["aggregate"],
+            "metric_ids": ["room_revenue"],
+            "metric_candidates": ["room_revenue"],
+            "metric_resolution": "selected",
+            "measurement_source_text": "인식 객실 매출",
+            "measurement_source_texts": ["인식 객실 매출"],
+            "selected_metric_id": "room_revenue",
+            "selected_metric_ids": ["room_revenue"],
+            "analysis_operation": "aggregate",
+            "result_limit": None,
+            "dimension_candidates": [],
+            "dimension_fields": [],
+            "filter_fields": [],
+            "period_candidates": [
+                {
+                    "start": "2026-08-01",
+                    "end_exclusive": "2026-08-18",
+                    "source_text": "이번 달",
+                }
+            ],
+            "period_relationship": "single",
+            "requested_route": "ANALYSIS",
+            "presentation_type": None,
+            "is_elliptical": False,
+        }
+        second_partial = {
+            **first_partial,
+            "intent_candidates": [],
+            "metric_ids": [],
+            "metric_candidates": [],
+            "metric_resolution": "missing",
+            "measurement_source_text": None,
+            "measurement_source_texts": [],
+            "selected_metric_id": None,
+            "selected_metric_ids": [],
+            "analysis_operation": None,
+            "period_candidates": [
+                {
+                    "start": "2025-08-01",
+                    "end_exclusive": "2025-09-01",
+                    "source_text": "2025년 8월",
+                }
+            ],
+            # 실제 모델이 이 flag를 놓쳐도 직전 range-block + 새 절대 기간이라는
+            # 서버 소유 증거만으로 pending Metric을 정확히 한 번 복구한다.
+            "is_elliptical": False,
+        }
+        approved_asset = dict(self.data_platform.assets[0])
+        self.data_platform.program_search(second_message, [])
+        self.data_platform.program_preferred_search(
+            second_message,
+            ("room_revenue",),
+            [approved_asset],
+        )
+        self.support.program_error(
+            first_message,
+            ContextBuildError(
+                ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                "요청 기간이 승인된 데이터 가용 범위 밖입니다.",
+                partial_context=first_partial,
+            ),
+        )
+        self.support.program_error(
+            second_message,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문에 분석할 지표가 포함되지 않았습니다.",
+                partial_context=second_partial,
+            ),
+        )
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "GD-03",
+        )
+        first = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+        self.assertEqual("BLOCKED", first["status"])
+        self.assertEqual(
+            ["인식 객실 매출"],
+            first["turn"]["resolved_slots"]["business_terms"],
+        )
+        self.assertEqual([], self.submitted_requests)
+
+        second = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("SUCCESS", second["status"])
+        self.assertEqual([], second["turn"]["source_turn_ids"])
+        self.assertEqual(
+            first["turn"]["turn_id"],
+            second["turn"]["clarifies_turn_id"],
+        )
+        self.assertEqual("room_revenue", second["turn"]["resolved_slots"]["metric_id"])
+        self.assertEqual(
+            "2025-08-01",
+            second["turn"]["resolved_slots"]["time_range"]["start"],
+        )
+        self.assertEqual(1, len(self.submitted_requests))
+        self.assertIn(
+            {"role": "analyst", "product_release_id": TEST_PRODUCT_RELEASE,
+             "semantic_release_id": TEST_SEMANTIC_RELEASE,
+             "preferred_metric_ids": ["room_revenue"]},
+            self.data_platform.search_contexts,
+        )
 
     async def test_preflight_clarification_persists_period_and_filter_for_metric_choice(self) -> None:
         """운영 preflight의 부분 슬롯이 다음 선택에서 같은 분석 요청으로 이어진다."""
@@ -1112,7 +2897,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         )
 
         conversation = await self.repo.create_conversation(self.user_id, "부분 슬롯 재질의")
-        first = await self.orchestrator.execute_command(
+        first = await self.execute_command(
             conversation_id=conversation["conversation_id"],
             payload={"user_message": question},
             context=self.context,
@@ -1125,7 +2910,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("2026-08-18", first_slots["time_range"]["end_exclusive"])
         self.assertEqual("비스타 호텔", first_slots["user_filters"][0]["value_text"])
 
-        second = await self.orchestrator.execute_command(
+        second = await self.execute_command(
             conversation_id=conversation["conversation_id"],
             payload={
                 "user_message": "Total Operating Revenue",
@@ -1152,7 +2937,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             ContextBuildErrorCode.PERIOD_REQUIRED,
             "조회 기간이 필요합니다.",
         )
-        result = await self.orchestrator.execute_command(
+        result = await self.execute_command(
             conversation_id=conv["conversation_id"],
             payload={"user_message": "객실 매출을 보여줘"},
             context=self.context,

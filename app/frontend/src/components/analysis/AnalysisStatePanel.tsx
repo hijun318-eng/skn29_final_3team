@@ -8,7 +8,6 @@ import {
   resolveViewState,
   type AnalysisProcessViewModel,
   type AnalysisRun,
-  type AnalysisViewState,
 } from "../../contracts/analysis";
 import { createAnalysisValueScale } from "./analysisValueScale";
 import { AnalysisFailureState } from "./AnalysisFailureState";
@@ -77,7 +76,6 @@ export function AnalysisStatePanel({
 }) {
   const viewState = resolveViewState(run);
   const copy = VIEW_COPY[viewState];
-  const Icon = copy.icon;
   const showResult = viewState === "READY" || viewState === "PARTIAL";
   const chart = showResult ? run.chart : null;
   const table = showResult ? run.table : null;
@@ -329,6 +327,9 @@ export function AnalysisStatePanel({
             onPreview={onPreview}
             saveDisabled={saveDisabled}
             viewActionsDisabled={suggestionsDisabled || Boolean(artifactReuse?.pending)}
+            hasMetrics={hasMetrics}
+            hasChart={Boolean(chart && canRenderChart)}
+            hasTable={hasTableRows}
           />}
         </div>
       )}

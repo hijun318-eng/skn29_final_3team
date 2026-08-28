@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import subprocess
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,6 +24,8 @@ from app.adapters.context_registry_repository import (
     PostgresContextRegistryRepository,
     canonical_checksum,
 )
+from app.adapters.analysis_repository import PostgresAnalysisRepository
+from app.contracts import RequestContext, Role
 from app.database import dispose_database
 from app.context_registry_contracts import (
     CreateContextPackage,
@@ -29,7 +33,25 @@ from app.context_registry_contracts import (
     CreateContextRelease,
     RecordReference,
 )
+from app.capability_contracts import (
+    CatalogReceipt,
+    ImageReceipt,
+    MigrationReceipt,
+    ModelReceipt,
+    ProductReleaseEvidence,
+    ProductReleaseEvidenceManifest,
+    ProductReleaseVector,
+    SourceReceipt,
+)
 from app.services.context.registry_service import ContextRegistryService
+from app.services.context.builder import (
+    ContextAsset,
+    ContextBuildRequest,
+    ContextMetric,
+    ContextMetricTerm,
+    ContextPackageBuilder,
+)
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 class CanonicalChecksumTest(unittest.TestCase):
@@ -76,6 +98,8 @@ class ContextRegistryServiceTest(unittest.IsolatedAsyncioTestCase):
     "MIGRATION_TEST_DATABASE_URL is not configured",
 )
 class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
+    loop_factory = asyncio.SelectorEventLoop
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.base_url = make_url(os.environ["MIGRATION_TEST_DATABASE_URL"])
@@ -92,6 +116,7 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
         environment = os.environ.copy()
         environment["APP_DATABASE_URL"] = cls.url
         environment["APP_DB_USER"] = cls.base_url.username or "migration_test"
+        environment["APP_CATALOG_PUBLISHER_USER"] = environment["APP_DB_USER"]
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             cwd=BACKEND,
@@ -105,6 +130,10 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         self.repository = PostgresContextRegistryRepository(self.url)
+        self.product_release_id = "context-registry-test-release"
+        self.permission_snapshot_id = "context-registry-test-permission"
+        self.semantic_release_id = "context-registry-test-semantic"
+        self._insert_product_manifest()
 
     async def asyncTearDown(self) -> None:
         await dispose_database()
@@ -202,15 +231,135 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
         first = await self.repository.create_package(draft_command)
         repeated = await self.repository.create_package(draft_command)
         self.assertEqual(first.context_package_id, repeated.context_package_id)
+        self.assertEqual(self.product_release_id, first.product_release_id)
+        engine = create_engine(self.url)
+        with engine.connect() as connection:
+            binding_count = connection.execute(
+                text(
+                    "SELECT count(*) FROM governance.product_release_bindings "
+                    "WHERE object_kind = 'CONTEXT' AND object_id = :object_id "
+                    "AND product_release_id = :product_release_id"
+                ),
+                {
+                    "object_id": str(first.context_package_id),
+                    "product_release_id": self.product_release_id,
+                },
+            ).scalar_one()
+        engine.dispose()
+        self.assertEqual(1, binding_count)
         with self.assertRaises(ContextRegistryConflict):
             await self.repository.create_package(
                 draft_command.model_copy(update={"assets": [{"urn": "different"}]})
             )
 
+    async def test_runtime_context_receipt_links_one_run_idempotently(self) -> None:
+        owner_id = uuid4()
+        request_id = uuid4()
+        context = RequestContext(
+            request_id=request_id,
+            trace_id=f"runtime-context-{request_id}",
+            user_id=owner_id,
+            role=Role.ANALYST,
+            as_of=date(2026, 8, 26),
+            product_release_id=self.product_release_id,
+            permission_snapshot_id=self.permission_snapshot_id,
+            semantic_release_id=self.semantic_release_id,
+        )
+        repository = PostgresAnalysisRepository(self.url, owner_id)
+        await repository.begin_request("2026년 8월 객실 매출", {}, context)
+        metric = ContextMetric(
+            id="room_revenue",
+            asset_fqn="serving.analytics.room_daily",
+            field="room_revenue",
+            aggregation="sum",
+            time_field="business_date",
+            required_filters=(),
+            governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+            allowed_roles=(Role.ANALYST.value,),
+            query_strategies=("VIEW_REUSE",),
+        )
+        package = ContextPackageBuilder().build(
+            ContextBuildRequest(
+                context_release=self.semantic_release_id,
+                policy_version="policy-v1",
+                time_version=context.as_of.isoformat(),
+                entitlement_hash="e" * 64,
+                assets=(
+                    ContextAsset(
+                        urn="urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.room_daily,PROD)",
+                        fqn="serving.analytics.room_daily",
+                        columns=("business_date", "room_revenue"),
+                        metrics=(metric,),
+                        metric_registry_required=True,
+                    ),
+                ),
+                token_count=120,
+                model_context_tokens=24_000,
+                product_release_id=self.product_release_id,
+                metric_terms=(
+                    ContextMetricTerm(
+                        id="room_revenue",
+                        urn="urn:li:glossaryTerm:room_revenue",
+                        label="객실 매출",
+                        aliases=("객실 매출",),
+                        definition="승인된 객실 매출 합계",
+                        unit="KRW",
+                        version="v1",
+                        checksum="f" * 64,
+                    ),
+                ),
+            ),
+            frozenset(
+                {
+                    "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.room_daily,PROD)"
+                }
+            ),
+        )
+
+        first = await repository.persist_context_receipt(context, package)
+        repeated = await repository.persist_context_receipt(context, package)
+
+        self.assertEqual(first, repeated)
+        engine = create_engine(self.url)
+        with engine.connect() as connection:
+            receipt = connection.execute(
+                text(
+                    """
+                    SELECT request.context_package_id, package.context_package_id,
+                           package.context_release_id,
+                           package.product_release_id,
+                           package.permission_snapshot_id,
+                           package.semantic_release_id,
+                           count(binding.object_id) AS binding_count
+                    FROM chat.analysis_requests request
+                    JOIN context.context_packages package
+                      ON package.context_package_id = request.context_package_id
+                    LEFT JOIN governance.product_release_bindings binding
+                      ON binding.object_kind = 'CONTEXT'
+                     AND binding.object_id = package.context_package_id::text
+                    WHERE request.request_id = :request_id
+                    GROUP BY request.context_package_id, package.context_package_id,
+                             package.context_release_id, package.product_release_id,
+                             package.permission_snapshot_id, package.semantic_release_id
+                    """
+                ),
+                {"request_id": request_id},
+            ).mappings().one()
+        engine.dispose()
+        self.assertEqual(first, receipt["context_package_id"])
+        self.assertIsNone(receipt["context_release_id"])
+        self.assertEqual(self.product_release_id, receipt["product_release_id"])
+        self.assertEqual(self.permission_snapshot_id, receipt["permission_snapshot_id"])
+        self.assertEqual(self.semantic_release_id, receipt["semantic_release_id"])
+        self.assertEqual(1, receipt["binding_count"])
+
     def _package_command(self, request_id, release_id) -> CreateContextPackage:
         return CreateContextPackage(
             request_id=request_id,
             context_release_id=release_id,
+            product_release_id=self.product_release_id,
+            permission_snapshot_id=self.permission_snapshot_id,
+            semantic_release_id=self.semantic_release_id,
             user_scope={"role": "analyst"},
             assets=[{"urn": "urn:li:dataset:pms"}],
             metrics=[{"id": "room_revenue"}],
@@ -221,6 +370,75 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
             token_count=200,
             idempotency_key=f"package-{uuid4()}",
         )
+
+    def _insert_product_manifest(self) -> None:
+        evidence = ProductReleaseEvidence(
+            source=SourceReceipt(commit_sha="1" * 40, dirty=False),
+            images=(ImageReceipt(component="context-test", digest="sha256:" + "2" * 64),),
+            migration=MigrationReceipt(revision="20260822_32", chain_sha256="3" * 64),
+            model=ModelReceipt(release_id="model-test", manifest_sha256="4" * 64),
+            catalog=CatalogReceipt(
+                release_id=self.semantic_release_id,
+                manifest_sha256="5" * 64,
+                projection_sha256="6" * 64,
+            ),
+            release_vector=ProductReleaseVector(
+                data_release_id="data-test",
+                semantic_release_id=self.semantic_release_id,
+                prompt_release_id="prompt-test",
+                policy_release_id="policy-test",
+                runtime_release_id="runtime-test",
+            ),
+        )
+        manifest = ProductReleaseEvidenceManifest.seal(
+            product_release_id=self.product_release_id,
+            evidence=evidence,
+            created_at=datetime(2026, 8, 22, tzinfo=timezone.utc),
+        )
+        document = manifest.model_dump(mode="json")
+        engine = create_engine(self.url)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO governance.product_release_manifests (
+                        product_release_id, contract_version, manifest_sha256,
+                        manifest_json, source_commit_sha, source_dirty,
+                        dirty_patch_sha256, image_digests_json,
+                        migration_revision, migration_chain_sha256,
+                        model_release_id, model_manifest_sha256,
+                        catalog_release_id, catalog_manifest_sha256,
+                        catalog_projection_sha256, release_vector_json, created_at
+                    ) VALUES (
+                        :product_release_id, 'ProductReleaseEvidenceManifest.v1',
+                        :manifest_sha256, CAST(:manifest_json AS jsonb),
+                        :source_commit_sha, false, NULL,
+                        CAST(:images AS jsonb), :migration_revision,
+                        :migration_chain_sha256, :model_release_id,
+                        :model_manifest_sha256, :catalog_release_id,
+                        :catalog_manifest_sha256, :catalog_projection_sha256,
+                        CAST(:release_vector AS jsonb), :created_at
+                    ) ON CONFLICT (product_release_id) DO NOTHING
+                    """
+                ),
+                {
+                    "product_release_id": manifest.product_release_id,
+                    "manifest_sha256": manifest.manifest_sha256,
+                    "manifest_json": json.dumps(document),
+                    "source_commit_sha": evidence.source.commit_sha,
+                    "images": json.dumps(document["evidence"]["images"]),
+                    "migration_revision": evidence.migration.revision,
+                    "migration_chain_sha256": evidence.migration.chain_sha256,
+                    "model_release_id": evidence.model.release_id,
+                    "model_manifest_sha256": evidence.model.manifest_sha256,
+                    "catalog_release_id": evidence.catalog.release_id,
+                    "catalog_manifest_sha256": evidence.catalog.manifest_sha256,
+                    "catalog_projection_sha256": evidence.catalog.projection_sha256,
+                    "release_vector": json.dumps(document["evidence"]["release_vector"]),
+                    "created_at": manifest.created_at,
+                },
+            )
+        engine.dispose()
 
     def _insert_request(self, request_id, release_id) -> None:
         engine = create_engine(self.url)

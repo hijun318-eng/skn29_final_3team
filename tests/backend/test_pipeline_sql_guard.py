@@ -19,6 +19,7 @@ from app.services.context.contract import GovernedJoin, enrich_context_package
 from app.services.analysis.logical_plan import (
     AnalysisOperation,
     AnalysisPlanError,
+    AnalysisTimeMode,
     build_analysis_plan,
     validate_analysis_plan_payload,
 )
@@ -26,7 +27,8 @@ from app.services.analysis.typed_sql_compiler import (
     TYPED_SQL_COMPILER_VERSION,
     compile_typed_sql,
 )
-from app.services.context.query_planner import VIEW_REUSE
+from app.services.analysis.result_validator import PipelineResultValidator
+from app.services.context.query_planner import RAW_APPROVED_DETAIL, VIEW_REUSE
 from app.services.sql_guard import apply_guard_decision, validate_plan
 from src.ai.schema import ContractError, validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
@@ -316,7 +318,7 @@ def test_logical_analysis_plan_is_compiled_from_runtime_slots_not_question_text(
     assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
 
 
-def test_logical_plan_projects_validated_filter_predicates_to_unique_fields() -> None:
+def test_logical_plan_preserves_the_governed_filter_predicate_identity() -> None:
     package = _package()
 
     plan = build_analysis_plan(
@@ -331,19 +333,18 @@ def test_logical_plan_projects_validated_filter_predicates_to_unique_fields() ->
                     "operator": "eq",
                     "value_text": "true",
                 },
-                {
-                    "asset_fqn": "orbit.ops.event_fact",
-                    "column": "active",
-                    "operator": "neq",
-                    "value_text": "false",
-                },
             ],
         },
         package,
     )
 
     assert [item.as_dict() for item in plan.filter_fields] == [
-        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "eq",
+            "parameter": "active_flag",
+        }
     ]
     assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
 
@@ -376,7 +377,12 @@ def test_logical_plan_removes_eq_filtered_field_from_aggregate_grouping() -> Non
     assert plan.operation is AnalysisOperation.AGGREGATE
     assert plan.dimension_fields == ()
     assert [item.as_dict() for item in plan.filter_fields] == [
-        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "eq",
+            "parameter": "active_flag",
+        }
     ]
     assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
 
@@ -391,6 +397,33 @@ def _view_reuse_package(package):
             for metric in package.metrics
         ),
         query_strategy=VIEW_REUSE,
+    )
+
+
+def _snapshot_view_reuse_package():
+    """특정 도메인 이름 없이 기준일 전 최신 snapshot 계약을 구성한다."""
+
+    package = _view_reuse_package(_package())
+    contracts = deepcopy(package.runtime_contracts)
+    contracts["time_rules"] = {
+        "timezone": "Asia/Seoul",
+        "calendar_id": "gregorian-kr",
+        "mode": "latest_snapshot",
+        "selection": "max_source_value_lt_as_of",
+        "as_of_parameter": "snapshot_as_of",
+        "fields": deepcopy(package.runtime_contracts["time_rules"]["fields"]),
+    }
+    contracts["parameter_contract"]["parameters"] = [
+        {"name": "snapshot_as_of", "type": "date", "scope": "time"},
+        {"name": "active_flag", "type": "boolean", "scope": "filter"},
+    ]
+    return replace(
+        package,
+        runtime_contracts=contracts,
+        parameter_bindings=(
+            ContextParameterBinding("snapshot_as_of", "date", "2026-08-20"),
+            ContextParameterBinding("active_flag", "boolean", True),
+        ),
     )
 
 
@@ -521,6 +554,7 @@ def test_typed_sql_compiler_builds_time_trend_and_period_comparison() -> None:
         {
             "selected_metric_id": "governed_amount",
             "analysis_operation": "time_trend",
+            "analysis_time_bucket": "day",
             "period_relationship": "single",
         },
         trend_package,
@@ -545,6 +579,104 @@ def test_typed_sql_compiler_builds_time_trend_and_period_comparison() -> None:
     comparison["analysis_plan"] = comparison_plan.as_dict()
     accepted = validate_plan(comparison, comparison_package)
     assert accepted.ok, accepted
+
+
+def test_typed_sql_compiler_builds_and_guards_latest_snapshot_selection() -> None:
+    """명시적 계약은 source의 기준일 전 MAX snapshot 하나만 선택해 G2를 통과한다."""
+
+    package = _snapshot_view_reuse_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    assert plan.time_mode is AnalysisTimeMode.LATEST_SNAPSHOT
+    assert plan.period_parameters == ()
+    assert plan.snapshot_parameter == "snapshot_as_of"
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    sql = str(candidate["sql"])
+    assert "MAX(snapshot_lookup.occurred_on)" in sql
+    assert "snapshot_lookup.occurred_on < CAST(:snapshot_as_of AS DATE)" in sql
+    assert "source_view.occurred_on = (SELECT" in sql
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+
+@pytest.mark.parametrize("mutation", ["inclusive_cutoff", "wrong_reducer", "non_conjunctive"])
+def test_latest_snapshot_guard_rejects_semantic_shape_mutations(mutation: str) -> None:
+    """기준일 경계·MAX reducer·최상위 AND equality가 달라지면 실행 전에 차단한다."""
+
+    package = _snapshot_view_reuse_package()
+    package.runtime_contracts["query_policy"]["allowed_functions"].append("MIN")
+    if mutation == "non_conjunctive":
+        contracts = deepcopy(package.runtime_contracts)
+        contracts["metric_rules"][0]["required_filters"] = []
+        contracts["parameter_contract"]["parameters"] = [
+            {"name": "snapshot_as_of", "type": "date", "scope": "time"}
+        ]
+        package = replace(
+            package,
+            metrics=(replace(package.metrics[0], required_filters=()),),
+            runtime_contracts=contracts,
+            parameter_bindings=(
+                ContextParameterBinding("snapshot_as_of", "date", "2026-08-20"),
+            ),
+        )
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        package,
+    )
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    expression = parse_one(str(candidate["sql"]), read="trino")
+    if mutation == "inclusive_cutoff":
+        cutoff = next(
+            item
+            for item in expression.find_all(exp.LT)
+            if item.find(exp.Placeholder) is not None
+        )
+        cutoff.replace(exp.LTE(this=cutoff.this.copy(), expression=cutoff.expression.copy()))
+    elif mutation == "wrong_reducer":
+        reducer = next(expression.find_all(exp.Max))
+        reducer.replace(exp.Min(this=reducer.this.copy()))
+    else:
+        where = expression.args["where"]
+        where.set("this", exp.or_(where.this.copy(), exp.Boolean(this=True)))
+    rejected = validate_plan(
+        {"sql": expression.sql(dialect="trino"), "analysis_plan": plan.as_dict()},
+        package,
+    )
+    assert rejected.violation == "TIME_RULE_MISMATCH"
+
+
+@pytest.mark.parametrize("operation", ["time_trend", "period_comparison"])
+def test_latest_snapshot_plan_does_not_invent_range_operations(operation: str) -> None:
+    """스냅샷 계약을 추이 또는 두 기간 비교로 재해석하지 않는다."""
+
+    with pytest.raises(AnalysisPlanError) as captured:
+        build_analysis_plan(
+            {
+                "selected_metric_id": "governed_amount",
+                "analysis_operation": operation,
+                "period_relationship": (
+                    "comparison" if operation == "period_comparison" else "single"
+                ),
+            },
+            _snapshot_view_reuse_package(),
+        )
+    assert captured.value.code.value == "TIME_MODE_NOT_GOVERNED"
 
 
 def test_typed_sql_compiler_does_not_guess_a_join_or_mixed_filter_scope() -> None:
@@ -573,12 +705,20 @@ def test_typed_sql_compiler_does_not_guess_a_join_or_mixed_filter_scope() -> Non
     assert compile_typed_sql(mixed_plan, mixed) is None
 
 
-def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
+@pytest.mark.parametrize("query_strategy", (VIEW_REUSE, RAW_APPROVED_DETAIL))
+def test_typed_sql_compiler_builds_a_ratio_from_governed_operands(
+    query_strategy: str,
+) -> None:
     """동일 scope의 분자·분모는 DOUBLE/NULLIF 비율식과 원본 증거를 함께 생성한다."""
 
     package = _multi_metric_view_reuse_package()
     numerator, denominator = (
-        replace(metric, visibility="SUPPORT") for metric in package.metrics
+        replace(
+            metric,
+            visibility="SUPPORT",
+            query_strategies=(query_strategy,),
+        )
+        for metric in package.metrics
     )
     ratio = ContextMetric(
         id="governed_ratio",
@@ -597,7 +737,7 @@ def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
         contains_pii=False,
         allowed_join_ids=(),
         join_required=False,
-        query_strategies=(VIEW_REUSE,),
+        query_strategies=(query_strategy,),
     )
     contracts = deepcopy(package.runtime_contracts)
     contracts["metric_rules"].append(
@@ -622,6 +762,7 @@ def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
         package,
         metrics=(numerator, denominator, ratio),
         runtime_contracts=contracts,
+        query_strategy=query_strategy,
     )
     plan = build_analysis_plan(
         {
@@ -631,14 +772,38 @@ def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
         },
         package,
     )
+    assert plan.query_strategy == query_strategy
 
     candidate = compile_typed_sql(plan, package)
 
     assert candidate is not None
     assert "NULLIF" in str(candidate["sql"])
+    assert str(candidate["sql"]).count(" AS governed_total") == 1
+    assert str(candidate["sql"]).count(" AS governed_count") == 1
+    assert str(candidate["sql"]).count(" AS governed_ratio") == 1
     candidate["analysis_plan"] = plan.as_dict()
     accepted = validate_plan(candidate, package)
     assert accepted.ok, accepted
+
+    apply_guard_decision(candidate, accepted)
+    columns = tuple(candidate["ast_evidence"]["projection_aliases"])
+    rows = [
+        {
+            "governed_ratio": 2.0,
+            "governed_total": 10.0,
+            "governed_count": 5,
+        }
+    ]
+    query = {
+        "evidence_complete": True,
+        "query_id": "ratio-evidence-query",
+        "rows": rows,
+        "result_metadata": PipelineResultValidator.result_metadata(rows, columns),
+        "filters": {},
+        "sampling": {"applied": False, "returned_rows": 1, "total_rows": 1},
+        "masking": {"applied": False, "fields": []},
+    }
+    assert PipelineResultValidator.g3_violation(query, candidate, package) is None
 
 
 @pytest.mark.parametrize(
@@ -782,6 +947,7 @@ def test_guard_enforces_time_trend_group_projection_and_ascending_order() -> Non
         {
             "selected_metric_ids": ["governed_amount"],
             "analysis_operation": "time_trend",
+            "analysis_time_bucket": "day",
             "period_relationship": "single",
         },
         package,
@@ -811,6 +977,65 @@ def test_guard_enforces_time_trend_group_projection_and_ascending_order() -> Non
 
     assert accepted.ok, accepted
     assert descending.violation == "ANALYSIS_OPERATION_MISMATCH"
+
+
+def test_monthly_time_trend_compiles_exact_rollup_and_rejects_ast_mutations() -> None:
+    """일 단위 source의 월 추이는 compiler 소유 DATE_TRUNC 구조만 허용한다."""
+
+    package = _view_reuse_package(_package())
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount"],
+            "analysis_operation": "time_trend",
+            "analysis_time_bucket": "month",
+            "period_relationship": "single",
+        },
+        package,
+    )
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    assert "DATE_TRUNC('MONTH', source_view.occurred_on)" in str(candidate["sql"])
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+    wrong_unit = parse_one(str(candidate["sql"]), dialect="trino")
+    for truncation in wrong_unit.find_all(exp.TimestampTrunc):
+        truncation.set("unit", exp.Var(this="QUARTER"))
+    wrong_unit_decision = validate_plan(
+        {
+            "sql": wrong_unit.sql(dialect="trino"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    missing_cast = parse_one(str(candidate["sql"]), dialect="trino")
+    for cast in tuple(missing_cast.find_all(exp.Cast)):
+        if isinstance(cast.this, exp.TimestampTrunc):
+            cast.replace(cast.this.copy())
+    missing_cast_decision = validate_plan(
+        {
+            "sql": missing_cast.sql(dialect="trino"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    wrong_field = parse_one(str(candidate["sql"]), dialect="trino")
+    for truncation in wrong_field.find_all(exp.TimestampTrunc):
+        truncation.set("this", exp.column("active", table="source_view"))
+    wrong_field_decision = validate_plan(
+        {
+            "sql": wrong_field.sql(dialect="trino"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    assert wrong_unit_decision.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert missing_cast_decision.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert wrong_field_decision.violation == "ANALYSIS_OPERATION_MISMATCH"
 
 
 def _joined_sql(

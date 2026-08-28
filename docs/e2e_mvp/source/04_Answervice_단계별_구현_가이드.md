@@ -6,7 +6,6 @@
 | 진행 방식 | 의존성 순서에 따라 작은 수직 slice를 완성하고 확장 |
 | 첫 큰 목표 | 사람이 작성한 Gold SQL로 Golden Scenario의 3 Source 정답 결과 생성 |
 | 최종 목표 | 질문부터 Analysis·Report·Trace까지 이어지는 Golden E2E |
-| 관련 시각 자료 | [단계별 구현 Visual](04_Answervice_단계별_구현_Visual.html) |
 
 ## 1. 먼저 기억할 원칙
 

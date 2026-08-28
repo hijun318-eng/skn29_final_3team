@@ -65,6 +65,8 @@ powershell -ExecutionPolicy Bypass -File infrastructure/database/security/provis
 repository root에서 실행한다.
 
 ```powershell
+. .\app\backend\scripts\source-provenance.ps1
+Set-AnswerviceSourceProvenanceEnvironment -RepositoryRoot (Resolve-Path .) | Out-Null
 docker compose --env-file infrastructure/database/.env --profile full up -d --build
 docker compose --env-file infrastructure/database/.env --profile full ps
 ```

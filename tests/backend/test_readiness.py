@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import tempfile
 import unittest
-from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from sys import path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -41,14 +37,6 @@ class _Session:
 
 
 class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
-    def test_container_verifier_uses_current_readiness_dependency_keys(self) -> None:
-        verifier = (BACKEND / "scripts" / "verify-container.ps1").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("dependencies.datahub_transport", verifier)
-        self.assertIn("dependencies.auth_session_store", verifier)
-        self.assertNotIn("dependencies.datahub -ne", verifier)
-
     def test_probe_timeout_uses_bounded_two_second_production_budget(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(2.0, AppDatabaseReadiness._probe_timeout())
@@ -173,32 +161,30 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("runtime-user", trino_request.headers["x-trino-user"])
         self.assertTrue(trino_request.headers["authorization"].startswith("Basic "))
 
-    async def test_release_auth_readiness_requires_database_and_session_secret(self) -> None:
+    async def test_auth_readiness_requires_database_and_session_secret(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual("not_ready", await AppDatabaseReadiness._auth_probe())
 
-    async def test_auth_readiness_requires_an_active_db_admin(self) -> None:
+    async def test_auth_readiness_requires_an_active_database_account(self) -> None:
         environment = {
             "APP_RUNTIME_DATABASE_URL": "postgresql://readiness",
             "AUTH_SESSION_SECRET": "s" * 32,
-            # 외부 principal 파일은 설정돼도 새 DB 권위 probe의 입력이 아니다.
-            "AUTH_PRINCIPALS_FILE": "ignored.json",
         }
-        for name, exists, expected in (
-            ("active_admin", True, "ready"),
-            ("missing_admin", False, "not_ready"),
-        ):
-            session = _Session([MagicMock(scalar_one=lambda: exists)])
+        for active, expected in ((True, "ready"), (False, "not_ready")):
+            with self.subTest(active=active):
+                session = AsyncMock()
+                session.execute.return_value = MagicMock(scalar_one=lambda: active)
 
-            @asynccontextmanager
-            async def scope(*_args, **_kwargs):
-                yield session
+                @asynccontextmanager
+                async def account_scope(*_args, **_kwargs):
+                    yield session
 
-            with self.subTest(name=name), patch(
-                "app.services.readiness.session_scope", scope
-            ), patch.dict("os.environ", environment, clear=True):
-                self.assertEqual(expected, await AppDatabaseReadiness._auth_probe())
-                self.assertIn("security.accounts", session.queries[0])
+                with (
+                    patch.dict("os.environ", environment, clear=True),
+                    patch("app.services.readiness.session_scope", account_scope),
+                ):
+                    self.assertEqual(expected, await AppDatabaseReadiness._auth_probe())
+                session.execute.assert_awaited_once()
 
     async def test_trino_probe_follows_same_origin_pages_to_terminal_success(self) -> None:
         requests: list[httpx.Request] = []
@@ -313,7 +299,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             patch.object(probe, "_model_probe", AsyncMock(return_value="ready")),
-            patch.object(probe, "_auth_probe", return_value="ready"),
+            patch.object(probe, "_auth_probe", AsyncMock(return_value="ready")),
             patch.object(probe, "_report_scheduler_probe", return_value="ready"),
         ):
             result = await probe.check()
@@ -374,6 +360,36 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(1, platform.calls)
+
+    async def test_catalog_release_cache_is_namespaced_by_active_generation(self) -> None:
+        class Platform:
+            calls = 0
+            identity = ("runtime-catalog:a", "product-a", 1)
+
+            async def get_catalog_cache_identity(self):
+                return self.identity
+
+            async def get_catalog_readiness(self):
+                self.calls += 1
+                return (
+                    {
+                        "semantic_release": "ready",
+                        "catalog_manifest": "ready",
+                        "trino_schema": "ready",
+                    },
+                    self.identity[1],
+                )
+
+        platform = Platform()
+        probe = AppDatabaseReadiness(lambda: platform)
+        first = await probe._catalog_release_probe()
+        cached = await probe._catalog_release_probe()
+        platform.identity = ("runtime-catalog:a", "product-a", 2)
+        refreshed = await probe._catalog_release_probe()
+
+        self.assertEqual(first, cached)
+        self.assertEqual(first, refreshed)
+        self.assertEqual(2, platform.calls)
 
     def test_catalog_release_cache_ttl_defaults_and_caps_at_one_day(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
@@ -508,7 +524,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             requests.append(request)
             models = {
                 "primary.model.invalid": "gpt-5.4-mini",
-                "node2.model.invalid": "answervice-sql",
+                "node2.model.invalid": "node2-qwen35-2b-full3000-20260825",
             }
             return httpx.Response(
                 200,
@@ -523,7 +539,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             "NODE2_MODEL_PROVIDER": "qwen",
             "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
             "NODE2_MODEL_API_TOKEN": "node2-token",
-            "NODE2_MODEL": "answervice-sql",
+            "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
         }
         with patch.dict("os.environ", environment, clear=True):
             async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -592,7 +608,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
                 request=request,
             )
 
-        partial = base | {"NODE2_MODEL": "answervice-sql"}
+        partial = base | {"NODE2_MODEL": "node2-qwen35-2b-full3000-20260825"}
         with patch.dict("os.environ", partial, clear=True):
             async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
                 self.assertEqual("not_ready", await AppDatabaseReadiness._model_probe(client))

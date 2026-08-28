@@ -15,7 +15,20 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
     assert _classify("tests/support/fakes.py") == "test"
     assert _classify("infrastructure/database/releases/r1/manifest.json") == "archive"
     assert _classify("src/ai/contracts/node_io.v0.1.json") == "runtime-contract"
+    assert _classify(
+        "app/backend/contracts/analysis_capability.single_asset.v1.json"
+    ) == "runtime-contract"
+    assert _classify("evals/metric_retrieval.py") == "runtime-config"
+    assert _classify(
+        "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json"
+    ) == "runtime-contract"
     assert _classify("infrastructure/database/trino/etc/iceberg-view-coercions.json") == "runtime-contract"
+    assert _classify(
+        "infrastructure/database/datahub/metadata/schema.json"
+    ) == "runtime-contract"
+    assert _classify(
+        "infrastructure/database/datahub/metadata/semantics.yml"
+    ) == "runtime-contract"
     assert _classify("app/backend/app/main.py") == "production"
 
 
@@ -32,6 +45,18 @@ def test_rejects_demo_archive_and_request_context_from_runtime_config() -> None:
     findings = _review_text("compose.yml", text, ".yml")
 
     assert len(findings) == 2
+
+
+def test_rejects_review_only_bi_coverage_candidate_from_runtime() -> None:
+    """검토 후보는 승인·발행 없이 production catalog 입력이 될 수 없다."""
+
+    findings = _review_text(
+        "app/backend/app/catalog_loader.py",
+        'path = "evals/semantic_review/answervice_bi_coverage.v1.json"',
+        ".py",
+    )
+
+    assert len(findings) == 1
 
 
 def test_rejects_question_catalog_and_test_double_in_production() -> None:
@@ -56,6 +81,11 @@ def test_allows_versioned_schema_and_explicit_test_fixture() -> None:
     ) == ()
     assert _review_text(
         "tests/support/fakes.py", "class ContractFakeModelAdapter: pass", ".py"
+    ) == ()
+    assert _review_text(
+        "infrastructure/database/datahub/metadata/semantics.yml",
+        "catalog_version: walkerhill-analysis-semantics-v1\nmetric_id: room_revenue",
+        ".yml",
     ) == ()
 
 

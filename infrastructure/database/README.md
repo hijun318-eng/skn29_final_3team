@@ -19,6 +19,7 @@ New-Item -ItemType Directory -Force -Path $deploymentDirectory,$secretDirectory 
 $deploymentEnv = Join-Path $deploymentDirectory 'answervice.env'
 Copy-Item .env.example $deploymentEnv
 # $deploymentEnv의 CHANGE_ME_/REQUIRED_ 값을 교체하고 TLS PKI 파일의 절대 경로를 설정한다.
+python security/provision-app-catalog-publisher.py --env-file $deploymentEnv
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File security/provision-release-principals.ps1 `
   -EnvPath $deploymentEnv `
@@ -47,6 +48,15 @@ Core 기동은 object store와 Polaris를 먼저 준비하고, management API에
 principal·role·grant를 멱등 구성해 exact read-back한 뒤 Trino를 만든다. bootstrap admin
 credential을 Trino에 재사용하지 않는다. 저장소 로컬 `.env`와 secret은 개발 중에만
 `-AllowRepositoryLocalDevelopment`로 명시할 수 있으며 모두 `.gitignore` 대상이어야 한다.
+`provision-app-catalog-publisher.py`는 publisher key가 없거나 placeholder일 때만 내부
+CSPRNG로 비밀번호를 생성해 외부 env에 원자적으로 기록한다. 기존 유효 credential은
+보존하며 명시적 회전은 `--rotate-credential`로만 수행하고 secret 값은 출력하지 않는다.
+기존 volume에 이 역할을 처음 추가할 때는 publisher 두 환경변수의 값이 process에 있는
+상태에서 `provision-app-postgres.sh publisher-only`를 실행한다. 이 mode는 기존 runtime
+grant를 건드리지 않고 역할과 DB 연결만 준비하며, relation 권한은 Alembic이 적용한다.
+과거 admin-owned application relation이 남은 upgrade 환경은 migration 전에
+`provision-app-postgres.sh ownership-only`를 실행한다. 이 mode는 기존 ACL을 보존하면서
+application schema/table/sequence owner만 전용 migration role로 정규화한다.
 
 ## D0/D1 release 검증과 영속 serving 발행
 
@@ -127,7 +137,7 @@ catalog read는 `DATAHUB_READ_API_TOKEN`, ingestion·authoring·semantic mutatio
 `DATAHUB_PUBLISH_API_TOKEN`을 전송한다. 두 PAT의 actor도 달라야 하며 Backend에는
 publish credential을 주입하지 않는다.
 
-업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
+업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 runtime, `APP_MIGRATION_USER`는 schema migration, `APP_CATALOG_PUBLISHER_USER`는 비활성 catalog projection과 product manifest의 append-only 게시 전용이다. publisher에는 active pointer 변경 권한을 부여하지 않는다.
 
 실행 원본은 `sql/ddl`, `sql/app`, App DB migration, DataHub runtime recipe다.
 `security` script는 외부 principal secret을 생성하지만 저장소 안에 인증 JSON을 만들지

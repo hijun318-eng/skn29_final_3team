@@ -1,4 +1,4 @@
-"""APP DB·계정·Trino·DataHub·model과 scheduler를 제한 시간의 실제 probe로 확인한다."""
+"""APP DB migration·template·계정, Trino, DataHub, model과 scheduler를 제한 시간의 실제 probe로 확인한다."""
 
 from __future__ import annotations
 
@@ -29,7 +29,9 @@ class AppDatabaseReadiness:
         """process singleton DataPlatform과 checksum-bound readiness cache 경계를 구성한다."""
 
         self._data_platform_provider = data_platform_provider
-        self._release_cache: tuple[dict[str, str], str] | None = None
+        self._release_cache: (
+            tuple[dict[str, str], str, tuple[str, str, int] | None] | None
+        ) = None
         self._release_cache_expires_at = 0.0
         self._release_lock = asyncio.Lock()
 
@@ -56,6 +58,7 @@ class AppDatabaseReadiness:
         probe["model"] = model
         probe["auth_session_store"] = auth
         probe["report_scheduler"] = self._report_scheduler_probe()
+        probe["conversation_recovery"] = self._conversation_recovery_probe()
         return probe
 
     @staticmethod
@@ -126,6 +129,12 @@ class AppDatabaseReadiness:
         from app.services.report.scheduler import report_scheduler
 
         return report_scheduler.status
+
+    @staticmethod
+    def _conversation_recovery_probe() -> str:
+        from app.services.conversation.reconciler import conversation_recovery_worker
+
+        return conversation_recovery_worker.status
 
     @staticmethod
     async def _database_probe() -> dict[str, str]:
@@ -217,16 +226,40 @@ class AppDatabaseReadiness:
         failed = {name: "not_ready" for name in self._CATALOG_STAGES}
         if self._data_platform_provider is None:
             return failed
+        try:
+            platform = self._data_platform_provider()
+        except Exception:
+            self._release_cache = None
+            self._release_cache_expires_at = 0.0
+            return failed
         now = monotonic()
         if self._release_cache is not None and now < self._release_cache_expires_at:
-            return dict(self._release_cache[0])
-        async with self._release_lock:
-            now = monotonic()
-            if self._release_cache is not None and now < self._release_cache_expires_at:
-                return dict(self._release_cache[0])
             try:
                 async with asyncio.timeout(self._release_probe_timeout()):
-                    stages, receipt = await self._data_platform_provider().get_catalog_readiness()
+                    cache_identity = await self._catalog_cache_identity(platform)
+            except Exception:
+                self._release_cache = None
+                self._release_cache_expires_at = 0.0
+                return failed
+            if self._release_cache[2] == cache_identity:
+                return dict(self._release_cache[0])
+        async with self._release_lock:
+            now = monotonic()
+            cache_identity_before = None
+            cache_identity_after = None
+            try:
+                async with asyncio.timeout(self._release_probe_timeout()):
+                    cache_identity_before = await self._catalog_cache_identity(
+                        platform
+                    )
+                    if (
+                        self._release_cache is not None
+                        and now < self._release_cache_expires_at
+                        and self._release_cache[2] == cache_identity_before
+                    ):
+                        return dict(self._release_cache[0])
+                    stages, receipt = await platform.get_catalog_readiness()
+                    cache_identity_after = await self._catalog_cache_identity(platform)
             except Exception:
                 # readiness는 fail-closed 공개 경계다. 의존성 adapter 계약 불일치나 예기치 못한
                 # client 실패는 500이 아니라 typed ``not_ready`` 증거로 닫아야 한다.
@@ -241,14 +274,55 @@ class AppDatabaseReadiness:
             if not valid_stages:
                 stages, receipt = failed, None
             complete = all(stages[name] == "ready" for name in self._CATALOG_STAGES)
-            if complete and isinstance(receipt, str) and receipt.strip():
-                self._release_cache = (dict(stages), receipt)
+            stable_identity = cache_identity_before == cache_identity_after
+            receipt_is_current = (
+                cache_identity_after is None
+                or receipt == cache_identity_after[1]
+            )
+            if (
+                complete
+                and isinstance(receipt, str)
+                and receipt.strip()
+                and stable_identity
+                and receipt_is_current
+            ):
+                self._release_cache = (
+                    dict(stages),
+                    receipt,
+                    cache_identity_after,
+                )
                 self._release_cache_expires_at = monotonic() + self._release_cache_ttl()
             else:
                 # 만료 뒤 실패 또는 부분 검증은 직전 성공 receipt를 되살리지 않는다.
                 self._release_cache = None
                 self._release_cache_expires_at = 0.0
             return dict(stages)
+
+    @staticmethod
+    async def _catalog_cache_identity(
+        platform: Any,
+    ) -> tuple[str, str, int] | None:
+        """지원되는 runtime에서 검증한 active generation cache key를 반환한다."""
+
+        getter = getattr(platform, "get_catalog_cache_identity", None)
+        if getter is None:
+            return None
+        value = await getter()
+        if value is None:
+            return None
+        if (
+            not isinstance(value, tuple)
+            or len(value) != 3
+            or not isinstance(value[0], str)
+            or not value[0].startswith("runtime-catalog:")
+            or not isinstance(value[1], str)
+            or not value[1].strip()
+            or not isinstance(value[2], int)
+            or isinstance(value[2], bool)
+            or value[2] < 1
+        ):
+            raise ValueError("catalog cache identity is invalid")
+        return value
 
     @staticmethod
     async def _model_probe(client: httpx.AsyncClient) -> str:

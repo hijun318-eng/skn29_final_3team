@@ -97,9 +97,13 @@ class ReportExecutionRepositoryMixin:
                 text(
                     """
                     SELECT c.definition_id, c.definition_version, c.as_of, c.run_id,
-                           c.status, d.owner_id
+                           c.status, d.owner_id, v.product_release_id,
+                           v.permission_snapshot_id, v.semantic_release_id
                     FROM report_v1.report_manual_run_commands c
                     JOIN report_v1.report_definitions d USING (definition_id)
+                    JOIN report_v1.report_definition_versions v
+                      ON v.definition_id = c.definition_id
+                     AND v.version = c.definition_version
                     WHERE c.command_id = :command_id
                       AND (:manage_all OR d.owner_id = :owner_id)
                     FOR UPDATE OF c
@@ -136,15 +140,30 @@ class ReportExecutionRepositoryMixin:
             )).mappings().all()
             run_id = uuid4()
             empty_watermark = json.dumps({}, sort_keys=True)
+            receipt_values = (
+                command["product_release_id"],
+                command["permission_snapshot_id"],
+                command["semantic_release_id"],
+            )
+            if any(receipt_values) and not all(receipt_values):
+                raise ValueError("Stored Report definition receipt is incomplete")
+            receipt = (
+                tuple(str(value) for value in receipt_values)
+                if all(receipt_values)
+                else None
+            )
             await session.execute(
                 text(
                     """
                     INSERT INTO report_v1.report_runs
                         (run_id, definition_id, definition_version, as_of,
-                         policy_version, context_hash, watermark, status)
+                         policy_version, context_hash, watermark, status,
+                         product_release_id, permission_snapshot_id,
+                         semantic_release_id)
                     VALUES (:run_id, :definition_id, :version, :as_of,
                             'pending', :context_hash, CAST(:watermark AS jsonb),
-                            'running')
+                            'running', :product_release_id,
+                            :permission_snapshot_id, :semantic_release_id)
                     """
                 ),
                 {
@@ -154,7 +173,15 @@ class ReportExecutionRepositoryMixin:
                     "as_of": command["as_of"],
                     "context_hash": hashlib.sha256(empty_watermark.encode()).hexdigest(),
                     "watermark": empty_watermark,
+                    "product_release_id": receipt[0] if receipt else None,
+                    "permission_snapshot_id": receipt[1] if receipt else None,
+                    "semantic_release_id": receipt[2] if receipt else None,
                 },
+            )
+            await self._bind_report_receipt(
+                session,
+                object_id=f"run:{run_id}",
+                receipt=receipt,
             )
             await session.execute(
                 text(
@@ -173,6 +200,9 @@ class ReportExecutionRepositoryMixin:
                 "definition_version": int(command["definition_version"]),
                 "owner_id": UUID(str(command["owner_id"])),
                 "as_of": command["as_of"],
+                "product_release_id": receipt[0] if receipt else None,
+                "permission_snapshot_id": receipt[1] if receipt else None,
+                "semantic_release_id": receipt[2] if receipt else None,
                 "blocks": tuple(
                     {
                         "block_id": str(block["block_id"]),

@@ -46,9 +46,10 @@ $env:MODEL_TIMEOUT_SECONDS = "15"
 
 Node2 전용 설정 네 개를 모두 비우면 Node2·Repair도 위 primary route를 공유한다.
 RunPod Qwen route를 사용할 때는 `NODE2_MODEL_PROVIDER`, `NODE2_MODEL_ENDPOINT`,
-`NODE2_MODEL_API_TOKEN`, `NODE2_MODEL`을 모두 선언해야 하며 정확한 값은
-`docs/e2e_mvp/derived/05_sLLM_RunPod_연결_가이드.md`를 따른다. 일부만 선언하면
-readiness와 adapter 생성이 모두 fail-closed한다.
+`NODE2_MODEL_API_TOKEN`, `NODE2_MODEL`을 모두 선언해야 한다. provider·model alias와
+capacity는 `src/modelops/model_runtime_manifest.v1.json`, 비활성 예시는
+`infrastructure/database/.env.example`을 따른다. 실제 endpoint와 token은 배포 환경에서만
+주입하며 일부만 선언하면 readiness와 adapter 생성이 모두 fail-closed한다.
 
 일반 분석은 원문 질문을 `normalized_question`으로 전달하고 request ID는 추적 식별자로 분리한다. 실제 endpoint에는 node별 response schema를 전달하고 동일 schema를 다시 검증한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·circuit open은 분석 성공이나 Artifact로 저장하지 않는다.
 
@@ -92,7 +93,16 @@ powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps
   -EnvFilePath C:\absolute\external\answervice.env
 ```
 
-성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
+성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`, `BACKEND_IMAGE_PROVENANCE_READY`, `BACKEND_METRIC_RETRIEVAL_READY`다. provenance 신호는 실행 image의 Git revision·dirty 상태·source fingerprint label이 현재 source tree와 일치한다는 뜻이며, 마지막 신호는 image에 봉인된 Phase 2A v2 retrieval Gate가 현재 live dependency의 active-release Search coverage·실패율·품질·권한·p95 threshold를 모두 통과해 `PROMOTE`를 기록했다는 뜻이다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
+
+Search process 전환의 rollback을 리허설할 때는 새 gitignored JSON 경로와 사전 복구시간 상한을 지정한다. 검증기는 실제 Backend를 `datahub_lexical → lexical → datahub_lexical`로 재생성하고 각 단계의 전체 readiness, image provenance, 동일 release/Gold identity와 Phase 2A v2 `PROMOTE`를 하나의 append-only receipt로 기록한다. 이 receipt의 범위는 `P0-DATAHUB-SEARCH_PROCESS_MODE_ONLY`이며 DB·데이터 release rollback 증거를 대신하지 않는다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
+  -EnvFilePath C:\absolute\external\answervice.env `
+  -SearchRollbackReceiptPath .tmp\search-rollback-receipt.json `
+  -MaxSearchTransitionSeconds 180
+```
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
@@ -100,6 +110,10 @@ powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps
 ```
 
 backend는 root Compose 기준 `http://127.0.0.1:28000`에서 접근한다.
+
+로컬 개발에서만 repository 내부의 gitignored env를 사용해야 하면 `-AllowRepositoryLocalDevelopment`를 명시한다. 이 switch 없이 repository 내부 env를 전달하면 검증기는 거부하며, 운영 기본값은 계속 repository 외부 env다.
+
+검증기를 우회해 backend image를 직접 build해야 하는 배포 도구는 먼저 `source-provenance.ps1`을 dot-source하고 `Set-AnswerviceSourceProvenanceEnvironment`를 호출해야 한다. 세 build argument가 없거나 형식이 잘못되면 Dockerfile은 label 없는 image 생성을 거부한다.
 
 ## Backend 계약 변경
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field, model_validator
@@ -70,6 +71,13 @@ class PeriodEvidence(ContractModel):
     end_exclusive: date
 
 
+class SnapshotEvidence(ContractModel):
+    """기준일 전에 source의 최신 스냅샷을 선택했다는 실행 규칙을 기록한다."""
+
+    cutoff: date
+    selection: Literal["max_source_value_lt_as_of"]
+
+
 class SamplingEvidence(ContractModel):
     """결과 샘플링 여부와 반환 행 수, 확인 가능한 경우 전체 행 수를 증거로 남긴다."""
     applied: bool = False
@@ -81,6 +89,15 @@ class MaskingEvidence(ContractModel):
     """민감 필드 마스킹 적용 여부와 가려진 필드 목록을 응답 소비자에게 공개한다."""
     applied: bool = False
     fields: tuple[str, ...] = ()
+
+
+class QueryExecutionEvidence(ContractModel):
+    """Trino가 보고한 누적 처리량과 공개 가능한 warning 건수를 실행 근거로 남긴다."""
+
+    processed_rows: int = Field(default=0, ge=0)
+    scan_bytes: int = Field(default=0, ge=0)
+    warning_count: int = Field(default=0, ge=0)
+    critical_warning_count: int = Field(default=0, ge=0)
 
 
 class ModelInvocationEvidence(ContractModel):
@@ -123,6 +140,8 @@ class Evidence(ContractModel):
     as_of: date
     timezone: str | None = None
     period: PeriodEvidence | None = None
+    comparison_period: PeriodEvidence | None = None
+    snapshot: SnapshotEvidence | None = None
     filters: dict[str, Scalar] = Field(default_factory=dict)
     sources: tuple[SourceReference, ...] = ()
     query_id: str | None = None
@@ -139,7 +158,20 @@ class Evidence(ContractModel):
     gate_history: GateHistoryEvidence | None = None
     sampling: SamplingEvidence = Field(default_factory=SamplingEvidence)
     masking: MaskingEvidence = Field(default_factory=MaskingEvidence)
+    execution: QueryExecutionEvidence = Field(default_factory=QueryExecutionEvidence)
     cached: bool = False
+
+    @model_validator(mode="after")
+    def validate_time_evidence(self) -> "Evidence":
+        """기간 범위와 최신 스냅샷 증거가 한 실행에 동시에 섞이는 것을 막는다."""
+
+        if self.snapshot is not None and (
+            self.period is not None or self.comparison_period is not None
+        ):
+            raise ValueError("period와 snapshot 실행 증거는 동시에 지정할 수 없습니다.")
+        if self.comparison_period is not None and self.period is None:
+            raise ValueError("comparison_period는 기준 period와 함께 기록해야 합니다.")
+        return self
 
 
 class AnalysisResult(ContractModel):
@@ -179,6 +211,7 @@ class AnalysisData(ContractModel):
     template_id: str | None = None
     gates: GateRequirements | None = None
     result: AnalysisResult | None = None
+    evidence: Evidence | None = None
     trace: tuple[TraceStep, ...] = ()
     repair_count: int = Field(default=0, ge=0, le=1)
     artifact: ArtifactReference | None = None

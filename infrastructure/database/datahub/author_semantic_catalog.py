@@ -1,8 +1,10 @@
 """크기가 제한된 표준 입력으로 DataHub catalog를 검사하거나 명시적으로 발행한다.
 
-This command never accepts a policy file path. Check mode binds semantic policy to
-live physical metadata without mutation. Publication requires the exact target and
-predecessor checksums returned by that check, then verifies live convergence.
+This command never accepts an arbitrary policy file path. It accepts either a bounded
+policy object on stdin or the validated Git canonical manifest. Check mode binds that
+semantic policy to live physical metadata without mutation. Publication requires the
+exact target and predecessor checksums returned by that check, then verifies live
+convergence.
 """
 
 from __future__ import annotations
@@ -21,15 +23,26 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
-from publish_semantic_catalog import publish_bundle  # noqa: E402
-from release_builder import inspect_release  # noqa: E402
-from release_datahub import DataHubDiscoveryClient, DataHubDiscoveryError  # noqa: E402
-from release_scope import load_release_scopes_with_serving  # noqa: E402
-from release_trino import TrinoDiscoveryError, TrinoMetadataClient  # noqa: E402
+from http_client import DataHubMetadataAdminClient  # noqa: E402
+from canonical_metadata_manifest import (  # noqa: E402
+    compile_semantic_authoring_policy,
+    load_canonical_metadata_manifest,
+)
+from native_semantic_publication import (  # noqa: E402
+    publish_native_semantic_shadow,
+    verify_native_semantic_shadow,
+)
+from native_semantic_shadow import native_semantic_shadow_projection  # noqa: E402
 from publication_check import (  # noqa: E402
     publication_check,
     verify_expected_release,
 )
+from publish_semantic_catalog import publish_bundle  # noqa: E402
+from release_builder import build_active_release_bundle  # noqa: E402
+from release_bundle import SemanticBundleError  # noqa: E402
+from release_datahub import DataHubDiscoveryClient, DataHubDiscoveryError  # noqa: E402
+from release_scope import load_release_scopes_with_serving  # noqa: E402
+from release_trino import TrinoDiscoveryError, TrinoMetadataClient  # noqa: E402
 from semantic_authoring import build_authoring_candidate  # noqa: E402
 from src.data.governance_contract import canonical_json, catalog_hash  # noqa: E402
 from src.data.datahub_connection import DataHubConnectionSettings  # noqa: E402
@@ -85,6 +98,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--expected-catalog-sha256")
     parser.add_argument("--expected-previous-catalog-sha256")
+    parser.add_argument(
+        "--canonical-manifest-root",
+        type=Path,
+        help="validated Git canonical metadata directory used instead of stdin",
+    )
     return parser.parse_args(argv)
 
 
@@ -105,9 +123,22 @@ def load_stdin_document() -> dict[str, object]:
     return value
 
 
+def load_authoring_document(
+    args: argparse.Namespace,
+) -> tuple[dict[str, object], str]:
+    """명시된 canonical manifest 또는 기존 bounded stdin 중 하나만 사용한다."""
+
+    if args.canonical_manifest_root is not None:
+        manifest = load_canonical_metadata_manifest(args.canonical_manifest_root)
+        return compile_semantic_authoring_policy(manifest), "canonical_manifest"
+    return load_stdin_document(), "checked_stdin"
+
+
 async def author_and_verify(
     document: dict[str, object],
     args: argparse.Namespace,
+    *,
+    policy_source: str = "checked_stdin",
 ) -> dict[str, object]:
     """표준 입력 policy를 live metadata에 결합하고 요청된 release 흐름을 실행한다."""
 
@@ -167,14 +198,12 @@ async def author_and_verify(
         ) as datahub,
     ):
         async def publisher(bundle):
-            """Publish only the bundle validated in the surrounding live session."""
+            """검증된 bundle의 legacy/native surface를 하나의 운영 경로로 발행한다."""
 
-            return await publish_bundle(
-                datahub_settings.base_url,
+            return await _publish_datahub_release(
                 bundle,
+                datahub_settings,
                 actor_urn=args.actor,
-                token=datahub_settings.token,
-                ca_file=datahub_settings.ca_file,
                 timeout=args.timeout,
             )
 
@@ -191,7 +220,58 @@ async def author_and_verify(
             expected_previous_catalog_sha256=(
                 args.expected_previous_catalog_sha256
             ),
+            policy_source=policy_source,
         )
+
+
+async def _publish_datahub_release(
+    bundle: dict[str, object],
+    settings: DataHubConnectionSettings,
+    *,
+    actor_urn: str,
+    timeout: float,
+) -> dict[str, object]:
+    """canonical bundle에서 legacy와 native semantic surface를 함께 발행·검증한다."""
+
+    projection = native_semantic_shadow_projection(bundle)
+    legacy = await publish_bundle(
+        settings.base_url,
+        bundle,
+        actor_urn=actor_urn,
+        token=settings.token,
+        ca_file=settings.ca_file,
+        timeout=timeout,
+    )
+    async with DataHubMetadataAdminClient(
+        settings.base_url,
+        token=settings.token,
+        ca_file=settings.ca_file,
+        timeout_seconds=timeout,
+    ) as client:
+        native_published = await publish_native_semantic_shadow(
+            client,
+            bundle,
+            actor_urn=actor_urn,
+            expected_projection_sha256=projection["projection_sha256"],
+        )
+        native_verified = await verify_native_semantic_shadow(
+            client,
+            bundle,
+            expected_projection_sha256=projection["projection_sha256"],
+        )
+    return {
+        **legacy,
+        "native_semantic_projection_sha256": projection["projection_sha256"],
+        "native_semantic_readback_sha256": native_verified[
+            "readback_projection_sha256"
+        ],
+        "native_semantic_published_entity_count": native_published[
+            "published_entity_count"
+        ],
+        "native_semantic_rest_aspect_equality": native_verified[
+            "rest_aspect_equality"
+        ],
+    }
 
 
 async def apply_authoring_release(
@@ -206,6 +286,7 @@ async def apply_authoring_release(
     check_only: bool = False,
     expected_catalog_sha256: str | None = None,
     expected_previous_catalog_sha256: str | None = None,
+    policy_source: str = "checked_stdin",
 ) -> dict[str, object]:
     """policy 하나를 live 검사하거나 확인된 checksum과 대조해 발행·재조회한다.
 
@@ -241,7 +322,7 @@ async def apply_authoring_release(
     return {
         **published,
         "status": "PUBLISHED_AND_VERIFIED",
-        "policy_source": "checked_stdin",
+        "policy_source": policy_source,
         "catalog_sha256": check["catalog_sha256"],
         "previous_catalog_sha256": check["previous_catalog_sha256"],
     }
@@ -260,10 +341,15 @@ async def _verify_convergence(
     last_error = None
     while True:
         try:
-            result = await inspect_release(scopes, trino, datahub)
-            if result.bundle is not None and catalog_hash(result.bundle) == expected:
+            active = await build_active_release_bundle(scopes, trino, datahub)
+            if catalog_hash(active) == expected:
                 return
-        except (DataHubDiscoveryError, TrinoDiscoveryError, OSError) as error:
+        except (
+            DataHubDiscoveryError,
+            SemanticBundleError,
+            TrinoDiscoveryError,
+            OSError,
+        ) as error:
             last_error = error
         remaining = deadline - monotonic()
         if remaining <= 0:
@@ -278,7 +364,12 @@ async def async_main(argv: list[str] | None = None) -> int:
     """authoring을 실행하고 정규화된 기계 판독 결과 하나를 출력한다."""
 
     args = parse_args(argv)
-    result = await author_and_verify(load_stdin_document(), args)
+    document, policy_source = load_authoring_document(args)
+    result = await author_and_verify(
+        document,
+        args,
+        policy_source=policy_source,
+    )
     print(canonical_json(result))
     return 0
 

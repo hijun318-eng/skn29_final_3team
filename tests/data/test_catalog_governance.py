@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import tempfile
@@ -18,6 +19,7 @@ from catalog_governance import (  # noqa: E402
     CatalogDataset,
     CatalogField,
     build_plan,
+    publish_plan,
 )
 from metadata_wire import metadata_change_proposals  # noqa: E402
 from release_scope import ReleaseScope  # noqa: E402
@@ -53,7 +55,7 @@ class CatalogGovernancePlanTest(unittest.TestCase):
             ),
         )
 
-    def test_plan_scopes_terms_and_lineage_come_from_runtime_inputs(self) -> None:
+    def test_plan_scopes_and_lineage_come_from_runtime_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             serving_dir = Path(temporary) / "06_trino_serving"
             serving_dir.mkdir()
@@ -71,13 +73,7 @@ class CatalogGovernancePlanTest(unittest.TestCase):
             )
         self.assertEqual(2, len(plan.domains))
         self.assertEqual(4, len(plan.tags))
-        self.assertEqual(2, len(plan.dataset_terms))
-        self.assertEqual(2, len(plan.field_terms))
         self.assertEqual(((VIEW_URN, SOURCE_URN),), plan.lineage_edges)
-        self.assertNotEqual(
-            plan.field_terms[(SOURCE_URN, "amount")],
-            plan.field_terms[(VIEW_URN, "amount")],
-        )
 
     def test_plan_fails_when_a_serving_view_has_no_ast_lineage(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -95,6 +91,58 @@ class CatalogGovernancePlanTest(unittest.TestCase):
                     OWNER,
                     Path(temporary),
                 )
+
+    def test_publish_does_not_create_or_associate_technical_terms(self) -> None:
+        class RecordingClient:
+            def __init__(self) -> None:
+                self.upserts: list[tuple[str, dict[str, object]]] = []
+                self.mutations: list[dict[str, object]] = []
+
+            async def upsert_entity(
+                self,
+                entity_type: str,
+                _urn: str,
+                aspects: dict[str, object],
+                _stamp: dict[str, object],
+            ) -> None:
+                self.upserts.append((entity_type, aspects))
+
+            async def graphql(
+                self,
+                _query: str,
+                variables: dict[str, object],
+            ) -> dict[str, object]:
+                self.mutations.append(variables)
+                return {"data": {}}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            serving_dir = Path(temporary) / "06_trino_serving"
+            serving_dir.mkdir()
+            (serving_dir / "20_views.sql").write_text(
+                "CREATE OR REPLACE VIEW serving.analytics.order_daily AS "
+                "SELECT amount FROM alpha.raw.orders",
+                encoding="utf-8",
+            )
+            plan = build_plan(
+                self.datasets,
+                (self.source, self.serving),
+                "R9.2",
+                OWNER,
+                Path(temporary),
+            )
+        client = RecordingClient()
+        counts = asyncio.run(publish_plan(client, plan, "R9.2"))
+
+        self.assertEqual(0, counts["glossary_terms"])
+        self.assertTrue(
+            all(entity_type != "glossaryTerm" for entity_type, _ in client.upserts)
+        )
+        self.assertTrue(
+            all("editableSchemaMetadata" not in aspects for _, aspects in client.upserts)
+        )
+        self.assertTrue(
+            all("termUrn" not in str(variables) for variables in client.mutations)
+        )
 
     def test_tag_wire_uses_v1_7_typed_aspects(self) -> None:
         proposals = metadata_change_proposals(

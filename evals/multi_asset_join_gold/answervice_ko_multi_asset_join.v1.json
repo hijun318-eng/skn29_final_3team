@@ -1,0 +1,78 @@
+{
+  "schema_version": "answervice.multi_asset_join_gold.v1",
+  "dataset_id": "answervice_ko_multi_asset_join.v1",
+  "status": "SEALED",
+  "sealed_at": "2026-08-22T00:00:00+09:00",
+  "source": "Phase 8 활성 release에 독립 작성한 세 가지 JOIN 전략별 실제 Trino 결과 oracle과 fail-closed 정책 Gate",
+  "as_of": "2025-09-02",
+  "thresholds": {
+    "min_case_exact_match": 1.0,
+    "max_node1_call_count": 0,
+    "max_node2_call_count": 0,
+    "max_unapproved_edge_count": 0,
+    "max_duplicate_aggregation_count": 0,
+    "max_oracle_mismatch_count": 0
+  },
+  "cases": [
+    {
+      "case_id": "MA-J-001",
+      "query": "2025년 8월 호텔별 VOC 평균 평점을 알려줘",
+      "metric_ids": ["voc_average_rating"],
+      "dimension_ids": ["hotel_code"],
+      "user_filters": [],
+      "operation": "breakdown",
+      "period": {"start": "2025-08-01", "end_exclusive": "2025-09-01"},
+      "expected_strategy": "DIRECT_JOIN",
+      "expected_columns": [
+        "hotel_code",
+        "voc_average_rating",
+        "voc_average_rating_review_count",
+        "voc_rating_points"
+      ],
+      "oracle_sql": "SELECT v.hotel_code AS hotel_code, CAST(SUM(v.rating_overall) AS DOUBLE) / NULLIF(COUNT(DISTINCT v.voc_review_id), 0) AS voc_average_rating, COUNT(DISTINCT v.voc_review_id) AS voc_average_rating_review_count, SUM(v.rating_overall) AS voc_rating_points FROM serving.analytics_v4_3.voc_review_detail AS v WHERE v.business_date >= DATE '2025-08-01' AND v.business_date < DATE '2025-09-01' GROUP BY v.hotel_code LIMIT 500"
+    },
+    {
+      "case_id": "MA-J-002",
+      "query": "2025년 8월 호텔별 객실 매출과 VOC 평균 평점을 함께 알려줘",
+      "metric_ids": ["room_revenue", "voc_average_rating"],
+      "dimension_ids": ["hotel_code"],
+      "user_filters": [],
+      "operation": "breakdown",
+      "period": {"start": "2025-08-01", "end_exclusive": "2025-09-01"},
+      "expected_strategy": "PREAGGREGATE",
+      "expected_columns": [
+        "hotel_code",
+        "room_revenue_krw",
+        "voc_average_rating",
+        "voc_average_rating_review_count",
+        "voc_rating_points"
+      ],
+      "oracle_sql": "WITH hotel AS (SELECT hotel_code, SUM(room_revenue_krw) AS room_revenue_krw FROM serving.analytics_v4_3.hotel_operations_daily WHERE business_date >= DATE '2025-08-01' AND business_date < DATE '2025-09-01' GROUP BY hotel_code), voc AS (SELECT hotel_code, CAST(SUM(rating_overall) AS DOUBLE) / NULLIF(COUNT(DISTINCT voc_review_id), 0) AS voc_average_rating, COUNT(DISTINCT voc_review_id) AS voc_average_rating_review_count, SUM(rating_overall) AS voc_rating_points FROM serving.analytics_v4_3.voc_review_detail WHERE business_date >= DATE '2025-08-01' AND business_date < DATE '2025-09-01' GROUP BY hotel_code) SELECT hotel.hotel_code AS hotel_code, hotel.room_revenue_krw AS room_revenue_krw, voc.voc_average_rating AS voc_average_rating, voc.voc_average_rating_review_count AS voc_average_rating_review_count, voc.voc_rating_points AS voc_rating_points FROM hotel INNER JOIN voc ON hotel.hotel_code = voc.hotel_code LIMIT 500"
+    },
+    {
+      "case_id": "MA-J-003",
+      "query": "2025년 8월 부정 VOC가 있었던 호텔의 객실 매출을 알려줘",
+      "metric_ids": ["room_revenue"],
+      "dimension_ids": [],
+      "user_filters": [
+        {
+          "asset_fqn": "serving.analytics_v4_3.voc_review_detail",
+          "column": "sentiment_label",
+          "operator": "eq",
+          "value_text": "NEGATIVE"
+        }
+      ],
+      "operation": "aggregate",
+      "period": {"start": "2025-08-01", "end_exclusive": "2025-09-01"},
+      "expected_strategy": "SEMI_JOIN",
+      "expected_columns": ["room_revenue_krw"],
+      "oracle_sql": "SELECT SUM(h.room_revenue_krw) AS room_revenue_krw FROM serving.analytics_v4_3.hotel_operations_daily AS h WHERE h.business_date >= DATE '2025-08-01' AND h.business_date < DATE '2025-09-01' AND EXISTS (SELECT 1 FROM serving.analytics_v4_3.voc_review_detail AS v WHERE v.business_date = h.business_date AND v.hotel_code = h.hotel_code AND v.business_date >= DATE '2025-08-01' AND v.business_date < DATE '2025-09-01' AND v.sentiment_label = 'NEGATIVE') LIMIT 500"
+    }
+  ],
+  "negative_cases": [
+    {"case_id": "MA-N-001", "kind": "many_to_many", "expected_error": "FANOUT_UNSAFE"},
+    {"case_id": "MA-N-002", "kind": "ambiguous_shortest_path", "expected_error": "JOIN_PATH_UNAVAILABLE"},
+    {"case_id": "MA-N-003", "kind": "mixed_time_mode", "expected_error": "INVALID_METADATA"}
+  ],
+  "content_sha256": "87daff0f3b0a1bd427fb6d2547ffd1094ee576ccb71a3acee74e61f200bc6287"
+}

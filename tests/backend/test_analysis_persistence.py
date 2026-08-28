@@ -55,7 +55,10 @@ def isolated_test_controller():
         RoutingService(),
     )
     async def active_context_release() -> str:
-        return "context-v1"
+        return "fixture-context-v1"
+
+    async def active_product_release_receipt() -> tuple[str, str]:
+        return "fixture-product-release", "fixture-context-v1"
 
     with (
         patch.object(analysis_api, "_controller", return_value=controller),
@@ -63,6 +66,11 @@ def isolated_test_controller():
             analysis_api,
             "_active_analytics_context_release",
             new=active_context_release,
+        ),
+        patch.object(
+            analysis_api,
+            "_active_product_release_receipt",
+            new=active_product_release_receipt,
         ),
     ):
         yield
@@ -73,7 +81,9 @@ class FakeAnalysisRepository:
         self.owner_id = owner_id
         self.definition_id = uuid4()
         self.request_id: UUID | None = None
+        self.run_context: RequestContext | None = None
         self.finished = None
+        self.context_receipts = []
         self.definition = {
             "contract_version": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
             "definition_id": self.definition_id,
@@ -84,7 +94,7 @@ class FakeAnalysisRepository:
             "parameter_types": {"scenario": "string"},
             "semantic_request": {
                 "question": "합성 객실 운영 현황을 알려줘",
-                "context_release": "context-v1",
+                "context_release": "fixture-context-v1",
             },
             "parameter_schema": {"scenario": "string"},
             "created_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
@@ -96,7 +106,12 @@ class FakeAnalysisRepository:
         self.question = question
         self.parameters = parameters
         self.request_id = request_context.request_id
+        self.run_context = request_context
         return self.request_id
+
+    async def persist_context_receipt(self, request_context, package):
+        self.context_receipts.append((request_context, package))
+        return uuid4()
 
     async def create_definition_from_run(self, source_request_id, title):
         self.definition.update(title=title)
@@ -118,6 +133,7 @@ class FakeAnalysisRepository:
         if self.request_id is not None:
             return self.request_id, False
         self.request_id = context.request_id
+        self.run_context = context
         self.as_of = as_of
         self.idempotency_key = idempotency_key
         self.parameters = parameters if parameters is not None else definition["parameters"]
@@ -239,6 +255,14 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert first["artifact_id"]
     assert repository.parameters == {"scenario": "success_changed"}
     assert set(repository.finished[1]) == {"plan", "query", "package"}
+    assert repository.finished[0].data.result.evidence.cached is False
+    assert repository.run_context is not None
+    assert repository.run_context.product_release_id == "fixture-product-release"
+    assert repository.run_context.permission_snapshot_id
+    assert repository.run_context.semantic_release_id == "fixture-context-v1"
+    assert repository.run_context.require_fresh_query is True
+    assert len(repository.context_receipts) == 1
+    assert repository.context_receipts[0][0].request_id == first_context.request_id
     assert "result" not in first
     assert "sql" not in first
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
@@ -305,6 +329,37 @@ def test_run_history_uses_confirmed_artifact_period_for_direct_runs():
     assert run["period_end_exclusive"] == "2026-07-01"
 
 
+def test_run_history_preserves_latest_snapshot_time_evidence():
+    run = PostgresAnalysisRepository._run(
+        {
+            "request_id": uuid4(),
+            "definition_id": uuid4(),
+            "definition_version": 1,
+            "status": "SUCCEEDED",
+            "as_of": date(2026, 8, 20),
+            "timezone_name": "Asia/Seoul",
+            "trace_id": "snapshot-trace",
+            "query_id": "snapshot-query",
+            "artifact_id": uuid4(),
+            "error_type": None,
+            "started_at": datetime(2026, 8, 20, tzinfo=timezone.utc),
+            "completed_at": datetime(2026, 8, 20, tzinfo=timezone.utc),
+            "question": "최신 회원 수",
+            "parameters": {},
+            "artifact_period": None,
+            "artifact_snapshot": {
+                "cutoff": "2026-08-20",
+                "selection": "max_source_value_lt_as_of",
+            },
+        }
+    )
+
+    assert run["period_start"] is None
+    assert run["period_end_exclusive"] is None
+    assert run["snapshot_cutoff"] == "2026-08-20"
+    assert run["snapshot_selection"] == "max_source_value_lt_as_of"
+
+
 @async_test
 async def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
     owner = uuid4()
@@ -322,6 +377,12 @@ async def test_direct_analysis_persists_request_query_and_artifact_when_database
 
     assert response.data.status.value == "SUCCEEDED"
     assert repository.request_id == request_context.request_id
+    assert repository.run_context is not None
+    assert repository.run_context.product_release_id == "fixture-product-release"
+    assert repository.run_context.semantic_release_id == "fixture-context-v1"
+    assert repository.run_context.permission_snapshot_id
+    assert len(repository.context_receipts) == 1
+    assert repository.context_receipts[0][0].request_id == request_context.request_id
     assert repository.finished[0] is response
     assert set(repository.finished[1]) == {"plan", "query", "package"}
 
@@ -350,7 +411,7 @@ async def test_direct_analysis_returns_distinct_retryable_error_when_artifact_pe
     assert payload["error"]["code"] == "ARTIFACT_PERSIST_FAILED"
     assert payload["error"]["retryable"] is True
     assert payload["meta"]["trace_id"] == request_context.trace_id
-    assert repository.finished == "ARTIFACT_PERSIST_FAILED"
+    assert repository.finished == "PERSISTENCE"
 
 
 @async_test

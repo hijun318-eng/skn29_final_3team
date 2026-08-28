@@ -7,6 +7,22 @@ function analysisPeriodLabel(period = {}) {
   return start && end ? `${start}\u2013${end}` : "";
 }
 
+function analysisSnapshotLabel(snapshot = {}) {
+  const cutoff = String(snapshot.cutoff || snapshot.snapshot_cutoff || "").slice(0, 10);
+  const selection = snapshot.selection || snapshot.snapshot_selection;
+  return cutoff && selection === "max_source_value_lt_as_of"
+    ? `${cutoff} 이전 최신 스냅샷`
+    : "";
+}
+
+/** 기간 또는 최신 snapshot 중 정확히 확인된 시간 근거 하나를 사용자용 문구로 만든다. */
+export function analysisTimeLabel(evidence = {}, fallback = {}) {
+  const period = analysisPeriodLabel(evidence.period || fallback);
+  const snapshot = analysisSnapshotLabel(evidence.snapshot || fallback);
+  if (period && snapshot) return "";
+  return period || snapshot;
+}
+
 /** 저장 제목을 우선하고, 없을 때만 governed 지표·기간으로 일반 artifact 제목을 만든다. */
 export function analysisArtifactTitle(artifact, preferredTitle = "", fallbackPeriod = {}) {
   const savedTitle = String(preferredTitle || "").trim();
@@ -18,8 +34,8 @@ export function analysisArtifactTitle(artifact, preferredTitle = "", fallbackPer
   const metricLabel = labels.length > 1
     ? `${labels[0]} \uc678 ${labels.length - 1}\uac1c \uc9c0\ud45c`
     : labels[0] || "\uc8fc\uc694 \uc9c0\ud45c";
-  const periodLabel = analysisPeriodLabel(artifact?.evidence?.period || fallbackPeriod);
-  return `${periodLabel ? `${periodLabel} ` : ""}${metricLabel} \ubd84\uc11d`;
+  const timeLabel = analysisTimeLabel(artifact?.evidence, fallbackPeriod);
+  return `${timeLabel ? `${timeLabel} ` : ""}${metricLabel} \ubd84\uc11d`;
 }
 
 /** 성공·부분 성공 실행에서 중복 artifact를 제거한 최신순 library source를 만든다. */
@@ -56,6 +72,8 @@ export function analysisRunArtifactSources(runs = [], definitions = []) {
         title: analysisArtifactTitle(null, definitionTitle, run),
         periodStart: run.period_start || undefined,
         periodEndExclusive: run.period_end_exclusive || undefined,
+        snapshotCutoff: run.snapshot_cutoff || undefined,
+        snapshotSelection: run.snapshot_selection || undefined,
       }];
     });
 }
@@ -108,6 +126,9 @@ export function adaptAnalysisRunArtifact(run) {
       timezone: evidence.timezone,
       period: evidence.period
         ? { start: evidence.period.start, end_exclusive: evidence.period.endExclusive }
+        : null,
+      snapshot: evidence.snapshot
+        ? { cutoff: evidence.snapshot.cutoff, selection: evidence.snapshot.selection }
         : null,
       filters: { ...(evidence.filters || {}) },
       context_release: evidence.contextRelease,

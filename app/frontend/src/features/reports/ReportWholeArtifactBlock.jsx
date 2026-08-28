@@ -5,6 +5,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { formatMetricValue } from "../../utils/presentation";
 import { formatCurrencyAmount, isCurrencyMetricUnit } from "./reportCurrency";
 import { WHOLE_ARTIFACT_VIEWS, artifactMetricCards, wholeArtifactSettings } from "./reportDraftV2";
+import { analysisTimeLabel } from "./reportAnalysisArtifacts";
 
 function shortSummary(summary) {
   const value = String(summary || "").trim();
@@ -53,10 +54,16 @@ export function ReportWholeArtifactBlock({ block, artifact, artifactState, curre
   const rowLimit = block.w <= 6 ? 3 : 4;
   const visibleRows = rows.slice(0, rowLimit);
   const tableArtifact = artifact.table ? { ...artifact, table: { ...artifact.table, rows: visibleRows } } : artifact;
-  const period = artifact.evidence?.period;
+  const timeLabel = analysisTimeLabel(artifact.evidence);
+  const hasPeriodTime = Boolean(
+    artifact.evidence?.period?.start && artifact.evidence?.period?.end_exclusive,
+  );
+  const timeDescription = hasPeriodTime && timeLabel
+    ? `${timeLabel} 미포함`
+    : timeLabel;
   const gridRows = ["auto", views.has("summary") && "auto", views.has("kpi") && "auto", (views.has("chart") || views.has("table")) && "minmax(0, 1fr)"].filter(Boolean).join(" ");
   return <section className={`report-whole-artifact ${block.w <= 6 ? "is-half" : ""}`} style={{ gridTemplateRows: gridRows }} aria-label={`${block.title} Artifact 전체`}>
-    <header className="report-whole-artifact-heading"><div><small>ANALYSIS ARTIFACT</small><b>{period ? `${period.start} – ${period.end_exclusive} 미포함` : "분석 결과"}</b></div><span>{[...views].map((view) => viewLabels[view]).join(" · ")}</span></header>
+    <header className="report-whole-artifact-heading"><div><small>ANALYSIS ARTIFACT</small><b>{timeDescription || "분석 결과"}</b></div><span>{[...views].map((view) => viewLabels[view]).join(" · ")}</span></header>
     {views.has("summary") && <p className="report-whole-artifact-summary">{shortSummary(artifact.summary)}</p>}
     {views.has("kpi") && <div className="report-whole-artifact-kpis" aria-label="주요 KPI">{visibleMetrics.length ? visibleMetrics.map((metric) => { const currencyMetric = isCurrencyMetricUnit(metric.unit); const meta = [metric.context, currencyMetric ? currency.label : ""].filter(Boolean).join(" · "); return <dl key={metric.metric_id || metric.metricId || metric.label}><dt>{metric.label}{meta && <small>{meta}</small>}</dt><dd>{currencyMetric ? formatCurrencyAmount(metric.value, currency.unit, currency.policy) : formatMetricValue(metric.value, { unit: metric.unit })}</dd></dl>; }) : <p>별도 대표 KPI가 제공되지 않았습니다.</p>}{metrics.length > visibleMetrics.length && <small>외 {metrics.length - visibleMetrics.length}개 지표</small>}</div>}
     <div className="report-whole-artifact-views">

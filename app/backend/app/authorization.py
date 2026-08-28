@@ -9,6 +9,9 @@ Capability 전체를 가지며 외부 entitlement에서는 analyst 계약도 함
 from __future__ import annotations
 
 from collections.abc import Iterable
+import hashlib
+import json
+from uuid import UUID
 
 from app.contract_core import Capability, Role
 from src.data.entitlement_roles import normalize_entitlement_roles
@@ -29,6 +32,8 @@ _EFFECTIVE_ROLES: dict[Role, frozenset[Role]] = {
     Role.ANALYST: frozenset({Role.ANALYST}),
     Role.ADMIN: frozenset({Role.ANALYST, Role.ADMIN}),
 }
+
+PERMISSION_SNAPSHOT_VERSION = "PERMISSION-SNAPSHOT-v1"
 
 
 def capabilities_for(role: Role) -> tuple[Capability, ...]:
@@ -72,3 +77,18 @@ def role_is_entitled(role: Role | str, allowed_roles: Iterable[Role | str]) -> b
     except ValueError:
         return False
     return bool(effective_roles(authenticated) & allowed)
+
+
+def permission_snapshot_id(subject_id: UUID, role: Role) -> str:
+    """서버가 인증한 주체와 현재 중앙 권한 정책을 canonical receipt로 봉인한다."""
+
+    payload = {
+        "version": PERMISSION_SNAPSHOT_VERSION,
+        "subject_id": str(subject_id),
+        "role": role.value,
+        "effective_roles": sorted(item.value for item in effective_roles(role)),
+        "capabilities": [item.value for item in capabilities_for(role)],
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"{PERMISSION_SNAPSHOT_VERSION}:{digest}"

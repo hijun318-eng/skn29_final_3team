@@ -1,0 +1,100 @@
+# 책임: 기존 App DB named volume을 보존하면서 Report Assistant 최신 release를 독립 LAN 포트에 검증 배포한다.
+name: report-assistant-stage5
+
+services:
+  app-postgres:
+    image: "postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60"
+    environment:
+      POSTGRES_DB: ${APP_DB_NAME:-app_db}
+      POSTGRES_USER: ${APP_ADMIN_USER:?APP_ADMIN_USER is required}
+      POSTGRES_PASSWORD: ${APP_ADMIN_PASSWORD:?APP_ADMIN_PASSWORD is required}
+      TZ: Asia/Seoul
+    volumes:
+      - app-postgres-data:/var/lib/postgresql/data
+    networks: [report-assistant-stage5]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  app-db-provision:
+    image: "postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60"
+    entrypoint: ["sh", "/security/provision-app-postgres.sh"]
+    environment:
+      PGHOST: app-postgres
+      POSTGRES_DB: ${APP_DB_NAME:-app_db}
+      POSTGRES_USER: ${APP_ADMIN_USER:?APP_ADMIN_USER is required}
+      PGPASSWORD: ${APP_ADMIN_PASSWORD:?APP_ADMIN_PASSWORD is required}
+      APP_MIGRATION_USER: ${APP_MIGRATION_USER:?APP_MIGRATION_USER is required}
+      APP_MIGRATION_PASSWORD: ${APP_MIGRATION_PASSWORD:?APP_MIGRATION_PASSWORD is required}
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER is required}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}
+    volumes:
+      - ./infrastructure/database/security:/security:ro
+    depends_on:
+      app-postgres: {condition: service_healthy}
+    networks: [report-assistant-stage5]
+    restart: "no"
+
+  migrations:
+    build:
+      context: .
+      dockerfile: app/backend/Dockerfile
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    environment:
+      APP_DATABASE_URL: postgresql+psycopg://${APP_MIGRATION_USER:?APP_MIGRATION_USER is required}:${APP_MIGRATION_PASSWORD:?APP_MIGRATION_PASSWORD is required}@app-postgres:5432/${APP_DB_NAME:-app_db}
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER is required}
+      TZ: Asia/Seoul
+    depends_on:
+      app-postgres: {condition: service_healthy}
+      app-db-provision: {condition: service_completed_successfully}
+    networks: [report-assistant-stage5]
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: app/backend/Dockerfile
+    env_file:
+      - ${REPORT_ASSISTANT_MODEL_ENV_FILE:?REPORT_ASSISTANT_MODEL_ENV_FILE must point to an external model env file}
+    environment:
+      APP_RUNTIME_DATABASE_URL: postgresql+psycopg://${APP_DB_USER:?APP_DB_USER is required}:${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}@app-postgres:5432/${APP_DB_NAME:-app_db}
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER is required}
+      REPORT_SCHEDULER_ENABLED: "0"
+      CORS_ALLOW_ORIGINS: http://127.0.0.1:13001,http://localhost:13001,http://192.168.0.37:13001
+      TZ: Asia/Seoul
+      SKIP_MIGRATIONS: "1"
+    depends_on:
+      app-postgres: {condition: service_healthy}
+      migrations: {condition: service_completed_successfully}
+    ports: ["0.0.0.0:18001:8000"]
+    networks: [report-assistant-stage5]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: app/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_BASE_URL: /api
+    depends_on:
+      backend: {condition: service_healthy}
+    ports: ["0.0.0.0:13001:8080"]
+    networks: [report-assistant-stage5]
+    restart: unless-stopped
+
+networks:
+  report-assistant-stage5: {}
+
+volumes:
+  app-postgres-data:
+    external: true
+    name: hotel-synthetic-db_app-postgres-data

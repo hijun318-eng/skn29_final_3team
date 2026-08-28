@@ -17,7 +17,7 @@ const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
 
-/** 대화형 분석 워크스페이스를 렌더링하고 Report 작업은 서버 Capability가 있을 때만 노출한다. */
+/** 대화형 분석 워크스페이스 최상위 화면을 렌더링한다. */
 export function AgentPage({ canDraftReport = false, onNavigate }) {
   const analysisClient = useMemo(() => createAnalysisClient(fetch), []);
   const reportClient = useMemo(() => createReportClient(undefined, fetch), []);
@@ -43,13 +43,6 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
   const activeTraceId = useRef("");
   const activeCommandAbortController = useRef(null);
   const threadEndRef = useRef(null);
-
-  const scrollToLatestTurn = () => window.requestAnimationFrame(() => {
-    threadEndRef.current?.scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      block: "end",
-    });
-  });
 
   const activeEvidenceRun = selectedEvidenceRun || turns.at(-1)?.run || transientRun("");
 
@@ -81,7 +74,6 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         .then((serverTurns) => {
           if (Array.isArray(serverTurns) && serverTurns.length > 0) {
             setTurns(hydrateTurnsFromServer(serverTurns));
-            scrollToLatestTurn();
           }
         })
         .catch((err) => {
@@ -193,7 +185,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         viewSpecId: null,
       };
       setTurns((prev) => [...prev, unavailableTurn]);
-      scrollToLatestTurn();
+      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
       return;
     }
     const generation = requestGeneration.current + 1;
@@ -206,6 +198,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
     setSelectedEvidenceRun(null);
     setMessage("");
     const traceId = createUuid();
+    const commandIdempotencyKey = createUuid();
     activeTraceId.current = traceId;
     const commandAbortController = new AbortController();
     activeCommandAbortController.current = commandAbortController;
@@ -224,7 +217,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       viewSpecId: null,
     };
     setTurns((prev) => [...prev, optimisticTurn]);
-    scrollToLatestTurn();
+    window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
 
     const commandOptions = {
       traceId,
@@ -245,32 +238,29 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       let cmdResponse;
       try {
         cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-          user_message: normalized,
-          expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : undefined,
           ...(action || {}),
+          user_message: normalized,
+          expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : null,
+          idempotency_key: commandIdempotencyKey,
         }, commandOptions);
       } catch (cmdErr) {
         if (cmdErr instanceof AnalysisApiError && cmdErr.status === 409) {
-          // 409 CAS Conflict: 대화방을 리셋하지 않고 서버의 최신 턴 목록을 다시 불러와 동기화 후 재시도
-          try {
-            const serverTurns = await analysisClient.getConversationTurns(activeConvId);
-            if (requestGeneration.current !== generation) return;
-            const latestServerTurn = serverTurns.at(-1);
-            const newHeadId = latestServerTurn?.turn_id;
-            cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-              user_message: normalized,
-              expected_head_turn_id: newHeadId,
-              ...(action || {}),
-            }, commandOptions);
-          } catch (retryErr) {
-            throw retryErr;
-          }
+          // stale head는 서버 이력으로 복원만 한다. 새 head에 같은 명령을 자동
+          // 재제출하면 사용자가 보지 못한 Turn 뒤에서 의도가 달라질 수 있다.
+          const serverTurns = await analysisClient.getConversationTurns(activeConvId);
+          if (requestGeneration.current !== generation) return;
+          setTurns(hydrateTurnsFromServer(serverTurns));
+          setQuestion(normalized);
+          window.sessionStorage.setItem(QUESTION_DRAFT_KEY, normalized);
+          throw cmdErr;
         } else if (cmdErr instanceof AnalysisApiError && cmdErr.status === 404) {
           activeConvId = await initConversation(generation);
           if (!activeConvId || requestGeneration.current !== generation) return;
           cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-            user_message: normalized,
             ...(action || {}),
+            user_message: normalized,
+            expected_head_turn_id: null,
+            idempotency_key: commandIdempotencyKey,
           }, commandOptions);
         } else {
           throw cmdErr;
@@ -285,9 +275,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       const isReportAction = serverTurn?.route === "REPORT_ACTION";
 
       let finalRun;
-      if (data?.status === "FAILED") {
-        finalRun = commandErrorRun(normalized, data);
-      } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
+      if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
         const clarType = commandClarificationType(data, serverTurn);
         finalRun = {
@@ -303,11 +291,14 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
             required_action: "PROVIDE_CONTEXT",
           },
         };
+      } else if (["BLOCKED", "FAILED", "CANCELLED"].includes(data?.status)) {
+        finalRun = commandErrorRun(normalized, data);
       } else if (isPresentation) {
         const sourceArtifactId = sourceRun?.artifact?.artifactId;
         const sourceQueryId = sourceRun?.artifact?.queryId;
         const responseArtifact = analysisRaw?.data?.artifact;
-        const responseEvidence = analysisRaw?.data?.result?.evidence;
+        const responseEvidence = analysisRaw?.data?.result?.evidence || analysisRaw?.data?.evidence;
+        const turnEvidence = serverTurn?.evidence_json;
         const responseArtifactMatches = !responseArtifact || (
           responseArtifact.artifact_id === sourceArtifactId
           && responseArtifact.query_id === sourceQueryId
@@ -316,12 +307,18 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
           responseEvidence.artifact_id === sourceArtifactId
           && responseEvidence.query_id === sourceQueryId
         );
+        const turnEvidenceMatches = !turnEvidence || (
+          turnEvidence.artifact_id === sourceArtifactId
+          && turnEvidence.query_id === sourceQueryId
+        );
         if (
-          !hasReusablePresentationArtifact(sourceRun)
+          data?.status === "PARTIAL"
+          || !hasReusablePresentationArtifact(sourceRun)
           || !serverTurn?.artifact_id
           || sourceArtifactId !== serverTurn.artifact_id
           || !responseArtifactMatches
           || !responseEvidenceMatches
+          || !turnEvidenceMatches
         ) {
           finalRun = commandErrorRun(normalized, {
             code: "INSUFFICIENT_EVIDENCE",
@@ -330,7 +327,12 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
             required_action: "NONE",
           });
         } else {
-          finalRun = { ...sourceRun, question: normalized, status: "success" };
+          finalRun = {
+            ...sourceRun,
+            question: normalized,
+            status: "success",
+            viewSpecId: serverTurn?.view_spec_id,
+          };
         }
       } else if (isPresentationAction) {
         finalRun = commandErrorRun(normalized, {
@@ -341,6 +343,8 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         });
       } else if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
+      } else if (data?.status === "PARTIAL") {
+        finalRun = commandErrorRun(normalized, data);
       } else if (isReportAction) {
         finalRun = {
           ...transientRun(normalized, "success"),
@@ -364,8 +368,8 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         resolvedSlots: serverTurn?.resolved_slots || null,
         viewType: isPresentation
           ? (serverTurn?.view_type || "TABLE")
-          : (serverTurn?.view_type || serverTurn?.resolved_slots?.target_chart_type || "SUMMARY"),
-        isArtifactReuse: isPresentation && Boolean(finalRun.artifact),
+          : (serverTurn?.resolved_slots?.target_chart_type || "SUMMARY"),
+        isArtifactReuse: isPresentation && hasReusablePresentationArtifact(finalRun),
         reusePending: false,
         viewSpecId: isPresentation ? serverTurn?.view_spec_id : null,
       } : t));
@@ -396,7 +400,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         if (activeTraceId.current === traceId) activeTraceId.current = "";
         requestInFlight.current = false;
         setSubmitting(false);
-        scrollToLatestTurn();
+        window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
       }
     }
   };
@@ -417,6 +421,41 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       await refreshSaved();
     } catch (error) { setMessage(error instanceof Error ? error.message : "분석을 저장하지 못했습니다."); }
     finally { setSavedBusy(false); }
+  };
+
+  const replaySavedDefinition = async (definition) => {
+    if (requestInFlight.current || savedBusy) return;
+    requestInFlight.current = true;
+    setSavedBusy(true);
+    setSubmitting(true);
+    setEvidenceOpen(false);
+    setSelectedEvidenceRun(null);
+    setMessage("저장 분석을 현재 권한과 릴리스에서 다시 실행하고 있습니다.");
+    try {
+      const receipt = await analysisClient.replayDefinition(definition.definition_id, {});
+      if (!["SUCCEEDED", "PARTIAL"].includes(receipt.status)) {
+        throw new Error("저장 분석 재실행이 완료 상태가 아닙니다.");
+      }
+      const run = await analysisClient.getRunArtifact(receipt.request_id);
+      setConversationId("");
+      window.sessionStorage.removeItem(CONVERSATION_KEY);
+      setTurns([{
+        turnId: `saved-${receipt.request_id}`,
+        question: definition.question,
+        run: { ...run, question: definition.question },
+        resolvedSlots: null,
+        viewType: "SUMMARY",
+      }]);
+      setMessage("저장 분석을 새 실행으로 완료했습니다.");
+      await refreshSaved();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다.");
+    } finally {
+      requestInFlight.current = false;
+      setSavedBusy(false);
+      setSubmitting(false);
+      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    }
   };
 
   const createReportDraft = async () => {
@@ -452,7 +491,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         </label>
         {visibleDefinitions.length === 0 && <small className="chat-history-empty">아직 저장된 분석이 없습니다.</small>}
         {visibleDefinitions.map((d) => (
-          <button disabled={savedBusy} title={d.question} onClick={() => void analyzeQuestion(d.question)} key={d.definition_id}>
+          <button disabled={savedBusy} title={d.question} onClick={() => void replaySavedDefinition(d)} key={d.definition_id}>
             <MessageSquareText size={15} /><span>{d.title}<small>다시 분석하기</small></span>
           </button>
         ))}
@@ -506,6 +545,12 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
                       onQuickView={turnItem.turnId === latestArtifactTurn?.turnId ? (mode) => {
+                        if (mode === "SUMMARY" || mode === "KPI") {
+                          setTurns((prev) => prev.map((turn) => turn.turnId === turnItem.turnId
+                            ? { ...turn, viewType: mode }
+                            : turn));
+                          return;
+                        }
                         const quick = quickViewAction(mode);
                         if (quick) void analyzeQuestion(quick.label, quick.action, turnItem);
                       } : undefined}
@@ -527,7 +572,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                         setEvidenceOpen(true);
                       } : undefined}
                     />
-                    {canDraftReport && turnItem.run.reportDefinitionId && (
+                    {turnItem.run.reportDefinitionId && (
                       <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                         <button
                           type="button"
@@ -544,7 +589,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                 </div>
               </div>
             ))}
-            <div ref={threadEndRef} className="conversation-end" aria-hidden="true" />
+            <div ref={threadEndRef} />
           </div>
         )}
 
@@ -581,10 +626,14 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                     <b>{savedRunStatus(item.status)}</b>
                     <small>{formatSeoulDateTime(item.completed_at || item.started_at)}</small>
                     <small>{item.question}</small>
-                    <small>{item.period_start && item.period_end_exclusive ? `${item.period_start} ~ ${item.period_end_exclusive} 미포함` : "기간 없음"}</small>
+                    <small>{item.period_start && item.period_end_exclusive
+                      ? `${item.period_start} ~ ${item.period_end_exclusive} 미포함`
+                      : item.snapshot_cutoff && item.snapshot_selection === "max_source_value_lt_as_of"
+                        ? `${item.snapshot_cutoff} 이전 최신 스냅샷`
+                        : "시간 기준 없음"}</small>
                   </span>
                   {item.artifact_id && (
-                    <button type="button" disabled={savedBusy} onClick={() => void analyzeQuestion(item.question)}>
+                    <button type="button" disabled={savedBusy} onClick={() => void replaySavedDefinition(item)}>
                       다시 실행
                     </button>
                   )}

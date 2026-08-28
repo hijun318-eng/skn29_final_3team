@@ -1,0 +1,81 @@
+{
+  "schema_version": "answervice.node1_grounding_gold.v1",
+  "dataset_id": "answervice_ko_node1.v1",
+  "status": "SEALED",
+  "sealed_at": "2026-08-22T00:00:00+09:00",
+  "source": "Phase 2 한국어 held-out 검색 Gold를 사람이 기간·분석 형태와 결합한 독립 Node1 Gate",
+  "thresholds": {
+    "min_joint_slot_exact_match": 1.0,
+    "max_projection_outside_execution_count": 0,
+    "max_injection_bypass_count": 0,
+    "max_source_or_release_evidence_missing_count": 0
+  },
+  "cases": [
+    {
+      "case_id": "N1-H-001",
+      "source_case_id": "KO-H-P-001",
+      "query": "2025년 8월 숙박 객실에서 인식된 룸 매출 합계를 알려줘",
+      "expected_metric_ids": ["room_revenue"],
+      "expected_operation": "aggregate",
+      "expected_dimension_ids": [],
+      "expected_period": {
+        "start": "2025-08-01",
+        "end_exclusive": "2025-09-01",
+        "relationship": "single"
+      }
+    },
+    {
+      "case_id": "N1-H-002",
+      "source_case_id": "KO-H-P-004",
+      "query": "2025년 8월 판매 가능한 객실 하나가 벌어들인 판매가능객실당매출을 보여줘",
+      "expected_metric_ids": ["revpar"],
+      "expected_operation": "aggregate",
+      "expected_dimension_ids": [],
+      "expected_period": {
+        "start": "2025-08-01",
+        "end_exclusive": "2025-09-01",
+        "relationship": "single"
+      }
+    },
+    {
+      "case_id": "N1-H-003",
+      "source_case_id": "KO-H-P-010",
+      "query": "2025년 8월 리뷰 건수로 나눈 고객 평균 평점을 알려줘",
+      "expected_metric_ids": ["voc_average_rating"],
+      "expected_operation": "aggregate",
+      "expected_dimension_ids": [],
+      "expected_period": {
+        "start": "2025-08-01",
+        "end_exclusive": "2025-09-01",
+        "relationship": "single"
+      }
+    },
+    {
+      "case_id": "N1-H-004",
+      "source_case_id": "KO-H-P-005",
+      "query": "2025년 8월 호텔별 환불과 할인을 반영한 식음료 순매출을 보여줘",
+      "expected_metric_ids": ["fnb_revenue"],
+      "expected_operation": "breakdown",
+      "expected_dimension_ids": ["hotel_code"],
+      "expected_period": {
+        "start": "2025-08-01",
+        "end_exclusive": "2025-09-01",
+        "relationship": "single"
+      }
+    },
+    {
+      "case_id": "N1-H-005",
+      "source_case_id": "KO-H-P-008",
+      "query": "2025년 8월 객실 식음 연회 시설을 모두 합친 호텔 전체 매출을 보여줘",
+      "expected_metric_ids": ["total_operating_revenue_krw"],
+      "expected_operation": "aggregate",
+      "expected_dimension_ids": [],
+      "expected_period": {
+        "start": "2025-08-01",
+        "end_exclusive": "2025-09-01",
+        "relationship": "single"
+      }
+    }
+  ],
+  "content_sha256": "8700cd0352da9e606df6c712b9a85a25f816c9eb7b24ffffb0f0e3666a7a57ed"
+}

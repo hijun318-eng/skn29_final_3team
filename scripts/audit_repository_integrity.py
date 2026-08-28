@@ -61,6 +61,11 @@ RUNTIME_CONFIG_FILES = {
     "app/frontend/vite.config.js",
     "infrastructure/database/compose.yml",
 }
+RUNTIME_GATE_FILES = {
+    "evals/__init__.py",
+    "evals/metric_retrieval.py",
+    "evals/metric_retrieval_runner.py",
+}
 
 # 이 목록은 운영 데이터가 아니라 정적 감사 정책이다. 새 항목은 소유자·생성 절차·
 # validator가 있는 versioned schema/config/manifest일 때만 추가한다.
@@ -69,6 +74,18 @@ ALLOWED_RUNTIME_JSON = {
     "app/frontend/package-lock.json": "frontend dependency lock",
     "app/backend/contracts/openapi.v0.1.json": "generated API contract snapshot",
     "app/backend/contracts/state_mapping.v0.1.json": "versioned state contract",
+    "app/backend/contracts/analysis_capability.single_asset.v1.json": (
+        "sealed catalog-bound single-asset analysis capability contract"
+    ),
+    "app/backend/contracts/analysis_capability.bounded_multi_turn.v1.json": (
+        "sealed catalog-bound bounded multi-turn analysis capability contract"
+    ),
+    "app/backend/contracts/analysis_capability.multi_asset_join.v1.json": (
+        "sealed catalog-bound multi-asset JOIN analysis capability contract"
+    ),
+    "app/backend/contracts/analysis_capability.product.v1.json": (
+        "sealed catalog-bound product analysis capability contract"
+    ),
     "src/ai/contracts/model_release.v1.json": "provider response schema manifest",
     "src/ai/contracts/node_io.v0.1.json": "versioned node I/O schema",
     "src/modelops/model_runtime_manifest.v1.json": "validated model capacity manifest",
@@ -83,10 +100,16 @@ ALLOWED_RUNTIME_JSON = {
     "infrastructure/database/datahub/decisions/metric_retirement_20260820.v1.json": (
         "validated product-scope retirement decision"
     ),
+    "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json": (
+        "sealed backend deployment retrieval Gate contract"
+    ),
 }
 PROHIBITED_RUNTIME_REFERENCES = {
     "docs/e2e_mvp/derived/service_demo_v3": "과거 demo seed",
     "infrastructure/database/releases/": "불변 과거 release archive",
+    "evals/semantic_review/answervice_bi_coverage.v1.json": (
+        "승인되지 않은 BI coverage review candidate"
+    ),
     "r1-service-fragment.v1.json": "삭제된 service fixture manifest",
     "candidate_context": "요청 전용 context snapshot",
     "pms_crm_pos_context": "요청 전용 context snapshot",
@@ -199,6 +222,13 @@ def _classify(relative: str) -> str:
         return "archive"
     if relative in ALLOWED_RUNTIME_JSON:
         return "runtime-contract"
+    if relative.startswith("infrastructure/database/datahub/metadata/"):
+        # schema.json으로 검증되고 canonical sync가 소유하는 승인 policy다.
+        # DataHub 실행 코드와 달리 고객·release·Metric identity를 기록해야 하며,
+        # runtime은 이 파일을 직접 읽지 않고 DataHub read-back만 사용한다.
+        return "runtime-contract"
+    if relative in RUNTIME_GATE_FILES:
+        return "runtime-config"
     if relative.startswith(ARCHIVE_PREFIXES):
         return "archive"
     if (

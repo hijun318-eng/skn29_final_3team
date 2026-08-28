@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
@@ -25,19 +26,44 @@ def routing_service() -> RoutingService:
 
 
 def data_platform():
-    """DataHub와 TLS 인증 Trino 설정으로 운영 거버넌스 어댑터를 구성한다.
+    """Active RuntimeCatalogProjection, DataHub Search와 TLS Trino 어댑터를 구성한다.
 
     Trino 사용자·비밀번호·CA가 비어 있거나 HTTPS 검증을 구성할 수 없으면 어댑터 생성이
-    실패하므로, 분석이 암호화되지 않은 연결로 강등되지 않는다.
+    실패한다. 요청 catalog는 DB active pointer에서만 읽고 DataHub 전체 read-back은
+    readiness parity에만 사용한다. 질문 경로는 bounded Search만 수행하며 projection 부재를
+    live catalog fallback으로 숨기지 않는다.
     """
     from app.adapters.governed_data_platform import GovernedDataPlatformAdapter
+    from app.adapters.runtime_catalog_repository import (
+        PostgresRuntimeCatalogProjectionRepository,
+    )
+    from app.database import get_sessionmaker
+    from src.data.analysis_capability_contract import (
+        load_analysis_capability_release,
+    )
+
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "")
+    if not database_url:
+        raise RuntimeError("RuntimeCatalogProjection 저장소가 구성되지 않았습니다.")
+    expected_release = os.getenv("ANALYTICS_CONTEXT_RELEASE") or None
+    analysis_capability = load_analysis_capability_release(
+        Path(__file__).resolve().parents[2]
+        / "contracts"
+        / "analysis_capability.product.v1.json",
+        expected_catalog_release=expected_release,
+    )
+    projection_repository = PostgresRuntimeCatalogProjectionRepository(
+        get_sessionmaker(database_url)
+    )
 
     return GovernedDataPlatformAdapter(
         os.getenv("TRINO_URL", "https://trino:8443"),
         os.getenv("TRINO_RUNTIME_USER", ""),
         trino_password=os.getenv("TRINO_RUNTIME_PASSWORD", ""),
         trino_ca_file=os.getenv("TRINO_TLS_CA_FILE", "/run/secrets/trino-ca.pem"),
-        expected_context_release=os.getenv("ANALYTICS_CONTEXT_RELEASE") or None,
+        expected_context_release=expected_release,
+        projection_repository=projection_repository,
+        analysis_capability=analysis_capability,
     )
 
 
@@ -128,11 +154,17 @@ def conversation_orchestrator(controller: Any) -> Any:
     sessionmaker = get_sessionmaker(database_url)
     repo = ConversationRepository(sessionmaker)
 
-    def _report_repo_factory(owner_id: Any, manage_all: bool = False) -> Any:
+    def _report_repo_factory(
+        context: RequestContext,
+        manage_all: bool = False,
+    ) -> Any:
         return PostgresReportRepository(
             database_url=database_url,
-            owner_id=owner_id,
+            owner_id=context.user_id,
             manage_all=manage_all,
+            product_release_id=context.product_release_id,
+            permission_snapshot_id=context.permission_snapshot_id,
+            semantic_release_id=context.semantic_release_id,
             session_factory=sessionmaker,
         )
 

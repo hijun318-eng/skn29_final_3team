@@ -14,6 +14,7 @@ from metadata_contract_primitives import (
     mapping,
     text,
     unique_texts,
+    urn,
 )
 from release_bundle import ReleaseBinding
 from semantic_authoring import (
@@ -94,10 +95,28 @@ def compile_authoring_policy(
         validate_entitlement_roles(roles)
     except ValueError as error:
         raise SemanticMetadataError("policy roles contain an unsupported role") from error
-    grain_overrides = _grain_overrides(source["asset_grains"])
+    grain_overrides = _grain_overrides(
+        source["asset_grains"],
+        str(source["contract_version"]),
+    )
     live_fqns = {binding.relation.fqn for binding in bindings}
     if not set(grain_overrides) <= live_fqns:
         raise SemanticMetadataError("grain decisions reference an unknown live asset")
+    # v2 compact decision의 asset_grains는 단순 override가 아니라 승인된 target
+    # membership이다. 같은 schema에 base-ingested 검토 후보가 더 있어도 이를 암묵적으로
+    # owner/domain/lifecycle 승인하지 않는다. 기존 governed asset 누락은 후속 authoring
+    # gate의 manifest 비교가 별도로 차단한다.
+    decision_bindings = bindings
+    if source["contract_version"] == DECISION_CONTRACT_VERSION_V2:
+        if not grain_overrides:
+            raise SemanticMetadataError(
+                "v2 policy decisions require explicit asset membership"
+            )
+        decision_bindings = tuple(
+            binding
+            for binding in bindings
+            if binding.relation.fqn in grain_overrides
+        )
 
     metrics = deepcopy(array(source["metric_rules"], "metric rules", non_empty=True))
     try:
@@ -110,10 +129,21 @@ def compile_authoring_policy(
         raise SemanticMetadataError(
             "policy decision and metric governance versions differ"
         )
-    terms = _metric_terms(source["metric_terms"], metrics, owner, lifecycle, bindings)
-    time_rules = _time_rules(source["time_rules"], bindings)
+    domains = _domains(decision_bindings)
+    asset_domains = _asset_domains(
+        decision_bindings,
+        grain_overrides,
+        {item["urn"] for item in domains},
+    )
+    terms = _metric_terms(
+        source["metric_terms"],
+        metrics,
+        owner,
+        lifecycle,
+        asset_domains,
+    )
+    time_rules = _time_rules(source["time_rules"], decision_bindings)
     semantic_roles = _semantic_roles(metrics, source["dimensions"], time_rules)
-    domains = _domains(bindings)
     assets = [
         _asset(
             binding,
@@ -123,8 +153,9 @@ def compile_authoring_policy(
             source,
             owner,
             lifecycle,
+            asset_domains[binding.relation.fqn],
         )
-        for binding in sorted(bindings, key=lambda item: item.relation.fqn)
+        for binding in sorted(decision_bindings, key=lambda item: item.relation.fqn)
     ]
     return {
         "contract_version": authoring_version,
@@ -166,16 +197,34 @@ def _governance(
     return {"urn": urn, "name": name, "description": description}
 
 
-def _grain_overrides(value: object) -> dict[str, dict[str, Any]]:
+def _grain_overrides(
+    value: object,
+    contract_version: str,
+) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for index, raw in enumerate(array(value, "asset grains", limit=1_000)):
         item = mapping(raw, f"asset grain[{index}]")
-        exact_keys(item, {"fqn", "kind", "keys"}, f"asset grain[{index}]")
+        expected = {"fqn", "kind", "keys"}
+        if (
+            contract_version == DECISION_CONTRACT_VERSION_V2
+            and "domain_urn" in item
+        ):
+            expected.add("domain_urn")
+        exact_keys(item, expected, f"asset grain[{index}]")
         name = fqn(item["fqn"], f"asset grain[{index}].fqn")
         keys = list(unique_texts(item["keys"], f"{name}.grain.keys", non_empty=True))
         if name in result:
             raise SemanticMetadataError("asset grain decisions are duplicate")
-        result[name] = {"kind": text(item["kind"], f"{name}.grain.kind"), "keys": keys}
+        result[name] = {
+            "kind": text(item["kind"], f"{name}.grain.kind"),
+            "keys": keys,
+        }
+        if "domain_urn" in item:
+            result[name]["domain_urn"] = urn(
+                item["domain_urn"],
+                "urn:li:domain:",
+                f"{name}.domain_urn",
+            )
     return result
 
 
@@ -184,7 +233,7 @@ def _domains(bindings: tuple[ReleaseBinding, ...]) -> list[dict[str, str]]:
     for binding in bindings:
         domain = binding.dataset.domain
         if domain is None:
-            raise SemanticMetadataError("live dataset domain is required for policy compilation")
+            continue
         item = {
             "urn": _canonical_text(domain.urn, "dataset domain URN"),
             "name": _canonical_text(domain.name, "dataset domain name"),
@@ -201,6 +250,39 @@ def _domains(bindings: tuple[ReleaseBinding, ...]) -> list[dict[str, str]]:
     return [result[urn] for urn in sorted(result)]
 
 
+def _asset_domains(
+    bindings: tuple[ReleaseBinding, ...],
+    decisions: Mapping[str, Mapping[str, Any]],
+    known_domain_urns: set[str],
+) -> dict[str, str]:
+    """live domain을 보존하고 신규 asset은 명시 승인된 기존 domain에만 결속한다."""
+
+    result: dict[str, str] = {}
+    for binding in bindings:
+        fqn_value = binding.relation.fqn
+        decision = decisions.get(fqn_value) or {}
+        approved = decision.get("domain_urn")
+        live = (
+            binding.dataset.domain.urn
+            if binding.dataset.domain is not None
+            else None
+        )
+        if live is not None:
+            live = _canonical_text(live, "dataset domain URN")
+            if approved is not None and approved != live:
+                raise SemanticMetadataError(
+                    "approved asset domain differs from the live governed domain"
+                )
+            result[fqn_value] = live
+            continue
+        if not isinstance(approved, str) or approved not in known_domain_urns:
+            raise SemanticMetadataError(
+                "new asset requires an explicitly approved existing domain"
+            )
+        result[fqn_value] = approved
+    return result
+
+
 def _asset(
     binding: ReleaseBinding,
     override: Mapping[str, Any] | None,
@@ -209,9 +291,10 @@ def _asset(
     source: Mapping[str, Any],
     owner: Mapping[str, str],
     lifecycle: Mapping[str, str],
+    domain_urn: str,
 ) -> dict[str, Any]:
     relation, dataset = binding.relation, binding.dataset
-    if dataset.domain is None or len(dataset.fields) != len(relation.columns):
+    if len(dataset.fields) != len(relation.columns):
         raise SemanticMetadataError("live asset metadata is incomplete")
     physical_keys = {field.name for field in dataset.fields if field.is_part_of_key is True}
     if override is None:
@@ -221,7 +304,10 @@ def _asset(
             )
         grain = {"kind": "row", "keys": sorted(physical_keys)}
     else:
-        grain = deepcopy(dict(override))
+        grain = {
+            "kind": deepcopy(override["kind"]),
+            "keys": deepcopy(override["keys"]),
+        }
         if not physical_keys <= set(grain["keys"]):
             raise SemanticMetadataError("approved grain cannot remove an ingested key")
     columns = []
@@ -246,11 +332,11 @@ def _asset(
         "seed_version": text(source["seed_version"], "seed version"),
         "synthetic": source["synthetic"],
         "approval_status": "APPROVED",
-        "entitlements": {"roles": roles, "domains": [dataset.domain.urn]},
+        "entitlements": {"roles": roles, "domains": [domain_urn]},
         "grain": grain,
         "columns": columns,
         "owner_urn": owner["urn"],
-        "domain_urn": dataset.domain.urn,
+        "domain_urn": domain_urn,
         "approved_lifecycle_urn": lifecycle["urn"],
     }
 
@@ -287,13 +373,8 @@ def _metric_terms(
     metrics: list[Any],
     owner: Mapping[str, str],
     lifecycle: Mapping[str, str],
-    bindings: tuple[ReleaseBinding, ...],
+    domain_by_fqn: Mapping[str, str],
 ) -> list[dict[str, Any]]:
-    domain_by_fqn = {
-        binding.relation.fqn: binding.dataset.domain.urn
-        for binding in bindings
-        if binding.dataset.domain is not None
-    }
     metric_by_id = {mapping(item, "metric").get("id"): mapping(item, "metric") for item in metrics}
     metric_domains = _metric_domains(metric_by_id, domain_by_fqn)
     result = []

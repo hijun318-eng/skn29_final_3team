@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from app.contracts import (
     AnalysisRequest,
@@ -29,7 +29,11 @@ from app.services.analysis.stages.plan_stage import AnalysisPlanStage
 from app.services.analysis.stages.query_stage import AnalysisQueryStage
 from app.services.analysis.stages.result_stage import AnalysisResultStage
 from app.services.analysis.pipeline_support import PipelineSupport
-from app.services.execution_control import IsolatedExecutionCache, secure_cache_key
+from app.services.execution_control import (
+    IsolatedExecutionCache,
+    ModelCallBudget,
+    secure_cache_key,
+)
 from app.services.routing_service import RouteDecision
 
 
@@ -60,6 +64,11 @@ class AnalysisPipeline:
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
         progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
+        run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None,
+        context_receipt_sink: (
+            Callable[[RequestContext, Any], Awaitable[None]] | None
+        ) = None,
+        model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """분석 요청을 받아 전체 파이프라인을 구동하고 최종 AnalysisResponse를 반환합니다."""
         # 1. 요청별 격리된 파이프라인 상태 객체 초기화
@@ -71,6 +80,9 @@ class AnalysisPipeline:
             execution_sink=execution_sink,
             progress_sink=progress_sink,
             cancel_check=cancel_check,
+            run_admission_sink=run_admission_sink,
+            context_receipt_sink=context_receipt_sink,
+            budget=model_budget or ModelCallBudget(),
         )
         state.machine.transition(AnalysisStatus.ROUTED)
         state.record(PipelineStage.ROUTER)
@@ -102,15 +114,16 @@ class AnalysisPipeline:
                 decision,
             )
 
-        # 3. Context, Plan, Query 단계 순차 실행 (조기 차단 발생 시 즉시 반환)
-        for stage in (
-            self._context_stage,
-            self._plan_stage,
-            self._query_stage,
-        ):
+        # 3. ContextStage가 typed request 확정 직후 Run을 admission하고 G1까지 완료한다.
+        response = await self._context_stage.run(state)
+        if response is not None:
+            return response
+
+        # 4. Plan, Query 단계 순차 실행 (조기 차단 발생 시 즉시 반환)
+        for stage in (self._plan_stage, self._query_stage):
             response = await stage.run(state)
             if response is not None:
                 return response
 
-        # 4. Result 단계 실행 및 최종 응답 반환
+        # 5. Result 단계 실행 및 최종 응답 반환
         return await self._result_stage.run(state)

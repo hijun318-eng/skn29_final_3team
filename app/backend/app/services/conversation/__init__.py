@@ -18,6 +18,11 @@ from app.services.conversation.change_set import (
     derive_metric_change,
 )
 from app.services.conversation.orchestrator import ConversationOrchestrator
+from app.services.conversation.reconciler import (
+    ConversationReconciler,
+    ConversationRecoveryWorker,
+    conversation_recovery_worker,
+)
 from app.services.conversation.report_actions import execute_report_action
 from app.services.conversation.slot_resolver import (
     ConversationSlotResolver,
@@ -31,6 +36,9 @@ SlotResolver = ConversationSlotResolver
 
 __all__ = [
     "ConversationOrchestrator",
+    "ConversationReconciler",
+    "ConversationRecoveryWorker",
+    "conversation_recovery_worker",
     "ConversationSlotResolver",
     "SlotResolver",
     "ResolvedTurnSlots",

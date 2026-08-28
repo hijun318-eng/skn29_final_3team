@@ -7,6 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yml"
 OVERRIDE = ROOT / "compose.app-postgres.override.yml"
+BACKEND_VERIFIER = ROOT / "app/backend/scripts/verify-container.ps1"
+BACKEND_DOCKERFILE = ROOT / "app/backend/Dockerfile"
+BACKEND_COMPOSE = ROOT / "app/backend/compose.fragment.yml"
+SOURCE_PROVENANCE = ROOT / "app/backend/scripts/source-provenance.ps1"
 
 
 def _config() -> dict:
@@ -40,6 +44,8 @@ def test_canonical_env_example_covers_datahub_runtime_secrets():
     }
 
     assert {
+        "APP_CATALOG_PUBLISHER_USER",
+        "APP_CATALOG_PUBLISHER_PASSWORD",
         "DATAHUB_MYSQL_PASSWORD",
         "DATAHUB_MYSQL_ROOT_PASSWORD",
         "DATAHUB_SECRET",
@@ -88,3 +94,106 @@ def test_resolved_backend_uses_an_isolated_host_port_only():
     assert service["ports"] == [
         {"mode": "ingress", "target": 8000, "published": "28000", "protocol": "tcp", "host_ip": "127.0.0.1"}
     ]
+
+
+def test_catalog_publisher_credentials_are_confined_to_the_out_of_band_boundary():
+    services = _config()["services"]
+    postgres = services["app-postgres"]["environment"]
+    migrations = services["app-migrations"]["environment"]
+    backend = services["backend"]["environment"]
+
+    assert postgres["APP_CATALOG_PUBLISHER_USER"] == "app_catalog_publisher"
+    assert postgres["APP_CATALOG_PUBLISHER_PASSWORD"] == (
+        "CHANGE_ME_AppCatalogPublisher"
+    )
+    assert migrations["APP_CATALOG_PUBLISHER_USER"] == "app_catalog_publisher"
+    assert "APP_CATALOG_PUBLISHER_PASSWORD" not in migrations
+    assert "APP_CATALOG_PUBLISHER_USER" not in backend
+    assert "APP_CATALOG_PUBLISHER_PASSWORD" not in backend
+
+
+def test_backend_verifier_uses_the_resolved_port_and_all_readiness_dependencies():
+    source = BACKEND_VERIFIER.read_text(encoding="utf-8")
+
+    assert "http://127.0.0.1:28000" in source
+    assert "http://127.0.0.1:18000" not in source
+    assert "[switch]$AllowRepositoryLocalDevelopment" in source
+    assert "Resolve-ExplicitDeploymentEnvFile" in source
+    assert "-AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment" in source
+    assert "dependencies.PSObject.Properties" in source
+    assert "$readinessDependencies.Count -eq 0" in source
+    assert "$notReadyDependencies.Count -gt 0" in source
+    assert "dependencies.datahub" not in source
+
+
+def test_backend_image_and_verifier_include_the_sealed_phase2a_gate():
+    dockerfile = BACKEND_DOCKERFILE.read_text(encoding="utf-8")
+    verifier = BACKEND_VERIFIER.read_text(encoding="utf-8")
+
+    for artifact in (
+        "evals/metric_retrieval.py",
+        "evals/metric_retrieval_runner.py",
+        "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json",
+    ):
+        assert artifact in dockerfile
+    assert "/workspace/evals/metric_retrieval_runner.py" in verifier
+    assert "--phase2a-gold-manifest" in verifier
+    assert "answervice.metric_retrieval_phase2a.v2" in verifier
+    assert "$retrievalGate.decision -ne 'PROMOTE'" in verifier
+    assert "BACKEND_METRIC_RETRIEVAL_READY" in verifier
+
+
+def test_backend_image_includes_node2_runtime_evidence():
+    dockerfile = BACKEND_DOCKERFILE.read_text(encoding="utf-8")
+
+    for artifact in (
+        "evals/node2_qwen35_2b_full3000_huggingface.receipt.json",
+        "evals/node2_qwen35_2b_full3000_canary.v1.json",
+    ):
+        assert artifact in dockerfile
+
+
+def test_backend_verifier_rehearses_search_rollback_as_one_scoped_receipt():
+    verifier = BACKEND_VERIFIER.read_text(encoding="utf-8")
+
+    stages = (
+        "candidate_baseline",
+        "lexical_rollback",
+        "candidate_restore",
+    )
+    assert [verifier.index(stage) for stage in stages] == sorted(
+        verifier.index(stage) for stage in stages
+    )
+    assert "answervice.search-rollback-receipt.v1" in verifier
+    assert "P0-DATAHUB-SEARCH_PROCESS_MODE_ONLY" in verifier
+    assert "Search rollback receipt path must be covered by .gitignore." in verifier
+    assert "Search rollback rehearsal crossed a release or Gold identity." in verifier
+    assert "BACKEND_SEARCH_ROLLBACK_VERIFIED=" in verifier
+
+
+def test_backend_build_fails_closed_and_verifier_matches_source_provenance():
+    dockerfile = BACKEND_DOCKERFILE.read_text(encoding="utf-8")
+    compose = BACKEND_COMPOSE.read_text(encoding="utf-8")
+    verifier = BACKEND_VERIFIER.read_text(encoding="utf-8")
+    resolver = SOURCE_PROVENANCE.read_text(encoding="utf-8")
+
+    for key in (
+        "ANSWERVICE_SOURCE_REVISION",
+        "ANSWERVICE_SOURCE_DIRTY",
+        "ANSWERVICE_SOURCE_FINGERPRINT",
+    ):
+        assert f"ARG {key}" in dockerfile
+        assert compose.count(f"{key}: ${{{key}:-}}") == 2
+        assert f"$env:{key}" in resolver
+    assert "org.opencontainers.image.revision" in dockerfile
+    assert "io.answervice.source.dirty" in dockerfile
+    assert "io.answervice.source.fingerprint" in dockerfile
+    assert dockerfile.index("pip install --disable-pip-version-check") < dockerfile.index(
+        "ARG ANSWERVICE_SOURCE_REVISION"
+    )
+    assert "diff --binary --no-ext-diff HEAD" in resolver
+    assert "ls-files --others --exclude-standard" in resolver
+    assert "'core.quotePath=false'" in resolver
+    assert "source-provenance.ps1" in verifier
+    assert "docker inspect --format '{{json .Config.Labels}}'" in verifier
+    assert "BACKEND_IMAGE_PROVENANCE_READY" in verifier

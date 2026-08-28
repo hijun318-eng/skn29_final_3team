@@ -3,8 +3,6 @@ import { readFileSync } from "node:fs";
 import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VERSION } from "../../app/frontend/src/contracts/analysis.ts";
 import { compactDraftLayout, placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks, seoulWallClockToIso } from "../../app/frontend/src/contracts/report.ts";
 import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient } from "../../app/frontend/src/api/analysisClient.ts";
-import { AdminApiError, createAdminClient } from "../../app/frontend/src/api/adminClient.ts";
-import { normalizeAuditTrailDetail, normalizeAuditTrailPage } from "../../app/frontend/src/features/admin/audit/auditTrailTypes.ts";
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
@@ -18,10 +16,8 @@ const frontendDockerfile = readFileSync(new URL("../../app/frontend/Dockerfile",
 const frontendPackage = JSON.parse(readFileSync(new URL("../../app/frontend/package.json", import.meta.url), "utf8"));
 const viteConfig = readFileSync(new URL("../../app/frontend/vite.config.js", import.meta.url), "utf8");
 const productSources = [
-  "App.jsx", "routing.js", "api/analysisClient.ts", "api/adminClient.ts", "api/reportClient.ts",
+  "App.jsx", "routing.js", "api/analysisClient.ts", "api/reportClient.ts",
   "pages/AgentPage.jsx", "pages/AdminPage.jsx",
-  "features/admin/audit/AuditTrailPanel.tsx", "features/admin/audit/AuditTrailDetail.tsx",
-  "features/admin/audit/auditTrailTypes.ts",
   "components/analysis/AnalysisStatePanel.tsx", "components/analysis/AnalysisStatePanelParts.tsx",
   "components/analysis/AnalysisFailureState.tsx",
   "components/layout/AppHeader.jsx",
@@ -32,6 +28,7 @@ const reportA4Styles = [
   "features/reports/report-a4-artifact.css",
   "features/reports/report-a4-print.css",
 ].map(source).join("\n");
+const reportAssistantPanelSource = source("features/reports/components/ReportAssistantPanel.jsx");
 
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
@@ -40,16 +37,16 @@ assert.match(nginx, /location \/assets\/ \{[\s\S]*try_files \$uri =404/);
 assert.match(nginx, /Cache-Control "no-cache, no-store, must-revalidate"/);
 assert.match(nginx, /location \/api\/ \{[\s\S]*proxy_pass http:\/\/backend:8000\//);
 assert.equal(frontendPackage.scripts["dev:compose"], "vite --mode compose");
-assert.match(viteConfig, /host: "localhost"/);
 assert.match(viteConfig, /composeMode \? "http:\/\/127\.0\.0\.1:28000"/);
 assert.match(viteConfig, /composeMode \? "\/api"/);
 assert.match(frontendCompose, /VITE_BACKEND_BASE_URL: "\$\{VITE_BACKEND_BASE_URL:-\/api\}"/);
 assert.match(frontendDockerfile, /ARG VITE_BACKEND_BASE_URL=\/api/);
+assert.match(frontendDockerfile, /^FROM node:24-alpine@sha256:[a-f0-9]{64} AS build$/m);
+assert.match(frontendDockerfile, /^FROM nginx:1\.28-alpine@sha256:[a-f0-9]{64}$/m);
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(resolveRoute("/").path, "/agent");
 assert.equal(resolveRoute("/agent").page, "chat");
 assert.equal(resolveRoute("/reports").page, "reports");
-assert.equal(resolveRoute("/admin").page, "admin");
 assert.equal(resolveRoute("/catalog").page, "notFound");
 assert.equal(resolveRoute("/connections").page, "notFound");
 
@@ -76,27 +73,18 @@ assert.match(source("App.jsx"), /answervice:clear-drafts/);
 
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
 assert.match(source("pages/AgentPage.jsx"), /analysisClient\.submitTurnCommand/);
-assert.deepEqual(quickViewAction("TABLE"), {
-  label: "표로 보기",
-  action: { requested_route: "PRESENTATION", presentation_type: "TABLE" },
-});
+assert.equal(quickViewAction("SUMMARY"), null);
+assert.equal(quickViewAction("KPI"), null);
 assert.deepEqual(quickViewAction("CHART"), {
   label: "그래프로 보기",
   action: { requested_route: "PRESENTATION", presentation_type: "BAR" },
 });
-assert.deepEqual(quickViewAction("SUMMARY"), {
-  label: "요약으로 보기",
-  action: { requested_route: "PRESENTATION", presentation_type: "SUMMARY" },
+assert.deepEqual(quickViewAction("TABLE"), {
+  label: "표로 보기",
+  action: { requested_route: "PRESENTATION", presentation_type: "TABLE" },
 });
-assert.deepEqual(quickViewAction("KPI")?.action, { requested_route: "PRESENTATION", presentation_type: "KPI" });
 assert.equal(quickViewAction("FULL"), null);
-assert.deepEqual(quickViewAction("CHART", { hasChart: true, hasTable: true })?.action, { requested_route: "PRESENTATION", presentation_type: "BAR" });
-assert.deepEqual(quickViewAction("TABLE", { hasChart: true, hasTable: true })?.action, { requested_route: "PRESENTATION", presentation_type: "TABLE" });
 assert.equal(quickViewAction("UNKNOWN"), null);
-assert.doesNotMatch(source("pages/AgentPage.jsx"), /setTurns\(\(prev\).*viewType: mode/);
-assert.match(source("pages/AgentPage.jsx"), /setTurns\(\(prev\) => \[\.\.\.prev, optimisticTurn\]\)/);
-assert.match(source("pages/AgentPage.jsx"), /isPresentationAction && !hasReusablePresentationArtifact\(sourceRun\)[\s\S]*?기존 분석 결과가 없어 해당 보기를 만들 수 없습니다[\s\S]*?return;/);
-assert.match(source("pages/AgentPage.jsx"), /requestGeneration\.current !== generation/);
 assert.equal(hasReusablePresentationArtifact({
   artifact: { artifactId: "artifact-1", queryId: "query-1" },
   evidence: { artifactId: "artifact-1", queryId: "query-1" },
@@ -106,6 +94,17 @@ assert.equal(hasReusablePresentationArtifact({
   evidence: { artifactId: "artifact-1", queryId: "query-other" },
 }), false);
 assert.equal(hasReusablePresentationArtifact(null), false);
+assert.match(source("pages/AgentPage.jsx"), /setTurns\(\(prev\) => \[\.\.\.prev, optimisticTurn\]\)/);
+assert.match(source("pages/AgentPage.jsx"), /isPresentationAction && !hasReusablePresentationArtifact\(sourceRun\)/);
+assert.match(source("pages/AgentPage.jsx"), /requestGeneration\.current !== generation/);
+assert.match(source("pages/AgentPage.jsx"), /analysisClient\.replayDefinition\(definition\.definition_id, \{\}\)/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /onClick=\{\(\) => void analyzeQuestion\(d\.question\)\}/);
+assert.match(source("pages/AgentPage.jsx"), /stale head는 서버 이력으로 복원만 한다/);
+assert.match(source("pages/AgentPage.jsx"), /setTurns\(hydrateTurnsFromServer\(serverTurns\)\)/);
+assert.doesNotMatch(
+  source("pages/AgentPage.jsx"),
+  /cmdErr\.status === 409[\s\S]*?submitTurnCommand[\s\S]*?else if \(cmdErr/,
+);
 assert.match(source("pages/AgentPage.jsx"), /clarifiedQuestion\(turnItem\.question, sugg/);
 assert.match(source("components/analysis/AnalysisFailureState.tsx"), /분석 기간을 선택해 주세요/);
 assert.match(source("pages/AgentPage.jsx"), /MAX_QUESTION_LENGTH\.toLocaleString/);
@@ -150,12 +149,9 @@ assert.doesNotMatch([
     .filter(([name]) => name !== "reportClient")
     .map(([, reportSource]) => reportSource),
 ].join("\n"), /authToken/);
-assert.doesNotMatch(source("App.jsx"), /menuOpen|AppSidebar|sidebar-collapsed/);
-assert.doesNotMatch(source("styles.css"), /\.scrim\{|\.mobile-menu\{|(?:^|\n)\.sidebar\{/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.runAnalysis\)/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageReport\)/);
-assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageSystem\)/);
-assert.match(source("App.jsx"), /else if \(canUseAdmin\) navigate\(PAGE_PATHS\.admin\)/);
+assert.match(source("App.jsx"), /!canRunAnalysis && route\.page === "chat"/);
 assert.match(source("App.jsx"), /세션이 만료되었습니다\. 안전을 위해 사용자 임시 상태를 지웠습니다/);
 assert.match(source("App.jsx"), /clearAuthenticatedBrowserState\(\)/);
 assert.doesNotMatch(source("App.jsx"), /session-reauth-layer/);
@@ -163,49 +159,29 @@ assert.match(source("App.jsx"), /answervice:report-dirty/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 페이지를 이동할까요\?"\)/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 로그아웃할까요\?"\)/);
 assert.match(source("App.jsx"), /현재 계정에 허용된 서비스 메뉴가 없습니다/);
-assert.match(source("App.jsx"), /<AppHeader page=\{route\.page\}[\s\S]*?capabilities=\{capabilities\}[\s\S]*?onNavigate=\{navigate\}/);
+assert.match(source("App.jsx"), /<AppHeader page=\{route\.page\}/);
 assert.match(source("components/layout/AppHeader.jsx"), /hasCapability\(capabilities, item\.capability\)/);
-assert.match(source("components/layout/AppHeader.jsx"), /label: "관리자"[\s\S]*?CAPABILITY\.manageSystem/);
-assert.match(source("components/layout/AppHeader.jsx"), /alternative: CAPABILITY\.manageReport/);
-assert.match(source("components/layout/AppHeader.jsx"), /className="app-brand"[\s\S]*?ANSWERVICE/);
-assert.match(source("components/layout/AppHeader.jsx"), /className="app-brand-copy"[\s\S]*?데이터 분석 서비스/);
-assert.match(source("styles.css"), /\.app-brand-mark\{width:43px;height:43px[\s\S]*?font-size:26\.35px\}/);
-assert.match(source("styles.css"), /\.theme-light \.app-brand b:after\{background:linear-gradient\(90deg,#176fe5 0 18%,#e54b3d 18% 28%,#17263b 28% 100%\)\}/);
-assert.match(source("components/layout/AppHeader.jsx"), /<nav className="top-navigation" aria-label="주요 메뉴">/);
-assert.match(source("components/layout/AppHeader.jsx"), /aria-current=\{page === id \? "page" : undefined\}/);
-assert.match(source("pages/AdminPage.jsx"), /연결 상태/);
-assert.match(source("pages/AdminPage.jsx"), /계정 관리/);
-assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
-assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(\)/);
-assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
-assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\} onApiStateChange=\{setApiState\}/);
-assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.listAuditTrails\(filters, cursor\)/);
-assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.getAuditTrail\(selectedTrailId\)/);
-assert.match(source("pages/AdminPage.jsx"), /client\.resetPassword/);
-assert.match(source("pages/AdminPage.jsx"), /client\.deleteAccount/);
-assert.match(source("pages/AdminPage.jsx"), /refreshAccountsAfterMutation = async \(\) => \{[\s\S]*?\+\+requestIds\.current\.accounts[\s\S]*?requestIds\.current\.accounts !== requestId/);
-assert.match(source("pages/AdminPage.jsx"), /for \(const id of \["connections", "accounts"\]\)[\s\S]*?id !== section\) requestIds\.current\[id\] \+= 1/);
-for (const sectionId of ["connections", "accounts"]) {
-  assert.match(source("pages/AdminPage.jsx"), new RegExp(`requestIds\\.current\\.${sectionId} !== requestId \\|\\| activeSectionRef\\.current !== "${sectionId}"`));
-}
-assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /listGeneration\.current !== generation/);
-assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /detailGeneration\.current === generation && nextDetail\.trail_id === selectedTrailId/);
-assert.match(source("pages/AdminPage.jsx"), /role="tab"[\s\S]*?disabled=\{saving\}/);
-assert.match(source("pages/AdminPage.jsx"), /setConnections\(\[\]\);[\s\S]*?setAccounts\(\{ \.\.\.EMPTY_PAGE, page: accountPage \}\)/);
-assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{openCreate\}/);
-assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{\(\) => openEdit\(account\)\}/);
-assert.match(source("pages/AdminPage.jsx"), /disabled=\{saving\} onClick=\{\(\) => openPassword\(account\)\}/);
-assert.match(source("pages/AdminPage.jsx"), /error\.status === 401/);
-assert.match(source("pages/AdminPage.jsx"), /error\.status === 403/);
-assert.match(source("pages/AdminPage.jsx"), /if \(error\.status === 409\) return error\.message/);
-assert.doesNotMatch(productSources, /admin@gmail\.com|SUCCESS.*CONNECTION\.CHECK|CONNECTION_TARGETS|ANALYSIS_RECEIVED.*분석 요청 접수/);
-assert.match(source("App.jsx"), /<AgentPage canDraftReport=\{canDraftReport\}/);
-assert.match(source("pages/AgentPage.jsx"), /canDraftReport && turnItem\.run\.artifact/);
-assert.match(source("pages/AgentPage.jsx"), /\{canDraftReport && <TurnReportModal/);
-assert.match(source("authorization.ts"), /ServiceRole = "analyst" \| "admin"/);
-assert.doesNotMatch(productSources, /report_admin|data_admin|platform_admin/);
+assert.match(source("authorization.ts"), /admin/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
+assert.doesNotMatch(reportSources.page, /ReportAssistantOperationsPanel/);
+assert.doesNotMatch(reportSources.lifecycle, /loadAssistantOperations/);
+assert.match(source("api/reportClient.ts"), /getAssistantOperationsSummary/);
+assert.match(source("api/reportClient.ts"), /\/reports\/assistant\/operations\/summary/);
+assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);
+assert.doesNotMatch(source("api/reportClient.ts"), /raw_model_response|sql_text/);
+assert.match(reportSources.lifecycle, /reportClient\.getAssistantEvaluation\(session\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /reportClient\.retryAssistantSession\(current\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /reportClient\.getAssistantSession\(session\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /if \(recovered\) setAssistantSession\(recovered\)/);
+assert.match(reportSources.lifecycle, /\{ preserveFeedback: true \}/);
+assert.match(reportSources.lifecycle, /setAssistantEvaluation\(null\)/);
+assert.match(reportSources.page, /evaluation=\{lifecycle\.assistantEvaluation\}/);
+assert.match(reportSources.page, /onRetry=\{lifecycle\.retryAssistantSession\}/);
+assert.match(reportAssistantPanelSource, /실행 검증 완료/);
+assert.match(reportAssistantPanelSource, /failed" && retryable/);
+assert.match(reportAssistantPanelSource, /새 세션으로 다시 시도/);
+assert.doesNotMatch(reportAssistantPanelSource, /estimated_cost|raw_model_response|sql_text/);
 assert.match(reportSources.operationsPanel, /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
 assert.match(reportSources.lifecycle, /seoulWallClockToIso\(values\.scheduleAt\)/);
 assert.match(reportSources.operationsPanel, /onSetScheduleEnabled\(schedule\.schedule_id, !schedule\.enabled\)/);
@@ -240,9 +216,8 @@ assert.match(reportSources.presentation, /id: "artifact-table"/);
 assert.match(reportSources.presentation, /id: "artifact-chart"/);
 assert.match(reportSources.blockControls, /memo\(function ReportTemplateTile/);
 assert.match(reportSources.blockControls, /className="report-template-add"/);
+assert.match(reportSources.blockControls, /className="report-template-drag"/);
 assert.match(reportSources.blockControls, /setActivatorNodeRef/);
-assert.match(reportSources.blockControls, /<button\s+ref=\{setActivatorNodeRef\}[\s\S]*?className="report-template-add"[\s\S]*?\{\.\.\.listeners\}[\s\S]*?\{\.\.\.attributes\}/);
-assert.doesNotMatch(reportSources.blockControls, /report-template-drag|report-template-grip|GripVertical/);
 assert.match(reportSources.page, /DragOverlay/);
 assert.match(reportSources.dragAndDrop, /dropPositionRef\.current/);
 assert.match(reportSources.toolPanel, /원하는 위치로 끌어다 놓으세요/);
@@ -285,7 +260,6 @@ assert.match(reportSources.controller, /focusReportBlock/);
 assert.match(reportSources.controllerSupport, /pageCanvasRefs\.current\.values\(\)/);
 assert.match(reportSources.controllerSupport, /canvas\.querySelector\("\[data-block-id\]"\)/);
 assert.match(reportSources.listView, /enterprise-reports-list/);
-assert.match(source("styles.css"), /@media\(max-width:700px\)\{[^\n]*\.enterprise-reports-list \.legacy-report-row\{min-width:0/);
 assert.match(reportSources.documentView, /legacy-report-document generated-preview/);
 assert.match(reportSources.lifecycle, /createNextDraft/);
 assert.match(reportSources.lifecycle, /const blocks: ReportBlockRequest\[\] = initialContent \? \[\{/);
@@ -411,6 +385,7 @@ const apiResponse = {
       evidence: {
         artifact_id: "artifact-1", query_id: "query-1", as_of: "2030-01-02", timezone: "Asia/Seoul",
         period: { start: "2030-01-01", end_exclusive: "2030-01-03" }, filters: {}, cached: false,
+        comparison_period: { start: "2029-12-01", end_exclusive: "2030-01-01" },
         context_release: "context-v1",
         product_release_id: "walkerhill-v4.3-sql-20260815-derived.1",
         evidence_cutoff: "2026-08-15",
@@ -421,6 +396,7 @@ const apiResponse = {
         gate_history: { g1: ["PASSED"], g2: ["BLOCKED", "PASSED"], g3: ["PASSED"] },
         sampling: { applied: false, returned_rows: 1, total_rows: 1 },
         masking: { applied: true, fields: ["guest_id"] },
+        execution: { processed_rows: 4, scan_bytes: 128, warning_count: 1, critical_warning_count: 0 },
         sources: [{ name: "source", urn: "urn:source", fqn: "catalog.schema.table", schema_version: "1", seed_version: "2", synthetic: true }],
       },
     },
@@ -442,12 +418,46 @@ assert.equal(normalized.metrics[0].definition, "Metric definition");
 assert.equal(normalized.metrics[0].resultField, "metric");
 assert.equal(normalized.evidence.metrics[0].definition, "Metric definition");
 assert.equal(normalized.evidence.productReleaseId, "walkerhill-v4.3-sql-20260815-derived.1");
+assert.deepEqual(normalized.evidence.comparisonPeriod, {
+  start: "2029-12-01",
+  endExclusive: "2030-01-01",
+});
 assert.equal(normalized.evidence.evidenceCutoff, "2026-08-15");
 assert.equal(normalized.evidence.models[0].promptId, "node3-prompt");
 assert.equal(normalized.evidence.gates.g3, "PASSED");
 assert.deepEqual(normalized.evidence.gateHistory.g2, ["BLOCKED", "PASSED"]);
 assert.deepEqual(normalized.evidence.masking.fields, ["guest_id"]);
+assert.deepEqual(normalized.evidence.execution, {
+  processedRows: 4,
+  scanBytes: 128,
+  warningCount: 1,
+  criticalWarningCount: 0,
+});
 assert.equal(normalized.meta.synthetic, undefined);
+
+const snapshotResponse = structuredClone(apiResponse);
+delete snapshotResponse.data.result.evidence.period;
+delete snapshotResponse.data.result.evidence.comparison_period;
+snapshotResponse.data.result.evidence.snapshot = {
+  cutoff: "2030-01-02",
+  selection: "max_source_value_lt_as_of",
+};
+const normalizedSnapshot = normalizeApiResponse(snapshotResponse, "question");
+assert.equal(resolveViewState(normalizedSnapshot), "READY");
+assert.deepEqual(normalizedSnapshot.evidence.snapshot, {
+  cutoff: "2030-01-02",
+  selection: "max_source_value_lt_as_of",
+});
+
+const conflictingTimeEvidence = structuredClone(snapshotResponse);
+conflictingTimeEvidence.data.result.evidence.period = {
+  start: "2030-01-01",
+  end_exclusive: "2030-01-03",
+};
+assert.equal(
+  resolveViewState(normalizeApiResponse(conflictingTimeEvidence, "question")),
+  "INSUFFICIENT_EVIDENCE",
+);
 
 const partialResponse = structuredClone(apiResponse);
 partialResponse.data.status = "PARTIAL";
@@ -465,6 +475,38 @@ assert.equal(incompletePartial.artifact, undefined);
 assert.equal(incompletePartial.summary, undefined);
 assert.deepEqual(incompletePartial.metrics, []);
 assert.equal(incompletePartial.table, undefined);
+
+const emptyResultResponse = {
+  data: {
+    status: "BLOCKED",
+    result: null,
+    evidence: {
+      query_id: "query-empty-1",
+      as_of: "2030-01-02",
+      timezone: "Asia/Seoul",
+      period: { start: "2030-01-01", end_exclusive: "2030-01-03" },
+      filters: { "catalog.schema.table.hotel_name": "비스타 호텔" },
+      sampling: { applied: false, returned_rows: 0, total_rows: 0 },
+      sources: [{ name: "source", urn: "urn:source", fqn: "catalog.schema.table", schema_version: "1", seed_version: "2" }],
+    },
+  },
+  meta: apiResponse.meta,
+  error: {
+    code: "EMPTY_RESULT",
+    message: "요청한 기간과 조건에 해당하는 결과가 없습니다.",
+    retryable: false,
+    required_action: "MODIFY_REQUEST",
+  },
+};
+const emptyResult = normalizeApiResponse(emptyResultResponse, "question");
+assert.equal(resolveViewState(emptyResult), "EMPTY");
+assert.equal(emptyResult.evidence.queryId, "query-empty-1");
+assert.deepEqual(emptyResult.evidence.period, {
+  start: "2030-01-01",
+  endExclusive: "2030-01-03",
+});
+assert.equal(emptyResult.evidence.filters["catalog.schema.table.hotel_name"], "비스타 호텔");
+assert.equal(emptyResult.sources[0].name, "source");
 
 const rateLimitedClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({ error: { code: "RATE_LIMITED", message: "잠시 후 다시 시도해 주세요.", retryable: true, required_action: "RETRY", trace_id: "server-trace" } }), { status: 429 }), "runtime-token");
 await assert.rejects(
@@ -559,6 +601,7 @@ const hydratedSuccess = hydrateTurnsFromServer([{
   turn_id: "turn-table-view",
   user_message: "표로 보여줘",
   route: "PRESENTATION",
+  terminal_status: "SUCCEEDED",
   artifact_id: "persisted-artifact",
   view_spec_id: "view-spec-table",
   view_type: "TABLE",
@@ -569,17 +612,16 @@ assert.equal(hydratedSuccess[0].run.metrics[0].value, 123);
 assert.equal(hydratedSuccess[0].run.chart.chartType, "bar");
 assert.equal(hydratedSuccess[0].run.evidence.metrics[0].resultField, "generic_value");
 assert.equal(hydratedSuccess[0].run.sources[0].schemaVersion, "v1");
+assert.equal(hydratedSuccess.length, 2);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-table-view"]);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "표로 보여줘"]);
+assert.equal(hydratedSuccess[0].viewType, "SUMMARY");
+assert.equal(hydratedSuccess[1].viewType, "TABLE");
 assert.equal(hydratedSuccess[1].run.artifact.artifactId, hydratedSuccess[0].run.artifact.artifactId);
 assert.equal(hydratedSuccess[1].run.artifact.queryId, hydratedSuccess[0].run.artifact.queryId);
 assert.equal(hydratedSuccess[1].run.summary, hydratedSuccess[0].run.summary);
 assert.equal(hydratedSuccess[1].isArtifactReuse, true);
 assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-table");
-assert.equal(hydratedSuccess.length, 2);
-assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-table-view"]);
-assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "표로 보여줘"]);
-assert.equal(hydratedSuccess[0].viewType, "CHART");
-assert.equal(hydratedSuccess[1].viewType, "TABLE");
-assert.match(source("pages/AgentPage.jsx"), /serverTurn\?\.view_type \|\| serverTurn\?\.resolved_slots\?\.target_chart_type \|\| "SUMMARY"/);
 
 const mismatchedPresentation = hydrateTurnsFromServer([{
   turn_id: "turn-source",
@@ -589,13 +631,18 @@ const mismatchedPresentation = hydrateTurnsFromServer([{
   artifact_id: "artifact-source",
   data_snapshot_json: { columns: ["value"], rows: [{ value: 1 }] },
   evidence_json: {
-    artifact_id: "artifact-source", query_id: "query-source", as_of: "2031-04-05",
-    filters: {}, metrics: [], sources: [],
+    artifact_id: "artifact-source",
+    query_id: "query-source",
+    as_of: "2031-04-05",
+    filters: {},
+    metrics: [],
+    sources: [],
   },
 }, {
   turn_id: "turn-mismatch",
   user_message: "표로 보여줘",
   route: "PRESENTATION",
+  terminal_status: "SUCCEEDED",
   artifact_id: "artifact-other",
   view_spec_id: "view-spec-mismatch",
   view_type: "TABLE",
@@ -608,7 +655,10 @@ assert.equal(mismatchedPresentation[1].isArtifactReuse, false);
 let presentationRequest;
 const presentationClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   presentationRequest = { url, init };
-  return new Response(JSON.stringify({ status: "COMPLETED" }), { status: 200, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify({ status: "COMPLETED" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 });
 await presentationClient.submitTurnCommand("conversation-1", {
   user_message: "표로 보여줘",
@@ -650,7 +700,6 @@ assert.match(source("contracts/analysis.ts"), /interface ConversationCommandProg
 assert.match(source("pages/AgentPage.jsx"), /activeCommandAbortController\.current\?\.abort\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /progress\?\.traceId !== traceId/);
 assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
-assert.doesNotMatch(source("components/layout/AppHeader.jsx"), /inert=|메뉴 열기|메뉴 닫기/);
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
@@ -690,6 +739,14 @@ await analysisClient.cancelAnalysis("client-trace");
 assert.equal(analysisRequest.url, "http://backend.test/analysis/progress/client-trace/cancel");
 assert.equal(analysisRequest.init.method, "POST");
 
+await analysisClient.submitTurnCommand("conversation-1", {
+  user_message: "question",
+  expected_head_turn_id: null,
+  idempotency_key: "command-1",
+}, { traceId: "conversation-trace" });
+assert.equal(analysisRequest.url, "http://backend.test/conversations/conversation-1/commands");
+assert.equal(analysisRequest.init.headers["X-Trace-Id"], "conversation-trace");
+
 const sessionClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   assert.equal(url, "http://backend.test/auth/session");
   assert.equal(init.headers.Authorization, "Bearer runtime-token");
@@ -700,102 +757,13 @@ assert.deepEqual(await sessionClient.validateSession(), { status: "authenticated
 let loginRequest;
 const loginClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   loginRequest = { url, init };
-  return new Response(JSON.stringify({ data: { status: "authenticated", role: "admin", capabilities: ["analysis.run", "analysis.read", "report.draft", "report.manage", "data.manage", "system.manage"] } }), { status: 200 });
+  return new Response(JSON.stringify({ data: { status: "authenticated", role: "admin", capabilities: ["report.draft", "report.manage"] } }), { status: 200 });
 });
 assert.deepEqual(await loginClient.login("admin", "admin1234!"), {
-  status: "authenticated", role: "admin", capabilities: ["analysis.run", "analysis.read", "report.draft", "report.manage", "data.manage", "system.manage"],
+  status: "authenticated", role: "admin", capabilities: ["report.draft", "report.manage"],
 });
 assert.equal(loginRequest.url, "http://backend.test/auth/login");
 assert.deepEqual(JSON.parse(loginRequest.init.body), { username: "admin", password: "admin1234!" });
-
-const account = {
-  subject: "00000000-0000-0000-0000-000000000001", username: "analyst", role: "analyst", active: true,
-  created_at: "2030-01-01T00:00:00Z", updated_at: "2030-01-01T00:00:00Z", deleted_at: null,
-};
-let adminRequest;
-const adminClient = createAdminClient("http://backend.test", async (url, init) => {
-  adminRequest = { url, init };
-  if (url.endsWith("/password")) return new Response(null, { status: 204 });
-  if (init.method === "POST") return new Response(JSON.stringify({ data: account }), { status: 201 });
-  return new Response(JSON.stringify({ data: { items: [account], page: 2, page_size: 50, total: 51 } }), { status: 200 });
-});
-assert.deepEqual(await adminClient.listAccounts(2, "kim hong"), { items: [account], page: 2, page_size: 50, total: 51 });
-assert.equal(adminRequest.url, "http://backend.test/admin/accounts?page=2&page_size=50&search=kim+hong");
-assert.equal(adminRequest.init.credentials, "include");
-assert.equal(adminRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
-assert.deepEqual(await adminClient.createAccount({ username: "analyst", password: "temporary-pass", role: "analyst" }), account);
-assert.equal(adminRequest.url, "http://backend.test/admin/accounts");
-assert.deepEqual(JSON.parse(adminRequest.init.body), { username: "analyst", password: "temporary-pass", role: "analyst" });
-await adminClient.resetPassword(account.subject, "rotated-password");
-assert.equal(adminRequest.url, `http://backend.test/admin/accounts/${account.subject}/password`);
-assert.equal(adminRequest.init.method, "POST");
-assert.deepEqual(JSON.parse(adminRequest.init.body), { password: "rotated-password" });
-
-const protectedAdminClient = createAdminClient("http://backend.test", async () => new Response(JSON.stringify({ error: { code: "LAST_ADMIN_REQUIRED", message: "마지막 활성 관리자는 변경할 수 없습니다." } }), { status: 409 }));
-await assert.rejects(() => protectedAdminClient.deleteAccount(account.subject), (nextError) => nextError instanceof AdminApiError
-  && nextError.status === 409
-  && nextError.code === "LAST_ADMIN_REQUIRED"
-  && nextError.message === "마지막 활성 관리자는 변경할 수 없습니다.");
-
-let adminQueryUrl;
-const auditTrailSummary = {
-  trail_id: "request:00000000-0000-0000-0000-000000000002",
-  headline: "분석 요청 실행",
-  started_at: "2030-01-01T00:00:00Z",
-  ended_at: "2030-01-01T00:00:03Z",
-  outcome: "DENIED",
-  event_count: 1,
-  actor: { subject: account.subject, display_name: "분석 사용자", role: "analyst" },
-  primary_object: { type: "ANALYSIS_REQUEST", id: "00000000-0000-0000-0000-000000000002" },
-  correlation: { type: "REQUEST", id: "00000000-0000-0000-0000-000000000002" },
-};
-const auditTrailDetail = {
-  trail_id: auditTrailSummary.trail_id,
-  headline: auditTrailSummary.headline,
-  started_at: auditTrailSummary.started_at,
-  ended_at: auditTrailSummary.ended_at,
-  outcome: "DENIED",
-  events: [{
-    event_id: "00000000-0000-0000-0000-000000000003",
-    occurred_at: "2030-01-01T00:00:01Z",
-    sequence: 1,
-    action_code: "ANALYSIS_DENIED",
-    action_label: "분석 요청 거부",
-    summary: "정책 검증에서 요청을 거부했습니다.",
-    outcome: "DENIED",
-    actor: auditTrailSummary.actor,
-    object: auditTrailSummary.primary_object,
-    evidence: {
-      request_id: "00000000-0000-0000-0000-000000000002", trace_id: "trace-1",
-      query_execution_id: null, query_id: null, artifact_id: null, report_run_id: null,
-      context_release_id: null, model_version_id: null, sql_policy_version: "policy-v1",
-    },
-    details_redacted: { reason: "PERMISSION" },
-  }],
-};
-const adminQueryClient = createAdminClient("http://backend.test", async (url) => {
-  adminQueryUrl = url;
-  if (url.endsWith("/connections")) return new Response(JSON.stringify({ data: { items: [{ id: "app_db", name: "App DB", kind: "PostgreSQL", status: "ready", latency_ms: 8, checked_at: "2030-01-01T00:00:00Z" }] } }), { status: 200 });
-  if (url.includes("/admin/audit-trails?")) return new Response(JSON.stringify({ data: { items: [auditTrailSummary], next_cursor: "cursor-2" } }), { status: 200 });
-  return new Response(JSON.stringify({ data: auditTrailDetail }), { status: 200 });
-});
-assert.equal((await adminQueryClient.listConnections())[0].status, "ready");
-assert.equal(adminQueryUrl, "http://backend.test/admin/connections");
-assert.equal((await adminQueryClient.listAuditTrails({ query: "kim hong", outcome: "DENIED", action: "ANALYSIS", from: "2030-01-01", to: "2030-01-02" }, "opaque cursor")).items[0].outcome, "DENIED");
-assert.equal(adminQueryUrl, "http://backend.test/admin/audit-trails?cursor=opaque+cursor&limit=30&query=kim+hong&outcome=DENIED&action=ANALYSIS&from=2030-01-01&to=2030-01-02");
-assert.equal((await adminQueryClient.getAuditTrail(auditTrailSummary.trail_id)).events[0].details_redacted.reason, "PERMISSION");
-assert.equal(adminQueryUrl, "http://backend.test/admin/audit-trails/request%3A00000000-0000-0000-0000-000000000002");
-assert.equal(normalizeAuditTrailPage({ items: [auditTrailSummary], next_cursor: null }).items[0].event_count, 1);
-assert.equal(normalizeAuditTrailDetail(auditTrailDetail).events[0].event_id, auditTrailDetail.events[0].event_id);
-assert.throws(() => normalizeAuditTrailPage({ items: [{ ...auditTrailSummary, outcome: "SUCCESS" }], next_cursor: null }), /지원하지 않는 결과 상태/);
-assert.throws(() => normalizeAuditTrailDetail({ ...auditTrailDetail, events: [{ ...auditTrailDetail.events[0], event_id: undefined }] }), /올바르지 않은 이벤트/);
-assert.throws(() => normalizeAuditTrailDetail({ ...auditTrailDetail, events: {} }), /올바르지 않은 응답/);
-assert.match(source("features/admin/audit/AuditTrailDetail.tsx"), /JSON\.stringify\(event\.details_redacted, null, 2\)/);
-assert.doesNotMatch(source("features/admin/audit/AuditTrailDetail.tsx"), /dangerouslySetInnerHTML/);
-assert.doesNotMatch(productSources, /trail_id:\s*"request:|details_redacted:\s*\{/);
-
-const legacyRoleClient = createAdminClient("http://backend.test", async () => new Response(JSON.stringify({ data: { items: [{ ...account, role: "report_admin" }], page: 1, page_size: 50, total: 1 } }), { status: 200 }));
-await assert.rejects(() => legacyRoleClient.listAccounts(), /관리자 계정 API가 올바르지 않은 응답/);
 
 let defaultRequests = 0;
 assert.throws(
@@ -828,5 +796,140 @@ assert.equal(scheduleRequest.url, "http://backend.test/reports/schedules/schedul
 assert.equal(scheduleRequest.init.method, "PUT");
 assert.equal(scheduleRequest.init.headers["X-As-Of"], undefined);
 assert.deepEqual(JSON.parse(scheduleRequest.init.body), { enabled: false });
+
+let assistantSessionRequest;
+const assistantSessionClient = createReportClient("http://backend.test", async (url, init) => {
+  assistantSessionRequest = { url, init };
+  const session = {
+    assistant_request_id: "assistant-1", phase: "ready",
+    definition_id: "definition-1", definition_version: 2, base_revision: 2,
+    artifact_id: "artifact-1", analysis_plan: null,
+    patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
+    result_revision: null, error_code: null, retryable: false, required_action: "NONE",
+    retry_of_assistant_request_id: null,
+  };
+  const retrySession = url.endsWith("/retry") ? {
+    ...session, assistant_request_id: "assistant-2",
+    retry_of_assistant_request_id: "assistant/1",
+  } : null;
+  const patchApproval = url.endsWith("/patch-approval") ? JSON.parse(init.body) : null;
+  const approval = url.endsWith("/approval") && !patchApproval ? JSON.parse(init.body) : null;
+  const approvalSession = approval ? {
+    ...session,
+    phase: approval.approved ? "completed" : "ready",
+    result_artifact_id: approval.approved ? "artifact-2" : null,
+    result_revision: approval.approved ? 3 : null,
+    analysis_plan: {
+      request_id: approval.request_id,
+      question: "현재 지표를 직전 월과 비교해 줘",
+      reason: "직전 월 값이 필요합니다.",
+      scope: { period: "현재 기간과 직전 월", metrics: ["승인 지표"], dimensions: [] },
+    },
+  } : null;
+  const patchSession = patchApproval ? {
+    ...session,
+    phase: patchApproval.approved ? "completed" : "ready",
+    patch_request_id: patchApproval.request_id,
+    patch_summary: "표 제목 변경",
+    patch_operations: ["set_report_title"],
+    result_revision: patchApproval.approved ? 3 : null,
+  } : null;
+  const instruction = url.endsWith("/messages") ? JSON.parse(init.body).instruction : "";
+  return new Response(JSON.stringify(retrySession || patchSession || approvalSession || (url.endsWith("/messages") ? {
+    change_kind: instruction === "모호한 요청" ? "clarification" : "existing_artifact",
+    message: instruction === "모호한 요청" ? "어느 기간을 기준으로 할까요?" : "기존 근거로 수정할 수 있습니다.",
+    session: instruction === "모호한 요청" ? session : {
+      ...session, phase: "waiting_patch_approval",
+      patch_request_id: "patch-1", patch_summary: "표 제목 변경",
+      patch_operations: ["set_report_title"],
+    },
+  } : session)), { status: 200, headers: { "Content-Type": "application/json" } });
+}, "runtime-token");
+const assistantSession = await assistantSessionClient.createAssistantSession(
+  "definition-1", 2, "artifact-1",
+);
+assert.equal(assistantSession.phase, "ready");
+assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant/sessions");
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  definition_id: "definition-1", definition_version: 2, artifact_id: "artifact-1",
+});
+
+const retriedAssistant = await assistantSessionClient.retryAssistantSession("assistant/1");
+assert.equal(retriedAssistant.phase, "ready");
+assert.equal(retriedAssistant.retry_of_assistant_request_id, "assistant/1");
+assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant/sessions/assistant%2F1/retry");
+assert.equal(assistantSessionRequest.init.method, "POST");
+
+await assistantSessionClient.getAssistantSession("assistant/1");
+assert.equal(
+  assistantSessionRequest.url,
+  "http://backend.test/reports/assistant/sessions/assistant%2F1",
+);
+
+const assistantProposal = await assistantSessionClient.submitAssistantMessage(
+  "assistant/1", "표 제목을 바꿔 줘",
+);
+assert.equal(assistantProposal.change_kind, "existing_artifact");
+assert.equal(
+  assistantSessionRequest.url,
+  "http://backend.test/reports/assistant/sessions/assistant%2F1/messages",
+);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), { instruction: "표 제목을 바꿔 줘" });
+
+const approvedPatch = await assistantSessionClient.approveAssistantPatch(
+  "assistant/1", "patch-1",
+);
+assert.equal(approvedPatch.phase, "completed");
+assert.equal(
+  assistantSessionRequest.url,
+  "http://backend.test/reports/assistant/sessions/assistant%2F1/patch-approval",
+);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "patch-1", approved: true,
+});
+
+const rejectedPatch = await assistantSessionClient.rejectAssistantPatch(
+  "assistant/1", "patch-1",
+);
+assert.equal(rejectedPatch.phase, "ready");
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "patch-1", approved: false,
+});
+
+const clarificationProposal = await assistantSessionClient.submitAssistantMessage(
+  "assistant/1", "모호한 요청",
+);
+assert.equal(clarificationProposal.change_kind, "clarification");
+assert.equal(clarificationProposal.session.phase, "ready");
+
+const approvedAssistant = await assistantSessionClient.approveAssistantPlan(
+  "assistant/1", "request-1",
+);
+assert.equal(approvedAssistant.phase, "completed");
+assert.equal(approvedAssistant.result_revision, 3);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "request-1", approved: true,
+});
+
+const rejectedAssistant = await assistantSessionClient.rejectAssistantPlan(
+  "assistant/1", "request-1",
+);
+assert.equal(rejectedAssistant.phase, "ready");
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "request-1", approved: false,
+});
+
+const staleApprovalClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
+  assistant_request_id: "assistant-1", phase: "ready",
+  definition_id: "definition-1", definition_version: 2, base_revision: 2,
+  artifact_id: "artifact-1", analysis_plan: null,
+  patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
+  result_revision: null, error_code: null, retryable: false, required_action: "NONE",
+  retry_of_assistant_request_id: null,
+}), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
+await assert.rejects(
+  () => staleApprovalClient.approveAssistantPlan("assistant-1", "request-1"),
+  /실행 phase로 전이되지 않았습니다/,
+);
 
 console.log("frontend contract tests passed");

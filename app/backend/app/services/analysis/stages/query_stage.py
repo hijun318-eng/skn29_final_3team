@@ -4,7 +4,7 @@
 1. G2 가드를 통과한 `executable_sql`과 발급된 capability 토큰을 Trino 엔진에 전달하여 비동기 실행
 2. 타임아웃/취소(Cancellation) 신호 처리 및 원격 Trino 세션 안전 종료
 3. 반환된 원시 데이터에 대한 G3 거버넌스 검증(`g3_violation`) 및 빈 집계 정규화
-4. 검증 완료된 결과를 격리 캐시에 저장
+4. 실제 query 실행 근거를 후속 영속화 경계에 전달하고 검증 완료 결과를 격리 캐시에 저장
 """
 
 from __future__ import annotations
@@ -69,7 +69,11 @@ class AnalysisQueryStage:
             sql=executable_sql,
             **state.common_key,
         )
-        cached_query = self._cache.get_result(result_key)
+        cached_query = (
+            None
+            if context.require_fresh_query
+            else self._cache.get_result(result_key)
+        )
         result_cached = cached_query is not None
 
         # 1. Trino 쿼리 실행 (캐시 미스 시)
@@ -204,7 +208,20 @@ class AnalysisQueryStage:
                 repair_count,
                 retryable=True,
             )
-        if query_status not in {"SUCCEEDED", "PARTIAL"}:
+        if query_status == "PARTIAL":
+            return self._responses.error(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.QUERY,
+                AnalysisStatus.FAILED,
+                ErrorCode.RESULT_EVIDENCE_MISSING,
+                "부분 결과의 범위 근거를 확인할 수 없어 Artifact를 생성하지 않았습니다.",
+                decision,
+                repair_count,
+                retryable=True,
+            )
+        if query_status != "SUCCEEDED":
             return self._responses.error(
                 context,
                 state.machine,
@@ -226,8 +243,24 @@ class AnalysisQueryStage:
 
         # 3. G3 결과 거버넌스 무결성 검증
         query = self._support.normalize_empty_aggregate(query, package)
+        if state.execution_sink is not None:
+            # 외부 query가 정상 종료된 시점의 실행 근거다. G3가 Artifact 생성을
+            # 차단하더라도 0행·검증 실패 사실 자체는 terminal run에 남아야 한다.
+            state.execution_sink({"plan": plan, "query": query, "package": package})
         g3_violation = self._support.g3_violation(query, plan, package)
         if g3_violation:
+            if g3_violation == "EMPTY_RESULT":
+                return self._responses.empty_result(
+                    support=self._support,
+                    context=context,
+                    machine=state.machine,
+                    trace=state.trace,
+                    decision=decision,
+                    package=package,
+                    assets=state.assets,
+                    query=query,
+                    repair_count=repair_count,
+                )
             error_code = (
                 ErrorCode.RESULT_EVIDENCE_MISSING
                 if g3_violation == "EVIDENCE_INCOMPLETE"

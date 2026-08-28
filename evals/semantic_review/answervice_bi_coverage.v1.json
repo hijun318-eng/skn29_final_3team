@@ -168,7 +168,7 @@
       },
       {
         "fqn": "serving.analytics_v4_3.membership_current_snapshot",
-        "time": {"mode": "latest_snapshot", "field": "snapshot_date", "default": "max_source_value_lte_as_of"},
+        "time": {"mode": "latest_snapshot", "field": "snapshot_date", "default": "max_source_value_lt_as_of"},
         "dimensions": [
           {"id": "membership_tier", "columns": ["tier_code", "tier_name"]},
           {"id": "member_status", "columns": ["member_status"]}

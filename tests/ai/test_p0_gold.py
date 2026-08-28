@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[2]
 GOLD = ROOT / "evals" / "p0_gold"
 MANIFEST_PATH = GOLD / "answervice_v4_3.p0.draft.v1.manifest.json"
 CASE_PATH = GOLD / "answervice_v4_3.p0.draft.v1.jsonl"
+V2_MANIFEST_PATH = GOLD / "answervice_v4_3.p0.candidate.v2.manifest.json"
+V2_CASE_PATH = GOLD / "answervice_v4_3.p0.candidate.v2.jsonl"
 CANDIDATE_PATH = (
     ROOT / "evals" / "semantic_review" / "answervice_d2_metrics.v1.json"
 )
@@ -61,6 +63,30 @@ def test_real_v43_gold_bundle_is_valid_but_not_scorable() -> None:
     assert result["representative_question_count"] == 20
     assert result["blocked_case_count"] == 5
     assert result["review_counts"] == {"BLOCKED": 5, "REVIEW_REQUIRED": 50}
+    assert result["scorable"] is False
+
+
+def test_corrected_v2_candidate_is_approved_but_requires_release_binding() -> None:
+    """교정 v2는 승인됐지만 external same-release seal 전에는 채점하지 않는다."""
+
+    payload = V2_CASE_PATH.read_bytes()
+    cases = [json.loads(line) for line in payload.decode("utf-8").splitlines()]
+    result = validate_manifest(
+        _json(V2_MANIFEST_PATH),
+        cases,
+        _json(CANDIDATE_PATH),
+        observed_case_content_sha256=hashlib.sha256(payload).hexdigest(),
+    )
+
+    assert result["status"] == "VALID_DRAFT"
+    assert result["case_counts"] == {
+        "MULTI_TURN": 10,
+        "SAFETY": 15,
+        "STRUCTURED": 30,
+    }
+    assert result["blocked_case_count"] == 0
+    assert result["unsealed_result_count"] == 0
+    assert result["review_counts"] == {"APPROVED": 55}
     assert result["scorable"] is False
 
 

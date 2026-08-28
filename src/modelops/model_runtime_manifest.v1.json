@@ -1,5 +1,5 @@
 {
-  "manifest_version": "MODEL-RUNTIME-v1.1.0",
+  "manifest_version": "MODEL-RUNTIME-v1.2.0",
   "capacity_profiles": {
     "openai-gpt-5.4-mini-400k": {
       "provider": "openai",
@@ -17,18 +17,19 @@
         "app/backend/app/adapters/model_schemas.py"
       ]
     },
-    "qwen3.5-4b-answervice-sql-5120": {
+    "qwen3.5-2b-node2-full3000-5120": {
       "provider": "qwen",
       "model_aliases": [
-        "answervice-sql"
+        "node2-qwen35-2b-full3000-20260825"
       ],
-      "base_model": "Qwen/Qwen3.5-4B",
-      "snapshot": "Qwen/Qwen3.5-4B@851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+      "base_model": "Qwen/Qwen3.5-2B",
+      "snapshot": "yoondaesung/answerviceqwen352b@28e9974a42163c5ca97137622669d40cfc14d73b",
       "context_window_tokens": 5120,
-      "runtime_max_output_tokens": 1280,
+      "runtime_max_output_tokens": 1024,
       "safety_margin_tokens": 256,
       "sources": [
-        "docs/e2e_mvp/derived/22_RunPod_Serverless_vLLM_배포_가이드.md",
+        "evals/node2_qwen35_2b_full3000_huggingface.receipt.json",
+        "evals/node2_qwen35_2b_full3000_canary.v1.json",
         "app/backend/app/adapters/model_schemas.py"
       ]
     }
@@ -38,7 +39,8 @@
       "nodes": [
         "node1",
         "node3",
-        "report_assistant"
+        "report_assistant",
+        "report_assistant_turn"
       ],
       "provider_env": null,
       "default_provider": "openai",

@@ -6,6 +6,7 @@
       "query_id": "fixture-query-success"
     },
     "disambiguation_options": [],
+    "evidence": null,
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -23,8 +24,15 @@
         "artifact_id": "00000000-0000-0000-0000-0000000002f9",
         "as_of": "2041-04-02",
         "cached": false,
+        "comparison_period": null,
         "context_release": "context-v1",
         "evidence_cutoff": null,
+        "execution": {
+          "critical_warning_count": 0,
+          "processed_rows": 0,
+          "scan_bytes": 0,
+          "warning_count": 0
+        },
         "filters": {
           "scope_code": "example"
         },
@@ -52,6 +60,7 @@
           "returned_rows": 1,
           "total_rows": 1
         },
+        "snapshot": null,
         "sources": [
           {
             "fqn": "catalog_alpha.schema_beta.fact_observations",

@@ -20,8 +20,8 @@ import { ReportBuilderV2 } from "../features/reports/v2/ReportBuilderV2";
 import { ReportPresentation } from "../features/reports/v2/ReportPresentation";
 
 /** 보고서 controller의 상태를 목록·최종본·편집기 뷰에 배선하며 memoized 하위 경계를 유지한다. */
-export function ReportsPage({ isAdmin, onEditorMode, theme, onToggleTheme }) {
-  const page = useReportsPageController({ isAdmin, onEditorMode });
+export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme }) {
+  const page = useReportsPageController({ role, isAdmin, onEditorMode });
   const { artifacts, dnd, draft, lifecycle } = page;
   const editorCurrencyControl = useMemo(() => (
     <ReportCurrencyControl
@@ -132,6 +132,7 @@ export function ReportsPage({ isAdmin, onEditorMode, theme, onToggleTheme }) {
     artifacts={artifacts.artifacts}
     assistantInstruction={lifecycle.assistantInstruction}
     canEdit={page.canEdit}
+    evaluation={lifecycle.assistantEvaluation}
     isDraft={page.isDraft}
     onAddChart={addChartBlock}
     onAddTemplate={draft.addTemplateBlock}
@@ -165,7 +166,6 @@ export function ReportsPage({ isAdmin, onEditorMode, theme, onToggleTheme }) {
       dropPosition={dnd.dropPosition}
       onAddText={page.addTextBlock}
       onRegisterCanvas={dnd.registerPageCanvas}
-      onSelectBlocks={page.editorTools.selectBlocks}
       orientation={draft.reportOrientation}
       orderedBlocks={draft.orderedBlocks}
       pages={page.reportPages}
@@ -211,14 +211,41 @@ export function ReportsPage({ isAdmin, onEditorMode, theme, onToggleTheme }) {
     pageCount={page.reportPages.length}
   />;
   const assistant = <ReportAssistantPanel
+    approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(lifecycle.assistantSession?.phase)
+      ? lifecycle.assistantSession?.analysis_plan && {
+          ...lifecycle.assistantSession.analysis_plan,
+          scope: [
+            lifecycle.assistantSession.analysis_plan.scope.period,
+            ...lifecycle.assistantSession.analysis_plan.scope.metrics,
+            ...lifecycle.assistantSession.analysis_plan.scope.dimensions,
+          ].join(" · "),
+        }
+      : null}
     artifact={page.selectedArtifact}
+    artifactTitle={page.selectedArtifactSource?.title}
     canEdit={page.canEdit}
     instruction={lifecycle.assistantInstruction}
     onInstructionChange={lifecycle.setAssistantInstruction}
+    onApproveDataRequest={page.approveAssistantDataRequest}
+    onApprovePatch={page.approveAssistantPatch}
+    onRejectDataRequest={page.rejectAssistantDataRequest}
+    onRejectPatch={page.rejectAssistantPatch}
+    onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}
+    patchPreview={lifecycle.assistantSession?.patch_request_id
+      && ["waiting_patch_approval", "saving_revision"].includes(lifecycle.assistantSession.phase)
+      ? {
+          summary: lifecycle.assistantSession.patch_summary,
+          operations: lifecycle.assistantSession.patch_operations,
+        }
+      : null}
     pending={lifecycle.pending}
     selectedBlock={page.editorTools.primaryBlock}
     trace={lifecycle.assistantTrace}
+    workflowStatus={lifecycle.assistantSession?.phase || ""}
+    workflowError={lifecycle.assistantSession?.error_code || ""}
+    workflowRequiredAction={lifecycle.assistantSession?.required_action || "NONE"}
+    workflowRetryable={Boolean(lifecycle.assistantSession?.retryable)}
   />;
   const editor = page.builderV2 ? <ReportBuilderV2
     assistant={assistant}

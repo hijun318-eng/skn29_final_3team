@@ -22,7 +22,7 @@ export function transientRun(question, status = "idle") {
 }
 
 /**
- * PRESENTATION이 재사용할 Artifact·query·근거가 서로 같은 식별자로 완전하게 연결됐는지 확인한다.
+ * PRESENTATION이 재사용할 Artifact·query·근거가 같은 식별자로 연결됐는지 확인한다.
  * @param {object|null|undefined} run - 기존 분석 결과 run.
  * @returns {boolean} 세 식별자가 모두 존재하고 일치하면 true.
  */
@@ -101,12 +101,22 @@ export function analysisError(error) {
  */
 export function commandErrorRun(question, command) {
   const source = command?.command_error || command?.error || command || {};
-  const code = typeof source.code === "string" && source.code ? source.code : "INTERNAL_ERROR";
+  const code = typeof source.code === "string" && source.code
+    ? source.code
+    : (command?.reason_code || "INTERNAL_ERROR");
+  const terminalStatus = String(source.status || command?.terminal_status || "FAILED").toUpperCase();
+  const runStatus = terminalStatus === "BLOCKED"
+    ? "blocked"
+    : terminalStatus === "PARTIAL"
+      ? "partial"
+      : terminalStatus === "CANCELLED"
+        ? "cancelled"
+        : "failed";
   const requiredAction = code === "CONTEXT_SOURCE_FAILED" && source.required_action === "PROVIDE_CONTEXT"
     ? "CONTACT_SUPPORT"
     : (source.required_action || "CONTACT_SUPPORT");
   return {
-    ...transientRun(question, "failed"),
+    ...transientRun(question, runStatus),
     error: {
       code,
       message: typeof source.message === "string" && source.message
@@ -148,9 +158,20 @@ export function hydrateTurnsFromServer(serverTurns) {
       const userMessage = st.user_message || "";
       let run;
 
-      if (isPresentation) {
+      if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
-        if (!hasReusablePresentationArtifact(lastAnalysisRun) || !st.artifact_id || st.artifact_id !== sourceArtifactId) {
+        const sourceQueryId = lastAnalysisRun?.artifact?.queryId;
+        const responseEvidence = st.evidence_json;
+        const responseEvidenceMatches = !responseEvidence || (
+          responseEvidence.artifact_id === sourceArtifactId
+          && responseEvidence.query_id === sourceQueryId
+        );
+        if (
+          !hasReusablePresentationArtifact(lastAnalysisRun)
+          || !st.artifact_id
+          || st.artifact_id !== sourceArtifactId
+          || !responseEvidenceMatches
+        ) {
           run = commandErrorRun(userMessage, {
             code: "INSUFFICIENT_EVIDENCE",
             message: "기존 분석 결과의 연결 정보를 확인할 수 없어 보기를 복원하지 않았습니다.",
@@ -167,7 +188,7 @@ export function hydrateTurnsFromServer(serverTurns) {
             viewSpecId: st.view_spec_id,
           };
         }
-      } else if (isReportAction) {
+      } else if (isReportAction && st.terminal_status === "SUCCEEDED") {
         run = {
           ...(lastAnalysisRun || transientRun(userMessage, "success")),
           question: userMessage,
@@ -192,6 +213,8 @@ export function hydrateTurnsFromServer(serverTurns) {
           },
         };
       } else if (st.command_status === "FAILED" || st.command_error) {
+        run = commandErrorRun(userMessage, st);
+      } else if (["BLOCKED", "PARTIAL", "FAILED", "CANCELLED"].includes(st.terminal_status)) {
         run = commandErrorRun(userMessage, st);
       } else if (st.data_snapshot_json) {
         const tableData = st.data_snapshot_json;
@@ -252,7 +275,7 @@ export function hydrateTurnsFromServer(serverTurns) {
         resolvedSlots: st.resolved_slots || null,
         viewType: isPresentation
           ? (st.view_type || "TABLE")
-          : (st.view_type || st.resolved_slots?.target_chart_type || null),
+          : (st.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
         reusePending: false,
         viewSpecId: isPresentation ? st.view_spec_id : null,
@@ -271,17 +294,15 @@ export function hydrateTurnsFromServer(serverTurns) {
  * 라우팅은 action이 결정하므로 label은 서버 분기에 관여하지 않는 표시용 문구다.
  */
 export const QUICK_ACTION = {
-  SUMMARY: { label: "요약으로 보기", action: { requested_route: "PRESENTATION", presentation_type: "SUMMARY" } },
   CHART: { label: "그래프로 보기", action: { requested_route: "PRESENTATION", presentation_type: "BAR" } },
   TABLE: { label: "표로 보기", action: { requested_route: "PRESENTATION", presentation_type: "TABLE" } },
-  KPI: { label: "KPI만 보기", action: { requested_route: "PRESENTATION", presentation_type: "KPI" } },
   REPORT: { label: "보고서에 담기", action: { requested_route: "REPORT_ACTION" } },
 };
 
 /**
  * 빠른 동작을 대화에 남길 서버 typed action으로 변환한다.
- * 모든 표현 변경을 PRESENTATION 턴으로 기록해 기존 응답을 교체하지 않고 같은 Artifact의
- * 후속 결과를 누적한다. 지원하지 않는 모드는 null로 닫는다.
+ * 서버가 지원하는 TABLE·CHART 표현과 REPORT action만 typed command로 변환한다.
+ * SUMMARY·KPI는 이미 받은 Artifact의 로컬 보기이므로 서버 command를 만들지 않는다.
  * @param {"SUMMARY"|"CHART"|"TABLE"|"KPI"|"REPORT"|string} mode - 사용자가 누른 빠른 동작
  * @returns {{label: string, action: object}|null} 서버로 보낼 동작, 지원하지 않으면 null
  */

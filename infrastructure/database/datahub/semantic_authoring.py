@@ -190,6 +190,8 @@ def migrate_authoring_policy(
                     {
                         "name": column["name"],
                         "logical_type": column["logical_type"],
+                        # Bundle의 값은 connector가 관측한 physical key다. Authoring
+                        # policy의 key claim은 승인된 업무 grain에서 다시 만들어야 한다.
                         "is_part_of_key": column["name"] in grain_keys,
                         "role": column["role"],
                     }
@@ -252,7 +254,44 @@ async def build_authoring_candidate(
     previous = _previous_catalog_sha256(
         tuple(binding.dataset for binding in bindings)
     )
-    return AuthoringCandidate(assemble_authoring_bundle(policy, bindings), previous)
+    approved_bindings = _select_authoring_bindings(policy, bindings)
+    return AuthoringCandidate(
+        assemble_authoring_bundle(policy, approved_bindings),
+        previous,
+    )
+
+
+def _select_authoring_bindings(
+    policy: Mapping[str, Any],
+    bindings: tuple[ReleaseBinding, ...],
+) -> tuple[ReleaseBinding, ...]:
+    """명시 승인된 자산만 선택하되 기존 governed release의 축소는 차단한다."""
+
+    document = mapping(policy, "semantic authoring policy")
+    policies = _asset_policies(
+        document.get("assets"),
+        document.get("contract_version"),
+    )
+    live = {binding.relation.fqn: binding for binding in bindings}
+    unknown = set(policies) - set(live)
+    if unknown:
+        raise SemanticMetadataError(
+            "semantic policy assets are missing from live DataHub and Trino"
+        )
+
+    governed = {
+        binding.relation.fqn
+        for binding in bindings
+        if any(
+            key.startswith(PROPERTY_PREFIX)
+            for key in binding.dataset.custom_properties
+        )
+    }
+    if not governed <= set(policies):
+        raise SemanticMetadataError(
+            "semantic policy cannot omit active governed assets"
+        )
+    return tuple(live[name] for name in sorted(policies))
 
 
 def assemble_authoring_bundle(

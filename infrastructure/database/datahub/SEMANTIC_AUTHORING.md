@@ -15,15 +15,19 @@ The authoring transaction performs these gates in order:
 1. Discover the complete physical scope from environment-backed ingestion recipes.
 2. Read matching dataset identities and fields from DataHub and table metadata from
    Trino.
-3. Require the approved policy to cover that live scope exactly. Unknown or missing
-   assets and columns fail closed.
+3. Require every approved policy asset to exist in the live scope and retain every
+   asset in the active governed manifest. Newly ingested but ungoverned assets are
+   not inferred or added to the release; unknown assets, governed removals, and
+   missing columns fail closed.
 4. Take URNs, platform identity, table type, ordinals, native types, and nullability
    only from the live systems. The policy cannot supply or override those fields.
 5. Validate all governed metrics, terms, joins, time rules, entitlements, and schema
    links with the shared publication contract.
-6. Publish the in-memory canonical bundle to DataHub.
-7. Re-read DataHub and Trino until the exact catalog hash converges within the bounded
-   timeout. Partial or drifting publication returns a non-zero result.
+6. Publish the legacy and native semantic surfaces derived from the same in-memory
+   canonical bundle to DataHub.
+7. Re-read the active DataHub manifest, native semantic aspects, and live Trino until
+   their exact checksums converge within the bounded timeout. Partial or drifting
+   publication returns a non-zero result.
 
 New publications use `answervice.semantic_authoring.v3` for the all-public metric
 contract or `answervice.semantic_authoring.v4` for the visibility- and
@@ -72,15 +76,25 @@ Answervice applies that boundary as follows:
 2. Node 1 first detects a named filter from the user's text without touching Trino.
    Presentation and report-action turns, and analysis questions with no named
    filter, perform no dimension suggestion query.
-3. Only the referenced approved dimension may run a bounded live `SELECT DISTINCT`
-   query. A domain with more than 64 values is treated as high-cardinality and no
-   partial candidate list is sent to the model. Complete low-cardinality domains
-   use a short process-local TTL controlled by
+3. A reviewed low-cardinality code set may declare `members` inside its Dimension.
+   Every member binds one canonical value and its aliases to a separately governed
+   DataHub Glossary Term. Publication associates those Terms with the exact Dataset
+   field, includes them in the release manifest and checksum, and verifies the same
+   membership through native DataHub read-back. Runtime then resolves only those
+   approved aliases and records their Term URN, version, and semantic hash in the
+   immutable Context receipt; it does not issue a domain-wide `SELECT DISTINCT`.
+4. Dimensions without an approved member registry retain the bounded live
+   `SELECT DISTINCT` path. A domain with more than 64 values is treated as
+   high-cardinality and no partial candidate list is sent to the model. Complete
+   low-cardinality domains use a short process-local TTL bound to the active Product
+   Release, runtime projection, and canonical semantic checksums; concurrent misses
+   for the same receipt, asset, and column share one in-flight query. Unreceipted
+   requests do not reuse this cache. The TTL is controlled by
    `DIMENSION_VALUE_CACHE_TTL_SECONDS` (30--3,600 seconds; default 300).
-4. If canonicalization is needed, Node 1 receives the complete candidate list once.
-   The selected value is still untrusted until the server performs a parameterized,
-   case-insensitive exact lookup against the same approved field.
-5. A stated restriction is never silently dropped. A candidate that cannot be
+5. Whether a value came from an approved member or dynamic discovery, it remains
+   untrusted until the server performs a parameterized, case-insensitive exact
+   lookup against the same approved field.
+6. A stated restriction is never silently dropped. A candidate that cannot be
    canonicalized remains the exact source span and ends in a typed unresolved-filter
    response if the live lookup cannot prove one match.
 
@@ -202,7 +216,8 @@ before the first network request.
 
 First, pipe the reviewed policy to `--check`. This read-only operation discovers the
 live physical scope and emits the policy hash, physical-scope hash, current
-predecessor catalog hash, target catalog hash, actor, and subject.
+predecessor catalog hash, target catalog hash, native semantic projection hash,
+actor, and subject.
 
 When the approval system stores only business decisions rather than 578 copied
 physical fields, pipe the compact `answervice.policy_decisions.v1` or matching v2
@@ -249,8 +264,117 @@ future deployment needs two-person or regulated approval, that control belongs i
 separate change-management system rather than a development-only bypass in this CLI.
 
 `PUBLISHED_AND_VERIFIED` means the same content-derived catalog hash was rebuilt from
-live DataHub and Trino after publication. Unit tests using `MockTransport` prove only
-wire and validation contracts; they are not live publication evidence.
+the active DataHub manifest and Trino, and the native semantic projection passed
+exact Rest.li aspect read-back. Unit tests using `MockTransport` prove only wire and
+validation contracts; they are not live publication evidence.
+
+## Standalone DataHub v1.7 native Metric maintenance Gate
+
+The main authoring command publishes the complete legacy and native semantic
+surfaces. This narrower standalone command remains available for independently
+checking or repairing only approved `BUSINESS` Metrics in DataHub's native `metric`
+entity and its `metricUpstreams` / `metricRelationships` edges. It does not copy the
+complete capability, permission, grain, fan-out, or query-policy JSON into another
+DataHub custom property. `SUPPORT` operands remain checksum-bound execution facts
+and are not searchable native Metric entities.
+
+The workflow always rediscovers the current active manifest from the complete scoped
+catalog. Completely ungoverned, base-ingested candidates may coexist outside that
+manifest; a Dataset with even one partial `answervice.*` property is not silently
+excluded. Every active member is also compared with live Trino before a shadow
+projection is accepted.
+
+Run the read-only check first:
+
+```powershell
+$nativeCheck = python infrastructure/database/datahub/author_native_metric_shadow.py `
+  --check --serving-schema analytics_v4_3 | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Native Metric shadow check failed.' }
+```
+
+Publication is a separate operation with the mutation-only DataHub identity. Both
+the active catalog checksum and projection checksum from that exact check are
+required, so a changed release cannot reuse an older receipt:
+
+```powershell
+python infrastructure/database/datahub/author_native_metric_shadow.py `
+  --publish --serving-schema analytics_v4_3 `
+  --expected-catalog-sha256 $nativeCheck.catalog_sha256 `
+  --expected-projection-sha256 $nativeCheck.projection_sha256
+if ($LASTEXITCODE -ne 0) { throw 'Native Metric shadow publication failed.' }
+```
+
+Finally, use the read-only identity for independent Rest.li and GraphQL read-back.
+The GraphQL check verifies Metric identity plus exact Dataset, SchemaField, and Metric
+edge membership rather than treating stored JSON alone as graph evidence:
+
+```powershell
+python infrastructure/database/datahub/author_native_metric_shadow.py `
+  --verify --serving-schema analytics_v4_3 `
+  --expected-catalog-sha256 $nativeCheck.catalog_sha256 `
+  --expected-projection-sha256 $nativeCheck.projection_sha256
+if ($LASTEXITCODE -ne 0) { throw 'Native Metric shadow read-back failed.' }
+```
+
+`SHADOW_READBACK_VERIFIED_NOT_ACTIVE` is intentionally not a runtime cutover state.
+Native reader parity, permission/fan-out policy coverage, release approval, and the
+same-release Backend/Trino/browser gates are still required before changing the
+runtime source.
+
+## Read-only RuntimeCatalogProjection candidate compile
+
+After the governed Dataset/Glossary and native Metric read-backs converge, compile a
+fresh inactive runtime candidate with the DataHub read identity and the actual Trino
+runtime principal. The command performs a new full DataHub scroll, verifies all
+native Metric aspects and graph edges, checks every governed Trino relation, and
+prints only a checksum receipt. It neither stores a projection nor changes the active
+pointer.
+
+```powershell
+$candidate = python `
+  infrastructure/database/datahub/compile_runtime_catalog_projection.py `
+  --expected-release <catalog-release-id> | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $candidate.status -ne 'CHECKED_NOT_PUBLISHED') {
+  throw 'Runtime catalog candidate compile failed.'
+}
+```
+
+This command requires `DATAHUB_GMS_URL`, the read-only DataHub token/actor and CA,
+plus `TRINO_URL`, `TRINO_RUNTIME_USER`, `TRINO_RUNTIME_PASSWORD`, and an absolute
+Trino CA path. The returned `field_term_edge_count` is derived from the exact snapshot
+sealed into `projection_sha256`; an empty or stale editable field association is not
+filled from the semantic bundle.
+
+## Publish the checked inactive candidate
+
+Publication is a separate command and requires the exact `projection_sha256` returned
+by the read-only check. Run it only from a clean source tree with an external
+`APP_CATALOG_PUBLISHER_DATABASE_URL` and explicit content digests for the deployed
+images. The publisher recompiles every live receipt, seals a clean product evidence
+manifest, and appends the projection/manifest pair in one transaction.
+
+```powershell
+$published = python `
+  infrastructure/database/datahub/publish_runtime_catalog_candidate.py `
+  --expected-release <catalog-release-id> `
+  --expected-projection-sha256 $candidate.projection_sha256 `
+  --backend-image-ref answervice-backend:latest `
+  --image-receipt app-db=sha256:<digest> `
+  --image-receipt datahub-gms=sha256:<digest> `
+  --image-receipt frontend=sha256:<digest> `
+  --image-receipt trino=sha256:<digest> | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $published.status -ne 'PUBLISHED_WITHOUT_ACTIVATION') {
+  throw 'Runtime catalog candidate publication failed.'
+}
+```
+
+`APP_CATALOG_PUBLISHER_USER` has `SELECT/INSERT` only on the immutable runtime
+projection and product manifest tables, plus read access to the Alembic revision. It
+has no active pointer or activation receipt privilege, and its credentials are never
+injected into the Backend. The Backend image digest is read from the local OCI image
+and accepted only when its revision/dirty labels match the clean Git source. A
+`PUBLISHED_WITHOUT_ACTIVATION` receipt therefore permits only a
+subsequent explicit canary; it is not cutover approval.
 
 The Backend keeps the verified catalog snapshot and readiness receipt for the shared
 `86400` second operational TTL. After a new semantic release reaches

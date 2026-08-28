@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.contracts import (
     AnalysisData,
     AnalysisResponse,
@@ -24,6 +26,8 @@ from app.contracts import (
     MetricReference,
     MetricValue,
     PeriodEvidence,
+    QueryExecutionEvidence,
+    SnapshotEvidence,
     PipelineStage,
     RequestContext,
     SamplingEvidence,
@@ -62,6 +66,8 @@ def _business_metrics(package: ContextPackage) -> tuple[ContextMetric, ...]:
 def _presentation_rows(
     package: ContextPackage,
     rows: tuple[dict[str, object], ...],
+    period: PeriodEvidence | None = None,
+    comparison_period: PeriodEvidence | None = None,
 ) -> tuple[dict[str, object], ...]:
     """내부 계산 Metric 컬럼을 제거한 사용자용 결과 행을 반환한다.
 
@@ -77,7 +83,8 @@ def _presentation_rows(
         for metric in package.metrics
         if metric.id not in business_ids
     }
-    return tuple(
+    hidden_fields |= {f"{field}__comparison" for field in hidden_fields}
+    visible_rows = tuple(
         {
             field: value
             for field, value in row.items()
@@ -85,6 +92,82 @@ def _presentation_rows(
         }
         for row in rows
     )
+    if comparison_period is None or not visible_rows:
+        return visible_rows
+    if period is None:
+        raise ValueError("비교 결과에는 기준 기간 실행 증거가 필요합니다.")
+
+    business_fields = {
+        metric.result_field
+        for metric in package.metrics
+        if metric.id in business_ids
+    }
+    ordered_business_fields = tuple(
+        field for field in visible_rows[0] if field in business_fields
+    )
+    comparison_fields = {
+        f"{field}__comparison" for field in ordered_business_fields
+    }
+    dimension_fields = tuple(
+        field
+        for field in visible_rows[0]
+        if field not in business_fields and field not in comparison_fields
+    )
+    expected_fields = set(dimension_fields) | set(ordered_business_fields) | comparison_fields
+    if (
+        set(ordered_business_fields) != business_fields
+        or "period" in dimension_fields
+        or any(set(row) != expected_fields for row in visible_rows)
+    ):
+        raise ValueError("비교 결과 컬럼을 사용자용 기간 행으로 안전하게 변환할 수 없습니다.")
+
+    result: list[dict[str, object]] = []
+    for row in visible_rows:
+        dimensions = {field: row[field] for field in dimension_fields}
+        result.append(
+            {
+                "period": period.start.isoformat(),
+                **dimensions,
+                **{field: row[field] for field in ordered_business_fields},
+            }
+        )
+        result.append(
+            {
+                "period": comparison_period.start.isoformat(),
+                **dimensions,
+                **{
+                    field: row[f"{field}__comparison"]
+                    for field in ordered_business_fields
+                },
+            }
+        )
+    return tuple(result)
+
+
+def _presentation_sampling(
+    query: dict[str, object],
+    source_rows: tuple[dict[str, object], ...],
+    presentation_rows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    """실행 행이 기간별 표시 행으로 펼쳐진 경우 사용자 반환 행 수도 함께 맞춘다."""
+
+    raw = query.get("sampling")
+    sampling = dict(raw) if isinstance(raw, dict) else {
+        "applied": False,
+        "returned_rows": len(source_rows),
+        "total_rows": len(source_rows),
+    }
+    sampling["returned_rows"] = len(presentation_rows)
+    if source_rows and len(presentation_rows) != len(source_rows):
+        factor = len(presentation_rows) // len(source_rows)
+        total_rows = sampling.get("total_rows")
+        if (
+            factor > 0
+            and isinstance(total_rows, int)
+            and not isinstance(total_rows, bool)
+        ):
+            sampling["total_rows"] = total_rows * factor
+    return sampling
 
 
 class AnalysisResponseFactory:
@@ -107,6 +190,11 @@ class AnalysisResponseFactory:
         cached: bool = False,
     ) -> AnalysisResponse:
         """G3 게이트를 통과한 정상 실행 결과를 SUCCEEDED 또는 PARTIAL 상태의 AnalysisResponse로 조립합니다."""
+        period_payload = query.get("period")
+        comparison_period_payload = query.get("comparison_period")
+        snapshot_payload = query.get("snapshot")
+        if period_payload and snapshot_payload:
+            raise ValueError("실행 결과에는 period와 snapshot 증거를 함께 넣을 수 없습니다.")
         query_status = query.get("status")
         status = (
             AnalysisStatus.PARTIAL
@@ -114,8 +202,28 @@ class AnalysisResponseFactory:
             else AnalysisStatus.SUCCEEDED
         )
         machine.transition(status)
+        period = (
+            PeriodEvidence.model_validate(period_payload)
+            if isinstance(period_payload, dict) and period_payload.get("start")
+            else (
+                None
+                if snapshot_payload
+                else support.period(context.as_of, package)
+            )
+        )
+        comparison_period = (
+            PeriodEvidence.model_validate(comparison_period_payload)
+            if isinstance(comparison_period_payload, dict)
+            and comparison_period_payload.get("start")
+            else None
+        )
         source_rows = tuple(query["rows"])
-        rows = _presentation_rows(package, source_rows)
+        rows = _presentation_rows(
+            package,
+            source_rows,
+            period,
+            comparison_period,
+        )
         presentation_metrics = _business_metrics(package)
         metric_values = []
         for metric in presentation_metrics:
@@ -163,10 +271,12 @@ class AnalysisResponseFactory:
             evidence=Evidence(
                 as_of=context.as_of,
                 timezone=context.timezone,
-                period=(
-                    PeriodEvidence.model_validate(query["period"])
-                    if query.get("period", {}).get("start")
-                    else support.period(context.as_of, package)
+                period=period,
+                comparison_period=comparison_period,
+                snapshot=(
+                    SnapshotEvidence.model_validate(snapshot_payload)
+                    if snapshot_payload
+                    else None
                 ),
                 filters=_evidence_filters(query.get("filters", {}), package),
                 sources=support.sources(assets),
@@ -183,16 +293,18 @@ class AnalysisResponseFactory:
                 gates=_gate_evidence(trace),
                 gate_history=_gate_history(trace),
                 sampling=SamplingEvidence.model_validate(
-                    query.get(
-                        "sampling",
-                        {
-                            "returned_rows": len(rows),
-                            "total_rows": len(rows),
-                        },
-                    )
+                    _presentation_sampling(query, source_rows, rows)
                 ),
                 masking=MaskingEvidence.model_validate(
                     query.get("masking", {})
+                ),
+                execution=QueryExecutionEvidence(
+                    processed_rows=int(query.get("processed_rows", 0)),
+                    scan_bytes=int(query.get("scan_bytes", 0)),
+                    warning_count=int(query.get("warning_count", 0)),
+                    critical_warning_count=int(
+                        query.get("critical_warning_count", 0)
+                    ),
                 ),
                 cached=cached,
             ),
@@ -200,7 +312,7 @@ class AnalysisResponseFactory:
         error = (
             ErrorBody(
                 code=ErrorCode.PARTIAL_FAILURE,
-                message="일부 원천 결과만 반환했습니다.",
+                message="조회 엔진이 결과 주의사항을 반환해 일부 완료로 표시했습니다.",
                 retryable=True,
             )
             if status == AnalysisStatus.PARTIAL
@@ -259,6 +371,7 @@ class AnalysisResponseFactory:
         suggestions: tuple[str, ...] = (),
         disambiguation_options: tuple[DisambiguationOption, ...] = (),
         clarification_type: ClarificationType | None = None,
+        evidence: Evidence | None = None,
     ) -> AnalysisResponse:
         """파이프라인 실행 도중 발생한 에러를 기록하고 표준 실패/차단 응답을 반환합니다."""
         AnalysisResponseFactory.record(
@@ -277,6 +390,7 @@ class AnalysisResponseFactory:
                 route=decision.route_type,
                 template_id=decision.template_id,
                 gates=AnalysisResponseFactory.gates(decision),
+                evidence=evidence,
                 trace=tuple(trace),
                 repair_count=repair_count,
                 disambiguation_options=disambiguation_options,
@@ -290,6 +404,83 @@ class AnalysisResponseFactory:
                 disambiguation_options=disambiguation_options,
                 clarification_type=clarification_type,
             ),
+        )
+
+    @staticmethod
+    def empty_result(
+        *,
+        support: Any,
+        context: RequestContext,
+        machine: AnalysisStateMachine,
+        trace: list[TraceStep],
+        decision: RouteDecision,
+        package: ContextPackage,
+        assets: list[dict[str, object]],
+        query: dict[str, object],
+        repair_count: int,
+    ) -> AnalysisResponse:
+        """빈 결과에 실제 적용된 기간·필터·출처를 Run 수준 실행 근거로 남긴다."""
+
+        period_payload = query.get("period")
+        comparison_period_payload = query.get("comparison_period")
+        snapshot_payload = query.get("snapshot")
+        evidence = Evidence(
+            as_of=context.as_of,
+            timezone=context.timezone,
+            period=(
+                PeriodEvidence.model_validate(period_payload)
+                if isinstance(period_payload, dict) and period_payload.get("start")
+                else None
+            ),
+            comparison_period=(
+                PeriodEvidence.model_validate(comparison_period_payload)
+                if isinstance(comparison_period_payload, dict)
+                and comparison_period_payload.get("start")
+                else None
+            ),
+            snapshot=(
+                SnapshotEvidence.model_validate(snapshot_payload)
+                if isinstance(snapshot_payload, dict) and snapshot_payload.get("cutoff")
+                else None
+            ),
+            filters=_evidence_filters(query.get("filters", {}), package),
+            sources=support.sources(assets),
+            query_id=str(query["query_id"]),
+            context_release=package.context_release,
+            product_release_id=package.product_release_id,
+            evidence_cutoff=package.evidence_cutoff,
+            policy_version=package.policy_version,
+            sampling=SamplingEvidence.model_validate(
+                query.get(
+                    "sampling",
+                    {
+                        "returned_rows": 0,
+                        "total_rows": 0,
+                    },
+                )
+            ),
+            masking=MaskingEvidence.model_validate(query.get("masking", {})),
+            execution=QueryExecutionEvidence(
+                processed_rows=int(query.get("processed_rows", 0)),
+                scan_bytes=int(query.get("scan_bytes", 0)),
+                warning_count=int(query.get("warning_count", 0)),
+                critical_warning_count=int(
+                    query.get("critical_warning_count", 0)
+                ),
+            ),
+        )
+        return AnalysisResponseFactory.error(
+            context,
+            machine,
+            trace,
+            PipelineStage.G3,
+            AnalysisStatus.BLOCKED,
+            ErrorCode.EMPTY_RESULT,
+            "요청한 기간과 조건에 해당하는 결과가 없습니다.",
+            decision,
+            repair_count,
+            detail=ErrorCode.EMPTY_RESULT.value,
+            evidence=evidence,
         )
 
     @staticmethod

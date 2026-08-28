@@ -89,6 +89,7 @@ class ReportBlock:
     w: int | None = None
     h: int = 1
     content: str = ""
+    view_spec_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.block_id or not self.title:
@@ -118,6 +119,9 @@ class ReportDefinitionVersion:
     approved_at: datetime | None = None
     orientation: str = "portrait"
     currency_display_unit: str = "auto"
+    product_release_id: str | None = None
+    permission_snapshot_id: str | None = None
+    semantic_release_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.definition_id or self.version < 1 or not self.title:
@@ -130,6 +134,13 @@ class ReportDefinitionVersion:
             raise ValueError("Report orientation must be portrait or landscape")
         if self.currency_display_unit not in CURRENCY_DISPLAY_UNITS:
             raise ValueError("Report currency display unit is invalid")
+        receipt = (
+            self.product_release_id,
+            self.permission_snapshot_id,
+            self.semantic_release_id,
+        )
+        if any(receipt) and not all(receipt):
+            raise ValueError("Report definition release receipt must be complete")
 
     def approve(self, approved_at: datetime) -> "ReportDefinitionVersion":
         """초안만 지정 시각의 승인본으로 복제하며 이미 승인된 버전은 변경하지 않고 거부한다."""
@@ -144,6 +155,9 @@ class ReportDefinitionVersion:
             approved_at=approved_at,
             orientation=self.orientation,
             currency_display_unit=self.currency_display_unit,
+            product_release_id=self.product_release_id,
+            permission_snapshot_id=self.permission_snapshot_id,
+            semantic_release_id=self.semantic_release_id,
         )
 
     def next_draft(self) -> "ReportDefinitionVersion":
@@ -158,6 +172,9 @@ class ReportDefinitionVersion:
             blocks=self.blocks,
             orientation=self.orientation,
             currency_display_unit=self.currency_display_unit,
+            product_release_id=self.product_release_id,
+            permission_snapshot_id=self.permission_snapshot_id,
+            semantic_release_id=self.semantic_release_id,
         )
 
     def replace_blocks(
@@ -183,6 +200,9 @@ class ReportDefinitionVersion:
                 if currency_display_unit is None
                 else currency_display_unit
             ),
+            product_release_id=self.product_release_id,
+            permission_snapshot_id=self.permission_snapshot_id,
+            semantic_release_id=self.semantic_release_id,
         )
 
 
@@ -227,10 +247,20 @@ class ReportRun:
     watermark: Mapping[str, str]
     status: RunStatus
     blocks: tuple[ReportBlockRun, ...] = ()
+    product_release_id: str | None = None
+    permission_snapshot_id: str | None = None
+    semantic_release_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.run_id or not self.definition_id or self.definition_version < 1:
             raise ValueError("Report run은 run id와 definition version을 유지해야 합니다.")
+        receipt = (
+            self.product_release_id,
+            self.permission_snapshot_id,
+            self.semantic_release_id,
+        )
+        if any(receipt) and not all(receipt):
+            raise ValueError("Report run release receipt must be complete")
         object.__setattr__(self, "watermark", MappingProxyType(dict(self.watermark)))
 
 

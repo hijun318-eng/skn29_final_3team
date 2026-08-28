@@ -84,65 +84,6 @@ def compare_runs(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[st
     }
 
 
-def validate_data_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
-    """모델 실행을 주장하지 않고 R2 평가 inventory의 개수·상태·분할 계약을 검증한다."""
-    required = {"manifest_version", "synthetic", "counts", "cases"}
-    if not required.issubset(manifest) or manifest["synthetic"] is not True:
-        raise EvaluationError("R2 evaluation manifest metadata is invalid")
-    counts = manifest["counts"]
-    cases = manifest["cases"]
-    if not isinstance(counts, dict) or not isinstance(cases, list):
-        raise EvaluationError("R2 evaluation manifest counts or cases are invalid")
-
-    seen: set[str] = set()
-    set_counts = {"required30": 0, "gold120": 0}
-    status_counts: dict[str, int] = {}
-    split_samples = []
-    for case in cases:
-        needed = {"case_id", "set", "paraphrase_group", "split", "status"}
-        if not needed.issubset(case) or not all(
-            isinstance(case[field], str) and case[field] for field in needed
-        ):
-            raise EvaluationError("R2 evaluation case is invalid")
-        case_id = case["case_id"]
-        if case_id in seen:
-            raise EvaluationError(f"duplicate case_id: {case_id}")
-        if case["set"] not in set_counts:
-            raise EvaluationError(f'unknown evaluation set: {case["set"]}')
-        seen.add(case_id)
-        set_counts[case["set"]] += 1
-        status_counts[case["status"]] = status_counts.get(case["status"], 0) + 1
-        split_samples.append(
-            {
-                "sample_id": case_id,
-                "paraphrase_group": case["paraphrase_group"],
-                "split": case["split"],
-            }
-        )
-
-    required_count = counts.get("required30")
-    gold_partial = counts.get("gold120_partial")
-    gold_target = counts.get("gold120_target")
-    if required_count != 30 or gold_target != 120:
-        raise EvaluationError("required30 count or gold120 target is invalid")
-    if (
-        not isinstance(gold_partial, int)
-        or isinstance(gold_partial, bool)
-        or not 0 <= gold_partial <= gold_target
-    ):
-        raise EvaluationError("gold120 partial count is invalid")
-    declared = {"required30": required_count, "gold120": gold_partial}
-    if declared != set_counts:
-        raise EvaluationError("R2 evaluation manifest declared counts do not match cases")
-    return {
-        "manifest_version": manifest["manifest_version"],
-        "set_counts": set_counts,
-        "split_counts": validate_split_manifest(split_samples),
-        "status_counts": status_counts,
-        "model_execution": "NOT_RUN",
-    }
-
-
 def validate_split_manifest(samples: Iterable[dict[str, Any]]) -> dict[str, int]:
     """같은 paraphrase group이 train·validation·gold 경계를 넘어 누출되지 않게 검증한다."""
     allowed = {"train", "validation", "gold"}

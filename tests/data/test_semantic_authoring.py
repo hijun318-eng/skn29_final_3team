@@ -16,6 +16,7 @@ for entry in (str(ROOT), str(DATAHUB), str(ROOT / "tests" / "data")):
         sys.path.insert(0, entry)
 
 from metadata_contract_primitives import SemanticMetadataError  # noqa: E402
+import author_semantic_catalog as author_catalog  # noqa: E402
 from policy_compiler import (  # noqa: E402
     DECISION_CONTRACT_VERSION,
     DECISION_CONTRACT_VERSION_V2,
@@ -36,6 +37,7 @@ from publication_check import (  # noqa: E402
     publication_check,
     verify_expected_release,
 )
+from native_semantic_shadow import native_semantic_shadow_projection  # noqa: E402
 from semantic_authoring import (  # noqa: E402
     AUTHORING_CONTRACT_VERSION,
     AUTHORING_CONTRACT_VERSION_V2,
@@ -115,6 +117,29 @@ def _physical(bundle):
         for relation in inventory.relations
     )
     return scopes, inventory, tuple(ungoverned.values()), bindings
+
+
+def _with_ungoverned_candidate(inventory, datasets, name):
+    source_relation = inventory.relations[0]
+    source_dataset = datasets[0]
+    fqn = f"{source_relation.scope.catalog}.{source_relation.scope.schema}.{name}"
+    relation = replace(source_relation, name=name)
+    dataset = replace(
+        source_dataset,
+        urn=source_dataset.urn.replace(source_relation.name, name),
+        dataset_key_name=f"{source_dataset.dataset_key_name.rsplit('.', 1)[0]}.{name}",
+        name=fqn,
+        qualified_name=fqn,
+        schema_name=f"{source_dataset.schema_name.rsplit('.', 1)[0]}.{name}",
+        custom_properties={},
+    )
+    expanded = replace(
+        inventory,
+        relations=tuple(
+            sorted((*inventory.relations, relation), key=lambda item: item.fqn)
+        ),
+    )
+    return expanded, (*datasets, dataset), dataset
 
 
 def _decisions(bundle):
@@ -287,6 +312,78 @@ def test_v2_decisions_compile_hidden_support_rules_without_publishing_terms():
     }
 
 
+def test_v2_decision_does_not_implicitly_approve_ungoverned_live_assets():
+    """같은 schema의 base-ingested 후보는 명시 membership 없이는 policy에 들어오지 않는다."""
+
+    expected = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    expanded, expanded_datasets, candidate = _with_ungoverned_candidate(
+        inventory,
+        datasets,
+        "unreviewed_candidate",
+    )
+    by_name = {item.name: item for item in expanded_datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, by_name[relation.fqn])
+        for relation in expanded.relations
+    )
+    decisions = _decisions(expected)
+    decisions["contract_version"] = DECISION_CONTRACT_VERSION_V2
+
+    policy = compile_authoring_policy(decisions, bindings)
+
+    assert candidate.name not in {item["fqn"] for item in policy["assets"]}
+    assert {item["fqn"] for item in policy["assets"]} == {
+        item["fqn"] for item in expected["schema_context"]["assets"]
+    }
+
+
+def test_v2_decision_onboards_new_asset_only_with_explicit_existing_domain():
+    """domain 없는 신규 asset은 승인된 기존 domain URN 없이는 승격되지 않는다."""
+
+    expected = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    expanded, expanded_datasets, candidate = _with_ungoverned_candidate(
+        inventory,
+        datasets,
+        "reviewed_candidate",
+    )
+    candidate = replace(candidate, owners=(), domain=None, lifecycle=None)
+    expanded_datasets = tuple(
+        candidate if item.name == candidate.name else item
+        for item in expanded_datasets
+    )
+    by_name = {item.name: item for item in expanded_datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, by_name[relation.fqn])
+        for relation in expanded.relations
+    )
+    decisions = _decisions(expected)
+    decisions["contract_version"] = DECISION_CONTRACT_VERSION_V2
+    physical_keys = [
+        field.name for field in candidate.fields if field.is_part_of_key is True
+    ]
+    decisions["asset_grains"].append(
+        {
+            "fqn": candidate.name,
+            "kind": "row",
+            "keys": physical_keys,
+            "domain_urn": datasets[0].domain.urn,
+        }
+    )
+
+    policy = compile_authoring_policy(decisions, bindings)
+    added = next(item for item in policy["assets"] if item["fqn"] == candidate.name)
+
+    assert added["domain_urn"] == datasets[0].domain.urn
+    assert added["entitlements"]["domains"] == [datasets[0].domain.urn]
+
+    missing = deepcopy(decisions)
+    missing["asset_grains"][-1].pop("domain_urn")
+    with pytest.raises(SemanticMetadataError, match="explicitly approved"):
+        compile_authoring_policy(missing, bindings)
+
+
 def test_authoring_boundaries_reject_cross_version_metric_contracts():
     """입력 envelope만 v2로 바꿔 governance 필드 누락을 우회할 수 없다."""
 
@@ -377,6 +474,21 @@ def test_approved_grain_survives_when_connector_has_no_physical_key():
     assert asset["columns"][0]["is_part_of_key"] is False
     assert asset["grain"]["keys"] == ["account_id"]
 
+    migrated = migrate_authoring_policy(
+        actual,
+        catalog_version=actual["catalog_version"],
+        policy_version=actual["policy_version"],
+        schema_context_version=actual["schema_context"]["version"],
+        roles=("analyst",),
+    )
+    migrated_asset = next(
+        item for item in migrated["assets"] if item["fqn"] == target.relation.fqn
+    )
+    assert migrated_asset["columns"][0]["is_part_of_key"] is True
+    assert catalog_hash(assemble_authoring_bundle(migrated, bindings)) == (
+        catalog_hash(actual)
+    )
+
 
 def test_checked_synthetic_release_preserves_provenance():
     """검토한 합성 release는 실제 데이터로 위장하지 않고 provenance=true를 보존한다."""
@@ -410,6 +522,77 @@ def test_async_bootstrap_accepts_ungoverned_base_metadata_without_inference():
         build_authoring_bundle(_policy(bundle), scopes, TrinoPort(), DataHubPort())
     )
     assert catalog_hash(actual) == catalog_hash(bundle)
+
+
+def test_async_authoring_keeps_explicit_subset_when_base_scope_has_new_asset():
+    """수집된 신규 자산은 명시 승인 전 semantic release에 자동 편입되지 않는다."""
+
+    bundle = arbitrary_bundle()
+    scopes, inventory, datasets, _bindings = _physical(bundle)
+    expanded_inventory, expanded_datasets, candidate_dataset = (
+        _with_ungoverned_candidate(
+            inventory,
+            datasets,
+            "unapproved_fact",
+        )
+    )
+
+    class TrinoPort:
+        async def discover(self, requested):
+            assert requested == scopes
+            return expanded_inventory
+
+    class DataHubPort:
+        async def discover_datasets(self, requested):
+            assert requested == scopes
+            return expanded_datasets
+
+    candidate = asyncio.run(
+        build_authoring_candidate(
+            _policy(bundle),
+            scopes,
+            TrinoPort(),
+            DataHubPort(),
+        )
+    )
+
+    assert candidate.previous_catalog_sha256 == CLEAN_CATALOG_SHA256
+    assert catalog_hash(candidate.bundle) == catalog_hash(bundle)
+    assert candidate_dataset.name not in {
+        asset["fqn"] for asset in candidate.bundle["schema_context"]["assets"]
+    }
+
+
+def test_async_authoring_cannot_omit_active_governed_asset():
+    bundle = arbitrary_bundle()
+    policy = _policy(bundle)
+    omitted_fqn = policy["assets"].pop()["fqn"]
+    scopes, inventory, datasets, _terms = _runtime(bundle)
+
+    class TrinoPort:
+        async def discover(self, requested):
+            assert requested == scopes
+            return inventory
+
+    class DataHubPort:
+        async def discover_datasets(self, requested):
+            assert requested == scopes
+            return datasets
+
+    with pytest.raises(
+        SemanticMetadataError,
+        match="cannot omit active governed assets",
+    ):
+        asyncio.run(
+            build_authoring_candidate(
+                policy,
+                scopes,
+                TrinoPort(),
+                DataHubPort(),
+            )
+        )
+
+    assert omitted_fqn not in {asset["fqn"] for asset in policy["assets"]}
 
 
 def test_authoring_predecessor_ignores_dataset_outside_the_approved_scope():
@@ -618,6 +801,9 @@ def test_publication_check_binds_policy_physical_scope_catalog_and_actor():
         expected_previous_catalog_sha256=check["previous_catalog_sha256"],
     )
     assert physical_scope_sha256(bundle) == check["physical_scope_sha256"]
+    assert check["native_semantic_projection_sha256"] == (
+        native_semantic_shadow_projection(bundle)["projection_sha256"]
+    )
 
     changed_policy = deepcopy(policy)
     changed_policy["policy_version"] = "unapproved-change"
@@ -639,11 +825,83 @@ def test_publication_check_binds_policy_physical_scope_catalog_and_actor():
         )
 
 
+def test_operational_publisher_writes_and_reads_both_semantic_surfaces(monkeypatch):
+    bundle = arbitrary_bundle()
+    projection_sha256 = native_semantic_shadow_projection(bundle)[
+        "projection_sha256"
+    ]
+    calls = []
+
+    async def legacy_publish(*_args, **_options):
+        calls.append("legacy")
+        return {"status": "PUBLISHED"}
+
+    class NativeClient:
+        def __init__(self, *_args, **_options):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def native_publish(_client, _value, **options):
+        assert options["expected_projection_sha256"] == projection_sha256
+        calls.append("native_publish")
+        return {"published_entity_count": 17}
+
+    async def native_verify(_client, _value, **options):
+        assert options["expected_projection_sha256"] == projection_sha256
+        calls.append("native_verify")
+        return {
+            "readback_projection_sha256": projection_sha256,
+            "rest_aspect_equality": "100%",
+        }
+
+    monkeypatch.setattr(author_catalog, "publish_bundle", legacy_publish)
+    monkeypatch.setattr(author_catalog, "DataHubMetadataAdminClient", NativeClient)
+    monkeypatch.setattr(
+        author_catalog,
+        "publish_native_semantic_shadow",
+        native_publish,
+    )
+    monkeypatch.setattr(
+        author_catalog,
+        "verify_native_semantic_shadow",
+        native_verify,
+    )
+
+    class Settings:
+        base_url = "https://127.0.0.1:28081"
+        token = "publish-token"
+        ca_file = Path("unused-test-ca.pem")
+
+    result = asyncio.run(
+        author_catalog._publish_datahub_release(
+            bundle,
+            Settings(),
+            actor_urn="urn:li:corpuser:service_publisher",
+            timeout=1,
+        )
+    )
+
+    assert calls == ["legacy", "native_publish", "native_verify"]
+    assert result["native_semantic_projection_sha256"] == projection_sha256
+    assert result["native_semantic_readback_sha256"] == projection_sha256
+    assert result["native_semantic_published_entity_count"] == 17
+
+
 def test_checked_orchestration_retries_transient_readback_and_requires_convergence():
     expected = arbitrary_bundle()
     policy = _policy(expected)
     scopes, inventory, base_datasets, bindings = _physical(expected)
     _unused, _unused_inventory, governed_datasets, governed_terms = _runtime(expected)
+    inventory, base_datasets, candidate_dataset = _with_ungoverned_candidate(
+        inventory,
+        base_datasets,
+        "unapproved_during_readback",
+    )
     bundle = assemble_authoring_bundle(policy, bindings)
     check = publication_check(
         policy,
@@ -664,7 +922,11 @@ def test_checked_orchestration_retries_transient_readback_and_requires_convergen
             if self.published and self.transient:
                 self.transient = False
                 raise DataHubDiscoveryError("transient readback")
-            return governed_datasets if self.published else base_datasets
+            return (
+                (*governed_datasets, candidate_dataset)
+                if self.published
+                else base_datasets
+            )
 
         async def discover_terms(self, urns):
             by_urn = {item.urn: item for item in governed_terms}

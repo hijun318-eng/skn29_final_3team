@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import unquote
 
@@ -19,26 +20,66 @@ sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(PUBLISHER))
 from metadata_aspects import iter_aspects  # noqa: E402
 from metadata_contract import validate_bundle  # noqa: E402
+from src.data.analysis_capability_contract import AnalysisCapabilityError  # noqa: E402
 from src.data.governance_contract import datahub_schema_sha1  # noqa: E402
 
 from app.adapters.catalog_snapshot import (  # noqa: E402
     DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
 )
 from app.adapters.datahub_catalog import DataHubCatalogClient  # noqa: E402
+from app.adapters.datahub_metadata_values import GovernedMetadataError  # noqa: E402
 from app.adapters.governed_data_platform import (  # noqa: E402
     GovernedDataPlatformAdapter,
 )
 from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
+from app.adapters.runtime_catalog_projection import (  # noqa: E402
+    LEGACY_SHADOW,
+    NATIVE_PRIORITY,
+    RuntimeCatalogProjection,
+    RuntimeCatalogProjectionError,
+    build_source_selection_manifest,
+)
+from app.adapters.runtime_catalog_repository import (  # noqa: E402
+    ActiveRuntimeCatalogProjection,
+)
 from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
+from app.adapters.trino_schema import TrinoSchemaInspector  # noqa: E402
 from app.ports.data_platform import (  # noqa: E402
+    ExecutionAssetSelection,
     MetadataUnavailableError,
     NoEntitledAssetsError,
     NoMetricMatchError,
+    ReleaseReceiptChangedError,
+    UnsupportedSemanticError,
 )
 from app.query_capability import issue_query_capability  # noqa: E402
+from app.services.context.contract import GovernedJoin  # noqa: E402
+from app.adapters.legacy_semantic_release import (  # noqa: E402
+    compile_legacy_semantic_release,
+)
 
 
 LIFECYCLE_URN = "urn:li:lifecycleStageType:approved"
+
+
+class MutableProjectionRepository:
+    """Test-only active pointer whose receipt can change between two calls."""
+
+    def __init__(self, active: ActiveRuntimeCatalogProjection) -> None:
+        self.active = active
+        self.releases = {active.product_release_id: active}
+
+    async def load_active(self) -> ActiveRuntimeCatalogProjection:
+        self.releases[self.active.product_release_id] = self.active
+        return self.active
+
+    async def load_product_release(
+        self,
+        product_release_id: str,
+    ) -> ActiveRuntimeCatalogProjection:
+        if product_release_id not in self.releases:
+            raise RuntimeError("product release is unavailable")
+        return self.releases[product_release_id]
 
 
 def _v2_metric_governance(
@@ -433,6 +474,77 @@ def _bundle_with_dimension_bridge() -> dict:
     return bundle
 
 
+def _bundle_with_metric_join() -> dict:
+    """두 공개 Metric이 같은 승인 edge만 공유하는 일반 multi-asset release를 만든다."""
+
+    bundle = _bundle()
+    edge_id = "helium_argon_by_event"
+    bundle["join_graph"]["edges"].append(
+        {
+            "id": edge_id,
+            "left": "orbit.lake.helium_fact",
+            "right": "orbit.lake.argon_fact",
+            "kind": "inner",
+            "cardinality": "one_to_one",
+            "equality_conditions": [
+                {"left_column": "event_id", "right_column": "event_id"}
+            ],
+            "temporal_conditions": [],
+            "preaggregation": {
+                "required": False,
+                "grain": [
+                    {
+                        "asset_fqn": "orbit.lake.helium_fact",
+                        "column": "event_id",
+                    }
+                ],
+                "keys": [
+                    {
+                        "asset_fqn": "orbit.lake.helium_fact",
+                        "column": "event_id",
+                    }
+                ],
+            },
+        }
+    )
+    for metric in bundle["metric_rules"]:
+        metric["governance"]["join"] = {
+            "required": True,
+            "allowed_edge_ids": [edge_id],
+        }
+    validate_bundle(bundle)
+    return bundle
+
+
+def _bundle_with_unentitled_metric_join() -> dict:
+    """검색 가능 node와 권한 밖 node가 한 edge로 이어진 negative release를 만든다."""
+
+    bundle = _bundle_with_metric_join()
+    for asset in bundle["schema_context"]["assets"]:
+        if asset["fqn"] == "orbit.lake.argon_fact":
+            asset["entitlements"] = {"roles": ["report_admin"], "domains": []}
+    for metric in bundle["metric_rules"]:
+        if metric["id"] == "argon_yield":
+            metric["governance"]["permission"]["roles"] = ["report_admin"]
+    validate_bundle(bundle)
+    return bundle
+
+
+def _bundle_with_ambiguous_metric_join() -> dict:
+    """같은 두 자산 사이의 관계 의미를 고를 근거가 없는 병렬 edge release를 만든다."""
+
+    bundle = _bundle_with_metric_join()
+    parallel = copy.deepcopy(bundle["join_graph"]["edges"][0])
+    parallel["id"] = "helium_argon_by_alternate_event"
+    bundle["join_graph"]["edges"].append(parallel)
+    for metric in bundle["metric_rules"]:
+        metric["governance"]["join"]["allowed_edge_ids"] = sorted(
+            ("helium_argon_by_event", "helium_argon_by_alternate_event")
+        )
+    validate_bundle(bundle)
+    return bundle
+
+
 def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     aspects = {
         (entity_type, urn, aspect): value
@@ -447,14 +559,20 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             for key, value in properties["customProperties"].items()
         ]
         editable = aspects[("dataset", urn, "editableSchemaMetadata")]
-        by_name = {
-            item["fieldPath"]: item
-            for item in editable["editableSchemaFieldInfo"]
-        }
+        editable_fields = []
+        for raw in editable["editableSchemaFieldInfo"]:
+            value = copy.deepcopy(raw)
+            raw_terms = value.get("glossaryTerms")
+            if raw_terms is not None:
+                value["glossaryTerms"] = {
+                    "terms": [
+                        {"term": {"urn": item["urn"]}}
+                        for item in raw_terms.get("terms", [])
+                    ]
+                }
+            editable_fields.append(value)
         fields = []
         for column in asset["columns"]:
-            editable_field = by_name[column["name"]]
-            associations = editable_field.get("glossaryTerms", {}).get("terms", [])
             fields.append(
                 {
                     "fieldPath": column["name"],
@@ -462,9 +580,8 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
                     "nullable": column["nullable"],
                     "isPartOfKey": column["is_part_of_key"],
                     "description": column["description"],
-                    "glossaryTerms": {
-                        "terms": [{"term": {"urn": item["urn"]}} for item in associations]
-                    },
+                    # Pinned DataHub v1.7 does not project editable terms here.
+                    "glossaryTerms": None,
                 }
             )
         term_urns = aspects[("dataset", urn, "glossaryTerms")]["terms"]
@@ -496,9 +613,7 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
                 "fields": fields,
             },
             "editableSchemaMetadata": {
-                "editableSchemaFieldInfo": copy.deepcopy(
-                    editable["editableSchemaFieldInfo"]
-                )
+                "editableSchemaFieldInfo": editable_fields
             },
         }
     terms = {}
@@ -540,6 +655,14 @@ class RuntimeTransport:
         self.domains = {item["urn"]: copy.deepcopy(item) for item in governance["domains"]}
         self.lifecycle_stages = copy.deepcopy(governance["approved_lifecycles"])
         self.search_starts: dict[str, list[int]] = {"DATASET": [], "GLOSSARY_TERM": []}
+        self.scroll_cursors: dict[str, list[str | None]] = {
+            "DATASET": [],
+            "GLOSSARY_TERM": [],
+        }
+        self.candidate_queries: list[str] = []
+        # 후보 검색 전용 주입점. 열거(scroll) 경로와 분리해 실패·결과를 따로 검증한다.
+        self.candidate_search_status: int | None = None
+        self.candidate_hits: list[tuple[str, str]] | None = None
         self.semantic_disabled = False
         self.schema_drift = False
         self.trino_statements: list[str] = []
@@ -585,11 +708,60 @@ class RuntimeTransport:
                     }
                 },
             )
+        if "scrollAcrossEntities" in query:
+            request_input = variables["input"]
+            entity_type = request_input["types"][0]
+            cursor = request_input.get("scrollId")
+            self.scroll_cursors[entity_type].append(cursor)
+            values = list(self.datasets if entity_type == "DATASET" else self.terms)
+            start = int(cursor) if cursor is not None else 0
+            page = values[start : start + request_input["count"]]
+            next_start = start + len(page)
+            return httpx.Response(
+                200,
+                json={"data": {"scrollAcrossEntities": {
+                    "count": len(page),
+                    "nextScrollId": (
+                        str(next_start) if next_start < len(values) else None
+                    ),
+                    "searchResults": [
+                        {"entity": {"urn": urn, "type": entity_type}, "matchedFields": []}
+                        for urn in page
+                    ],
+                }}},
+            )
         if "searchAcrossEntities" in query:
             request_input = variables["input"]
             entity_type = request_input["types"][0]
             self.search_starts[entity_type].append(request_input["start"])
-            values = list(self.datasets if entity_type == "DATASET" else self.terms)
+            self.candidate_queries.append(request_input["query"])
+            if self.candidate_search_status is not None:
+                return httpx.Response(self.candidate_search_status, json={})
+            if self.candidate_hits is not None:
+                hits = [
+                    {"entity": {"urn": urn, "type": hit_type}, "matchedFields": []}
+                    for urn, hit_type in self.candidate_hits
+                    if hit_type in request_input["types"]
+                ]
+                return httpx.Response(
+                    200,
+                    json={"data": {"searchAcrossEntities": {
+                        "start": 0,
+                        "count": len(hits),
+                        "total": len(hits),
+                        "searchResults": hits,
+                    }}},
+                )
+            values = [
+                (urn, "DATASET")
+                for urn in self.datasets
+                if "DATASET" in request_input["types"]
+            ]
+            values.extend(
+                (urn, "GLOSSARY_TERM")
+                for urn in self.terms
+                if "GLOSSARY_TERM" in request_input["types"]
+            )
             start = request_input["start"]
             page = values[start : start + request_input["count"]]
             return httpx.Response(
@@ -599,8 +771,8 @@ class RuntimeTransport:
                     "count": len(page),
                     "total": len(values),
                     "searchResults": [
-                        {"entity": {"urn": urn, "type": entity_type}, "matchedFields": []}
-                        for urn in page
+                        {"entity": {"urn": urn, "type": hit_type}, "matchedFields": []}
+                        for urn, hit_type in page
                     ],
                 }}},
             )
@@ -689,6 +861,16 @@ class RuntimeTransport:
         return self.bundle["schema_context"]["assets"][0]
 
 
+async def _candidate_assets(
+    adapter: GovernedDataPlatformAdapter,
+    query: str,
+    context: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """production candidate API로 해석 단계의 asset projection을 반환한다."""
+
+    return list((await adapter.search_asset_candidates(query, context)).assets)
+
+
 class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
     def test_catalog_snapshot_default_and_environment_override_are_explicit(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -709,6 +891,166 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             default_engine._loader._ttl_seconds,
         )
         self.assertEqual(43_200.0, override_engine._loader._ttl_seconds)
+
+    def test_ranked_connected_candidates_keep_a_bounded_complete_component(self) -> None:
+        """검색 hit가 상한보다 많아도 상위 연결 component 전체를 버리지 않는다."""
+
+        datasets = tuple(
+            SimpleNamespace(
+                fqn=f"orbit.analytics.candidate_{index}",
+                metrics=({"dimensions": []},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino", "read_only": True},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            )
+            for index in range(5)
+        )
+        edges = tuple(
+            GovernedJoin(
+                id=f"candidate_{index}_to_{index + 1}",
+                left=datasets[index].fqn,
+                right=datasets[index + 1].fqn,
+                kind="inner",
+                cardinality="many_to_one",
+                equality_conditions=(("left_id", "right_id"),),
+                temporal_conditions=(),
+                preaggregation_required=False,
+                preaggregation_grain=("left_id",),
+                preaggregation_keys=("left_id",),
+            )
+            for index in range(4)
+        )
+        engine = QueryGovernanceEngine(
+            object(),
+            object(),
+            max_request_assets=3,
+            search_mode="lexical",
+        )
+
+        selected, selected_graph = engine._select_connected(
+            datasets,
+            datasets,
+            {"role": "analyst"},
+            edges,
+        )
+
+        self.assertEqual(
+            [
+                "orbit.analytics.candidate_0",
+                "orbit.analytics.candidate_1",
+                "orbit.analytics.candidate_2",
+            ],
+            [item.fqn for item in selected],
+        )
+        self.assertEqual(edges, selected_graph)
+
+    def test_candidate_dependency_component_is_never_partially_admitted(self) -> None:
+        """의존 자산까지 넣을 공간이 없으면 seed 일부만 후보 context에 남기지 않는다."""
+
+        fqns = tuple(f"orbit.analytics.asset_{index}" for index in range(4))
+        datasets = (
+            SimpleNamespace(
+                fqn=fqns[0],
+                metrics=({"dimensions": []},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+            SimpleNamespace(
+                fqn=fqns[1],
+                metrics=({"dimensions": []},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+            SimpleNamespace(
+                fqn=fqns[2],
+                metrics=({"dimensions": [{"asset_fqn": fqns[3]}]},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+            SimpleNamespace(
+                fqn=fqns[3],
+                metrics=(),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+        )
+        edges = tuple(
+            GovernedJoin(
+                id=f"asset_{index}_to_{index + 1}",
+                left=fqns[index],
+                right=fqns[index + 1],
+                kind="inner",
+                cardinality="many_to_one",
+                equality_conditions=(("left_id", "right_id"),),
+                temporal_conditions=(),
+                preaggregation_required=False,
+                preaggregation_grain=("left_id",),
+                preaggregation_keys=("left_id",),
+            )
+            for index in range(3)
+        )
+        engine = QueryGovernanceEngine(
+            object(),
+            object(),
+            max_request_assets=3,
+            search_mode="lexical",
+        )
+
+        selected, _ = engine._select_connected(
+            datasets[:3],
+            datasets,
+            {"role": "analyst"},
+            edges,
+        )
+
+        self.assertEqual(fqns[:2], tuple(item.fqn for item in selected))
+
+    def test_interpretation_scope_unions_independent_policies_only_with_one_calendar(self) -> None:
+        """후보 recall은 독립 실행 policy를 허용하되 현재 Node 1이 해석할 수 없는 혼합 calendar는 넣지 않는다."""
+
+        datasets = tuple(
+            SimpleNamespace(
+                fqn=f"orbit.analytics.scope_{index}",
+                metrics=({"dimensions": []},),
+                policy_version=f"policy-v{index + 1}",
+                query_policy={"strategy": f"strategy-{index + 1}"},
+                time_metadata={
+                    "calendar_id": (
+                        "calendar-shared" if index < 2 else "calendar-distinct"
+                    )
+                },
+                entitled=lambda _context: True,
+            )
+            for index in range(3)
+        )
+        engine = QueryGovernanceEngine(
+            object(),
+            object(),
+            max_request_assets=3,
+            search_mode="lexical",
+        )
+
+        selected, selected_graph = engine._select_interpretation_scope(
+            datasets,
+            datasets,
+            {"role": "analyst"},
+            (),
+        )
+
+        self.assertEqual(
+            tuple(item.fqn for item in datasets[:2]),
+            tuple(item.fqn for item in selected),
+        )
+        self.assertEqual((), selected_graph)
 
     async def asyncSetUp(self) -> None:
         self.transport = RuntimeTransport(_bundle())
@@ -736,8 +1078,385 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await self.datahub_http.aclose()
         await self.trino_http.aclose()
 
+    async def test_runtime_reads_v17_editable_field_glossary_associations(self) -> None:
+        """Pinned v1.7의 editable field aspect를 runtime association으로 보존한다."""
+
+        snapshot = await self.adapter._governance._loader.load()
+
+        self.assertEqual(
+            frozenset({"urn:li:glossaryTerm:helium_yield"}),
+            snapshot.datasets_by_fqn["orbit.lake.helium_fact"].field_terms[
+                "measure_value"
+            ],
+        )
+        self.assertEqual(
+            frozenset({"urn:li:glossaryTerm:argon_yield"}),
+            snapshot.datasets_by_fqn["orbit.lake.argon_fact"].field_terms[
+                "measure_value"
+            ],
+        )
+
+    async def test_runtime_separates_business_display_name_from_trino_fqn(self) -> None:
+        """Dataset 표시명은 업무명, 실행 식별자는 qualifiedName·governed FQN을 쓴다."""
+
+        first = next(iter(self.transport.datasets.values()))
+        first["name"] = "객실 매출 업무 데이터"
+        first["properties"]["name"] = "객실 매출 업무 데이터"
+
+        snapshot = await self.adapter._governance._loader.load()
+
+        self.assertIn(first["properties"]["qualifiedName"], snapshot.datasets_by_fqn)
+
+    async def test_runtime_rejects_display_name_and_property_name_disagreement(self) -> None:
+        """두 DataHub 표시명 표현이 갈라지면 identity read-back을 닫는다."""
+
+        first = next(iter(self.transport.datasets.values()))
+        first["name"] = "객실 매출 업무 데이터"
+        first["properties"]["name"] = "다른 표시명"
+
+        with self.assertRaisesRegex(
+            GovernedMetadataError,
+            "dataset identity differs",
+        ):
+            await self.adapter._governance._loader.load()
+
+    async def test_runtime_separates_editable_description_from_execution_receipt(self) -> None:
+        """업무 설명 개선은 허용하고 immutable typed column receipt는 보존한다."""
+
+        first = next(iter(self.transport.datasets.values()))
+        editable = first["editableSchemaMetadata"]["editableSchemaFieldInfo"]
+        editable[0]["description"] = "업무 사용자가 이해할 수 있도록 개선한 설명"
+        governed = next(
+            item
+            for item in first["properties"]["customProperties"]
+            if item["key"] == "answervice.typed_columns"
+        )
+        governed_description = json.loads(governed["value"])[0]["description"]
+
+        snapshot = await self.adapter._governance._loader.load()
+        dataset = snapshot.datasets_by_fqn[first["properties"]["qualifiedName"]]
+
+        self.assertEqual(
+            governed_description,
+            dataset.catalog_asset["columns"][0]["description"],
+        )
+
+    async def test_v2_runtime_rejects_missing_editable_field_glossary_association(self) -> None:
+        """Dataset Term만 남고 BUSINESS column 연결이 사라진 release는 닫는다."""
+
+        urn = self.transport.bundle["schema_context"]["assets"][0]["urn"]
+        editable = self.transport.datasets[urn]["editableSchemaMetadata"]
+        field = next(
+            item
+            for item in editable["editableSchemaFieldInfo"]
+            if item["fieldPath"] == "measure_value"
+        )
+        field["glossaryTerms"] = {"terms": []}
+
+        with self.assertRaises(GovernedMetadataError):
+            await self.adapter._governance._loader.load()
+
+    async def test_runtime_catalog_projection_round_trips_exact_snapshot_and_receipts(self) -> None:
+        snapshot = await self.adapter._governance._loader.load()
+        release = compile_legacy_semantic_release(snapshot)
+        datasets = tuple(
+            snapshot.datasets_by_fqn[item.fqn] for item in release.assets
+        )
+        fingerprints = await self.adapter._governance._schema.fingerprints(datasets)
+        terms = {item["id"]: item for item in release.as_bundle()["metric_terms"]}
+        native_records = {
+            metric_id: {
+                "urn": (
+                    "urn:li:metric:(urn:li:dataPlatform:datahub,"
+                    f"answervice.business_metrics,{metric_id})"
+                ),
+                "metricInfo": {
+                    "name": term["name"],
+                    "description": term["definition"],
+                    "expression": {
+                        "dialects": [
+                            {
+                                "dialect": "ANSI_SQL",
+                                "expression": f'SUM("{metric_id}")',
+                            }
+                        ]
+                    },
+                },
+                "aiContext": {"synonyms": term["aliases"]},
+                "status": {"removed": False},
+            }
+            for metric_id, term in terms.items()
+        }
+        source_selection = build_source_selection_manifest(
+            release,
+            authority_mode=NATIVE_PRIORITY,
+            native_records=native_records,
+            native_projection_sha256="1" * 64,
+            native_membership_sha256="2" * 64,
+        )
+        projection = RuntimeCatalogProjection.compile(
+            snapshot,
+            release,
+            source_selection=source_selection,
+            trino_fingerprints=fingerprints,
+        )
+        restored = RuntimeCatalogProjection.from_document(
+            projection.as_document(),
+            expected_projection_sha256=projection.projection_sha256,
+        )
+
+        self.assertEqual(release.canonical_checksum, restored.release.canonical_checksum)
+        self.assertEqual(set(snapshot.datasets_by_urn), set(restored.snapshot.datasets_by_urn))
+        self.assertEqual(set(snapshot.terms_by_urn), set(restored.snapshot.terms_by_urn))
+        self.assertEqual(NATIVE_PRIORITY, restored.source_selection["authority_mode"])
+
+        tampered = projection.as_document()
+        tampered["snapshot"]["datasets"][0]["description"] = "tampered"
+        with self.assertRaises(RuntimeCatalogProjectionError):
+            RuntimeCatalogProjection.from_document(tampered)
+
+    async def test_runtime_projection_requests_avoid_scroll_and_readiness_checks_parity(self) -> None:
+        snapshot = await self.adapter._governance._loader.load()
+        release = compile_legacy_semantic_release(snapshot)
+        datasets = tuple(
+            snapshot.datasets_by_fqn[item.fqn] for item in release.assets
+        )
+        fingerprints = await self.adapter._governance._schema.fingerprints(datasets)
+        projection = RuntimeCatalogProjection.compile(
+            snapshot,
+            release,
+            source_selection=build_source_selection_manifest(
+                release, authority_mode=LEGACY_SHADOW
+            ),
+            trino_fingerprints=fingerprints,
+        )
+        repository = MutableProjectionRepository(
+            ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-a",
+                generation=1,
+            )
+        )
+        for values in self.transport.scroll_cursors.values():
+            values.clear()
+        governance = QueryGovernanceEngine(
+            self.adapter._datahub,
+            self.adapter._governance._schema,
+            expected_context_release=release.catalog_version,
+            search_mode="lexical",
+            projection_repository=repository,
+        )
+        try:
+            candidates = await governance.search_asset_candidates(
+                "Helium yield",
+                {"role": "analyst", "parameters": {}},
+            )
+            self.assertEqual("phase4-product-a", candidates.product_release_id)
+            self.assertEqual(
+                projection.projection_sha256,
+                candidates.runtime_projection_checksum,
+            )
+            self.assertEqual([], self.transport.scroll_cursors["DATASET"])
+            self.assertEqual([], self.transport.scroll_cursors["GLOSSARY_TERM"])
+            stages, receipt = await governance.catalog_readiness()
+            self.assertEqual("phase4-product-a", receipt)
+            self.assertTrue(all(value == "ready" for value in stages.values()))
+            self.assertEqual(
+                [None, "1"],
+                self.transport.scroll_cursors["DATASET"],
+            )
+            self.assertEqual(
+                [None, "1"],
+                self.transport.scroll_cursors["GLOSSARY_TERM"],
+            )
+            parity_scrolls = copy.deepcopy(self.transport.scroll_cursors)
+            verified_statement_count = len(self.transport.trino_statements)
+            self.assertEqual(
+                release.catalog_version,
+                await governance.active_context_release(),
+            )
+            cached_stages, cached_receipt = await governance.catalog_readiness()
+            self.assertEqual(stages, cached_stages)
+            self.assertEqual(receipt, cached_receipt)
+            self.assertEqual(parity_scrolls, self.transport.scroll_cursors)
+            self.assertEqual(
+                verified_statement_count,
+                len(self.transport.trino_statements),
+            )
+
+            repository.active = ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-a",
+                generation=2,
+            )
+            generation_stages, generation_receipt = (
+                await governance.catalog_readiness()
+            )
+            self.assertEqual(stages, generation_stages)
+            self.assertEqual(receipt, generation_receipt)
+            self.assertNotEqual(
+                parity_scrolls,
+                self.transport.scroll_cursors,
+                "active generation 변경은 DataHub parity snapshot을 다시 읽어야 한다",
+            )
+            parity_scrolls = copy.deepcopy(self.transport.scroll_cursors)
+            self.assertEqual(
+                verified_statement_count,
+                len(self.transport.trino_statements),
+            )
+
+            selection = ExecutionAssetSelection(
+                output_metric_ids=("helium_yield",),
+                execution_metric_ids=("helium_yield",),
+                field_references=(),
+                receipt_context_release=candidates.context_release,
+                receipt_catalog_checksum=candidates.catalog_checksum,
+                receipt_canonical_checksum=candidates.canonical_checksum,
+                receipt_product_release_id=candidates.product_release_id,
+                receipt_runtime_projection_checksum=(
+                    candidates.runtime_projection_checksum
+                ),
+            )
+            assets = await governance.resolve_execution_assets(
+                selection,
+                {
+                    "role": "analyst",
+                    "parameters": {},
+                    "product_release_id": "caller-spoofed-release",
+                },
+            )
+            self.assertTrue(assets)
+            self.assertEqual(
+                {"phase4-product-a"},
+                {asset.get("product_release_id") for asset in assets},
+            )
+            self.assertTrue(
+                all("evidence_cutoff" not in asset for asset in assets)
+            )
+
+            repository.active = ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-b",
+                generation=2,
+            )
+            rebound_assets = await governance.resolve_execution_assets(
+                selection,
+                {"role": "analyst", "parameters": {}},
+            )
+            self.assertEqual(
+                {"phase4-product-a"},
+                {asset.get("product_release_id") for asset in rebound_assets},
+            )
+            self.assertEqual(parity_scrolls, self.transport.scroll_cursors)
+        finally:
+            await governance.aclose()
+
+    async def test_runtime_projection_readiness_rejects_live_datahub_checksum_drift(self) -> None:
+        snapshot = await self.adapter._governance._loader.load()
+        release = compile_legacy_semantic_release(snapshot)
+        datasets = tuple(
+            snapshot.datasets_by_fqn[item.fqn] for item in release.assets
+        )
+        fingerprints = await self.adapter._governance._schema.fingerprints(datasets)
+        projection = RuntimeCatalogProjection.compile(
+            snapshot,
+            release,
+            source_selection=build_source_selection_manifest(
+                release,
+                authority_mode=LEGACY_SHADOW,
+            ),
+            trino_fingerprints=fingerprints,
+        )
+        repository = MutableProjectionRepository(
+            ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-a",
+                generation=1,
+            )
+        )
+        drifted = _bundle()
+        drifted["policy_version"] = "policy-drifted-after-activation"
+        self.transport.bundle = drifted
+        self.transport.datasets, self.transport.terms = _graphql_entities(drifted)
+        for values in self.transport.scroll_cursors.values():
+            values.clear()
+        governance = QueryGovernanceEngine(
+            self.adapter._datahub,
+            self.adapter._governance._schema,
+            expected_context_release=release.catalog_version,
+            search_mode="lexical",
+            projection_repository=repository,
+        )
+        try:
+            stages, receipt = await governance.catalog_readiness()
+
+            self.assertEqual("ready", stages["catalog_manifest"])
+            self.assertEqual("not_ready", stages["semantic_release"])
+            self.assertEqual("not_ready", stages["trino_schema"])
+            self.assertIsNone(receipt)
+            self.assertTrue(self.transport.scroll_cursors["DATASET"])
+        finally:
+            await governance.aclose()
+
+    async def test_runtime_projection_readiness_rejects_association_snapshot_drift(self) -> None:
+        """Canonical bundle이 같아도 live field association이 다르면 readiness를 닫는다."""
+
+        snapshot = await self.adapter._governance._loader.load()
+        release = compile_legacy_semantic_release(snapshot)
+        datasets = tuple(
+            snapshot.datasets_by_fqn[item.fqn] for item in release.assets
+        )
+        fingerprints = await self.adapter._governance._schema.fingerprints(datasets)
+        projection = RuntimeCatalogProjection.compile(
+            snapshot,
+            release,
+            source_selection=build_source_selection_manifest(
+                release,
+                authority_mode=LEGACY_SHADOW,
+            ),
+            trino_fingerprints=fingerprints,
+        )
+        repository = MutableProjectionRepository(
+            ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-a",
+                generation=1,
+            )
+        )
+        urn = self.transport.bundle["schema_context"]["assets"][0]["urn"]
+        editable = self.transport.datasets[urn]["editableSchemaMetadata"]
+        field = next(
+            item
+            for item in editable["editableSchemaFieldInfo"]
+            if item["fieldPath"] == "event_id"
+        )
+        field["glossaryTerms"] = {
+            "terms": [
+                {"term": {"urn": "urn:li:glossaryTerm:unrelated"}}
+            ]
+        }
+        for values in self.transport.scroll_cursors.values():
+            values.clear()
+        governance = QueryGovernanceEngine(
+            self.adapter._datahub,
+            self.adapter._governance._schema,
+            expected_context_release=release.catalog_version,
+            search_mode="lexical",
+            projection_repository=repository,
+        )
+        try:
+            stages, receipt = await governance.catalog_readiness()
+
+            self.assertEqual("ready", stages["catalog_manifest"])
+            self.assertEqual("not_ready", stages["semantic_release"])
+            self.assertEqual("not_ready", stages["trino_schema"])
+            self.assertIsNone(receipt)
+        finally:
+            await governance.aclose()
+
     async def test_publisher_aspect_mock_contract_and_prebound_sql_passthrough(self) -> None:
-        assets = await self.adapter.search_assets(
+        assets = await _candidate_assets(
+            self.adapter,
             "helium",
             {"role": "analyst", "parameters": {}},
         )
@@ -760,13 +1479,15 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(terminal, repeated)
         self.assertEqual([{"helium_total": 23.5}], terminal["rows"])
         self.assertIn(executable_sql, self.transport.trino_statements)
-        self.assertEqual([0, 1], self.transport.search_starts["DATASET"])
-        self.assertEqual([0, 1], self.transport.search_starts["GLOSSARY_TERM"])
+        # 전체 열거는 offset이 아니라 scroll cursor로만 진행한다.
+        self.assertEqual([None, "1"], self.transport.scroll_cursors["DATASET"])
+        self.assertEqual([None, "1"], self.transport.scroll_cursors["GLOSSARY_TERM"])
+        self.assertEqual([], self.transport.search_starts["DATASET"])
 
     async def test_semantic_capability_failure_is_typed_and_closed(self) -> None:
         self.transport.semantic_disabled = True
         with self.assertRaises(MetadataUnavailableError):
-            await self.adapter.search_assets(
+            await self.adapter.search_asset_candidates(
                 "helium",
                 {"role": "analyst", "parameters": {}},
             )
@@ -792,7 +1513,8 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(trino_http.aclose)
         self.addAsyncCleanup(adapter.aclose)
 
-        assets = await adapter.search_assets(
+        assets = await _candidate_assets(
+            adapter,
             "Helium average yield",
             {"role": "analyst", "parameters": {}},
         )
@@ -807,6 +1529,315 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("", metrics["helium_rate"]["asset_fqn"])
         self.assertEqual("helium_yield", metrics["helium_rate"]["numerator_metric_id"])
         self.assertEqual("ratio", terms["helium_rate"]["kind"])
+
+    async def test_candidate_projection_limits_choices_but_keeps_ratio_dependencies(self) -> None:
+        """Metric 후보 상한은 Node 1 선택지만 줄이고 ratio operand 실행 계약은 제거하지 않는다."""
+
+        transport = RuntimeTransport(_bundle_with_ratio())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            max_candidate_metrics=1,
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        candidates = await adapter.search_asset_candidates(
+            "Helium average yield",
+            {"role": "analyst", "parameters": {}},
+        )
+        metrics = {
+            str(metric["id"]): metric
+            for asset in candidates.assets
+            for metric in asset["metrics"]
+        }
+
+        self.assertEqual(
+            {"helium_rate", "helium_yield", "helium_observation_count"},
+            set(metrics),
+        )
+        self.assertTrue(metrics["helium_rate"]["candidate_selectable"])
+        self.assertEqual(1, metrics["helium_rate"]["candidate_rank"])
+        self.assertFalse(metrics["helium_yield"]["candidate_selectable"])
+        self.assertIsNone(metrics["helium_yield"]["candidate_rank"])
+        self.assertFalse(
+            metrics["helium_observation_count"]["candidate_selectable"]
+        )
+        self.assertIsNone(metrics["helium_observation_count"]["candidate_rank"])
+        self.assertEqual([], transport.trino_statements)
+
+    async def test_candidate_projection_omits_unrelated_same_asset_metrics(self) -> None:
+        """직접 Glossary 증거가 강한 column Metric은 같은 Dataset의 무관한 지표를 끌고 오지 않는다."""
+
+        transport = RuntimeTransport(_bundle_with_ratio())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            max_candidate_metrics=1,
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        candidates = await adapter.search_asset_candidates(
+            "Helium observation count",
+            {"role": "analyst", "parameters": {}},
+        )
+        metric_ids = {
+            str(metric["id"])
+            for asset in candidates.assets
+            for metric in asset["metrics"]
+        }
+
+        self.assertEqual({"helium_observation_count"}, metric_ids)
+        self.assertEqual([], transport.trino_statements)
+
+    async def test_candidates_keep_disconnected_metrics_until_execution_resolution(self) -> None:
+        """같은 시간 계약의 복수 후보는 JOIN 부재로 숨기지 않고 선택 후 semantic Gate에서 차단한다."""
+
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await self.adapter.search_asset_candidates(
+            "Helium yield and Argon output",
+            context,
+        )
+        selectable_ids = {
+            str(metric["id"])
+            for asset in candidates.assets
+            for metric in asset["metrics"]
+            if metric.get("candidate_selectable") is True
+        }
+
+        self.assertEqual({"helium_yield", "argon_yield"}, selectable_ids)
+        self.assertEqual(
+            {1, 2},
+            {
+                int(metric["candidate_rank"])
+                for asset in candidates.assets
+                for metric in asset["metrics"]
+                if metric.get("candidate_selectable") is True
+            },
+        )
+        self.assertEqual([], self.transport.trino_statements)
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+
+        with self.assertRaisesRegex(
+            UnsupportedSemanticError,
+            "no unique commonly approved join path",
+        ):
+            await self.adapter.resolve_execution_assets(selection, context)
+        self.assertEqual([], self.transport.trino_statements)
+
+    async def test_execution_resolution_uses_only_the_common_approved_join_path(self) -> None:
+        """복수 Metric 선택은 active graph의 공통 whitelist edge만 실행 context에 남긴다."""
+
+        transport = RuntimeTransport(_bundle_with_metric_join())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await adapter.search_asset_candidates(
+            "Helium yield and Argon output",
+            context,
+        )
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+        self.assertEqual([], transport.trino_statements)
+
+        assets = await adapter.resolve_execution_assets(selection, context)
+
+        self.assertTrue(transport.trino_statements)
+        self.assertTrue(
+            all(
+                "information_schema" in statement
+                for statement in transport.trino_statements
+            )
+        )
+        self.assertEqual(
+            {"orbit.lake.helium_fact", "orbit.lake.argon_fact"},
+            {item["fqn"] for item in assets},
+        )
+        for asset in assets:
+            self.assertEqual(["helium_argon_by_event"], asset["join_ids"])
+            self.assertEqual(
+                ["helium_argon_by_event"],
+                [edge["id"] for edge in asset["join_graph"]["edges"]],
+            )
+
+    async def test_execution_resolution_rejects_an_unentitled_join_node(self) -> None:
+        """후보에 없던 Metric을 주입해도 권한 밖 중간·대상 node로 실행 범위를 넓히지 못한다."""
+
+        transport = RuntimeTransport(_bundle_with_unentitled_metric_join())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await adapter.search_asset_candidates(
+            "Helium yield",
+            context,
+        )
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+
+        with self.assertRaisesRegex(
+            NoEntitledAssetsError,
+            "outside the request entitlement",
+        ):
+            await adapter.resolve_execution_assets(selection, context)
+
+    async def test_execution_resolution_rejects_ambiguous_parallel_join_edges(self) -> None:
+        """동일 endpoint의 승인 edge가 둘이면 질문별 추측 없이 관계 계약 보강을 요구한다."""
+
+        transport = RuntimeTransport(_bundle_with_ambiguous_metric_join())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await adapter.search_asset_candidates(
+            "Helium yield and Argon output",
+            context,
+        )
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+
+        with self.assertRaisesRegex(
+            UnsupportedSemanticError,
+            "no unique commonly approved join path",
+        ):
+            await adapter.resolve_execution_assets(selection, context)
+        self.assertEqual([], transport.trino_statements)
 
     async def test_explicit_lexical_mode_does_not_call_disabled_semantic_search(self) -> None:
         self.transport.semantic_disabled = True
@@ -826,7 +1857,8 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             trino_client=trino,
             search_mode="lexical",
         )
-        assets = await adapter.search_assets(
+        assets = await _candidate_assets(
+            adapter,
             "helium",
             {"role": "analyst", "parameters": {}},
         )
@@ -851,14 +1883,14 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with self.assertRaises(NoMetricMatchError):
-            await adapter.search_assets(
+            await adapter.search_asset_candidates(
                 "2042-06",
                 {"role": "analyst", "parameters": {}},
             )
 
     async def test_entitlement_is_only_the_published_role_domain_policy(self) -> None:
         with self.assertRaises(NoEntitledAssetsError):
-            await self.adapter.search_assets(
+            await self.adapter.search_asset_candidates(
                 "helium",
                 {"role": "unpublished_role", "parameters": {}},
             )
@@ -874,7 +1906,10 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             },
             stages,
         )
-        self.assertRegex(receipt or "", r"^[^:]+:[0-9a-f]{64}$")
+        self.assertRegex(
+            receipt or "",
+            r"^ANSWERVICE-PRODUCT-RELEASE-v1:[0-9a-f]{64}$",
+        )
 
     async def test_catalog_readiness_rejects_manifest_governed_count_mismatch(self) -> None:
         removed_urn = next(
@@ -884,7 +1919,9 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         stages, receipt = await self.adapter.get_catalog_readiness()
 
-        self.assertEqual("ready", stages["semantic_release"])
+        # 불완전한 membership은 canonical release 자체도 만들 수 없으므로 가장
+        # 이른 semantic gate에서 fail-closed한다.
+        self.assertEqual("not_ready", stages["semantic_release"])
         self.assertEqual("not_ready", stages["catalog_manifest"])
         self.assertEqual("not_ready", stages["trino_schema"])
         self.assertIsNone(receipt)
@@ -899,6 +1936,19 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("not_ready", stages["trino_schema"])
         self.assertIsNone(receipt)
 
+    async def test_catalog_readiness_rejects_capability_release_mismatch(self) -> None:
+        with patch.object(
+            self.adapter._governance,
+            "_analysis_capability_for_release",
+            side_effect=AnalysisCapabilityError("release differs"),
+        ):
+            stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual("ready", stages["catalog_manifest"])
+        self.assertEqual("not_ready", stages["semantic_release"])
+        self.assertEqual("not_ready", stages["trino_schema"])
+        self.assertIsNone(receipt)
+
     async def test_incomplete_governance_and_trino_drift_are_typed_failures(self) -> None:
         first = next(iter(self.transport.datasets.values()))
         first["properties"]["customProperties"] = [
@@ -907,7 +1957,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             if item["key"] != "answervice.query_policy"
         ]
         with self.assertRaises(MetadataUnavailableError):
-            await self.adapter.search_assets(
+            await self.adapter.search_asset_candidates(
                 "helium", {"role": "analyst", "parameters": {}}
             )
         self.transport = RuntimeTransport(_bundle())
@@ -922,9 +1972,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         self.adapter = GovernedDataPlatformAdapter("https://trino.test", "runtime", datahub_client=catalog, trino_client=trino)
         with self.assertRaises(MetadataUnavailableError):
-            await self.adapter.search_assets(
-                "helium", {"role": "analyst", "parameters": {}}
-            )
+            await self.adapter.get_asset_schema(next(iter(self.transport.datasets)))
 
     async def test_execution_rejects_rebinding_after_phase_three(self) -> None:
         with self.assertRaisesRegex(ValueError, "must be bound"):
@@ -969,7 +2017,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                         separators=(",", ":"),
                     )
         with self.assertRaises(MetadataUnavailableError):
-            await self.adapter.search_assets(
+            await self.adapter.search_asset_candidates(
                 "helium", {"role": "analyst", "parameters": {}}
             )
 
@@ -1004,7 +2052,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 )
                 try:
                     with self.assertRaises(MetadataUnavailableError):
-                        await adapter.search_assets(
+                        await adapter.search_asset_candidates(
                             "helium", {"role": "analyst", "parameters": {}}
                         )
                 finally:
@@ -1019,6 +2067,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         adapter = GovernedDataPlatformAdapter(
             "https://trino.test",
             "runtime",
+            search_mode="lexical",
             datahub_client=DataHubCatalogClient(
                 "http://datahub.test", client=datahub_http, page_size=1, max_entities=20
             ),
@@ -1027,8 +2076,10 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         try:
-            assets = await adapter.search_assets(
-                "neon", {"role": "analyst", "parameters": {}}
+            assets = await _candidate_assets(
+                adapter,
+                "helium neon",
+                {"role": "analyst", "parameters": {}},
             )
         finally:
             await adapter.aclose()
@@ -1066,6 +2117,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         adapter = GovernedDataPlatformAdapter(
             "https://trino.test",
             "runtime",
+            search_mode="lexical",
             datahub_client=DataHubCatalogClient(
                 "http://datahub.test", client=datahub_http, page_size=1, max_entities=20
             ),
@@ -1079,8 +2131,8 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         # "neon"은 권한 있는 dimension만 seed로 만들지만, 이 asset은 metric이 없어
         # 인접한 helium_fact가 join 경로로 끌려온다. 그 asset은 이 role에 권한이 없다.
-        with self.assertRaises(MetadataUnavailableError):
-            await adapter.search_assets(
+        with self.assertRaises(NoEntitledAssetsError):
+            await adapter.search_asset_candidates(
                 "neon", {"role": "analyst", "parameters": {}}
             )
 
@@ -1104,7 +2156,7 @@ class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
         adapter = self._adapter(search_mode="hybrid")
         try:
             with self.assertRaises(MetadataUnavailableError):
-                await adapter.search_assets(
+                await adapter.search_asset_candidates(
                     os.getenv("LIVE_GOVERNANCE_SMOKE_QUERY", "runtime governance"),
                     {"role": "analyst", "parameters": {}},
                 )
@@ -1125,5 +2177,62 @@ class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(receipt)
             self.assertTrue(await adapter.get_active_context_release())
+        finally:
+            await adapter.aclose()
+
+    async def test_live_compact_candidates_use_glossary_without_schema_gate(self) -> None:
+        """live Glossary label 후보 검색은 선택 전 Trino schema I/O 없이 bounded Metric만 노출한다."""
+
+        adapter = self._adapter()
+        try:
+            governance = adapter._governance
+            snapshot = await governance._loader.load()
+            release = governance._active_release(snapshot)
+            datasets = governance._datasets_for_release(snapshot, release)
+            terms = governance._required_terms(snapshot, datasets)
+            entitled_fqns = {
+                item.fqn for item in datasets if item.entitled({"role": "analyst"})
+            }
+            eligible = next(
+                (
+                    metric
+                    for metric in release.metrics
+                    if metric.visibility == "BUSINESS"
+                    and metric.source_kind == "column"
+                    and set(metric.source_assets).issubset(entitled_fqns)
+                    and (
+                        not metric.allowed_roles
+                        or "analyst" in metric.allowed_roles
+                    )
+                ),
+                None,
+            )
+            self.assertIsNotNone(eligible)
+
+            class RejectSchemaInspection:
+                """candidate pass에서 schema 검사가 호출되면 즉시 실패시키는 live sentinel이다."""
+
+                async def verify(self, _datasets) -> None:
+                    raise AssertionError(
+                        "candidate search must not inspect Trino schema"
+                    )
+
+            governance._schema = RejectSchemaInspection()
+            candidates = await adapter.search_asset_candidates(
+                terms[eligible.id].label,
+                {"role": "analyst", "parameters": {}},
+            )
+            selectable_ids = {
+                str(metric["id"])
+                for asset in candidates.assets
+                for metric in asset["metrics"]
+                if metric.get("candidate_selectable") is True
+            }
+
+            self.assertIn(eligible.id, selectable_ids)
+            self.assertLessEqual(
+                len(selectable_ids),
+                QueryGovernanceEngine.MAX_CANDIDATE_METRICS,
+            )
         finally:
             await adapter.aclose()

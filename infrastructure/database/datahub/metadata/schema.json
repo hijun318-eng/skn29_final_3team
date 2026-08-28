@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://answervice.local/schemas/canonical-metadata.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "schema_sha256", "source", "domains", "owner_groups",
+    "lifecycles", "datasets", "glossary_terms", "authoring", "metrics",
+    "dimensions", "join_graph", "time_rules", "parameter_contract", "query_policy",
+    "quality_policies"
+  ],
+  "properties": {
+    "schema_version": {"const": "answervice.canonical-metadata.v1"},
+    "schema_sha256": {"$ref": "#/$defs/sha256"},
+    "source": {"$ref": "#/$defs/source"},
+    "domains": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/governanceEntity"}},
+    "owner_groups": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/governanceEntity"}},
+    "lifecycles": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/governanceEntity"}},
+    "datasets": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/dataset"}},
+    "glossary_terms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/term"}},
+    "authoring": {"$ref": "#/$defs/authoring"},
+    "metrics": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/metric"}},
+    "dimensions": {"type": "array"},
+    "join_graph": {"type": "object"},
+    "time_rules": {"type": "object"},
+    "parameter_contract": {"type": "object"},
+    "query_policy": {"type": "object"},
+    "quality_policies": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/quality"}}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 10000},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "urn": {"type": "string", "pattern": "^urn:li:[^ ]+$"},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["datahub_baseline_sha256", "runtime_baseline_sha256", "active_projection_sha256", "active_catalog_release_id"],
+      "properties": {
+        "datahub_baseline_sha256": {"$ref": "#/$defs/sha256"},
+        "runtime_baseline_sha256": {"$ref": "#/$defs/sha256"},
+        "active_projection_sha256": {"$ref": "#/$defs/sha256"},
+        "active_catalog_release_id": {"$ref": "#/$defs/text"}
+      }
+    },
+    "governanceEntity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["urn", "name", "description"],
+      "properties": {"urn": {"$ref": "#/$defs/urn"}, "name": {"$ref": "#/$defs/text"}, "description": {"$ref": "#/$defs/text"}}
+    },
+    "reviewableText": {"$ref": "#/$defs/text"},
+    "reviewableList": {
+      "oneOf": [
+        {"const": "REVIEW_REQUIRED"},
+        {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}, "uniqueItems": true}
+      ]
+    },
+    "eventTime": {
+      "oneOf": [
+        {"const": "REVIEW_REQUIRED"},
+        {"const": "NOT_APPLICABLE"},
+        {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}, "uniqueItems": true}
+      ]
+    },
+    "column": {
+      "type": "object", "additionalProperties": false,
+      "required": ["column_name", "data_type", "nullable", "key_role", "semantic_role", "sensitivity", "pii_type", "logical_type", "authoring_is_part_of_key"],
+      "properties": {
+        "column_name": {"$ref": "#/$defs/text"},
+        "data_type": {"$ref": "#/$defs/text"},
+        "nullable": {"type": "boolean"},
+        "key_role": {"enum": ["PRIMARY_KEY", "GRAIN_KEY", "FOREIGN_KEY", "NONE", "REVIEW_REQUIRED"]},
+        "semantic_role": {"enum": ["identifier", "dimension", "measure", "timestamp", "attribute", "technical_only", "REVIEW_REQUIRED"]},
+        "sensitivity": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REVIEW_REQUIRED"]},
+        "pii_type": {"enum": ["NONE", "NAME", "EMAIL", "PHONE", "CUSTOMER_ID", "RESERVATION_ID", "ADDRESS", "FREE_TEXT", "OTHER", "REVIEW_REQUIRED"]},
+        "logical_type": {"$ref": "#/$defs/text"},
+        "authoring_is_part_of_key": {"type": "boolean"},
+        "description": {"$ref": "#/$defs/text"},
+        "term_urns": {"type": "array", "items": {"$ref": "#/$defs/urn"}, "uniqueItems": true}
+      }
+    },
+    "datasetAuthoring": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "seed_version", "synthetic", "approval_status", "entitlements", "approved_lifecycle_urn"],
+      "properties": {
+        "schema_version": {"$ref": "#/$defs/text"},
+        "seed_version": {"$ref": "#/$defs/text"},
+        "synthetic": {"type": "boolean"},
+        "approval_status": {"$ref": "#/$defs/text"},
+        "entitlements": {"type": "object"},
+        "approved_lifecycle_urn": {"$ref": "#/$defs/urn"}
+      }
+    },
+    "dataset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dataset_id", "physical_urn", "fqn", "business_name", "description", "domain_urn", "source_system", "grain", "primary_key", "event_time", "update_frequency", "freshness_slo", "data_origin", "owner_group_urn", "lifecycle", "sensitivity", "authoring", "columns"],
+      "properties": {
+        "dataset_id": {"$ref": "#/$defs/text"},
+        "physical_urn": {"$ref": "#/$defs/urn"},
+        "fqn": {"$ref": "#/$defs/text"},
+        "business_name": {"$ref": "#/$defs/reviewableText"},
+        "description": {"$ref": "#/$defs/text"},
+        "domain_urn": {"$ref": "#/$defs/urn"},
+        "source_system": {"enum": ["PMS", "POS", "CRM", "BANQUET", "FACILITY", "SERVING"]},
+        "grain": {"type": "object"},
+        "primary_key": {"$ref": "#/$defs/reviewableList"},
+        "event_time": {"$ref": "#/$defs/eventTime"},
+        "update_frequency": {"$ref": "#/$defs/reviewableText"},
+        "freshness_slo": {"$ref": "#/$defs/reviewableText"},
+        "data_origin": {"enum": ["SYNTHETIC", "PRODUCTION", "REVIEW_REQUIRED"]},
+        "owner_group_urn": {"$ref": "#/$defs/urn"},
+        "lifecycle": {"enum": ["DRAFT", "CERTIFIED", "DEPRECATED"]},
+        "sensitivity": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REVIEW_REQUIRED"]},
+        "authoring": {"$ref": "#/$defs/datasetAuthoring"},
+        "columns": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/column"}}
+      }
+    },
+    "term": {
+      "type": "object", "additionalProperties": false,
+      "required": ["term_id", "urn", "korean_name", "definition", "domain_urn", "owner_group_urn", "lifecycle_urn", "kind", "aliases"],
+      "properties": {
+        "term_id": {"$ref": "#/$defs/text"}, "urn": {"$ref": "#/$defs/urn"},
+        "korean_name": {"$ref": "#/$defs/text"}, "definition": {"$ref": "#/$defs/text"},
+        "domain_urn": {"$ref": "#/$defs/urn"}, "owner_group_urn": {"$ref": "#/$defs/urn"},
+        "lifecycle_urn": {"$ref": "#/$defs/urn"}, "kind": {"enum": ["BUSINESS_METRIC", "DIMENSION_MEMBER"]},
+        "aliases": {"type": "array", "items": {"$ref": "#/$defs/text"}, "uniqueItems": true},
+        "dimension_id": {"$ref": "#/$defs/text"}, "canonical_value": {"$ref": "#/$defs/text"}
+      }
+    },
+    "authoring": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contract_version", "catalog_version", "policy_version", "schema_context_version", "glossary_version"],
+      "properties": {
+        "contract_version": {"$ref": "#/$defs/text"}, "catalog_version": {"$ref": "#/$defs/text"},
+        "policy_version": {"$ref": "#/$defs/text"}, "schema_context_version": {"$ref": "#/$defs/text"},
+        "glossary_version": {"$ref": "#/$defs/text"}
+      }
+    },
+    "metric": {
+      "type": "object", "additionalProperties": false,
+      "required": ["metric_id", "business_name", "definition", "visibility", "user_selectable", "term_urn", "formula", "aggregation", "unit", "time_dimension", "timezone", "grain", "allowed_dimensions", "required_filters", "null_policy", "zero_division_policy", "owner_group_urn", "validation_query", "lifecycle", "runtime_rule"],
+      "properties": {
+        "metric_id": {"$ref": "#/$defs/text"}, "business_name": {"$ref": "#/$defs/text"},
+        "definition": {"$ref": "#/$defs/text"}, "visibility": {"enum": ["BUSINESS", "INTERNAL_SUPPORT"]},
+        "user_selectable": {"type": "boolean"}, "term_urn": {"oneOf": [{"$ref": "#/$defs/urn"}, {"type": "null"}]},
+        "formula": {"oneOf": [{"type": "object"}, {"$ref": "#/$defs/text"}]},
+        "aggregation": {"$ref": "#/$defs/text"}, "unit": {"$ref": "#/$defs/text"},
+        "time_dimension": {"type": "object"}, "timezone": {"const": "Asia/Seoul"},
+        "grain": {"type": "object"}, "allowed_dimensions": {"type": "array"},
+        "required_filters": {"type": "array"}, "null_policy": {"$ref": "#/$defs/reviewableText"},
+        "zero_division_policy": {"$ref": "#/$defs/reviewableText"}, "owner_group_urn": {"$ref": "#/$defs/urn"},
+        "validation_query": {"$ref": "#/$defs/reviewableText"}, "lifecycle": {"enum": ["DRAFT", "CERTIFIED", "DEPRECATED"]},
+        "runtime_rule": {"type": "object"}
+      }
+    },
+    "quality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dataset_id", "schema_fingerprint_sha256", "freshness", "row_count", "required_keys", "timestamp_validity", "lineage", "status"],
+      "properties": {
+        "dataset_id": {"$ref": "#/$defs/text"}, "schema_fingerprint_sha256": {"$ref": "#/$defs/sha256"},
+        "freshness": {"$ref": "#/$defs/reviewableText"}, "row_count": {"$ref": "#/$defs/reviewableText"},
+        "required_keys": {"$ref": "#/$defs/reviewableText"}, "timestamp_validity": {"$ref": "#/$defs/reviewableText"},
+        "lineage": {"$ref": "#/$defs/lineage"},
+        "status": {"enum": ["DRAFT", "ENFORCED"]}
+      }
+    },
+    "lineage": {
+      "oneOf": [
+        {"const": "REVIEW_REQUIRED"},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {"mode": {"const": "SOURCE_ROOT"}}
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "upstream_dataset_ids"],
+          "properties": {
+            "mode": {"const": "UPSTREAM"},
+            "upstream_dataset_ids": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}, "uniqueItems": true}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "exception_id", "approved_by", "expires_at"],
+          "properties": {
+            "mode": {"const": "APPROVED_EXCEPTION"},
+            "exception_id": {"$ref": "#/$defs/text"},
+            "approved_by": {"$ref": "#/$defs/urn"},
+            "expires_at": {"$ref": "#/$defs/text"}
+          }
+        }
+      ]
+    }
+  }
+}

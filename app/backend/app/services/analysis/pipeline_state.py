@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from app.contracts import (
     AnalysisRequest,
@@ -60,6 +60,10 @@ class AnalysisPipelineState:
     execution_sink: Callable[[dict[str, Any]], None] | None = None
     progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None
     cancel_check: Callable[[], bool] | None = None
+    run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None
+    context_receipt_sink: (
+        Callable[[RequestContext, ContextPackage], Awaitable[None]] | None
+    ) = None
     machine: AnalysisStateMachine = field(default_factory=AnalysisStateMachine)
     trace: list[TraceStep] = field(default_factory=list)
     budget: ModelCallBudget = field(default_factory=ModelCallBudget)

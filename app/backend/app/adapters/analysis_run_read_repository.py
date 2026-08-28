@@ -18,7 +18,7 @@ from app.analysis_contracts import ANALYSIS_PERSISTENCE_VERSION
 class AnalysisRunReadRepositoryMixin:
     """현재 소유자의 분석 run과 승인 artifact를 관계 테이블에서 읽는 조회 기능을 제공한다.
 
-    run에는 최신 Trino query와 artifact period를 결합하고, artifact 조회에는 승인 상태와
+    run에는 최신 Trino query와 artifact 시간 증거를 결합하고, artifact 조회에는 승인 상태와
     성공 query를 함께 요구한다. DB 오류는 :class:`AnalysisRepositoryUnavailable`로
     변환한다.
     """
@@ -28,7 +28,15 @@ class AnalysisRunReadRepositoryMixin:
         status = {"DENIED": "BLOCKED"}.get(
             row["status"], row["status"]
         )
-        period = dict(row["artifact_period"] or {})
+        query_cutoff = dict(row.get("query_cutoff") or {})
+        period = dict(
+            row["artifact_period"]
+            or (query_cutoff if query_cutoff.get("start") else {})
+        )
+        snapshot = dict(
+            row.get("artifact_snapshot")
+            or (query_cutoff if query_cutoff.get("cutoff") else {})
+        )
         parameters = dict(row["parameters"] or {})
         return {
             "contract_version": ANALYSIS_PERSISTENCE_VERSION,
@@ -47,6 +55,8 @@ class AnalysisRunReadRepositoryMixin:
             "question": row["question"],
             "period_start": period.get("start") or parameters.get("period_start"),
             "period_end_exclusive": period.get("end_exclusive") or parameters.get("period_end_exclusive"),
+            "snapshot_cutoff": snapshot.get("cutoff"),
+            "snapshot_selection": snapshot.get("selection"),
         }
 
     async def get_run(self, request_id: str | UUID) -> dict[str, Any]:
@@ -65,15 +75,18 @@ class AnalysisRunReadRepositoryMixin:
                                l.as_of, l.timezone_name, l.parameters_json AS parameters,
                                d.question_text_redacted AS question, r.status, r.error_type,
                                r.trace_id, r.started_at, r.completed_at,
-                               q.trino_query_id AS query_id, a.artifact_id,
-                               a.evidence_json->'period' AS artifact_period
+                               q.trino_query_id AS query_id,
+                               q.source_cutoff_json AS query_cutoff, a.artifact_id,
+                               a.evidence_json->'period' AS artifact_period,
+                               a.evidence_json->'snapshot' AS artifact_snapshot
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id
                          AND d.version = l.definition_version
                         JOIN chat.analysis_requests r ON r.request_id = l.request_id
                         LEFT JOIN LATERAL (
-                            SELECT trino_query_id FROM query.query_executions
+                            SELECT trino_query_id, source_cutoff_json
+                            FROM query.query_executions
                             WHERE request_id = r.request_id
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
@@ -96,7 +109,7 @@ class AnalysisRunReadRepositoryMixin:
         return self._run(row)
 
     async def list_runs(self) -> list[dict[str, Any]]:
-        """현재 owner의 run에 최신 query ID와 artifact period를 결합해 시작 시각 역순으로 반환한다."""
+        """현재 owner의 run에 최신 query ID와 artifact 시간 증거를 결합해 시작 시각 역순으로 반환한다."""
         try:
             async with self._sessionmaker() as session:
                 rows = (await session.execute(
@@ -106,15 +119,18 @@ class AnalysisRunReadRepositoryMixin:
                                l.as_of, l.timezone_name, l.parameters_json AS parameters,
                                d.question_text_redacted AS question, r.status, r.error_type,
                                r.trace_id, r.started_at, r.completed_at,
-                               q.trino_query_id AS query_id, a.artifact_id,
-                               a.evidence_json->'period' AS artifact_period
+                               q.trino_query_id AS query_id,
+                               q.source_cutoff_json AS query_cutoff, a.artifact_id,
+                               a.evidence_json->'period' AS artifact_period,
+                               a.evidence_json->'snapshot' AS artifact_snapshot
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id
                          AND d.version = l.definition_version
                         JOIN chat.analysis_requests r ON r.request_id = l.request_id
                         LEFT JOIN LATERAL (
-                            SELECT trino_query_id FROM query.query_executions
+                            SELECT trino_query_id, source_cutoff_json
+                            FROM query.query_executions
                             WHERE request_id = r.request_id
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true

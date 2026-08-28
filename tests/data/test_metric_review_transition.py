@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
+from argparse import Namespace
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -24,6 +27,7 @@ from metric_review_transition import (  # noqa: E402
 )
 from test_metric_governance_v2 import _v2_bundle  # noqa: E402
 from test_metric_review_contract import _candidate, _column, _evidence  # noqa: E402
+import check_metric_review_transition as transition_check  # noqa: E402
 
 
 def _candidate_with_account_count() -> dict[str, object]:
@@ -102,3 +106,69 @@ def test_transition_rejects_a_validation_receipt_for_different_content() -> None
 
     with pytest.raises(SemanticMetadataError, match="does not match"):
         plan_metric_review_transition(candidate, validation, _v2_bundle())
+
+
+def test_live_transition_uses_active_manifest_when_ungoverned_candidates_exist(
+    monkeypatch,
+) -> None:
+    """후속 base-ingested asset이 있어도 검토 baseline은 active manifest로 고정한다."""
+
+    candidate = _candidate_with_account_count()
+    baseline = _v2_bundle()
+    calls = []
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def active(scopes, trino, datahub):
+        calls.append((scopes, trino, datahub))
+        return baseline
+
+    monkeypatch.setattr(transition_check, "build_draft", lambda *_args: _evidence())
+    monkeypatch.setattr(
+        transition_check,
+        "load_release_scopes_with_serving",
+        lambda *_args, **_kwargs: (
+            SimpleNamespace(catalog="serving", schema="sample"),
+        ),
+    )
+    monkeypatch.setattr(transition_check, "TrinoMetadataClient", FakeClient)
+    monkeypatch.setattr(transition_check, "DataHubDiscoveryClient", FakeClient)
+    monkeypatch.setattr(transition_check, "build_active_release_bundle", active)
+    monkeypatch.setattr(
+        transition_check.DataHubConnectionSettings,
+        "from_env",
+        lambda: SimpleNamespace(
+            base_url="https://datahub.test",
+            token="read-token",
+            ca_file=Path("datahub-ca.pem"),
+        ),
+    )
+    monkeypatch.setenv("TRINO_DATAHUB_PASSWORD", "test-password")
+
+    validation, observed, result = asyncio.run(
+        transition_check.load_live_review_context(
+            candidate,
+            Namespace(
+                sql_directory=Path("unused"),
+                recipe_dir=Path("unused"),
+                serving_schema="sample",
+                trino_server="https://trino.test",
+                trino_user="metadata-reader",
+                trino_ca_file=Path("trino-ca.pem"),
+                timeout=5.0,
+            ),
+        )
+    )
+
+    assert validation["status"] == "VALID_REVIEW_DRAFT"
+    assert observed is baseline
+    assert result["status"] == READY_STATUS
+    assert len(calls) == 1

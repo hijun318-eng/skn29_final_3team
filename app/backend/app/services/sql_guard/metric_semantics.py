@@ -51,6 +51,7 @@ def match_metric(
     metrics_by_id: dict[str, Any] | None = None,
     filtered: bool = False,
     expected_alias: str | None = None,
+    unique_fields: frozenset[str] = frozenset(),
 ) -> MetricMatch | None:
     """프로젝션 스코프의 AST 수식이 승인된 거버넌스 지표 정의와 일치하는지 검증합니다.
 
@@ -91,7 +92,14 @@ def match_metric(
     if str(metric.aggregation).casefold() == "ratio":
         if metrics_by_id is None:
             return None
-        where = _match_ratio_expression(expression, metric, metrics_by_id, assets, scope.scope)
+        where = _match_ratio_expression(
+            expression,
+            metric,
+            metrics_by_id,
+            assets,
+            scope.scope,
+            unique_fields,
+        )
         return MetricMatch(str(metric.id), where) if where is not None else None
 
     try:
@@ -101,7 +109,9 @@ def match_metric(
 
     # 3. 존재 확인 지표 (Exists Metric: COUNT > 0) 검증
     if str(metric.aggregation).casefold() == "exists":
-        where = _match_exists_expression(expression, field, scope.scope, filter_where)
+        where = _match_exists_expression(
+            expression, field, scope.scope, filter_where, unique_fields
+        )
         return MetricMatch(str(metric.id), where) if where is not None else None
 
     # 4. 일반 집계 함수 (SUM, COUNT, AVG, MIN, MAX 등) 검증
@@ -111,6 +121,7 @@ def match_metric(
         field,
         scope.scope,
         filter_where,
+        unique_fields,
     )
     return MetricMatch(str(metric.id), where) if where is not None else None
 
@@ -121,6 +132,7 @@ def _match_ratio_expression(
     metrics_by_id: dict[str, Any],
     assets: dict[str, tuple[Any, frozenset[str]]],
     scope: ScopeEvidence,
+    unique_fields: frozenset[str],
 ) -> frozenset[tuple[str, str, str]] | None:
     """Trino 정수 나눗셈을 막는 ``CAST(분자식 AS DOUBLE) / NULLIF(분모식, 0)``를 검증합니다."""
     if metric.zero_policy != "null_on_zero_denominator" or not isinstance(expression, exp.Div):
@@ -152,9 +164,15 @@ def _match_ratio_expression(
         numerator_field,
         scope,
         frozenset(),
+        unique_fields,
     )
     denominator_where = _match_expression(
-        denominator_node.this, str(denominator.aggregation).casefold(), denominator_field, scope, frozenset()
+        denominator_node.this,
+        str(denominator.aggregation).casefold(),
+        denominator_field,
+        scope,
+        frozenset(),
+        unique_fields,
     )
     if numerator_where is None or denominator_where is None:
         return None
@@ -166,6 +184,7 @@ def _match_exists_expression(
     field: str,
     scope: ScopeEvidence,
     inherited_where: frozenset[tuple[str, str, str]],
+    unique_fields: frozenset[str],
 ) -> frozenset[tuple[str, str, str]] | None:
     """존재 확인 지표의 필수 형태인 'COUNT(field) > 0' 구문을 검증합니다."""
     if not isinstance(expression, exp.GT):
@@ -173,7 +192,14 @@ def _match_exists_expression(
     threshold = expression.expression
     if not isinstance(threshold, exp.Literal) or threshold.is_string or str(threshold.this) != "0":
         return None
-    return _match_expression(expression.this, "count", field, scope, inherited_where)
+    return _match_expression(
+        expression.this,
+        "count",
+        field,
+        scope,
+        inherited_where,
+        unique_fields,
+    )
 
 
 def metric_matches(
@@ -182,6 +208,7 @@ def metric_matches(
     assets: dict[str, tuple[Any, frozenset[str]]],
     metrics_by_id: dict[str, Any] | None = None,
     filtered: bool = False,
+    unique_fields: frozenset[str] = frozenset(),
 ) -> bool:
     """SQL 프로젝션 결과가 주어진 지표의 거버넌스 정의와 일치하는지 여부를 반환합니다."""
     scope = (
@@ -191,7 +218,15 @@ def metric_matches(
     )
     return (
         scope is not None
-        and match_metric(scope, metric, assets, metrics_by_id, filtered) is not None
+        and match_metric(
+            scope,
+            metric,
+            assets,
+            metrics_by_id,
+            filtered,
+            unique_fields=unique_fields,
+        )
+        is not None
     )
 
 
@@ -201,13 +236,16 @@ def _match_expression(
     field: str,
     scope: ScopeEvidence,
     inherited_where: frozenset[tuple[str, str, str]],
+    unique_fields: frozenset[str],
 ) -> frozenset[tuple[str, str, str]] | None:
     """단일 표현식 노드가 요구된 집계 함수와 컬럼 필드에 부합하는지 재귀적으로 검증합니다."""
     where = inherited_where | scope.where_comparisons
     if aggregation == "none":
         if resolve_scope_operand(expression, scope) == field:
             return _include_derived_where(expression, scope, where)
-        return _derived_passthrough(expression, aggregation, field, scope, where)
+        return _derived_passthrough(
+            expression, aggregation, field, scope, where, unique_fields
+        )
 
     expected = {
         "sum": exp.Sum,
@@ -227,15 +265,22 @@ def _match_expression(
     rollup = {
         "sum": exp.Sum,
         "count": exp.Sum,
+        "count_distinct": exp.Sum,
         "min": exp.Min,
         "max": exp.Max,
     }.get(aggregation)
     if rollup is not None and isinstance(expression, rollup):
+        if aggregation == "count_distinct" and field not in unique_fields:
+            return None
         operand = expression.this
         if isinstance(operand, exp.Distinct):
             return None
-        return _derived_passthrough(operand, aggregation, field, scope, where)
-    return _derived_passthrough(expression, aggregation, field, scope, where)
+        return _derived_passthrough(
+            operand, aggregation, field, scope, where, unique_fields
+        )
+    return _derived_passthrough(
+        expression, aggregation, field, scope, where, unique_fields
+    )
 
 
 def _derived_passthrough(
@@ -244,6 +289,7 @@ def _derived_passthrough(
     field: str,
     scope: ScopeEvidence,
     where: frozenset[tuple[str, str, str]],
+    unique_fields: frozenset[str],
 ) -> frozenset[tuple[str, str, str]] | None:
     resolved = source_column(expression, scope)
     if resolved is None:
@@ -256,7 +302,9 @@ def _derived_passthrough(
     if projection is None:
         return None
     body = projection.this if isinstance(projection, exp.Alias) else projection
-    return _match_expression(body, aggregation, field, child, where)
+    return _match_expression(
+        body, aggregation, field, child, where, unique_fields
+    )
 
 
 def _include_derived_where(

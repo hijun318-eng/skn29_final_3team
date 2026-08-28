@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from collections.abc import Mapping
 from typing import Any
 
@@ -78,7 +79,12 @@ def validate_bundle(bundle: Mapping[str, Any]) -> None:
     validate_metric_terms(
         bundle["metric_terms"], metrics, metric_domains, governance
     )
-    _validate_dimensions(bundle["dimensions"], assets)
+    _validate_dimensions(
+        bundle["dimensions"],
+        assets,
+        governance,
+        {str(item["urn"]) for item in bundle["metric_terms"]},
+    )
     _validate_joins(bundle["join_graph"], assets)
     _validate_time_rules(bundle["time_rules"], assets, parameters)
     _validate_query_policy(bundle["query_policy"], assets)
@@ -290,11 +296,21 @@ def _validate_parameters(value: object) -> dict[str, tuple[str, str]]:
     return result
 
 
-def _validate_dimensions(value: object, assets: Mapping[str, frozenset[str]]) -> None:
+def _validate_dimensions(
+    value: object,
+    assets: Mapping[str, frozenset[str]],
+    governance: Mapping[str, frozenset[str]],
+    metric_term_urns: set[str],
+) -> None:
     ids: set[str] = set()
+    member_urns = set(metric_term_urns)
     for index, raw in enumerate(_list(value, "dimensions", limit=64)):
         item = _mapping(raw, f"dimension[{index}]")
-        _exact_keys(item, {"id", "aliases", "definition", "asset_fqn", "column"}, f"dimension[{index}]")
+        base_keys = {"id", "aliases", "definition", "asset_fqn", "column"}
+        if set(item) not in {frozenset(base_keys), frozenset(base_keys | {"members"})}:
+            raise SemanticMetadataError(
+                f"dimension[{index}] keys differ from the canonical contract"
+            )
         identifier = _identifier(item["id"], f"dimension[{index}].id")
         _unique_texts(item["aliases"], f"dimension[{index}].aliases", non_empty=True)
         _text(item["definition"], f"dimension[{index}].definition")
@@ -302,6 +318,85 @@ def _validate_dimensions(value: object, assets: Mapping[str, frozenset[str]]) ->
         if identifier in ids:
             raise SemanticMetadataError("dimension ids must be unique")
         ids.add(identifier)
+        if "members" in item:
+            _validate_dimension_members(
+                item["members"],
+                identifier,
+                governance,
+                member_urns,
+            )
+
+
+def _validate_dimension_members(
+    value: object,
+    dimension_id: str,
+    governance: Mapping[str, frozenset[str]],
+    observed_urns: set[str],
+) -> None:
+    """한 저카디널리티 Dimension의 승인 member와 Glossary identity를 검증한다."""
+
+    member_ids: set[str] = set()
+    normalized_names: set[str] = set()
+    required = {
+        "id",
+        "urn",
+        "name",
+        "definition",
+        "aliases",
+        "canonical_value",
+        "version",
+        "approval_status",
+        "owner_urn",
+        "domain_urn",
+        "approved_lifecycle_urn",
+    }
+    for index, raw in enumerate(
+        _list(value, f"{dimension_id}.members", non_empty=True, limit=64)
+    ):
+        context = f"{dimension_id}.members[{index}]"
+        member = _mapping(raw, context)
+        _exact_keys(member, required, context)
+        member_id = _identifier(member["id"], f"{context}.id")
+        term_urn = _urn(
+            member["urn"], "urn:li:glossaryTerm:", f"{context}.urn"
+        )
+        name = _text(member["name"], f"{context}.name")
+        canonical_value = _text(
+            member["canonical_value"], f"{context}.canonical_value"
+        )
+        aliases = _unique_texts(
+            member["aliases"], f"{context}.aliases", non_empty=True, limit=32
+        )
+        _text(member["definition"], f"{context}.definition")
+        _text(member["version"], f"{context}.version")
+        owner = _urn(member["owner_urn"], "urn:li:corpGroup:", f"{context}.owner")
+        domain = _urn(member["domain_urn"], "urn:li:domain:", f"{context}.domain")
+        lifecycle = _urn(
+            member["approved_lifecycle_urn"],
+            "urn:li:lifecycleStageType:",
+            f"{context}.lifecycle",
+        )
+        normalized_aliases = {
+            unicodedata.normalize("NFKC", alias).casefold() for alias in aliases
+        }
+        if (
+            member_id in member_ids
+            or term_urn in observed_urns
+            or member["approval_status"] != "APPROVED"
+            or owner not in governance["owners"]
+            or domain not in governance["domains"]
+            or lifecycle not in governance["approved_lifecycles"]
+            or unicodedata.normalize("NFKC", name).casefold() not in normalized_aliases
+            or unicodedata.normalize("NFKC", canonical_value).casefold()
+            not in normalized_aliases
+            or normalized_aliases & normalized_names
+        ):
+            raise SemanticMetadataError(
+                "dimension members must be approved, unique, and governance-bound"
+            )
+        member_ids.add(member_id)
+        observed_urns.add(term_urn)
+        normalized_names.update(normalized_aliases)
 
 
 def _validate_joins(value: object, assets: Mapping[str, frozenset[str]]) -> None:

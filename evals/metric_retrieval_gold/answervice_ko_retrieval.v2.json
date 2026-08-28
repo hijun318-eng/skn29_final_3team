@@ -1,0 +1,153 @@
+{
+  "schema_version": "answervice.metric_retrieval_gold.v2",
+  "dataset_id": "answervice_ko_retrieval.v2",
+  "status": "SEALED",
+  "sealed_at": "2026-08-22T00:00:00+09:00",
+  "source": "Phase 2A에서 active catalog 자동 probe와 분리해 사람이 작성한 한국어 사용자 표현",
+  "thresholds": {
+    "min_baseline_heldout_top1": 0.8,
+    "min_baseline_heldout_recall_at_k": 0.9,
+    "min_baseline_heldout_mrr": 0.85,
+    "min_active_release_search_coverage": 1.0,
+    "max_candidate_failed_probe_rate": 0.0,
+    "max_unauthorized_exposure_count": 0,
+    "max_production_diff_count": 0,
+    "max_candidate_warm_p95_ms": 3000
+  },
+  "cases": [
+    {
+      "case_id": "KO-C-P-001",
+      "split": "calibration",
+      "kind": "positive_heldout_korean",
+      "query": "객실에서 벌어들인 룸 매출 합계를 보여줘",
+      "expected_metric_ids": ["room_revenue"]
+    },
+    {
+      "case_id": "KO-C-P-002",
+      "split": "calibration",
+      "kind": "positive_heldout_korean",
+      "query": "사용 가능한 방 중 실제 투숙한 비중인 투숙률을 알려줘",
+      "expected_metric_ids": ["occupancy_rate"]
+    },
+    {
+      "case_id": "KO-C-P-003",
+      "split": "calibration",
+      "kind": "positive_heldout_korean",
+      "query": "판매한 객실 한 박의 평균 객실 단가를 보고 싶어",
+      "expected_metric_ids": ["adr"]
+    },
+    {
+      "case_id": "KO-C-P-004",
+      "split": "calibration",
+      "kind": "positive_heldout_korean",
+      "query": "식음료 매장에서 발생한 순매출 합계가 얼마야",
+      "expected_metric_ids": ["fnb_revenue"]
+    },
+    {
+      "case_id": "KO-C-P-005",
+      "split": "calibration",
+      "kind": "positive_heldout_korean",
+      "query": "고객 리뷰의 평균 별점을 확인해줘",
+      "expected_metric_ids": ["voc_average_rating"]
+    },
+    {
+      "case_id": "KO-C-N-001",
+      "split": "calibration",
+      "kind": "negative_heldout_korean",
+      "query": "주가수익비율",
+      "expected_metric_ids": []
+    },
+    {
+      "case_id": "KO-C-N-002",
+      "split": "calibration",
+      "kind": "negative_heldout_korean",
+      "query": "재고회전일수",
+      "expected_metric_ids": []
+    },
+    {
+      "case_id": "KO-H-P-001",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "숙박 객실에서 인식된 룸 매출 합계를 알려줘",
+      "expected_metric_ids": ["room_revenue"]
+    },
+    {
+      "case_id": "KO-H-P-002",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "판매 가능한 객실박 대비 점유된 객실박의 비율이 궁금해",
+      "expected_metric_ids": ["occupancy_rate"]
+    },
+    {
+      "case_id": "KO-H-P-003",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "점유 객실박 한 건당 평균객실단가를 계산해줘",
+      "expected_metric_ids": ["adr"]
+    },
+    {
+      "case_id": "KO-H-P-004",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "판매 가능한 객실 하나가 벌어들인 판매가능객실당매출을 보여줘",
+      "expected_metric_ids": ["revpar"]
+    },
+    {
+      "case_id": "KO-H-P-005",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "환불과 할인을 반영한 식음료 순매출을 알려줘",
+      "expected_metric_ids": ["fnb_revenue"]
+    },
+    {
+      "case_id": "KO-H-P-006",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "확정해서 완료한 행사의 연회 매출 합계를 확인해줘",
+      "expected_metric_ids": ["banquet_revenue"]
+    },
+    {
+      "case_id": "KO-H-P-007",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "유료 시설 이용에서 난 시설 매출은 얼마야",
+      "expected_metric_ids": ["facility_revenue"]
+    },
+    {
+      "case_id": "KO-H-P-008",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "객실 식음 연회 시설을 모두 합친 호텔 전체 매출을 보여줘",
+      "expected_metric_ids": ["total_operating_revenue_krw"]
+    },
+    {
+      "case_id": "KO-H-P-009",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "계획 근무를 넘겨 일한 연장 근로시간 합계가 궁금해",
+      "expected_metric_ids": ["overtime_hours"]
+    },
+    {
+      "case_id": "KO-H-P-010",
+      "split": "heldout",
+      "kind": "positive_heldout_korean",
+      "query": "리뷰 건수로 나눈 고객 평균 평점을 알려줘",
+      "expected_metric_ids": ["voc_average_rating"]
+    },
+    {
+      "case_id": "KO-H-N-001",
+      "split": "heldout",
+      "kind": "negative_heldout_korean",
+      "query": "탄소배출량",
+      "expected_metric_ids": []
+    },
+    {
+      "case_id": "KO-H-N-002",
+      "split": "heldout",
+      "kind": "negative_heldout_korean",
+      "query": "브랜드호감도",
+      "expected_metric_ids": []
+    }
+  ],
+  "content_sha256": "683bc9b67d97d0e9c9767f219b8839ad7802b4f3ca3d7abe02df4224a6127869"
+}

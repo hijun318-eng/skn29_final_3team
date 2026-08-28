@@ -153,7 +153,16 @@ def resolve_scope_operand(
     scope: ScopeEvidence,
 ) -> str | None:
     """스코프 내의 표현식 노드를 'FQN.column' 또는 ':named_param' 형태로 해석합니다."""
-    while isinstance(value, (exp.Cast, exp.Paren, exp.FromISO8601Timestamp)):
+    while isinstance(
+        value,
+        (
+            exp.Cast,
+            exp.Paren,
+            exp.FromISO8601Timestamp,
+            exp.TimestampTrunc,
+            exp.DateTrunc,
+        ),
+    ):
         value = value.this
     if isinstance(value, exp.Placeholder):
         return f":{value.name}"
@@ -361,14 +370,15 @@ def _expression_source(
     expression: exp.Expression | None,
     sources: dict[str, SourceEvidence],
 ) -> SourceEvidence | None:
-    if not isinstance(expression, exp.Table):
+    if not isinstance(expression, (exp.Table, exp.Subquery)):
         return None
     alias = expression.args.get("alias")
-    key = (
-        identifier_node(alias.this)
-        if isinstance(alias, exp.TableAlias)
-        else identifier_node(expression.this)
-    )
+    if isinstance(alias, exp.TableAlias):
+        key = identifier_node(alias.this)
+    elif isinstance(expression, exp.Table):
+        key = identifier_node(expression.this)
+    else:
+        return None
     return sources.get(key)
 
 

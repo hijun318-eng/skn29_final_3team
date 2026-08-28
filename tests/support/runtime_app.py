@@ -24,6 +24,8 @@ class _ScenarioAnalysisService(AnalysisService):
         execution_sink=None,
         progress_sink=None,
         cancel_check=None,
+        run_admission_sink=None,
+        model_budget=None,
     ):
         scenario = str(payload.parameters.get("scenario") or "")
         self._adapter.scenario = scenario
@@ -32,9 +34,11 @@ class _ScenarioAnalysisService(AnalysisService):
             payload,
             context,
             decision,
-            execution_sink,
-            progress_sink,
-            cancel_check,
+            execution_sink=execution_sink,
+            progress_sink=progress_sink,
+            cancel_check=cancel_check,
+            run_admission_sink=run_admission_sink,
+            model_budget=model_budget,
         )
 
 

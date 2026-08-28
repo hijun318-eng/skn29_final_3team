@@ -13,13 +13,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlglot import exp
+
 from app.services.sql_guard.join_semantics import JoinDecision, join_violation
 from app.services.sql_guard.metric_semantics import (
     MetricMatch,
     match_metric,
     metric_matches,
 )
-from app.services.sql_guard.schema import canonical_fqn, field_identity
+from app.services.sql_guard.schema import (
+    canonical_fqn,
+    field_identity,
+    identifier_node,
+    operand_identity,
+    source_aliases,
+)
 from src.ai.sql_policy import SqlValidationResult
 
 
@@ -72,8 +80,9 @@ def time_rule_violation(
     assets: dict[str, tuple[Any, frozenset[str]]],
     metric: Any | None = None,
     window: str = "primary",
+    result: SqlValidationResult | None = None,
 ) -> str | None:
-    """지표의 시간 필드가 반개방 파라미터 [start, end) 형태로 조건에 반영되었는지 검증합니다.
+    """지표 시간 필드가 승인된 기간 또는 최신 스냅샷 선택 형태인지 검증합니다.
 
     Args:
         package: ContextPackage 인스턴스
@@ -94,6 +103,19 @@ def time_rule_violation(
         return None
 
     field = field_identity(f"{selected.asset_fqn}.{selected.time_field}", assets)
+    mode = str(time_rules.get("mode") or "range")
+    if mode == "latest_snapshot":
+        if window != "primary":
+            return "최신 스냅샷 시간 규칙은 비교 기간을 지원하지 않습니다."
+        return _latest_snapshot_violation(
+            result,
+            field=field,
+            parameter=str(time_rules.get("as_of_parameter") or ""),
+            native_type=_time_native_type(time_rules, field),
+            selection=str(time_rules.get("selection") or ""),
+        )
+    if mode != "range":
+        return "지원되지 않는 시간 선택 mode입니다."
     if window == "comparison":
         comparison = time_rules.get("comparison_window") or {}
         start_parameter = str(comparison.get("start_parameter") or "")
@@ -109,6 +131,122 @@ def time_rule_violation(
     if not start_parameter or not end_parameter or not required.issubset(comparisons):
         return "지표 시간 필드는 거버넌스 승인을 받은 반개방 기간 파라미터(>= start AND < end)를 반드시 사용해야 합니다."
     return None
+
+
+def _latest_snapshot_violation(
+    result: SqlValidationResult | None,
+    *,
+    field: str,
+    parameter: str,
+    native_type: str | None,
+    selection: str,
+) -> str | None:
+    """MAX(source_time) < :as_of scalar subquery의 정확한 AST shape를 검증한다."""
+
+    if (
+        result is None
+        or not isinstance(result.expression, exp.Select)
+        or selection != "max_source_value_lt_as_of"
+        or not parameter
+        or not native_type
+    ):
+        return "최신 스냅샷 선택 계약 또는 SQL AST 증거가 불완전합니다."
+    subqueries = tuple(result.expression.find_all(exp.Subquery))
+    if len(subqueries) != 1:
+        return "최신 스냅샷 SQL은 정확히 하나의 scalar MAX subquery를 사용해야 합니다."
+
+    where = result.expression.args.get("where")
+    if not isinstance(where, exp.Where) or where.this is None:
+        return "최신 스냅샷 선택 조건이 누락되었습니다."
+    aliases = source_aliases(result)
+    candidates: list[tuple[exp.Column, exp.Subquery]] = []
+    for predicate in _conjuncts(where.this):
+        if not isinstance(predicate, exp.EQ):
+            continue
+        left, right = predicate.this, predicate.expression
+        if isinstance(left, exp.Column) and isinstance(right, exp.Subquery):
+            candidates.append((left, right))
+        elif isinstance(right, exp.Column) and isinstance(left, exp.Subquery):
+            candidates.append((right, left))
+    if len(candidates) != 1 or candidates[0][1] is not subqueries[0]:
+        return "최신 스냅샷 equality는 최상위 AND 조건 하나로 고정되어야 합니다."
+    outer_column, subquery = candidates[0]
+    if operand_identity(outer_column, aliases, result.physical_tables) != field:
+        return "최신 스냅샷 equality가 승인된 시간 필드를 사용하지 않습니다."
+
+    inner = subquery.this
+    if not isinstance(inner, exp.Select) or not _is_minimal_snapshot_select(inner):
+        return "최신 스냅샷 subquery에는 MAX·단일 source·기준일 조건만 허용됩니다."
+    source = inner.args.get("from_")
+    table = source.this if isinstance(source, exp.From) else None
+    if not isinstance(table, exp.Table) or _table_fqn(table) != field.rsplit(".", 1)[0]:
+        return "최신 스냅샷 subquery source가 지표 자산과 일치하지 않습니다."
+
+    projection = inner.expressions[0]
+    projection = projection.this if isinstance(projection, exp.Alias) else projection
+    if (
+        not isinstance(projection, exp.Max)
+        or operand_identity(projection.this, aliases, result.physical_tables) != field
+    ):
+        return "최신 스냅샷 subquery는 승인 시간 필드의 MAX만 계산해야 합니다."
+    inner_where = inner.args.get("where")
+    predicate = _unwrap(inner_where.this) if isinstance(inner_where, exp.Where) else None
+    if not isinstance(predicate, exp.LT):
+        return "최신 스냅샷 source에는 시간 필드 < 기준일 조건이 필요합니다."
+    if operand_identity(predicate.this, aliases, result.physical_tables) != field:
+        return "최신 스냅샷 기준일 조건이 승인 시간 필드를 사용하지 않습니다."
+    if not _typed_parameter(predicate.expression, parameter, native_type):
+        return "최신 스냅샷 기준일은 승인된 typed named parameter를 사용해야 합니다."
+    return None
+
+
+def _conjuncts(value: exp.Expression) -> tuple[exp.Expression, ...]:
+    value = _unwrap(value)
+    if isinstance(value, exp.And):
+        return (*_conjuncts(value.this), *_conjuncts(value.expression))
+    return (value,)
+
+
+def _unwrap(value: exp.Expression) -> exp.Expression:
+    while isinstance(value, exp.Paren):
+        value = value.this
+    return value
+
+
+def _is_minimal_snapshot_select(value: exp.Select) -> bool:
+    allowed = {"expressions", "from_", "where"}
+    return len(value.expressions) == 1 and all(
+        name in allowed or item in (None, False, [], ())
+        for name, item in value.args.items()
+    )
+
+
+def _table_fqn(value: exp.Table) -> str:
+    return ".".join(identifier_node(item) for item in value.parts)
+
+
+def _typed_parameter(value: exp.Expression, parameter: str, native_type: str) -> bool:
+    value = _unwrap(value)
+    if not isinstance(value, exp.Cast) or not isinstance(value.this, exp.Placeholder):
+        return False
+    target = value.args.get("to")
+    if not isinstance(target, exp.DataType) or value.this.name != parameter:
+        return False
+    expected = exp.DataType.build(native_type, dialect="trino")
+    return target.sql(dialect="trino") == expected.sql(dialect="trino")
+
+
+def _time_native_type(time_rules: Any, field: str) -> str | None:
+    if not isinstance(time_rules, dict):
+        return None
+    matches = [
+        str(item.get("native_type") or "")
+        for item in time_rules.get("fields", ())
+        if isinstance(item, dict)
+        and isinstance(item.get("field"), dict)
+        and f"{item['field'].get('asset_fqn')}.{item['field'].get('column')}" == field
+    ]
+    return matches[0] if len(matches) == 1 and matches[0] else None
 
 
 def references(

@@ -264,6 +264,12 @@ def test_endpoint_uses_strict_schema_and_never_sends_server_binding_values(monke
     assert schema["required"] == ["sql"]
     assert set(schema["properties"]) == {"sql"}
     assert schema["additionalProperties"] is False
+    assert "guided_json" not in observed["request"]
+    assert observed["request"]["seed"] == 0
+    response_format = observed["request"]["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["strict"] is True
+    assert response_format["json_schema"]["schema"] == schema
     sent = json.dumps(observed["request"], sort_keys=True)
     assert all(item["value"] not in sent for item in bindings.values())
     assert len(observed["executions"]) == 2

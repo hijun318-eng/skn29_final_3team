@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import os
 import re
 import time
@@ -72,9 +71,6 @@ mutation SetCatalogDomain($entityUrn: String!, $domainUrn: String!) {
 ADD_TAG = """
 mutation AddCatalogTag($input: TagAssociationInput!) { addTag(input: $input) }
 """.strip()
-ADD_TERM = """
-mutation AddCatalogTerm($input: TermAssociationInput!) { addTerm(input: $input) }
-""".strip()
 UPDATE_LINEAGE = """
 mutation UpdateCatalogLineage($input: UpdateLineageInput!) { updateLineage(input: $input) }
 """.strip()
@@ -108,8 +104,6 @@ class GovernancePlan:
     owner_urn: str
     domains: Mapping[ReleaseScope, str]
     tags: Mapping[str, tuple[str, str]]
-    dataset_terms: Mapping[str, str]
-    field_terms: Mapping[tuple[str, str], str]
     lineage_edges: tuple[tuple[str, str], ...]
 
 
@@ -187,7 +181,7 @@ def build_plan(
     owner_urn: str,
     release_directory: Path,
 ) -> GovernancePlan:
-    """live 설명을 그대로 사용해 domain·tag·용어·lineage 기대값을 구성한다."""
+    """live catalog에서 domain·tag·lineage 기대값만 구성한다."""
 
     if not owner_urn.startswith("urn:li:corpuser:"):
         raise ValueError("catalog owner must be an explicit DataHub corp user")
@@ -213,29 +207,17 @@ def build_plan(
             _scope_name(scope),
             f"{scope.catalog}.{scope.schema} 물리 scope에서 발견된 데이터셋이다.",
         )
-    dataset_terms: dict[str, str] = {}
-    field_terms: dict[tuple[str, str], str] = {}
-    for dataset in datasets:
-        dataset_terms[dataset.urn] = _term_urn(
-            version, "dataset", dataset.logical_fqn
-        )
-        for field in dataset.fields:
-            field_terms[(dataset.urn, field.name)] = _term_urn(
-                version, "field", f"{dataset.logical_fqn}.{field.name}"
-            )
     fqn_to_urn = {dataset.logical_fqn: dataset.urn for dataset in datasets}
     lineage_edges = _lineage_edges(release_directory, fqn_to_urn)
     serving = {item.urn for item in datasets if item.scope.catalog == "serving"}
     if {downstream for downstream, _ in lineage_edges} != serving:
         raise ValueError("release SQL must define lineage for every serving dataset")
     return GovernancePlan(
-        datasets,
-        owner_urn,
-        domains,
-        tags,
-        dataset_terms,
-        field_terms,
-        lineage_edges,
+        datasets=datasets,
+        owner_urn=owner_urn,
+        domains=domains,
+        tags=tags,
+        lineage_edges=lineage_edges,
     )
 
 
@@ -273,33 +255,6 @@ async def publish_plan(
             },
             stamp,
         )
-    term_publications: list[tuple[str, str, str, str]] = []
-    for dataset in plan.datasets:
-        term_publications.append(
-            (
-                plan.dataset_terms[dataset.urn],
-                dataset.display_name,
-                dataset.description,
-                plan.domains[dataset.scope],
-            )
-        )
-        term_publications.extend(
-            (
-                plan.field_terms[(dataset.urn, field.name)],
-                f"{dataset.display_name}.{field.name}",
-                field.description,
-                plan.domains[dataset.scope],
-            )
-            for field in dataset.fields
-        )
-    await _run_term_publications(
-        client,
-        term_publications,
-        release_version,
-        plan.owner_urn,
-        stamp,
-    )
-    await _publish_field_term_associations(client, plan, stamp)
     mutation_groups: list[list[tuple[str, Mapping[str, Any]]]] = []
     for dataset in plan.datasets:
         dataset_mutations: list[tuple[str, Mapping[str, Any]]] = [
@@ -311,7 +266,6 @@ async def publish_plan(
                 (ADD_TAG, {"input": {"tagUrn": tag_urns["synthetic"], "resourceUrn": dataset.urn}}),
                 (ADD_TAG, {"input": {"tagUrn": tag_urns[f"release_{_slug(release_version)}"], "resourceUrn": dataset.urn}}),
                 (ADD_TAG, {"input": {"tagUrn": tag_urns[f"scope_{_slug(dataset.scope.catalog)}"], "resourceUrn": dataset.urn}}),
-                (ADD_TERM, {"input": {"termUrn": plan.dataset_terms[dataset.urn], "resourceUrn": dataset.urn}}),
             ]
         mutation_groups.append(dataset_mutations)
     await _run_mutation_groups(client, mutation_groups)
@@ -324,114 +278,9 @@ async def publish_plan(
         "fields": sum(len(dataset.fields) for dataset in plan.datasets),
         "domains": len(plan.domains),
         "tags": len(tag_urns),
-        "glossary_terms": len(plan.dataset_terms) + len(plan.field_terms),
+        "glossary_terms": 0,
         "lineage_edges": len(plan.lineage_edges),
     }
-
-
-async def _publish_term(
-    client: DataHubMetadataAdminClient,
-    urn: str,
-    name: str,
-    definition: str,
-    release_version: str,
-    owner_urn: str,
-    domain_urn: str,
-    stamp: Mapping[str, Any],
-) -> None:
-    """한 dataset 또는 field 설명을 변경 가능한 DataHub glossary term으로 발행한다."""
-
-    term_id = urn.removeprefix("urn:li:glossaryTerm:")
-    await client.upsert_entity(
-        "glossaryTerm",
-        urn,
-        {
-            "glossaryTermKey": {"name": term_id},
-            "glossaryTermInfo": {
-                "id": term_id,
-                "name": name,
-                "definition": definition,
-                "termSource": "INTERNAL",
-                "sourceRef": release_version,
-                "customProperties": {"answervice.catalog_release": release_version},
-            },
-            "status": {"removed": False},
-            "ownership": {"owners": [{"owner": owner_urn, "type": "TECHNICAL_OWNER"}]},
-            "domains": {"domains": [domain_urn]},
-        },
-        stamp,
-    )
-
-
-async def _run_term_publications(
-    client: DataHubMetadataAdminClient,
-    publications: Sequence[tuple[str, str, str, str]],
-    release_version: str,
-    owner_urn: str,
-    stamp: Mapping[str, Any],
-    concurrency: int = 12,
-) -> None:
-    """bounded concurrency로 독립 glossary term upsert를 완료한다."""
-
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def run(urn: str, name: str, definition: str, domain_urn: str) -> None:
-        async with semaphore:
-            await _publish_term(
-                client,
-                urn,
-                name,
-                definition,
-                release_version,
-                owner_urn,
-                domain_urn,
-                stamp,
-            )
-
-    await asyncio.gather(*(run(*publication) for publication in publications))
-
-
-async def _publish_field_term_associations(
-    client: DataHubMetadataAdminClient,
-    plan: GovernancePlan,
-    stamp: Mapping[str, Any],
-    concurrency: int = 12,
-) -> None:
-    """필드별 용어를 dataset editable schema aspect 하나로 원자적으로 발행한다."""
-
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def run(dataset: CatalogDataset) -> None:
-        async with semaphore:
-            await client.upsert_entity(
-                "dataset",
-                dataset.urn,
-                {
-                    "editableSchemaMetadata": {
-                        "editableSchemaFieldInfo": [
-                            {
-                                "fieldPath": field.name,
-                                "description": field.description,
-                                "glossaryTerms": {
-                                    "terms": [
-                                        {
-                                            "urn": plan.field_terms[
-                                                (dataset.urn, field.name)
-                                            ]
-                                        }
-                                    ]
-                                },
-                            }
-                            for field in dataset.fields
-                        ]
-                    }
-                },
-                stamp,
-            )
-
-    # WHY: addTerm의 DATASET_FIELD mutation은 v1.7에서 성공 응답 후에도 field aspect를
-    # 남기지 않는다. 공개 OpenAPI aspect를 dataset별 한 번만 써 부분 손실을 차단한다.
-    await asyncio.gather(*(run(dataset) for dataset in plan.datasets))
 
 
 async def _run_mutation_groups(
@@ -519,11 +368,6 @@ def _dataset_scope(
         raise ValueError("dataset does not resolve to exactly one runtime scope")
     scope = matches[0]
     return scope, schema_name.removeprefix(f"{scope.datahub_namespace}.")
-
-
-def _term_urn(version: str, kind: str, identity: str) -> str:
-    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
-    return f"urn:li:glossaryTerm:answervice_{_slug(version)}_{kind}_{digest}"
 
 
 def _scope_name(scope: ReleaseScope) -> str:

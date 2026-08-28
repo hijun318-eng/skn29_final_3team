@@ -88,6 +88,7 @@ class ReportRouter:
                 w=width,
                 h=block.get("h", 1),
                 content=block.get("content", ""),
+                view_spec_id=block.get("view_spec_id"),
             ))
         return tuple(blocks)
 

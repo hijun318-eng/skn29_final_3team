@@ -1,0 +1,54 @@
+{
+  "schema_version": "AnswerviceAnalysisCapabilityRelease.v1",
+  "status": "SEALED",
+  "catalog_release_id": "walkerhill-v4.3-sql-20260815-derived.1-retirement-20260820.1-iceberg-analyst.4-runtime-v2.20260820.4-phase9-joins.1",
+  "catalog_sha256": "695fe466056ee0e115eba39c985a1264f818faa960b8ba7d97da5f0f7ef4f2ed",
+  "canonical_sha256": "528870fc6a989ed14e3b9324c9e7ed72824357548812bc53ec9570ce08f35480",
+  "contract": {
+    "version": "ANSWERVICE-ANALYSIS-CAPABILITY-v1",
+    "max_metrics_per_plan": 2,
+    "operations": [
+      "aggregate",
+      "breakdown"
+    ],
+    "assets": [
+      {
+        "fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "time": {
+          "mode": "range",
+          "field": "business_date",
+          "default": "required_period"
+        },
+        "data_availability": {
+          "data_available_from": "2024-01-01",
+          "data_available_through": "2026-08-31"
+        },
+        "dimensions": [
+          {
+            "id": "hotel_code",
+            "columns": ["hotel_code"]
+          }
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.voc_review_detail",
+        "time": {
+          "mode": "range",
+          "field": "business_date",
+          "default": "required_period"
+        },
+        "data_availability": {
+          "data_available_from": "2024-01-01",
+          "data_available_through": "2026-08-31"
+        },
+        "dimensions": [
+          {
+            "id": "voc_sentiment_label",
+            "columns": ["sentiment_label"]
+          }
+        ]
+      }
+    ]
+  },
+  "content_sha256": "435dcbdaeb64508b9a48c6affde4fc4da398ad66a87541f6aaf9cbe29fa8384f"
+}

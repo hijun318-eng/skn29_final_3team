@@ -164,6 +164,7 @@ export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel })
  * @returns {string} 지표 라벨, 없으면 컬럼 이름 그대로.
  */
 export function columnLabel(column: string, run: AnalysisRun) {
+  if (column === "period") return "기간";
   return run.metrics.find((item) => item.resultField === column)?.label
     ?? run.evidence?.metrics.find((item) => item.resultField === column)?.label
     ?? column;

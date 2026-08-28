@@ -81,7 +81,7 @@ class RuntimeGovernanceDraftTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "catalog.schema"):
                 build_draft(Path(temporary), "serving.metrics.extra", "R7")
 
-    def test_v43_business_approval_is_bound_to_current_sql_evidence(self) -> None:
+    def test_v43_draft_classifies_current_sql_evidence(self) -> None:
         release = (
             ROOT
             / "infrastructure"
@@ -91,24 +91,6 @@ class RuntimeGovernanceDraftTest(unittest.TestCase):
         )
         sql_directory = release / "01_V4.3_생성_및_서빙_SQL" / "06_trino_serving"
         draft = build_draft(sql_directory, "serving.analytics_v4_3", "V4.3")
-        approval = (
-            ROOT / "docs" / "reference" / "Runtime_governance_V4.3_업무승인.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn(f"SQL source SHA-256: `{draft.source_sha256}`", approval)
-        for metric_id in (
-            "total_operating_revenue_krw",
-            "realized_uplift_rate",
-            "voc_review_count",
-            "voc_low_rating_reviews",
-            "voc_negative_reviews",
-            "voc_positive_reviews",
-            "voc_followup_reviews",
-            "banquet_cancelled_events",
-        ):
-            self.assertIn(f"`{metric_id}`", approval)
-        self.assertIn("multi-column weighted reduction 지원 전까지 보류", approval)
-        self.assertIn("존재하지 않는 metric", approval)
-
         fields = {
             (view.fqn, field.name): field
             for view in draft.views

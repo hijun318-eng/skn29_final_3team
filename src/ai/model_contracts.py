@@ -71,11 +71,12 @@ def model_release_manifest() -> Mapping[str, Any]:
         "schema_contract",
         "schema_version",
         "schema_sha256",
+        "compatible_runtime",
         "nodes",
     }:
         raise ContractError("model release manifest fields are invalid")
     if (
-        payload["manifest_version"] != "MODEL-RELEASE-v1.22.0"
+        payload["manifest_version"] != "MODEL-RELEASE-v1.42.0"
         or payload["state"] != "ACTIVE"
         or payload["schema_contract"] != "v1"
         or payload["schema_version"] != schema_version()
@@ -83,6 +84,22 @@ def model_release_manifest() -> Mapping[str, Any]:
         or set(payload["nodes"]) != _schema_model_nodes()
     ):
         raise ContractError("active model release metadata is invalid")
+    compatible_runtime = payload["compatible_runtime"]
+    if (
+        not isinstance(compatible_runtime, dict)
+        or set(compatible_runtime)
+        != {
+            "analysis_plan_version",
+            "typed_sql_compiler_version",
+            "canonical_semantic_release_version",
+            "runtime_governance_version",
+        }
+        or any(
+            not isinstance(value, str) or not value
+            for value in compatible_runtime.values()
+        )
+    ):
+        raise ContractError("active model runtime compatibility is invalid")
 
     for node in sorted(_schema_model_nodes()):
         entry = payload["nodes"][node]
@@ -115,6 +132,14 @@ def model_release_manifest() -> Mapping[str, Any]:
         schema_definition(request_definition)
         schema_definition(response_definition)
     return _freeze(payload)
+
+
+@lru_cache(maxsize=1)
+def model_release_checksum() -> str:
+    """검증된 active model manifest 전체의 canonical SHA-256을 반환한다."""
+
+    manifest = model_release_manifest()
+    return canonical_json_sha256(_thaw(manifest))
 
 
 def model_node_contract(node: str) -> Mapping[str, str]:
@@ -151,4 +176,12 @@ def _freeze(value: Any) -> Any:
         return MappingProxyType({key: _freeze(item) for key, item in value.items()})
     if isinstance(value, list):
         return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
     return value

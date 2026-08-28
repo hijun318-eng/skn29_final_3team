@@ -170,6 +170,16 @@
             "title": "Disambiguation Options",
             "type": "array"
           },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "gates": {
             "anyOf": [
               {
@@ -671,7 +681,7 @@
       },
       "AnalysisRunResponse": {
         "additionalProperties": false,
-        "description": "정의 버전별 재실행 상태, 기준일·시간대, 추적·쿼리·산출물 ID와 완료 시각을 반환한다.",
+        "description": "정의 버전별 재실행 상태, 시간 근거, 추적·쿼리·산출물 ID와 완료 시각을 반환한다.",
         "properties": {
           "artifact_id": {
             "anyOf": [
@@ -770,6 +780,30 @@
             "format": "uuid",
             "title": "Request Id",
             "type": "string"
+          },
+          "snapshot_cutoff": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Cutoff"
+          },
+          "snapshot_selection": {
+            "anyOf": [
+              {
+                "const": "max_source_value_lt_as_of",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Selection"
           },
           "started_at": {
             "format": "date-time",
@@ -1650,6 +1684,79 @@
         "title": "ConnectionListResponse",
         "type": "object"
       },
+      "ConversationCommandRequest": {
+        "additionalProperties": false,
+        "description": "head를 변경하는 모든 command가 명시해야 하는 client 입력이다.\n\n첫 턴도 ``expected_head_turn_id: null``을 보내야 한다. 필드 생략과 서버가 확인한 빈 head를\n구분해 오래된 client가 CAS를 우회하지 못하게 한다.",
+        "properties": {
+          "expected_head_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Turn Id"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "presentation_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SUMMARY",
+                  "TABLE",
+                  "BAR",
+                  "LINE",
+                  "PIE",
+                  "HORIZONTAL_BAR",
+                  "DONUT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presentation Type"
+          },
+          "requested_route": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ANALYSIS",
+                  "PRESENTATION",
+                  "REPORT_ACTION"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Route"
+          },
+          "user_message": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "User Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_message",
+          "idempotency_key",
+          "expected_head_turn_id"
+        ],
+        "title": "ConversationCommandRequest",
+        "type": "object"
+      },
       "CreateAccountRequest": {
         "additionalProperties": false,
         "description": "정규화된 login ID, 초기 비밀번호와 두 Role 중 하나만 계정 생성에 허용한다.",
@@ -1753,6 +1860,34 @@
           "artifact_id"
         ],
         "title": "CreateReportAssistantDraftRequest",
+        "type": "object"
+      },
+      "CreateReportAssistantSessionRequest": {
+        "additionalProperties": false,
+        "description": "보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_version": {
+            "minimum": 1.0,
+            "title": "Definition Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "definition_id",
+          "definition_version",
+          "artifact_id"
+        ],
+        "title": "CreateReportAssistantSessionRequest",
         "type": "object"
       },
       "CreateReportDefinitionRequest": {
@@ -2053,6 +2188,7 @@
           "TRINO_CONNECTION_FAILED",
           "QUERY_TIMEOUT",
           "QUERY_SOURCE_FAILED",
+          "EMPTY_RESULT",
           "RESULT_VALIDATION_FAILED",
           "RESULT_EVIDENCE_MISSING",
           "ARTIFACT_PERSIST_FAILED",
@@ -2065,6 +2201,11 @@
           "RESOURCE_NOT_FOUND",
           "RESOURCE_CONFLICT",
           "LAST_ADMIN_REQUIRED",
+          "CONVERSATION_CONFLICT",
+          "CONVERSATION_BUSY",
+          "CONVERSATION_ARCHIVED",
+          "IDEMPOTENCY_CONFLICT",
+          "REPORT_DRAFT_CONFLICT",
           "DEPENDENCY_UNAVAILABLE",
           "INTERNAL_ERROR"
         ],
@@ -2118,6 +2259,16 @@
             "title": "Cached",
             "type": "boolean"
           },
+          "comparison_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "context_release": {
             "anyOf": [
               {
@@ -2140,6 +2291,9 @@
               }
             ],
             "title": "Evidence Cutoff"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/QueryExecutionEvidence"
           },
           "filters": {
             "additionalProperties": {
@@ -2267,6 +2421,16 @@
           },
           "sampling": {
             "$ref": "#/components/schemas/SamplingEvidence"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "sources": {
             "default": [],
@@ -2768,6 +2932,38 @@
         "title": "PipelineStage",
         "type": "string"
       },
+      "QueryExecutionEvidence": {
+        "additionalProperties": false,
+        "description": "Trino가 보고한 누적 처리량과 공개 가능한 warning 건수를 실행 근거로 남긴다.",
+        "properties": {
+          "critical_warning_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Critical Warning Count",
+            "type": "integer"
+          },
+          "processed_rows": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Processed Rows",
+            "type": "integer"
+          },
+          "scan_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Scan Bytes",
+            "type": "integer"
+          },
+          "warning_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "title": "QueryExecutionEvidence",
+        "type": "object"
+      },
       "ReadinessData": {
         "additionalProperties": false,
         "description": "서비스 준비 상태와 각 외부 의존성의 점검 결과를 readiness 응답으로 제공한다.",
@@ -3019,6 +3215,97 @@
         "title": "ReportArtifactVersionResponse",
         "type": "object"
       },
+      "ReportAssistantAnalysisPlan": {
+        "additionalProperties": false,
+        "description": "새 데이터 실행 전에 질문·이유·범위를 request ID와 함께 고정한다.",
+        "properties": {
+          "question": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ReportAssistantAnalysisScope"
+          }
+        },
+        "required": [
+          "request_id",
+          "question",
+          "reason",
+          "scope"
+        ],
+        "title": "ReportAssistantAnalysisPlan",
+        "type": "object"
+      },
+      "ReportAssistantAnalysisScope": {
+        "additionalProperties": false,
+        "description": "승인 전에 사용자에게 공개할 조회 기간·지표·분석 범위를 제한된 문자열로 표현한다.",
+        "properties": {
+          "dimensions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "period": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Period",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "metrics"
+        ],
+        "title": "ReportAssistantAnalysisScope",
+        "type": "object"
+      },
+      "ReportAssistantApprovalRequest": {
+        "additionalProperties": false,
+        "description": "현재 승인 대기 계획에 대한 사용자의 승인 또는 거절 한 번만 입력받는다.",
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "approved"
+        ],
+        "title": "ReportAssistantApprovalRequest",
+        "type": "object"
+      },
       "ReportAssistantDraftResponse": {
         "additionalProperties": false,
         "description": "AI 요청 ID, 성공 상태, 생성된 보고서 정의와 모델 호출 추적을 한 응답으로 반환한다.",
@@ -3047,6 +3334,677 @@
           "trace"
         ],
         "title": "ReportAssistantDraftResponse",
+        "type": "object"
+      },
+      "ReportAssistantEvaluationResponse": {
+        "additionalProperties": false,
+        "description": "원문 prompt·SQL 없이 한 Assistant 요청의 모델·승인·Revision 결과를 연결한다.",
+        "properties": {
+          "approval_decision": {
+            "enum": [
+              "approved",
+              "rejected",
+              "pending"
+            ],
+            "title": "Approval Decision",
+            "type": "string"
+          },
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "contract_valid": {
+            "title": "Contract Valid",
+            "type": "boolean"
+          },
+          "cost_is_estimate": {
+            "title": "Cost Is Estimate",
+            "type": "boolean"
+          },
+          "data_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Request Id"
+          },
+          "definition_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Id"
+          },
+          "definition_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Version"
+          },
+          "duplicate_revision_prevented": {
+            "title": "Duplicate Revision Prevented",
+            "type": "boolean"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "estimated_cost": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost"
+          },
+          "evaluated_at": {
+            "format": "date-time",
+            "title": "Evaluated At",
+            "type": "string"
+          },
+          "evaluation_id": {
+            "format": "uuid",
+            "title": "Evaluation Id",
+            "type": "string"
+          },
+          "final_phase": {
+            "title": "Final Phase",
+            "type": "string"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Attempts"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "operation_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Operation Types",
+            "type": "array"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "patch_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Request Id"
+          },
+          "prompt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Id"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "revision_created": {
+            "title": "Revision Created",
+            "type": "boolean"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "enum": [
+                  "existing_artifact",
+                  "new_data"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          }
+        },
+        "required": [
+          "evaluation_id",
+          "assistant_request_id",
+          "contract_valid",
+          "approval_decision",
+          "final_phase",
+          "revision_created",
+          "duplicate_revision_prevented",
+          "cost_is_estimate",
+          "evaluated_at"
+        ],
+        "title": "ReportAssistantEvaluationResponse",
+        "type": "object"
+      },
+      "ReportAssistantFailureListResponse": {
+        "additionalProperties": false,
+        "description": "관리자에게 bounded 기간의 안전한 실패 평가만 반환한다.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantEvaluationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "items"
+        ],
+        "title": "ReportAssistantFailureListResponse",
+        "type": "object"
+      },
+      "ReportAssistantMessageRequest": {
+        "additionalProperties": false,
+        "description": "ready 세션에 500자 이하의 보고서 변경 지시를 제출한다.",
+        "properties": {
+          "instruction": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instruction"
+        ],
+        "title": "ReportAssistantMessageRequest",
+        "type": "object"
+      },
+      "ReportAssistantOperationsSummaryResponse": {
+        "additionalProperties": false,
+        "description": "관리자용 기간·분모와 nullable 품질·비용 집계를 반환한다.",
+        "properties": {
+          "approval_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Rate"
+          },
+          "average_model_attempts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Model Attempts"
+          },
+          "average_model_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Model Latency Ms"
+          },
+          "contract_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Success Rate"
+          },
+          "denominator": {
+            "title": "Denominator",
+            "type": "integer"
+          },
+          "duplicate_revision_prevention_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Revision Prevention Rate"
+          },
+          "estimated_cost_total": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Total"
+          },
+          "failure_rate_by_error_code": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Failure Rate By Error Code",
+            "type": "object"
+          },
+          "p95_model_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Model Latency Ms"
+          },
+          "patch_validation_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Validation Success Rate"
+          },
+          "period_end": {
+            "format": "date-time",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date-time",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "rejection_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Rate"
+          },
+          "revision_success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Success Rate"
+          },
+          "total_input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Output Tokens"
+          },
+          "total_requests": {
+            "title": "Total Requests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "denominator",
+          "total_requests",
+          "failure_rate_by_error_code"
+        ],
+        "title": "ReportAssistantOperationsSummaryResponse",
+        "type": "object"
+      },
+      "ReportAssistantProposalResponse": {
+        "additionalProperties": false,
+        "description": "검증된 변경 종류·사용자 메시지와 저장된 서버 세션 상태를 함께 반환한다.",
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "clarification",
+              "existing_artifact",
+              "new_data"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+          }
+        },
+        "required": [
+          "change_kind",
+          "message",
+          "session"
+        ],
+        "title": "ReportAssistantProposalResponse",
+        "type": "object"
+      },
+      "ReportAssistantRequiredAction": {
+        "description": "실패한 Assistant 세션에서 사용자가 수행할 수 있는 안전한 다음 조치다.",
+        "enum": [
+          "NONE",
+          "RETRY",
+          "REFRESH",
+          "REAUTHENTICATE",
+          "REOPEN_LATEST_REPORT",
+          "CONTACT_ADMIN"
+        ],
+        "title": "ReportAssistantRequiredAction",
+        "type": "string"
+      },
+      "ReportAssistantSessionResponse": {
+        "additionalProperties": false,
+        "description": "서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다.",
+        "properties": {
+          "analysis_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportAssistantAnalysisPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "base_revision": {
+            "title": "Base Revision",
+            "type": "integer"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "patch_operations": {
+            "default": [],
+            "items": {
+              "enum": [
+                "set_report_title",
+                "add_text",
+                "update_text",
+                "add_artifact_view",
+                "reposition_block",
+                "remove_block",
+                "duplicate_block",
+                "restore_previous_revision"
+              ],
+              "type": "string"
+            },
+            "title": "Patch Operations",
+            "type": "array"
+          },
+          "patch_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Request Id"
+          },
+          "patch_summary": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch Summary"
+          },
+          "phase": {
+            "enum": [
+              "ready",
+              "waiting_patch_approval",
+              "waiting_approval",
+              "running_data_agent",
+              "waiting_artifact",
+              "saving_revision",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "required_action": {
+            "$ref": "#/components/schemas/ReportAssistantRequiredAction",
+            "default": "NONE"
+          },
+          "result_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Artifact Id"
+          },
+          "result_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Revision"
+          },
+          "retry_of_assistant_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of Assistant Request Id"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "assistant_request_id",
+          "phase",
+          "definition_id",
+          "definition_version",
+          "base_revision",
+          "artifact_id"
+        ],
+        "title": "ReportAssistantSessionResponse",
         "type": "object"
       },
       "ReportAssistantTraceResponse": {
@@ -3160,6 +4118,17 @@
             "title": "Type",
             "type": "string"
           },
+          "view_spec_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Spec Id"
+          },
           "w": {
             "anyOf": [
               {
@@ -3250,6 +4219,17 @@
             "title": "Type",
             "type": "string"
           },
+          "view_spec_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Spec Id"
+          },
           "w": {
             "title": "W",
             "type": "integer"
@@ -3269,6 +4249,7 @@
           "artifact_id",
           "columns",
           "query_id",
+          "view_spec_id",
           "type",
           "x",
           "y",
@@ -3777,7 +4758,7 @@
       },
       "ResolvedSlots": {
         "additionalProperties": false,
-        "description": "멀티턴 대화에서 이전 턴의 슬롯을 구조화된 형태로 상속할 때 사용한다.\n\nOrchestrator가 ConversationSlotResolver로 확정한 지표·차원·기간을\nMetricResolver의 pre-resolved fast-path에 전달하여 Node 1 LLM 호출을\n건너뛰되 거버넌스 대조 검증은 유지한다.",
+        "description": "멀티턴 대화에서 이전 턴의 슬롯을 구조화된 형태로 상속할 때 사용한다.\n\n지표가 확정된 슬롯은 MetricResolver의 pre-resolved fast-path로 전달해 Node 1\n재해석을 생략하고, 지표가 비어 있는 슬롯은 직전 기간·결과 형태만 Node 1의 typed\n대화 컨텍스트로 제공한다. 두 경로 모두 active governance 대조 검증을 유지한다.",
         "properties": {
           "analysis_operation": {
             "anyOf": [
@@ -3789,6 +4770,17 @@
               }
             ],
             "title": "Analysis Operation"
+          },
+          "analysis_time_bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Time Bucket"
           },
           "comparison_period_end_exclusive": {
             "anyOf": [
@@ -4059,6 +5051,28 @@
           "meta"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SnapshotEvidence": {
+        "additionalProperties": false,
+        "description": "기준일 전에 source의 최신 스냅샷을 선택했다는 실행 규칙을 기록한다.",
+        "properties": {
+          "cutoff": {
+            "format": "date",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "selection": {
+            "const": "max_source_value_lt_as_of",
+            "title": "Selection",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cutoff",
+          "selection"
+        ],
+        "title": "SnapshotEvidence",
         "type": "object"
       },
       "SourceReference": {
@@ -4958,6 +5972,12 @@
                             "as_of": "2041-04-02",
                             "cached": true,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -5160,6 +6180,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -5511,6 +6537,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -5648,6 +6680,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -5788,6 +6826,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -6875,9 +7919,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "title": "Payload",
-                "type": "object"
+                "$ref": "#/components/schemas/ConversationCommandRequest"
               }
             }
           },
@@ -7160,6 +8202,735 @@
           }
         ],
         "summary": "Create Assistant Draft"
+      }
+    },
+    "/reports/assistant/operations/failures": {
+      "get": {
+        "description": "관리자에게만 raw prompt·SQL·trace가 제거된 실패 평가를 반환한다.",
+        "operationId": "reportAssistantOperationsFailures",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End At"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantFailureListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Operation Failures"
+      }
+    },
+    "/reports/assistant/operations/summary": {
+      "get": {
+        "description": "관리자에게만 기간·분모가 포함된 Assistant 품질·비용 집계를 반환한다.",
+        "operationId": "reportAssistantOperationsSummary",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End At"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantOperationsSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Operations Summary"
+      }
+    },
+    "/reports/assistant/sessions": {
+      "post": {
+        "description": "현재 draft와 그 안의 승인 artifact를 검증해 복구 가능한 Assistant 세션을 연다.",
+        "operationId": "reportAssistantCreateSession",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportAssistantSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Assistant Session"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}": {
+      "get": {
+        "description": "새로고침 후에도 서버에 저장된 현재 Assistant phase와 승인 계획을 복구한다.",
+        "operationId": "reportAssistantGetSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Session"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/approval": {
+      "post": {
+        "description": "대기 계획을 멱등 승인·거절하고 최초 승인만 기존 분석 경계에서 Artifact까지 실행한다.\n\n승인 전 owner·request·phase·권한을 검증한다. 거절은 분석을 호출하지 않고 ready로 돌아가며,\n승인 성공은 반환 Artifact lineage를 재검증해 CAS 기반 새 draft revision까지 완료한다.",
+        "operationId": "reportAssistantDecidePlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAssistantApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Decide Assistant Plan"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/evaluation": {
+      "get": {
+        "description": "분석가는 자신의 평가만, 관리자는 전체 평가를 안전한 계약으로 조회한다.",
+        "operationId": "reportAssistantGetEvaluation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantEvaluationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Evaluation"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/messages": {
+      "post": {
+        "description": "ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
+        "operationId": "reportAssistantSubmitMessage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAssistantMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Submit Assistant Message"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/patch-approval": {
+      "post": {
+        "description": "기존 Artifact patch를 멱등 승인·취소하고 승인된 경우에만 CAS revision을 저장한다.",
+        "operationId": "reportAssistantDecidePatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAssistantApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Decide Assistant Patch"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/retry": {
+      "post": {
+        "description": "재시도 가능한 실패를 동일 근거의 새 ``ready`` 세션으로만 이어 간다.\n\n원본 실패·승인·요청 ID를 변경하거나 복사하지 않으며 Report revision과 승인 Artifact\nlineage를 다시 확인한다. 이 요청은 모델, 분석 controller, Revision 저장을 호출하지 않는다.",
+        "operationId": "reportAssistantRetrySession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry Assistant Session"
       }
     },
     "/reports/definitions": {

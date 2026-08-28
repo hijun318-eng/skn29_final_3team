@@ -9,15 +9,16 @@ class PromptRegistryTests(unittest.TestCase):
         first = list_prompt_metadata()
         second = list_prompt_metadata()
         self.assertEqual(first, second)
-        self.assertEqual(len(first), 6)
+        self.assertEqual(len(first), 7)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.17.0",
+                "node1.normalize": "PROMPT-v1.29.0",
                 "node2.repair": "PROMPT-v1.4.0",
                 "node2.sql": "PROMPT-v1.8.0",
                 "node2.sql_only": "PROMPT-v1.2.0",
-                "node3.explain": "PROMPT-v1.2.4",
+                "node3.explain": "PROMPT-v1.2.5",
                 "report.assistant": "PROMPT-v1.0.0",
+                "report.assistant.turn": "PROMPT-v1.5.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
         )
@@ -33,7 +34,9 @@ class PromptRegistryTests(unittest.TestCase):
             self.assertRegex(metadata["hash"], r"^[0-9a-f]{64}$")
 
     def test_non_sql_nodes_have_no_sql_adapter(self):
-        for prompt_id in ("node1.normalize", "node3.explain", "report.assistant"):
+        for prompt_id in (
+            "node1.normalize", "node3.explain", "report.assistant", "report.assistant.turn",
+        ):
             prompt = get_prompt(prompt_id)
             self.assertEqual(prompt.model_profile, "base")
             self.assertIsNone(prompt.adapter)
@@ -63,6 +66,11 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("APPROVED Analysis Artifact", assistant.text)
         self.assertIn("Do not generate SQL", assistant.text)
 
+        assistant_turn = get_prompt("report.assistant.turn")
+        self.assertIn("Use update_text only", assistant_turn.text)
+        self.assertIn("type is text", assistant_turn.text)
+        self.assertIn("use add_text", assistant_turn.text)
+
     def test_sql_only_node2_prompt_is_dormant_and_has_one_output_field(self):
         prompt = get_prompt("node2.sql_only")
 
@@ -86,6 +94,15 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("period_candidates", prompts["node1.normalize"])
         self.assertIn("period_relationship", prompts["node1.normalize"])
         self.assertIn("multi-metric aggregate", prompts["node1.normalize"])
+        self.assertIn("shape-elided follow-up", prompts["node1.normalize"])
+        self.assertIn("operation evidence rather than a measurable fact", prompts["node1.normalize"])
+        self.assertIn("previous_result_shape", prompts["node1.normalize"])
+        self.assertIn("mandatory result-shape pass", prompts["node1.normalize"])
+        self.assertIn("interpretation_recheck", prompts["node1.normalize"])
+        self.assertIn("Never drop a stated filter", prompts["node1.normalize"])
+        self.assertIn("do not infer a more specific metric", prompts["node1.normalize"])
+        self.assertIn("directional predecessor", prompts["node1.normalize"])
+        self.assertIn("'전부터'라고 쓰지 않는다", get_prompt("node3.explain").text)
 
     def test_unreleased_candidate_prompts_are_not_registered(self):
         for prompt_id in ("node1.interpretation.v2", "node3.narrative.v2"):

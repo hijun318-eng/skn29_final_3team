@@ -1,0 +1,38 @@
+# DataHub v1.7 ingestion executor를 프로젝트 Kafka와 인증된 TLS endpoint에만 결속한다.
+# 기본 비활성 상태이며 GMS·Schema Registry 보안 계약이 없으면 우회 실행하지 않는다.
+name: ${DATAHUB_ACTIONS_INGESTION_EXECUTOR_CONSUMER_GROUP_ID:-ingestion_executor}
+enabled: ${DATAHUB_ACTIONS_INGESTION_EXECUTOR_ENABLED:-false}
+source:
+  type: kafka
+  config:
+    connection:
+      bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-localhost:9092}
+      schema_registry_url: ${SCHEMA_REGISTRY_URL:-http://localhost:8081}
+      schema_registry_config:
+        ssl.ca.location: ${DATAHUB_TLS_CA_FILE:-/run/secrets/datahub-ca.pem}
+    topic_routes:
+      mcl: ${METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME:-MetadataChangeLog_Versioned_v1}
+      pe: ${PLATFORM_EVENT_TOPIC_NAME:-PlatformEvent_v1}
+    enable_mcl_pre_deserialization_filter: true
+filters:
+  - type: event_type
+    config:
+      filter:
+        MetadataChangeLogEvent_v1:
+          event:
+            - entityType: dataHubExecutionRequest
+              changeType: UPSERT
+              aspectName:
+                - dataHubExecutionRequestInput
+                - dataHubExecutionRequestSignal
+              aspect:
+                value:
+                  executorId: ${EXECUTOR_ID:-default}
+action:
+  type: executor
+  config:
+    executor_id: ${EXECUTOR_ID:-default}
+datahub:
+  server: "${DATAHUB_GMS_PROTOCOL:-http}://${DATAHUB_GMS_HOST:-localhost}:${DATAHUB_GMS_PORT:-8080}"
+  extra_headers:
+    Authorization: "Basic ${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}:${DATAHUB_SYSTEM_CLIENT_SECRET:-JohnSnowKnowsNothing}"

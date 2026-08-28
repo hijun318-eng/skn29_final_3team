@@ -139,6 +139,89 @@ def test_generic_review_candidate_is_valid_but_never_publishable():
     assert result["publishable"] is False
 
 
+def test_v2_review_binds_asset_and_dimension_additions_to_sql_evidence():
+    """신규 semantic scope는 SQL view·field 근거가 있을 때만 검토안에 들어간다."""
+
+    candidate = _candidate()
+    candidate.update(
+        {
+            "contract_version": "answervice.metric_review.v2",
+            "asset_additions": [
+                {
+                    "fqn": "serving.sample.daily_observations",
+                    "domain_urn": "urn:li:domain:sample",
+                    "grain": {
+                        "kind": "periodic",
+                        "keys": ["observed_on", "segment"],
+                    },
+                }
+            ],
+            "dimension_additions": [
+                {
+                    "id": "sample_segment",
+                    "aliases": ["sample segment", "표본 구분"],
+                    "definition": "Arbitrary segment captured on the observation row.",
+                    "asset_fqn": "serving.sample.daily_observations",
+                    "column": "segment",
+                }
+            ],
+        }
+    )
+
+    result = validate_metric_review(candidate, _evidence())
+
+    assert result["contract_version"] == "answervice.metric_review.v2"
+    assert result["asset_addition_count"] == 1
+    assert result["dimension_addition_count"] == 1
+
+    candidate["dimension_additions"][0]["column"] = "not_in_sql"
+    with pytest.raises(SemanticMetadataError, match="SQL release fields"):
+        validate_metric_review(candidate, _evidence())
+
+
+def test_governed_owner_can_seal_an_approved_review():
+    """승인 상태는 owner·timezone timestamp와 모든 Metric 상태가 함께 바뀔 때만 유효하다."""
+
+    candidate = _candidate()
+    candidate.update(
+        {
+            "review_status": "APPROVED",
+            "reviewer": "urn:li:corpGroup:sample_stewards",
+            "reviewed_at": "2026-08-23T12:34:56+09:00",
+        }
+    )
+    for metric in candidate["metrics"]:
+        metric["review_status"] = "APPROVED"
+
+    result = validate_metric_review(candidate, _evidence())
+
+    assert result["status"] == "VALID_APPROVED_REVIEW"
+    assert result["approval_status"] == "APPROVED"
+    assert result["publishable"] is True
+
+
+def test_approved_review_rejects_a_different_reviewer_or_partial_metric_state():
+    """승인자 위조와 일부 Metric만 승인된 혼합 상태를 fail-closed한다."""
+
+    candidate = _candidate()
+    candidate.update(
+        {
+            "review_status": "APPROVED",
+            "reviewer": "urn:li:corpGroup:another_group",
+            "reviewed_at": "2026-08-23T12:34:56+09:00",
+        }
+    )
+    for metric in candidate["metrics"]:
+        metric["review_status"] = "APPROVED"
+    with pytest.raises(SemanticMetadataError, match="governed owner"):
+        validate_metric_review(candidate, _evidence())
+
+    candidate["reviewer"] = "urn:li:corpGroup:sample_stewards"
+    candidate["metrics"][0]["review_status"] = "REVIEW_REQUIRED"
+    with pytest.raises(SemanticMetadataError, match="review-level"):
+        validate_metric_review(candidate, _evidence())
+
+
 def test_review_rejects_release_drift_and_ratio_scope_drift():
     candidate = _candidate()
     candidate["source_sql_sha256"] = "b" * 64
@@ -185,7 +268,9 @@ def test_d2_review_candidate_matches_the_pinned_release_sql():
 
     assert result["business_metric_count"] == 10
     assert result["support_metric_count"] == 4
-    assert result["publishable"] is False
+    assert result["status"] == "VALID_APPROVED_REVIEW"
+    assert result["approval_status"] == "APPROVED"
+    assert result["publishable"] is True
 
     occupancy = next(
         item for item in candidate["metrics"] if item["id"] == "occupancy_rate"

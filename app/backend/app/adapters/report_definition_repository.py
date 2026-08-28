@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from uuid import UUID
 
@@ -33,13 +34,15 @@ class ReportDefinitionRepositoryMixin:
         session: AsyncSession,
         artifact_id: UUID,
         query_id: str | None,
-    ) -> tuple[UUID, int]:
+    ) -> tuple[UUID, int, str | None, str | None, str | None]:
         if not query_id:
             raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
         owned = (await session.execute(
             text(
                 """
-                SELECT l.definition_id, l.definition_version
+                SELECT l.definition_id, l.definition_version,
+                       a.product_release_id, a.permission_snapshot_id,
+                       a.semantic_release_id
                 FROM artifact.analysis_artifacts a
                 JOIN query.query_executions q
                   ON q.query_execution_id = a.query_execution_id
@@ -61,7 +64,37 @@ class ReportDefinitionRepositoryMixin:
         if owned is None:
             raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
 
-        return UUID(str(owned[0])), int(owned[1])
+        return (
+            UUID(str(owned[0])),
+            int(owned[1]),
+            str(owned[2]) if owned[2] else None,
+            str(owned[3]) if owned[3] else None,
+            str(owned[4]) if owned[4] else None,
+        )
+
+    async def _require_artifact_view_spec(
+        self,
+        session: AsyncSession,
+        view_spec_id: UUID,
+        artifact_id: UUID | None,
+    ) -> None:
+        """ViewSpec이 검증된 같은 Artifact에 결속됐는지 확인한다."""
+
+        if artifact_id is None:
+            raise KeyError("Report ViewSpec에 연결된 Analysis Artifact를 찾을 수 없습니다.")
+        matched = (await session.execute(
+            text(
+                """
+                SELECT 1
+                FROM artifact.view_specs
+                WHERE view_spec_id = :view_spec_id
+                  AND artifact_id = :artifact_id
+                """
+            ),
+            {"view_spec_id": view_spec_id, "artifact_id": artifact_id},
+        )).one_or_none()
+        if matched is None:
+            raise KeyError("Report ViewSpec이 Analysis Artifact와 일치하지 않습니다.")
 
     async def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         """draft 레코드를 저장소의 비동기 트랜잭션 안에서 영속화한다."""
@@ -91,14 +124,26 @@ class ReportDefinitionRepositoryMixin:
                 )).scalar_one()
                 if owner != self._owner_id and not self._manage_all:
                     raise ValueError("다른 사용자의 Report definition입니다.")
+                receipt = await self._resolve_report_receipt(
+                    session,
+                    (
+                        draft.product_release_id,
+                        draft.permission_snapshot_id,
+                        draft.semantic_release_id,
+                    ),
+                )
                 await session.execute(
                     text(
                         """
                         INSERT INTO report_v1.report_definition_versions
                             (definition_id, version, status, title,
-                             orientation, currency_display_unit)
+                             orientation, currency_display_unit,
+                             product_release_id, permission_snapshot_id,
+                             semantic_release_id)
                         VALUES (:definition_id, :version, 'draft', :title,
-                                :orientation, :currency_display_unit)
+                                :orientation, :currency_display_unit,
+                                :product_release_id, :permission_snapshot_id,
+                                :semantic_release_id)
                         """
                     ),
                     {
@@ -107,6 +152,9 @@ class ReportDefinitionRepositoryMixin:
                         "title": draft.title,
                         "orientation": draft.orientation,
                         "currency_display_unit": draft.currency_display_unit,
+                        "product_release_id": receipt[0] if receipt else None,
+                        "permission_snapshot_id": receipt[1] if receipt else None,
+                        "semantic_release_id": receipt[2] if receipt else None,
                     },
                 )
                 for block in draft.blocks:
@@ -120,15 +168,31 @@ class ReportDefinitionRepositoryMixin:
                         analysis_lineage = await self._require_owned_artifact(
                             session, block_artifact_id, block.query_id
                         )
+                        artifact_receipt = analysis_lineage[2:]
+                        if receipt is not None and artifact_receipt != receipt:
+                            raise ValueError(
+                                "Report block Artifact release receipt does not match"
+                            )
+                    view_spec_id = (
+                        _uuid(block.view_spec_id, "view_spec_id")
+                        if block.view_spec_id
+                        else None
+                    )
+                    if view_spec_id is not None:
+                        await self._require_artifact_view_spec(
+                            session, view_spec_id, block_artifact_id
+                        )
                     await session.execute(
                         text(
                             """
                             INSERT INTO report_v1.report_blocks
                                 (definition_id, definition_version, block_id, title,
-                                 artifact_id, query_id, columns, block_type, x, y, w, h, content,
+                                 artifact_id, query_id, view_spec_id, columns,
+                                 block_type, x, y, w, h, content,
                                  analysis_definition_id, analysis_definition_version)
                             VALUES (:definition_id, :version, :block_id, :title,
-                                    :artifact_id, :query_id, :columns, :block_type,
+                                    :artifact_id, :query_id, :view_spec_id,
+                                    :columns, :block_type,
                                     :x, :y, :w, :h, :content,
                                     :analysis_definition_id, :analysis_definition_version)
                             """
@@ -140,6 +204,7 @@ class ReportDefinitionRepositoryMixin:
                             "title": block.title,
                             "artifact_id": block_artifact_id,
                             "query_id": block.query_id,
+                            "view_spec_id": view_spec_id,
                             "columns": block.columns,
                             "block_type": block.type.value,
                             "x": block.x,
@@ -151,9 +216,160 @@ class ReportDefinitionRepositoryMixin:
                             "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
                         },
                     )
+                await self._bind_report_receipt(
+                    session,
+                    object_id=f"definition:{definition_id}:v{draft.version}",
+                    receipt=receipt,
+                )
         except IntegrityError as error:
             raise ValueError("같은 Report definition version이 이미 존재합니다.") from error
-        return draft
+        if receipt is None:
+            return draft
+        return replace(
+            draft,
+            product_release_id=receipt[0],
+            permission_snapshot_id=receipt[1],
+            semantic_release_id=receipt[2],
+        )
+
+    async def add_draft_in_session(
+        self,
+        session: AsyncSession,
+        draft: ReportDefinitionVersion,
+    ) -> ReportDefinitionVersion:
+        """호출자가 소유한 종결 트랜잭션 안에서 Report draft를 저장한다."""
+
+        if draft.status is not DefinitionStatus.DRAFT:
+            raise ValueError("draft만 저장할 수 있습니다.")
+        definition_id = _uuid(draft.definition_id, "definition_id")
+        await session.execute(
+            text(
+                """
+                INSERT INTO report_v1.report_definitions (definition_id, owner_id)
+                VALUES (:definition_id, :owner_id)
+                ON CONFLICT (definition_id) DO NOTHING
+                """
+            ),
+            {"definition_id": definition_id, "owner_id": self._owner_id},
+        )
+        owner = (await session.execute(
+            text(
+                """
+                SELECT owner_id FROM report_v1.report_definitions
+                WHERE definition_id = :definition_id
+                """
+            ),
+            {"definition_id": definition_id},
+        )).scalar_one()
+        if owner != self._owner_id and not self._manage_all:
+            raise ValueError("다른 사용자의 Report definition입니다.")
+        receipt = await self._resolve_report_receipt(
+            session,
+            (
+                draft.product_release_id,
+                draft.permission_snapshot_id,
+                draft.semantic_release_id,
+            ),
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO report_v1.report_definition_versions
+                    (definition_id, version, status, title,
+                     orientation, currency_display_unit,
+                     product_release_id, permission_snapshot_id,
+                     semantic_release_id)
+                VALUES (:definition_id, :version, 'draft', :title,
+                        :orientation, :currency_display_unit,
+                        :product_release_id, :permission_snapshot_id,
+                        :semantic_release_id)
+                """
+            ),
+            {
+                "definition_id": definition_id,
+                "version": draft.version,
+                "title": draft.title,
+                "orientation": draft.orientation,
+                "currency_display_unit": draft.currency_display_unit,
+                "product_release_id": receipt[0] if receipt else None,
+                "permission_snapshot_id": receipt[1] if receipt else None,
+                "semantic_release_id": receipt[2] if receipt else None,
+            },
+        )
+        for block in draft.blocks:
+            block_artifact_id = (
+                _uuid(block.artifact_id, "artifact_id")
+                if block.artifact_id
+                else None
+            )
+            analysis_lineage = None
+            if block_artifact_id is not None:
+                analysis_lineage = await self._require_owned_artifact(
+                    session, block_artifact_id, block.query_id
+                )
+                if receipt is not None and analysis_lineage[2:] != receipt:
+                    raise ValueError(
+                        "Report block Artifact release receipt does not match"
+                    )
+            view_spec_id = (
+                _uuid(block.view_spec_id, "view_spec_id")
+                if block.view_spec_id
+                else None
+            )
+            if view_spec_id is not None:
+                await self._require_artifact_view_spec(
+                    session, view_spec_id, block_artifact_id
+                )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_blocks
+                        (definition_id, definition_version, block_id, title,
+                         artifact_id, query_id, view_spec_id, columns,
+                         block_type, x, y, w, h, content,
+                         analysis_definition_id, analysis_definition_version)
+                    VALUES (:definition_id, :version, :block_id, :title,
+                            :artifact_id, :query_id, :view_spec_id,
+                            :columns, :block_type, :x, :y, :w, :h, :content,
+                            :analysis_definition_id, :analysis_definition_version)
+                    """
+                ),
+                {
+                    "definition_id": definition_id,
+                    "version": draft.version,
+                    "block_id": _uuid(block.block_id, "block_id"),
+                    "title": block.title,
+                    "artifact_id": block_artifact_id,
+                    "query_id": block.query_id,
+                    "view_spec_id": view_spec_id,
+                    "columns": block.columns,
+                    "block_type": block.type.value,
+                    "x": block.x,
+                    "y": block.y,
+                    "w": block.w,
+                    "h": block.h,
+                    "content": block.content,
+                    "analysis_definition_id": (
+                        analysis_lineage[0] if analysis_lineage else None
+                    ),
+                    "analysis_definition_version": (
+                        analysis_lineage[1] if analysis_lineage else None
+                    ),
+                },
+            )
+        await self._bind_report_receipt(
+            session,
+            object_id=f"definition:{definition_id}:v{draft.version}",
+            receipt=receipt,
+        )
+        if receipt is None:
+            return draft
+        return replace(
+            draft,
+            product_release_id=receipt[0],
+            permission_snapshot_id=receipt[1],
+            semantic_release_id=receipt[2],
+        )
 
     async def get_version(self, definition_id: str, version: int) -> ReportDefinitionVersion:
         """접근 가능한 definition의 정확한 version과 배치 순 block을 값 객체로 복원한다.
@@ -167,7 +383,9 @@ class ReportDefinitionRepositoryMixin:
                 text(
                     """
                     SELECT v.definition_id, v.version, v.status, v.title, v.approved_at,
-                           v.orientation, v.currency_display_unit
+                           v.orientation, v.currency_display_unit,
+                           v.product_release_id, v.permission_snapshot_id,
+                           v.semantic_release_id
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
@@ -185,7 +403,7 @@ class ReportDefinitionRepositoryMixin:
             blocks = (await session.execute(
                 text(
                     """
-                    SELECT block_id, title, artifact_id, query_id, columns,
+                    SELECT block_id, title, artifact_id, query_id, view_spec_id, columns,
                            block_type, x, y, w, h, content
                     FROM report_v1.report_blocks
                     WHERE definition_id = :definition_id
@@ -213,13 +431,52 @@ class ReportDefinitionRepositoryMixin:
                         block["w"],
                         block["h"],
                         block["content"],
+                        view_spec_id=(
+                            str(block["view_spec_id"])
+                            if block["view_spec_id"]
+                            else None
+                        ),
                     )
                     for block in blocks
                 ),
                 approved_at=row["approved_at"],
                 orientation=row["orientation"],
                 currency_display_unit=row["currency_display_unit"],
+                product_release_id=row["product_release_id"],
+                permission_snapshot_id=row["permission_snapshot_id"],
+                semantic_release_id=row["semantic_release_id"],
             )
+
+    async def get_draft_revision(self, definition_id: str, version: int) -> int:
+        """현재 소유 범위의 draft CAS revision을 반환한다.
+
+        Report 도메인 값 객체에는 저장소 CAS counter가 포함되지 않으므로 재시도·저장 전
+        검증은 이 조회를 사용한다. 누락·비소유·draft가 아닌 version은 모두 ``KeyError``로
+        감춰 호출자가 최신 draft를 다시 열도록 한다.
+        """
+
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker() as session:
+            revision = (await session.execute(
+                text(
+                    """
+                    SELECT v.revision
+                    FROM report_v1.report_definition_versions v
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE v.definition_id = :definition_id AND v.version = :version
+                      AND v.status = 'draft'
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    """
+                ),
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "version": version,
+                },
+            )).scalar_one_or_none()
+        if revision is None:
+            raise KeyError("접근 가능한 draft Report version을 찾을 수 없습니다.")
+        return int(revision)
 
     async def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
         """owner scope를 적용한 모든 report version을 생성 시각·ID·version 순서로 복원한다."""
@@ -309,6 +566,151 @@ class ReportDefinitionRepositoryMixin:
         approved = await self.get_version(definition_id, approved_version)
         return await self.add_draft(approved.next_draft())
 
+    async def replace_draft_blocks_in_session(
+        self,
+        session: AsyncSession,
+        definition_id: str,
+        version: int,
+        blocks: tuple[ReportBlock, ...],
+        *,
+        title: str | None = None,
+        orientation: str | None = None,
+        currency_display_unit: str | None = None,
+    ) -> None:
+        """호출자가 소유한 종결 트랜잭션 안에서 Report draft 배치를 교체한다."""
+
+        definition_uuid = _uuid(definition_id, "definition_id")
+        version_row = (await session.execute(
+            text(
+                """
+                SELECT v.status, v.product_release_id,
+                       v.permission_snapshot_id, v.semantic_release_id
+                FROM report_v1.report_definition_versions v
+                JOIN report_v1.report_definitions d USING (definition_id)
+                WHERE v.definition_id = :definition_id AND v.version = :version
+                  AND (:manage_all OR d.owner_id = :owner_id)
+                FOR UPDATE
+                """
+            ),
+            {
+                **self._scope_params(),
+                "definition_id": definition_uuid,
+                "version": version,
+            },
+        )).mappings().one_or_none()
+        if version_row is None:
+            raise KeyError("Report definition version을 찾을 수 없습니다.")
+        if version_row["status"] != DefinitionStatus.DRAFT.value:
+            raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
+        receipt_values = (
+            version_row["product_release_id"],
+            version_row["permission_snapshot_id"],
+            version_row["semantic_release_id"],
+        )
+        if any(receipt_values) and not all(receipt_values):
+            raise ValueError("Stored Report release receipt is incomplete")
+        receipt = (
+            tuple(str(value) for value in receipt_values)
+            if all(receipt_values)
+            else None
+        )
+        if receipt is not None:
+            receipt = await self._resolve_report_receipt(session, receipt)
+        elif await self._resolve_report_receipt(session, (None, None, None)) is not None:
+            raise ValueError("Legacy Report draft has no release receipt")
+        await session.execute(
+            text(
+                """
+                UPDATE report_v1.report_definition_versions
+                SET title = COALESCE(:title, title),
+                    orientation = COALESCE(:orientation, orientation),
+                    currency_display_unit = COALESCE(
+                        :currency_display_unit, currency_display_unit
+                    )
+                WHERE definition_id = :definition_id AND version = :version
+                  AND status = 'draft'
+                """
+            ),
+            {
+                "definition_id": definition_uuid,
+                "version": version,
+                "title": title,
+                "orientation": orientation,
+                "currency_display_unit": currency_display_unit,
+            },
+        )
+        await session.execute(
+            text(
+                """
+                DELETE FROM report_v1.report_blocks
+                WHERE definition_id = :definition_id
+                  AND definition_version = :version
+                """
+            ),
+            {"definition_id": definition_uuid, "version": version},
+        )
+        for block in blocks:
+            block_artifact_id = (
+                _uuid(block.artifact_id, "artifact_id")
+                if block.artifact_id
+                else None
+            )
+            analysis_lineage = None
+            if block_artifact_id is not None:
+                analysis_lineage = await self._require_owned_artifact(
+                    session, block_artifact_id, block.query_id
+                )
+                if receipt is not None and analysis_lineage[2:] != receipt:
+                    raise ValueError(
+                        "Report block Artifact release receipt does not match"
+                    )
+            view_spec_id = (
+                _uuid(block.view_spec_id, "view_spec_id")
+                if block.view_spec_id
+                else None
+            )
+            if view_spec_id is not None:
+                await self._require_artifact_view_spec(
+                    session, view_spec_id, block_artifact_id
+                )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_blocks
+                        (definition_id, definition_version, block_id, title,
+                         artifact_id, query_id, view_spec_id, columns,
+                         block_type, x, y, w, h, content,
+                         analysis_definition_id, analysis_definition_version)
+                    VALUES (:definition_id, :version, :block_id, :title,
+                            :artifact_id, :query_id, :view_spec_id,
+                            :columns, :block_type, :x, :y, :w, :h, :content,
+                            :analysis_definition_id, :analysis_definition_version)
+                    """
+                ),
+                {
+                    "definition_id": definition_uuid,
+                    "version": version,
+                    "block_id": _uuid(block.block_id, "block_id"),
+                    "title": block.title,
+                    "artifact_id": block_artifact_id,
+                    "query_id": block.query_id,
+                    "view_spec_id": view_spec_id,
+                    "columns": block.columns,
+                    "block_type": block.type.value,
+                    "x": block.x,
+                    "y": block.y,
+                    "w": block.w,
+                    "h": block.h,
+                    "content": block.content,
+                    "analysis_definition_id": (
+                        analysis_lineage[0] if analysis_lineage else None
+                    ),
+                    "analysis_definition_version": (
+                        analysis_lineage[1] if analysis_lineage else None
+                    ),
+                },
+            )
+
     async def replace_draft_blocks(
         self,
         definition_id: str,
@@ -322,10 +724,11 @@ class ReportDefinitionRepositoryMixin:
         """draft 제목·blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
         definition_uuid = _uuid(definition_id, "definition_id")
         async with self._sessionmaker.begin() as session:
-            status = (await session.execute(
+            version_row = (await session.execute(
                 text(
                     """
-                    SELECT v.status
+                    SELECT v.status, v.product_release_id,
+                           v.permission_snapshot_id, v.semantic_release_id
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
@@ -338,11 +741,31 @@ class ReportDefinitionRepositoryMixin:
                     "definition_id": definition_uuid,
                     "version": version,
                 },
-            )).scalar_one_or_none()
-            if status is None:
+            )).mappings().one_or_none()
+            if version_row is None:
                 raise KeyError("Report definition version을 찾을 수 없습니다.")
-            if status != DefinitionStatus.DRAFT.value:
+            if version_row["status"] != DefinitionStatus.DRAFT.value:
                 raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
+            receipt_values = (
+                version_row["product_release_id"],
+                version_row["permission_snapshot_id"],
+                version_row["semantic_release_id"],
+            )
+            if any(receipt_values) and not all(receipt_values):
+                raise ValueError("Stored Report release receipt is incomplete")
+            receipt = (
+                tuple(str(value) for value in receipt_values)
+                if all(receipt_values)
+                else None
+            )
+            if receipt is not None:
+                receipt = await self._resolve_report_receipt(session, receipt)
+            else:
+                current_receipt = await self._resolve_report_receipt(
+                    session, (None, None, None)
+                )
+                if current_receipt is not None:
+                    raise ValueError("Legacy Report draft has no release receipt")
             await session.execute(
                 text(
                     """
@@ -351,7 +774,8 @@ class ReportDefinitionRepositoryMixin:
                         orientation = COALESCE(:orientation, orientation),
                         currency_display_unit = COALESCE(
                             :currency_display_unit, currency_display_unit
-                        )
+                        ),
+                        revision = revision + 1
                     WHERE definition_id = :definition_id AND version = :version
                       AND status = 'draft'
                     """
@@ -384,15 +808,31 @@ class ReportDefinitionRepositoryMixin:
                     analysis_lineage = await self._require_owned_artifact(
                         session, block_artifact_id, block.query_id
                     )
+                    artifact_receipt = analysis_lineage[2:]
+                    if receipt is not None and artifact_receipt != receipt:
+                        raise ValueError(
+                            "Report block Artifact release receipt does not match"
+                        )
+                view_spec_id = (
+                    _uuid(block.view_spec_id, "view_spec_id")
+                    if block.view_spec_id
+                    else None
+                )
+                if view_spec_id is not None:
+                    await self._require_artifact_view_spec(
+                        session, view_spec_id, block_artifact_id
+                    )
                 await session.execute(
                     text(
                         """
                         INSERT INTO report_v1.report_blocks
                             (definition_id, definition_version, block_id, title,
-                             artifact_id, query_id, columns, block_type, x, y, w, h, content,
+                             artifact_id, query_id, view_spec_id, columns,
+                             block_type, x, y, w, h, content,
                              analysis_definition_id, analysis_definition_version)
                         VALUES (:definition_id, :version, :block_id, :title,
-                                :artifact_id, :query_id, :columns, :block_type,
+                                :artifact_id, :query_id, :view_spec_id,
+                                :columns, :block_type,
                                 :x, :y, :w, :h, :content,
                                 :analysis_definition_id, :analysis_definition_version)
                         """
@@ -404,6 +844,7 @@ class ReportDefinitionRepositoryMixin:
                         "title": block.title,
                         "artifact_id": block_artifact_id,
                         "query_id": block.query_id,
+                        "view_spec_id": view_spec_id,
                         "columns": block.columns,
                         "block_type": block.type.value,
                         "x": block.x,

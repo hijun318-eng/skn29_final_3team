@@ -11,9 +11,18 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 
-_CONTRACT_NAMES = {
+_MODEL_CONTRACT_NAMES = (
     "schema_context",
     "metric_rules",
+    "join_graph",
+    "time_rules",
+    "parameter_contract",
+    "query_policy",
+)
+_RUNTIME_CONTRACT_NAMES = {
+    "schema_context",
+    "metric_rules",
+    "filter_rules",
     "join_graph",
     "time_rules",
     "parameter_contract",
@@ -27,14 +36,39 @@ def execution_time(
 ) -> dict[str, str]:
     """런타임 컨텍스트에서 timezone이 포함된 기준 실행 시각을 검증해 읽는다."""
     contracts = getattr(package, "runtime_contracts", None)
-    if not isinstance(contracts, dict) or set(contracts) != _CONTRACT_NAMES:
+    if not isinstance(contracts, dict) or set(contracts) != _RUNTIME_CONTRACT_NAMES:
         raise ValueError("runtime Context contracts are incomplete")
     time_rules = contracts["time_rules"]
-    start_name = str(time_rules["start_parameter"])
-    end_name = str(time_rules["end_parameter"])
     timezone = ZoneInfo(context.timezone)
     as_of = datetime.combine(context.as_of, time.min, timezone)
     bindings = {item.name: item for item in package.parameter_bindings}
+    mode = str(time_rules.get("mode") or "range")
+    if mode == "latest_snapshot":
+        parameter = str(time_rules.get("as_of_parameter") or "")
+        binding = bindings.get(parameter)
+        if (
+            time_rules.get("selection") != "max_source_value_lt_as_of"
+            or binding is None
+            or binding.value_type != "date"
+            or not isinstance(binding.value, str)
+        ):
+            raise ValueError("runtime Context snapshot binding is incomplete")
+        try:
+            cutoff = date.fromisoformat(binding.value)
+        except ValueError as error:
+            raise ValueError("runtime Context snapshot cutoff is not an ISO date") from error
+        return {
+            "as_of": as_of.isoformat(),
+            "timezone": context.timezone,
+            "calendar_id": str(time_rules["calendar_id"]),
+            "time_mode": mode,
+            "snapshot_cutoff": cutoff.isoformat(),
+            "selection": "max_source_value_lt_as_of",
+        }
+    if mode != "range":
+        raise ValueError("runtime Context time mode is unsupported")
+    start_name = str(time_rules["start_parameter"])
+    end_name = str(time_rules["end_parameter"])
     if {start_name, end_name}.difference(bindings):
         raise ValueError("runtime Context period bindings are incomplete")
     start, end = bindings[start_name], bindings[end_name]
@@ -120,6 +154,12 @@ def metric_selection(assets: list[dict[str, Any]], package: Any) -> dict[str, An
 def serialize_context_package(payload: dict[str, Any]) -> dict[str, Any]:
     """거버넌스 컨텍스트를 provider 독립적인 표준 모델 입력으로 직렬화한다."""
     contracts = getattr(payload["package"], "runtime_contracts", None)
-    if not isinstance(contracts, dict) or set(contracts) != _CONTRACT_NAMES:
-        raise ValueError("Node 2 requires all six runtime Context contracts")
-    return deepcopy(contracts)
+    if not isinstance(contracts, dict) or set(contracts) != _RUNTIME_CONTRACT_NAMES:
+        raise ValueError("Node 2 requires all seven runtime Context contracts")
+    # The resolved request already carries the selected filter field, operator,
+    # and parameter. Keep the provider wire contract at its sealed six-contract
+    # shape instead of transmitting the redundant runtime-only filter registry.
+    return {
+        name: deepcopy(contracts[name])
+        for name in _MODEL_CONTRACT_NAMES
+    }

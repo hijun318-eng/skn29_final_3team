@@ -20,6 +20,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 sys.path.insert(0, str(BACKEND))
 
 from app.auth_principal_store import Principal  # noqa: E402
+from app.authorization import permission_snapshot_id  # noqa: E402
 from app.contracts import AnalysisStatus, Role  # noqa: E402
 from app.services.report.execution import (  # noqa: E402
     AnalysisDefinitionReplay,
@@ -54,6 +55,12 @@ class _RedactedDatabaseUrl(str):
 def async_test(function):
     @wraps(function)
     def run(*args, **kwargs):
+        if sys.platform == "win32":
+            loop = asyncio.SelectorEventLoop()
+            try:
+                return loop.run_until_complete(function(*args, **kwargs))
+            finally:
+                loop.close()
         return asyncio.run(function(*args, **kwargs))
 
     return run
@@ -76,6 +83,7 @@ class _AnalysisRepository:
     def __init__(self) -> None:
         self.request_id = uuid4()
         self.finished = None
+        self.context_receipts = []
 
     async def get_definition_for_report(self, definition_id, version):
         return {
@@ -90,6 +98,7 @@ class _AnalysisRepository:
         }
 
     async def begin_run(self, definition, context, as_of, idempotency_key, parameters):
+        self.request_id = context.request_id
         self.context = context
         self.as_of = as_of
         self.idempotency_key = idempotency_key
@@ -98,6 +107,9 @@ class _AnalysisRepository:
 
     async def finish_run(self, request_id, response, execution):
         self.finished = (request_id, response, execution)
+
+    async def persist_context_receipt(self, context, package):
+        self.context_receipts.append((context, package))
 
     async def fail_run(self, request_id, error_type="UNSUPPORTED"):
         self.finished = (request_id, error_type)
@@ -112,9 +124,10 @@ class _AnalysisRepository:
 
 
 class _Controller:
-    async def submit(self, payload, context, execution_sink):
+    async def submit(self, payload, context, execution_sink, *, context_receipt_sink):
         self.payload = payload
         self.context = context
+        await context_receipt_sink(context, {"package_hash": "report-context"})
         execution_sink({"plan": {}, "query": {}, "package": {}})
         return SimpleNamespace(
             data=SimpleNamespace(status=AnalysisStatus.SUCCEEDED),
@@ -142,17 +155,56 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
             definition_version=3,
             as_of=AS_OF,
             idempotency_key="report:run:block",
+            product_release_id="product-report-v1",
+            permission_snapshot_id=permission_snapshot_id(OWNER, Role.ANALYST),
+            semantic_release_id="semantic-report-v1",
         )
 
     assert outcome.status is BlockRunStatus.SUCCESS
+    assert len(repository.context_receipts) == 1
+    assert repository.context_receipts[0][0].request_id == repository.request_id
     assert outcome.query_id == "query-new"
     assert outcome.snapshot_checksum == "a" * 64
     assert outcome.policy_version == "policy-current"
     assert repository.parameters == {"property": "walkerhill"}
     assert controller.payload.parameters == {"property": "walkerhill"}
     assert repository.as_of.isoformat() == "2026-08-15"
+    assert repository.context.product_release_id == "product-report-v1"
+    assert repository.context.semantic_release_id == "semantic-report-v1"
     assert repository.finished[0] == repository.request_id
     assert gate.releases == 1
+
+
+@async_test
+async def test_analysis_definition_replay_stores_rate_limit_as_recovery_failure():
+    repository = _AnalysisRepository()
+    replay = AnalysisDefinitionReplay(
+        "postgresql://test",
+        _Controller(),
+        _Gate(acquired=False),
+    )
+
+    with patch(
+        "app.services.report.execution.PostgresAnalysisRepository",
+        return_value=repository,
+    ), patch(
+        "app.services.report.execution.require_active_subject_with_capability",
+        return_value=Principal(OWNER, Role.ANALYST),
+    ):
+        outcome = await replay.execute(
+            owner_id=OWNER,
+            definition_id=str(uuid4()),
+            definition_version=3,
+            as_of=AS_OF,
+            idempotency_key="report:rate-limited",
+            product_release_id="product-report-v1",
+            permission_snapshot_id=permission_snapshot_id(OWNER, Role.ANALYST),
+            semantic_release_id="semantic-report-v1",
+        )
+
+    assert outcome.status is BlockRunStatus.FAILED
+    assert outcome.failure_code is BlockFailureCode.RATE_LIMITED
+    assert repository.finished == (repository.request_id, "RECOVERY")
 
 
 class _ReportRepository:
@@ -167,6 +219,9 @@ class _ReportRepository:
             "context-current",
             {},
             RunStatus.PARTIAL,
+            product_release_id="product-report-v1",
+            permission_snapshot_id="permission-report-v1",
+            semantic_release_id="semantic-report-v1",
         )
 
     async def claim_manual_run(self, command_id):
@@ -176,6 +231,9 @@ class _ReportRepository:
             "run_id": self.run.run_id,
             "owner_id": OWNER,
             "as_of": AS_OF,
+            "product_release_id": self.run.product_release_id,
+            "permission_snapshot_id": self.run.permission_snapshot_id,
+            "semantic_release_id": self.run.semantic_release_id,
             "blocks": (
                 {
                     "block_id": "block-1",
@@ -234,6 +292,9 @@ async def test_report_execution_replays_every_block_and_isolates_typed_failure()
     assert repository.records[0][2]["query_id"] == "new-query-1"
     assert repository.records[1][2]["failure_code"] is BlockFailureCode.QUERY_SOURCE_FAILED
     assert replay.calls[0]["idempotency_key"].endswith(":block-1")
+    assert replay.calls[0]["product_release_id"] == "product-report-v1"
+    assert replay.calls[0]["permission_snapshot_id"] == "permission-report-v1"
+    assert replay.calls[0]["semantic_release_id"] == "semantic-report-v1"
     assert repository.finished_command == "command-1"
 
 
@@ -318,6 +379,7 @@ def replay_database():
     environment = os.environ.copy()
     environment["APP_DATABASE_URL"] = url
     environment["APP_DB_USER"] = base.username or "postgres"
+    environment["APP_CATALOG_PUBLISHER_USER"] = environment["APP_DB_USER"]
     migrated = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND,

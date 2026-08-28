@@ -151,14 +151,14 @@ class ProductionClientTests(unittest.TestCase):
 
     def test_served_sql_alias_is_bound_to_the_approved_qwen_capacity(self):
         model = model_runtime_manifest().capacity_for(
-            "answervice-sql",
+            "node2-qwen35-2b-full3000-20260825",
             provider="qwen",
         )
 
-        self.assertEqual("Qwen/Qwen3.5-4B", model.base_model)
+        self.assertEqual("Qwen/Qwen3.5-2B", model.base_model)
         self.assertEqual(5120, model.context_window_tokens)
         self.assertEqual(
-            "Qwen/Qwen3.5-4B@851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+            "yoondaesung/answerviceqwen352b@28e9974a42163c5ca97137622669d40cfc14d73b",
             model.snapshot,
         )
 

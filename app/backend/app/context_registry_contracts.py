@@ -169,6 +169,9 @@ class CreateContextPackage(RegistryModel):
     """요청·릴리스·사용자 범위와 동적 자산·지표·조인·정책을 크기 제한 안에서 패키징한다."""
     request_id: UUID
     context_release_id: UUID
+    product_release_id: str = Field(min_length=1, max_length=160)
+    permission_snapshot_id: str = Field(min_length=1, max_length=160)
+    semantic_release_id: str = Field(min_length=1, max_length=256)
     user_scope: dict[str, Any]
     assets: list[dict[str, Any]]
     metrics: list[dict[str, Any]]
@@ -179,7 +182,12 @@ class CreateContextPackage(RegistryModel):
     token_count: int = Field(ge=0, le=6000)
     idempotency_key: str = Field(min_length=1, max_length=128)
 
-    @field_validator("idempotency_key")
+    @field_validator(
+        "product_release_id",
+        "permission_snapshot_id",
+        "semantic_release_id",
+        "idempotency_key",
+    )
     @classmethod
     def reject_blank(cls, value: str) -> str:
         """문맥 패키지 멱등 키의 공백을 제거하고 빈 키로 중복 생성되는 상황을 차단한다."""
@@ -194,6 +202,9 @@ class ContextPackage(RegistryModel):
     context_package_id: UUID
     request_id: UUID
     context_release_id: UUID
+    product_release_id: str
+    permission_snapshot_id: str
+    semantic_release_id: str
     user_scope: dict[str, Any]
     assets: list[dict[str, Any]]
     metrics: list[dict[str, Any]]
@@ -213,6 +224,9 @@ class ContextPackage(RegistryModel):
             context_package_id=row["context_package_id"],
             request_id=row["request_id"],
             context_release_id=row["context_release_id"],
+            product_release_id=row["product_release_id"],
+            permission_snapshot_id=row["permission_snapshot_id"],
+            semantic_release_id=row["semantic_release_id"],
             user_scope=row["user_scope_json"],
             assets=row["assets_json"],
             metrics=row["metrics_json"],

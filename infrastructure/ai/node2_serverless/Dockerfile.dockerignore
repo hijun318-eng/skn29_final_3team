@@ -1,0 +1,14 @@
+**
+!evals/
+!evals/node2_qwen35_2b_full3000_canary.v1.json
+!evals/node2_qwen35_2b_full3000_vllm-cu129.requirements.txt
+!evals/node2_qwen35_2b_full3000_vllm-cu129.lock.txt
+!evals/node2_qwen35_2b_full3000_serverless-cu129.requirements.txt
+!evals/node2_qwen35_2b_full3000_serverless-cu129.lock.txt
+!scripts/
+!scripts/preflight_node2_vllm.py
+!infrastructure/
+!infrastructure/ai/
+!infrastructure/ai/node2_serverless/
+!infrastructure/ai/node2_serverless/handler.py
+!infrastructure/ai/node2_serverless/main.py

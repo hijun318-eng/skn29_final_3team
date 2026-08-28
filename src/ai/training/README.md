@@ -2,7 +2,7 @@
 
 학습 입력은 사람이 작성하고 검토한 full case spec만 사용한다. 도구는 질문, 메트릭, 자산 식별자, 날짜, SQL 정답을 만들거나 보충하지 않는다. 각 spec은 선택 전에 `dataset.load_specs` 계약 검증을 통과해야 한다.
 
-Node2 신규 학습 record는 `node2.sql_only` prompt와 `{"sql":"..."}` assistant 응답을 사용한다. 활성 GPT provider는 전환 기간 동안 기존 `node2.sql` prompt와 다섯 필드 legacy serving schema를 계속 사용한다. SQL-only adapter를 운영에 연결할 때는 `node2.sql_only` prompt와 SQL-only guided schema를 같은 model release에서 함께 활성화해야 한다.
+Node2 신규 학습·서빙 record는 `node2.sql_only` prompt와 `{"sql":"..."}` assistant 응답을 사용한다. 모델이 선언한 lineage를 신뢰하지 않고 서버가 SQL AST와 거버넌스 계약에서 다시 계산한다. OpenAI-compatible provider에는 동일한 SQL-only JSON Schema를 `response_format`으로 전달한다.
 
 ## Full spec 선택
 

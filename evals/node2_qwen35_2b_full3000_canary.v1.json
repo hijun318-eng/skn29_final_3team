@@ -1,0 +1,384 @@
+{
+  "manifest_version": "NODE2-2B-CANARY-v1.0.0",
+  "status": "RUNPOD_CANARY_SMOKE_PASS_NOT_DEPLOYED",
+  "active_runtime_changed": false,
+  "subject": {
+    "model_id": "Qwen/Qwen3.5-2B",
+    "base_revision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+    "adapter_release": "Qwen3.5-2B-Full3000-20260825",
+    "adapter_sha256": "e3dc3f5e79ebc5326904b1112a8406e42e0c901c4bf444549dfdd1f4695f72d8",
+    "served_model_alias": "node2-qwen35-2b-full3000-20260825"
+  },
+  "evidence": {
+    "archive_name": "Evidence_20260826.zip",
+    "archive_sha256": "4b85c5058efe5571f990ab0049c22851d671333c7f0d9ced2a483408fc7b3c64",
+    "root": "Node2_sLLM_Full3000_Evidence_20260826/",
+    "nested_input_entry": "source_input/Node2_sLLM_RunPod_Full3000_Input_walkerhill_authoring_20260825.zip",
+    "nested_input_sha256": "a3bfb975a25b11f4c5269531580658fad81b40710063318dd660c49feb5d493b",
+    "nested_root": "Node2_sLLM_RunPod_Full3000_Input_walkerhill_authoring_20260825/"
+  },
+  "records": {
+    "nested": [
+      {
+        "path": "data/train.jsonl",
+        "count": 3000,
+        "node_counts": {
+          "node2": 2400,
+          "node2_repair": 600
+        }
+      },
+      {
+        "path": "data/validation.jsonl",
+        "count": 300,
+        "node_counts": {
+          "node2": 300
+        }
+      }
+    ],
+    "outer": [
+      {
+        "path": "base_lora/base2b_validation_sample20.jsonl",
+        "count": 20
+      },
+      {
+        "path": "base_lora/full2b_adapter_validation_sample20.jsonl",
+        "count": 20
+      },
+      {
+        "path": "base_lora/full2b_validation300.predictions.jsonl",
+        "count": 300
+      },
+      {
+        "path": "base_lora/full2b_validation300.gates.jsonl",
+        "count": 300
+      },
+      {
+        "path": "evaluation/gold_150.authoring.jsonl",
+        "count": 150,
+        "node_counts": {
+          "node2": 150
+        }
+      },
+      {
+        "path": "evaluation/acceptance_100.authoring.jsonl",
+        "count": 100,
+        "node_counts": {
+          "node2": 100
+        }
+      },
+      {
+        "path": "evaluation/safety_negative_300.jsonl",
+        "count": 300
+      }
+    ]
+  },
+  "metrics": [
+    {
+      "path": "base_lora/base2b_validation_sample20.jsonl",
+      "count_if": {
+        "valid_json=true": 0,
+        "valid_structure=true": 0,
+        "sql_exact_match=true": 0,
+        "exact_match=true": 0
+      }
+    },
+    {
+      "path": "base_lora/full2b_adapter_validation_sample20.jsonl",
+      "count_if": {
+        "valid_json=true": 20,
+        "valid_structure=true": 20,
+        "sql_exact_match=true": 20,
+        "exact_match=true": 14
+      }
+    },
+    {
+      "path": "base_lora/full2b_validation300.predictions.jsonl",
+      "count_if": {
+        "valid_json=true": 300,
+        "valid_structure=true": 300,
+        "sql_exact_match=true": 299,
+        "exact_match=true": 192
+      }
+    },
+    {
+      "path": "base_lora/full2b_validation300.gates.jsonl",
+      "count_if": {
+        "g2=PASS": 300,
+        "binder=PASS": 300,
+        "trino=PASS": 300,
+        "result_match=true": 300,
+        "sql_exact_match=true": 299,
+        "historical_result_match=true": 72
+      }
+    }
+  ],
+  "adapter": {
+    "path": "model/adapter/adapter_model.safetensors",
+    "corrected_manifest_path": "manifests/training_manifest.corrected.json",
+    "tensor_count": 192,
+    "module_count": 96,
+    "dtype": "F32",
+    "mlp_modules": 72,
+    "self_attention_modules": 24,
+    "linear_attention_modules": 0
+  },
+  "contract": {
+    "source_version": "MODEL-v1.21.0",
+    "current_version": "MODEL-v1.25.0",
+    "source_contract_path": "training/runtime/src/ai/contracts/node_io.v0.1.json",
+    "current_contract_path": "src/ai/contracts/node_io.v0.1.json",
+    "definition_roots": [
+      "node2_request",
+      "node2_response",
+      "node2_repair_request",
+      "node2_repair_response"
+    ],
+    "prompts": {
+      "node2": {
+        "prompt_id": "node2.sql_only",
+        "version": "PROMPT-v1.2.0",
+        "sha256": "5cd077c728c7f1d311744839d0f52fe43e98ee07e50e6e22697381c2dd753d47",
+        "train_records": 2400,
+        "validation_records": 300
+      },
+      "node2_repair": {
+        "prompt_id": "node2.repair",
+        "version": "PROMPT-v1.4.0",
+        "sha256": "fd6c04a991c1809d37f512dc8893c5941a46f34c9082d0c327a2c6741fbf102e",
+        "train_records": 600,
+        "validation_records": 0
+      }
+    }
+  },
+  "serving_plan": {
+    "status": "CANARY_SMOKE_PASS_NOT_DEPLOYED",
+    "compatibility_checked_at": "2026-08-26",
+    "deployment_shape": "FULL_STATIC_QWEN3_5_CONDITIONAL_GENERATION_TEXT_ONLY_RUNTIME",
+    "engine": "vllm",
+    "engine_version": "0.21.0",
+    "transformers_version": "5.14.1",
+    "platform": {
+      "os": "linux",
+      "architecture": "x86_64",
+      "python_version": "3.12",
+      "resolver": "uv",
+      "resolver_version": "0.12.6",
+      "torch_backend": "cu129",
+      "torch_cuda_version": "12.9",
+      "minimum_nvidia_driver": "575.51.03",
+      "minimum_compute_capability": "8.0",
+      "allowed_gpu_names": [
+        "NVIDIA A40",
+        "NVIDIA RTX A5000"
+      ],
+      "allowed_compute_capabilities": [
+        "8.6"
+      ],
+      "minimum_vram_gib": 20,
+      "require_bfloat16": true
+    },
+    "packages": {
+      "vllm": "0.21.0",
+      "torch": "2.11.0",
+      "torchaudio": "2.11.0",
+      "torchvision": "0.26.0",
+      "transformers": "5.14.1",
+      "tokenizers": "0.22.2",
+      "runpod": "1.12.0"
+    },
+    "binary_contract": {
+      "exact_distribution_versions": {
+        "vllm": "0.21.0+cu129",
+        "torch": "2.11.0+cu129",
+        "torchaudio": "2.11.0+cu129",
+        "torchvision": "0.26.0+cu129"
+      },
+      "vllm_wheel_url": "https://github.com/vllm-project/vllm/releases/download/v0.21.0/vllm-0.21.0%2Bcu129-cp38-abi3-manylinux_2_34_x86_64.whl",
+      "vllm_wheel_sha256": "920777691e340df7a8328adfb1e57b9996dbb537edfb654dd32f70844f5f423d",
+      "vllm_extension": "_C.abi3.so",
+      "required_cuda_library": "libcudart.so.12",
+      "forbidden_cuda_libraries": [
+        "libcudart.so.13"
+      ],
+      "required_runtime_executables": [
+        "ninja"
+      ]
+    },
+    "builder_only_packages": {
+      "peft": "0.19.1",
+      "accelerate": "1.12.0"
+    },
+    "vllm_cuda_release_pins": {
+      "numba": "0.65.0",
+      "flashinfer-python": "0.6.8.post1",
+      "flashinfer-cubin": "0.6.8.post1",
+      "apache-tvm-ffi": "0.1.9",
+      "tilelang": "0.1.9",
+      "nvidia-cutlass-dsl": "4.4.2"
+    },
+    "dtype": "bfloat16",
+    "quantization": null,
+    "max_model_len": 5120,
+    "max_num_seqs": 1,
+    "gpu_memory_utilization": 0.85,
+    "static_checkpoint": {
+      "status": "PASS_BUILT_CORRECTED_632_KEYS",
+      "architecture": "Qwen3_5ForConditionalGeneration",
+      "model_type": "qwen3_5",
+      "text_model_type": "qwen3_5_text",
+      "language_model_only": true,
+      "minimum_replaced_language_keys": 1,
+      "expected_total_keys": 632,
+      "expected_replaced_language_keys": 96,
+      "expected_preserved_base_keys": 536,
+      "expected_base_model": "Qwen/Qwen3.5-2B",
+      "expected_base_revision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+      "expected_adapter_sha256": "e3dc3f5e79ebc5326904b1112a8406e42e0c901c4bf444549dfdd1f4695f72d8",
+      "expected_merge_manifest_sha256": "db8c3c52c5566711ad0b5c8dca17cbc7f7f3508ff94b0084248efa2282d33d74"
+    },
+    "structured_outputs": {
+      "request_field": "response_format",
+      "schema_type": "json_schema",
+      "legacy_guided_json_supported": false,
+      "backend": "auto"
+    },
+    "installation_policy": {
+      "requirements_path": "evals/node2_qwen35_2b_full3000_vllm-cu129.requirements.txt",
+      "requirements_sha256": "5d77d6f7cd26ccb8da4e74f5e003de70f6ba36b7fe321138a4611a6f3918f597",
+      "resolved_lock_path": "evals/node2_qwen35_2b_full3000_vllm-cu129.lock.txt",
+      "resolved_lock_sha256": "f095e1b046b81fb927d391bad6d0cc5cba25203de12f1a9b86155b4a885efddf",
+      "resolved_package_count": 183,
+      "resolution_status": "PASS_EXPLICIT_CU129_RELEASE_ASSET_HASH_LOCK",
+      "resolution_target": "x86_64-manylinux_2_35-python3.12-cu129",
+      "resolution_exclude_newer": "2026-08-26T00:00:00Z",
+      "resolution_has_artifact_hashes": true,
+      "dry_run_install_status": "SUPERSEDED_BY_FRESH_INSTALL_PASS_183_PACKAGES",
+      "actual_install_status": "PASS_FRESH_VENV_BINARY_ONLY",
+      "fresh_environment_required": true,
+      "reuse_existing_torch": false,
+      "source_build_allowed": false,
+      "full_transitive_freeze_required_before_server_start": true,
+      "additional_layers": [
+        {
+          "name": "runpod_serverless_worker",
+          "requirements_path": "evals/node2_qwen35_2b_full3000_serverless-cu129.requirements.txt",
+          "requirements_sha256": "e188b2533aaf01c41801854d8bc6a3367c05694a1216c7e2207b1784ed1f23ec",
+          "resolved_lock_path": "evals/node2_qwen35_2b_full3000_serverless-cu129.lock.txt",
+          "resolved_lock_sha256": "a8ac21bf3220d1722b41f81b63affbb250ae4ea0568f590713da7609af023c4e",
+          "resolved_package_count": 87,
+          "new_package_count": 26,
+          "overlap_version_mismatch_count": 0,
+          "constraint_lock": "evals/node2_qwen35_2b_full3000_vllm-cu129.lock.txt",
+          "resolution_status": "PASS_HASH_LOCK_NO_BASE_VERSION_CHANGES",
+          "actual_image_install_status": "NOT_RUN_IMAGE_NOT_BUILT"
+        }
+      ]
+    },
+    "image_digest": "sha256:4d1721e62b56d345c83b4fd6090664be6daf9312caab5b2e76f23d8231941851",
+    "image_digest_source": "REGISTRY_TAG_RESOLUTION_NOT_RUNTIME_ATTESTED",
+    "pip_freeze_sha256": "15d4a047c0f129dc4253be88fbc6f39f06baeef45747d42fdd75d9b47c422cc9",
+    "runpod_canary_observation": {
+      "captured_at": "2026-08-26",
+      "hardware": "NVIDIA A40",
+      "compute_capability": "8.6",
+      "driver_version": "580.178.04",
+      "health_http_status": 200,
+      "sample_count": 10,
+      "json_schema_pass": 10,
+      "raw_sql_string_exact": 5,
+      "observed_case_only_difference": 5,
+      "exact_or_observed_case_only": 10,
+      "latency_seconds": {
+        "min": 3.953,
+        "p50": 4.708,
+        "max": 16.342,
+        "first_request_includes_warmup": true
+      },
+      "static_model_weight_sha256": "3e2ff059714318ba0b355e35247704e1a7accfc4a03b8c2ad0122d96982a1dda",
+      "adapter_target_keys_sha256": "9d05eeef09bac2a6214c0491b8a5657dfd2da7098cb5c5a8012bd1dc96b4b663",
+      "trino_execution": "NOT_RUN",
+      "pod_state_after_capture": "STOPPED",
+      "production_switch_allowed": false
+    },
+    "serverless_plan": {
+      "status": "CUSTOM_IMAGE_HF_CACHE_SOURCE_READY_NOT_BUILT",
+      "checked_at": "2026-08-26",
+      "official_worker_reference": {
+        "repository": "https://github.com/runpod-workers/worker-vllm",
+        "latest_release": "v2.25.2",
+        "release_commit": "7a925039a53a10eab38d1764eb717a2ea5bdee07",
+        "bundled_vllm": "0.27.1",
+        "prebuilt_image_allowed": false,
+        "reason": "DIFFERS_FROM_A40_VALIDATED_VLLM_0.21.0+CU129_STACK"
+      },
+      "image_contract": {
+        "platform": "linux/amd64",
+        "base_image": "nvidia/cuda:12.9.1-devel-ubuntu24.04",
+        "base_image_linux_amd64_digest": "sha256:e542739fcaa4f45da5add8c4cf5769783a61628b2518304a5bbe4ace468b8c8f",
+        "model_baked_into_image": false,
+        "model_delivery": "RUNPOD_HUGGINGFACE_MODEL_CACHE",
+        "model_path_template": "/runpod-volume/huggingface-cache/hub/models--{namespace}--{repository}/snapshots/{commit_sha}",
+        "model_name_env": "MODEL_NAME",
+        "model_revision_env": "MODEL_REVISION",
+        "model_revision_policy": "REQUIRED_FULL_40_CHARACTER_COMMIT_SHA",
+        "runpod_cached_model_required": true,
+        "runtime_huggingface_download_allowed": false,
+        "fresh_hash_locked_venv_required": true,
+        "final_registry_digest_required": true,
+        "startup_preflight_required": true,
+        "flashinfer_sampler_initial_policy": "KEEP_A40_PROVEN_PATH_WITH_VENV_NINJA_AND_NVCC"
+      },
+      "initial_endpoint": {
+        "status": "NOT_CREATED",
+        "endpoint_type": "QUEUE_OPENAI_COMPATIBLE_WORKER",
+        "cloud_type": "SECURE",
+        "gpu_primary": "NVIDIA RTX A5000",
+        "gpu_fallbacks": [],
+        "gpu_vram_gib": 24,
+        "validated_baseline_gpu": "NVIDIA A40",
+        "validated_baseline_location": "STOPPED_POD_NOT_AUTOMATIC_SERVERLESS_FALLBACK",
+        "gpus_per_worker": 1,
+        "workers_min": 0,
+        "workers_max": 1,
+        "worker_concurrency": 1,
+        "scaler_type": "REQUEST_COUNT",
+        "scaler_value": 1,
+        "idle_timeout_seconds": 60,
+        "execution_timeout_seconds": 600,
+        "flashboot": true,
+        "allowed_cuda_versions": [
+          "12.9",
+          "13.0"
+        ],
+        "minimum_cuda_version": "12.9",
+        "network_volume": null,
+        "runtime_model_download": false,
+        "runpod_model_cache": true
+      }
+    }
+  },
+  "known_not_run": [
+    "BASE_2B_FULL_VALIDATION300_PREDICTIONS",
+    "GOLD150_MODEL_AND_TRINO",
+    "ACCEPTANCE100_MODEL_AND_TRINO",
+    "HELD_OUT_NODE2_REPAIR_MODEL_EVALUATION",
+    "FULL3000_VLLM_HTTP_E2E",
+    "BACKEND_GUIDED_JSON_TO_RESPONSE_FORMAT_MIGRATION",
+    "FULL3000_CONCURRENCY_1_2_4",
+    "FULL3000_ROLLBACK_REHEARSAL",
+    "SERVERLESS_CUSTOM_IMAGE_BUILD_AND_DIGEST",
+    "SERVERLESS_ENDPOINT_CANARY"
+  ],
+  "activation": {
+    "canary_only": true,
+    "production_switch_allowed": false,
+    "existing_runtime_alias_to_preserve": "answervice-sql",
+    "required_prompt_profile": "node2.sql_only",
+    "required_response_profile": "node2_sql_only_response",
+    "api_compatibility": {
+      "status": "BLOCKED_REQUIRES_SEPARATE_BACKEND_CHANGE",
+      "current_backend_field": "guided_json",
+      "required_vllm_0_21_field": "response_format"
+    }
+  }
+}

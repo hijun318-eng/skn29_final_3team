@@ -533,9 +533,9 @@ class _TrinoHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         type(self).query_count += 1
-        partial = type(self).query_count > 3
+        warned = type(self).query_count > 1
         body = {
-            "id": "real-query-partial" if partial else "real-query-positive",
+            "id": "real-query-warned" if warned else "real-query-positive",
             "stats": {"state": "FINISHED"},
             "columns": [
                 {"name": "month"},
@@ -543,7 +543,7 @@ class _TrinoHandler(BaseHTTPRequestHandler):
             ],
             "data": [["2026-06", "125000.00"]],
         }
-        if partial:
+        if warned:
             body["warnings"] = [{"message": "synthetic partial source"}]
         payload = json.dumps(body).encode("utf-8")
         self.send_response(200)
@@ -636,7 +636,7 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
         cls.trino.server_close()
         cls.trino_thread.join(timeout=5)
 
-    def test_real_template_positive_role_partial_and_cors(self) -> None:
+    def test_real_template_positive_role_warning_and_cors(self) -> None:
         body = {
             "question": "recognized room revenue summary",
             "template_id": "approved-analysis-template",
@@ -673,26 +673,29 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
         self.assertEqual("SUCCEEDED", allowed["data"]["status"])
         self.assertEqual(query_count + 1, _TrinoHandler.query_count)
 
-        partial_body = {
+        warned_body = {
             **body,
             "parameters": {
                 "period_start": "2026-06-01",
                 "period_end_exclusive": "2026-07-01",
             },
         }
-        status, partial = self.request(
+        status, warned = self.request(
             "/analysis",
             method="POST",
             headers=self.context_headers(),
-            body=partial_body,
+            body=warned_body,
         )
         self.assertEqual(200, status)
-        self.assertEqual("PARTIAL", partial["data"]["status"])
-        self.assertEqual("PARTIAL_FAILURE", partial["error"]["code"])
+        self.assertEqual("SUCCEEDED", warned["data"]["status"])
+        self.assertIsNone(warned["error"])
         self.assertEqual(
-            "real-query-partial",
-            partial["data"]["artifact"]["query_id"],
+            "real-query-warned",
+            warned["data"]["artifact"]["query_id"],
         )
+        execution = warned["data"]["result"]["evidence"]["execution"]
+        self.assertEqual(1, execution["warning_count"])
+        self.assertEqual(0, execution["critical_warning_count"])
 
         allowed = urllib.request.Request(
             f"http://127.0.0.1:{self.port}/analysis",

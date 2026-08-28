@@ -16,7 +16,7 @@ export interface ConversationCommandPayload {
   expected_head_turn_id?: string | null;
   idempotency_key?: string;
   requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
-  presentation_type?: "SUMMARY" | "KPI" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT" | "FULL";
+  presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
 }
 
 /** command 요청의 추적·취소와 향후 typed progress 전달 지점을 제공하는 선택 옵션이다. */
@@ -66,19 +66,48 @@ export interface ConversationTurnWire {
   user_message: string;
   route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
   source_turn_ids: string[];
+  reply_to_turn_id: string | null;
+  clarifies_turn_id: string | null;
+  terminal_status: "SUCCEEDED" | "BLOCKED" | "PARTIAL" | "FAILED" | "CANCELLED";
+  reason_code: string | null;
   request_id: string | null;
   artifact_id: string | null;
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {
+    business_terms?: string[];
     metric_id?: string | null;
+    metric_ids?: string[];
     dimension_fields?: Array<{ column: string; asset_fqn: string }> | null;
+    user_filters?: Array<{
+      column: string;
+      asset_fqn: string;
+      operator?: string;
+      value_text?: string;
+    }> | null;
     time_range?: {
       start: string;
       end_exclusive: string;
       source_text: string;
     } | null;
+    comparison_time_range?: {
+      start: string;
+      end_exclusive: string;
+      source_text: string;
+    } | null;
     target_chart_type?: string | null;
+    change_set?: Array<{
+      field: string;
+      operation: "SET" | "CLEAR" | "ADD_VALUE" | "REMOVE_VALUE" | "PRESERVE";
+      value: unknown;
+    }>;
+    analysis_plan_observation?: {
+      query_strategy: string;
+      source_assets: string[];
+      join_ids: string[];
+      time_bucket: string | null;
+      analysis_plan_sha256: string;
+    } | null;
     is_inherited_metric?: boolean;
     is_inherited_dimension?: boolean;
     is_inherited_period?: boolean;
@@ -150,7 +179,7 @@ export interface SavedAnalysisDefinition {
   created_at: string;
 }
 
-/** 저장 분석 실행의 식별자·기간·완료 상태 계약이다. */
+/** 저장 분석 실행의 식별자·시간 근거·완료 상태 계약이다. */
 export interface SavedAnalysisRun {
   request_id: string;
   definition_id: string;
@@ -167,6 +196,8 @@ export interface SavedAnalysisRun {
   question: string;
   period_start: string | null;
   period_end_exclusive: string | null;
+  snapshot_cutoff?: string | null;
+  snapshot_selection?: "max_source_value_lt_as_of" | null;
 }
 
 /** trace 기반 진행 조회가 반환하는 서버 관측 상태다. */
@@ -421,7 +452,7 @@ export function createHttpAnalysisClient(
       );
     },
     async submitTurnCommand(conversationId, cmdPayload, options = {}) {
-      // 백엔드 command progress transport가 확정되기 전에는 onProgress를 호출하거나 polling하지 않는다.
+      // Backend command progress transport가 확정되기 전에는 onProgress를 호출하거나 polling하지 않는다.
       return this.executeTurnCommand(conversationId, cmdPayload, options);
     },
   };

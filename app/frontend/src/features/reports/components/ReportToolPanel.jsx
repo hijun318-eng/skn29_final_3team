@@ -3,6 +3,7 @@ import { memo, useDeferredValue, useMemo, useState } from "react";
 import { BarChart3, PanelLeftClose, Plus, Search, Sparkles, X } from "lucide-react";
 
 import { ReportArtifactLibraryTile } from "../ReportWholeArtifactBlock";
+import { analysisTimeLabel } from "../reportAnalysisArtifacts";
 import { REPORT_CHART_OPTIONS } from "./reportPresentation";
 
 function outlineEqual(previous, next) {
@@ -84,6 +85,19 @@ export const ReportToolPanel = memo(function ReportToolPanel({
   );
   const hasSearchResults = visibleQuickTemplates.length || visibleReportTemplates.length
     || visibleArtifacts.length || visibleArtifactTemplates.length || visibleOutline.length;
+  const selectedTimeLabel = analysisTimeLabel(
+    selectedArtifact?.evidence,
+    selectedArtifactPeriod || {},
+  );
+  const hasPeriodTime = Boolean(
+    selectedArtifact?.evidence?.period?.start
+      && selectedArtifact?.evidence?.period?.end_exclusive,
+  ) || Boolean(
+    selectedArtifactPeriod?.start && selectedArtifactPeriod?.end_exclusive,
+  );
+  const selectedTimeDescription = hasPeriodTime && selectedTimeLabel
+    ? `${selectedTimeLabel} 미포함`
+    : selectedTimeLabel;
 
   return <aside ref={panelRef} tabIndex={-1} className="editor-library notion-editor-sidebar" aria-label="블록 도구">
     <header><div><p>REPORT ELEMENTS</p><h2>블록 라이브러리</h2><span>문단과 근거가 연결된 분석 결과를 흰색 A4로 끌어 놓으세요.</span></div><button type="button" className="editor-library-close" aria-label="블록 도구 닫기" onClick={onClose}><PanelLeftClose size={16} aria-hidden="true" /></button></header>
@@ -103,6 +117,6 @@ export const ReportToolPanel = memo(function ReportToolPanel({
       {deferredQuery && !hasSearchResults && <p className="report-library-empty-search">“{deferredQuery}”와 일치하는 블록이나 분석 결과가 없습니다.</p>}
     </section>}
     <nav className="notion-outline" aria-label="보고서 목차"><p>{deferredQuery ? "검색된 목차" : "목차"}</p>{visibleOutline.map((block) => <button type="button" onClick={() => setSelectedBlockId(block.id)} aria-pressed={selectedBlockId === block.id} key={block.id}><span>{String(orderedBlocks.findIndex((item) => item.id === block.id) + 1).padStart(2, "0")}</span><b>{block.title || "제목 없음"}</b></button>)}</nav>
-    {showAssistant && orderedBlocks.some((block) => block.artifactId) && <details className="notion-assistant"><summary><Sparkles size={14} />AI 초안 만들기</summary><div className="assistant-source-preview"><b>선택한 원본</b><span>{selectedArtifact?.title || selectedArtifactSource?.title || "분석 결과를 선택해 주세요."}</span><small>{selectedArtifactPeriod ? `${selectedArtifactPeriod.start} ~ ${selectedArtifactPeriod.end_exclusive} 미포함` : "기간 정보 없음"}</small><small>{selectedArtifact?.evidence?.sources?.length ? `출처 ${selectedArtifact.evidence.sources.map((source) => source.name).join("·")}` : "출처 정보 없음"}</small></div><textarea aria-label="AI 초안 지시" value={assistantInstruction} onChange={(event) => setAssistantInstruction(event.target.value)} maxLength={500} placeholder="초안의 목적과 구성 원칙을 입력하세요." /><button onClick={onCreateAssistantDraft} disabled={Boolean(pending) || !selectedArtifact || !assistantInstruction.trim()}><Sparkles size={14} />선택한 원본으로 AI 초안 생성</button><small>생성 결과는 AI 초안이며 확정 전에 검토가 필요합니다.</small></details>}
+    {showAssistant && orderedBlocks.some((block) => block.artifactId) && <details className="notion-assistant"><summary><Sparkles size={14} />AI 초안 만들기</summary><div className="assistant-source-preview"><b>선택한 원본</b><span>{selectedArtifact?.title || selectedArtifactSource?.title || "분석 결과를 선택해 주세요."}</span><small>{selectedTimeDescription || "시간 기준 정보 없음"}</small><small>{selectedArtifact?.evidence?.sources?.length ? `출처 ${selectedArtifact.evidence.sources.map((source) => source.name).join("·")}` : "출처 정보 없음"}</small></div><textarea aria-label="AI 초안 지시" value={assistantInstruction} onChange={(event) => setAssistantInstruction(event.target.value)} maxLength={500} placeholder="초안의 목적과 구성 원칙을 입력하세요." /><button onClick={onCreateAssistantDraft} disabled={Boolean(pending) || !selectedArtifact || !assistantInstruction.trim()}><Sparkles size={14} />선택한 원본으로 AI 초안 생성</button><small>생성 결과는 AI 초안이며 확정 전에 검토가 필요합니다.</small></details>}
   </aside>;
 }, toolPanelPropsEqual);

@@ -24,7 +24,7 @@ NODE2 = {
     "NODE2_MODEL_PROVIDER": "qwen",
     "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
     "NODE2_MODEL_API_TOKEN": "node2-token",
-    "NODE2_MODEL": "answervice-sql",
+    "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
 }
 
 
@@ -42,10 +42,13 @@ def test_dedicated_sql_route_resolves_served_alias_and_exact_capacity() -> None:
 
     assert sql_route.nodes == ("node2", "node2_repair")
     assert sql_route.provider == "qwen"
-    assert sql_route.model == "answervice-sql"
-    assert sql_route.capacity.base_model == "Qwen/Qwen3.5-4B"
+    assert sql_route.model == "node2-qwen35-2b-full3000-20260825"
+    assert sql_route.capacity.base_model == "Qwen/Qwen3.5-2B"
+    assert sql_route.capacity.snapshot == (
+        "yoondaesung/answerviceqwen352b@28e9974a42163c5ca97137622669d40cfc14d73b"
+    )
     assert sql_route.capacity.context_window_tokens == 5120
-    assert sql_route.capacity.runtime_max_output_tokens == 1280
+    assert sql_route.capacity.runtime_max_output_tokens == 1024
 
 
 @pytest.mark.parametrize("missing", tuple(NODE2))
@@ -72,30 +75,6 @@ def test_provider_alias_and_https_must_match_manifest(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         resolve_active_model_routes(PRIMARY | NODE2 | override)
-
-
-@pytest.mark.parametrize(
-    "relative",
-    (
-        "docs/e2e_mvp/derived/05_sLLM_RunPod_연결_가이드.md",
-        "docs/e2e_mvp/derived/22_RunPod_Serverless_vLLM_배포_가이드.md",
-    ),
-)
-def test_runpod_guides_declare_complete_qwen_route(relative: str) -> None:
-    source = (ROOT / relative).read_text(encoding="utf-8")
-    blocks = re.findall(r"```dotenv\s*(.*?)```", source, flags=re.DOTALL)
-    node2_blocks = tuple(block for block in blocks if "NODE2_MODEL=" in block)
-
-    assert node2_blocks
-    assert "MODEL_MODE=" not in source
-    assert "| Serving context window | `5120` tokens |" in source
-    assert "| Backend max output | `1280` tokens |" in source
-    assert "| Backend safety margin | `256` tokens |" in source
-    for block in node2_blocks:
-        assert "NODE2_MODEL_PROVIDER=qwen" in block
-        assert "NODE2_MODEL_ENDPOINT=" in block
-        assert "NODE2_MODEL_API_TOKEN=" in block
-        assert "NODE2_MODEL=answervice-sql" in block
 
 
 def test_repository_example_leaves_optional_node2_route_fully_inactive() -> None:

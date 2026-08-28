@@ -72,6 +72,7 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
   | "TRINO_CONNECTION_FAILED"
   | "QUERY_TIMEOUT"
   | "QUERY_SOURCE_FAILED"
+  | "EMPTY_RESULT"
   | "RESULT_VALIDATION_FAILED"
   | "RESULT_EVIDENCE_MISSING"
   | "ARTIFACT_PERSIST_FAILED"
@@ -168,6 +169,14 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
     start: string;
     endExclusive: string;
   } | null;
+  comparisonPeriod?: {
+    start: string;
+    endExclusive: string;
+  } | null;
+  snapshot?: {
+    cutoff: string;
+    selection: "max_source_value_lt_as_of";
+  } | null;
   filters: Record<string, AnalysisValue>;
   contextRelease?: string | null;
   productReleaseId?: string | null;
@@ -188,6 +197,84 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
     applied: boolean;
     fields: string[];
   };
+  execution: {
+    processedRows: number;
+    scanBytes: number;
+    warningCount: number;
+    criticalWarningCount: number;
+  };
+}
+
+interface WireAnalysisEvidence {
+  artifact_id?: string | null;
+  query_id?: string | null;
+  as_of: string;
+  timezone?: string | null;
+  period?: {
+    start: string;
+    end_exclusive: string;
+  } | null;
+  comparison_period?: {
+    start: string;
+    end_exclusive: string;
+  } | null;
+  snapshot?: {
+    cutoff: string;
+    selection: "max_source_value_lt_as_of";
+  } | null;
+  filters?: Record<string, AnalysisValue>;
+  context_release?: string | null;
+  product_release_id?: string | null;
+  evidence_cutoff?: string | null;
+  policy_version?: string | null;
+  model_version?: string | null;
+  metrics?: Array<{
+    metric_id: string;
+    result_field: string;
+    label: string;
+    definition: string;
+    unit?: string | null;
+  }>;
+  metric_values?: Array<{
+    metric_id: string;
+    result_field: string;
+    label: string;
+    definition: string;
+    value: AnalysisValue;
+    unit?: string | null;
+  }>;
+  models?: Array<{
+    node: string;
+    model_version: string;
+    prompt_id: string;
+    prompt_version: string;
+  }>;
+  gates?: { g1: string; g2: string; g3: string } | null;
+  gate_history?: { g1: string[]; g2: string[]; g3: string[] } | null;
+  cached?: boolean;
+  sampling?: {
+    applied?: boolean;
+    returned_rows?: number;
+    total_rows?: number | null;
+  };
+  masking?: {
+    applied?: boolean;
+    fields?: string[];
+  };
+  execution?: {
+    processed_rows?: number;
+    scan_bytes?: number;
+    warning_count?: number;
+    critical_warning_count?: number;
+  };
+  sources?: Array<{
+    name: string;
+    urn: string;
+    fqn: string;
+    schema_version: string;
+    seed_version: string;
+    synthetic?: boolean | null;
+  }>;
 }
 
 /** OpenAPI 분석 응답의 wire envelope이며 normalizeApiResponse 입력으로만 사용한다. */ export interface AnalysisApiResponse {
@@ -201,6 +288,7 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
       query_id: string;
       context_hash?: string;
     } | null;
+    evidence?: WireAnalysisEvidence | null;
     result?: {
       summary?: string;
       metrics?: Array<{
@@ -220,63 +308,7 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
         x_field: string;
         y_fields: string[];
       } | null;
-      evidence: {
-        artifact_id?: string | null;
-        query_id?: string | null;
-        as_of: string;
-        timezone?: string | null;
-        period?: {
-          start: string;
-          end_exclusive: string;
-        } | null;
-        filters?: Record<string, AnalysisValue>;
-        context_release?: string | null;
-        product_release_id?: string | null;
-        evidence_cutoff?: string | null;
-        policy_version?: string | null;
-        model_version?: string | null;
-        metrics?: Array<{
-          metric_id: string;
-          result_field: string;
-          label: string;
-          definition: string;
-          unit?: string | null;
-        }>;
-        metric_values?: Array<{
-          metric_id: string;
-          result_field: string;
-          label: string;
-          definition: string;
-          value: AnalysisValue;
-          unit?: string | null;
-        }>;
-        models?: Array<{
-          node: string;
-          model_version: string;
-          prompt_id: string;
-          prompt_version: string;
-        }>;
-        gates?: { g1: string; g2: string; g3: string } | null;
-        gate_history?: { g1: string[]; g2: string[]; g3: string[] } | null;
-        cached?: boolean;
-        sampling?: {
-          applied?: boolean;
-          returned_rows?: number;
-          total_rows?: number | null;
-        };
-        masking?: {
-          applied?: boolean;
-          fields?: string[];
-        };
-        sources?: Array<{
-          name: string;
-          urn: string;
-          fqn: string;
-          schema_version: string;
-          seed_version: string;
-          synthetic?: boolean | null;
-        }>;
-      };
+      evidence: WireAnalysisEvidence;
     } | null;
   };
   meta: {
@@ -365,7 +397,7 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "failed") return "ERROR";
   if (
     run.status === "blocked"
-    && ["CONTEXT_INCOMPLETE", "INSUFFICIENT_CONTEXT", "DATA_ASSET_NOT_FOUND", "OUT_OF_DATA_RANGE", "FILTER_VALUE_NOT_FOUND", "GRAIN_VIOLATION"].includes(run.error?.code ?? "")
+    && ["CONTEXT_INCOMPLETE", "INSUFFICIENT_CONTEXT", "DATA_ASSET_NOT_FOUND", "OUT_OF_DATA_RANGE", "FILTER_VALUE_NOT_FOUND", "GRAIN_VIOLATION", "EMPTY_RESULT"].includes(run.error?.code ?? "")
   ) return "EMPTY";
   if (run.status === "blocked" && ["ACCESS_DENIED", "AUTHENTICATION_REQUIRED"].includes(run.error?.code ?? "")) return "FORBIDDEN";
   if (
@@ -394,7 +426,6 @@ const BACKEND_STATUS_MAP: Record<BackendAnalysisStatus, AnalysisRunStatus> = {
 type WireAnalysisResult = NonNullable<AnalysisApiResponse["data"]["result"]>;
 type WireAnalysisMetric = NonNullable<WireAnalysisResult["metrics"]>[number];
 type WireAnalysisChart = WireAnalysisResult["chart"];
-type WireAnalysisEvidence = WireAnalysisResult["evidence"];
 
 /** Backend snake_case 지표 값을 화면의 단일 camelCase 계약으로 변환한다. */
 export function normalizeAnalysisMetrics(
@@ -436,6 +467,14 @@ export function normalizeAnalysisEvidence(
       start: evidence.period.start,
       endExclusive: evidence.period.end_exclusive,
     } : undefined,
+    comparisonPeriod: evidence.comparison_period ? {
+      start: evidence.comparison_period.start,
+      endExclusive: evidence.comparison_period.end_exclusive,
+    } : undefined,
+    snapshot: evidence.snapshot ? {
+      cutoff: evidence.snapshot.cutoff,
+      selection: evidence.snapshot.selection,
+    } : undefined,
     filters: evidence.filters ?? {},
     contextRelease: evidence.context_release,
     productReleaseId: evidence.product_release_id,
@@ -467,6 +506,12 @@ export function normalizeAnalysisEvidence(
       applied: evidence.masking?.applied ?? false,
       fields: evidence.masking?.fields ?? [],
     },
+    execution: {
+      processedRows: evidence.execution?.processed_rows ?? 0,
+      scanBytes: evidence.execution?.scan_bytes ?? 0,
+      warningCount: evidence.execution?.warning_count ?? 0,
+      criticalWarningCount: evidence.execution?.critical_warning_count ?? 0,
+    },
   };
 }
 
@@ -481,14 +526,27 @@ export function normalizeApiResponse(
       ? "blocked"
       : "failed";
   const result = response.data.result ?? undefined;
-  const evidence = result?.evidence;
+  const evidence = result?.evidence ?? response.data.evidence ?? undefined;
   const sources = evidence?.sources ?? [];
   const sampling = evidence?.sampling;
   const disambiguationOptions = response.data.disambiguation_options || response.error?.disambiguation_options || [];
+  const hasPeriodEvidence = Boolean(
+    evidence?.period?.start && evidence?.period?.end_exclusive
+  );
+  const hasComparisonPeriodEvidence = !evidence?.comparison_period || Boolean(
+    evidence.comparison_period.start
+    && evidence.comparison_period.end_exclusive
+    && hasPeriodEvidence
+  );
+  const hasSnapshotEvidence = Boolean(
+    evidence?.snapshot?.cutoff
+    && evidence.snapshot.selection === "max_source_value_lt_as_of"
+  );
   const evidenceReady = Boolean(
     evidence?.artifact_id
     && evidence?.query_id
-    && evidence?.period
+    && hasPeriodEvidence !== hasSnapshotEvidence
+    && hasComparisonPeriodEvidence
     && sources.length
     && evidence?.gates
     && evidence.gates.g1 === "PASSED"
@@ -504,7 +562,7 @@ export function normalizeApiResponse(
         message: "검증 근거가 완전하지 않아 결과를 표시하지 않습니다.",
         retryable: false,
         required_action: "NONE" as const,
-        missing_requirements: ["artifact", "query", "period", "sources", "gates"],
+        missing_requirements: ["artifact", "query", "time_evidence", "sources", "gates"],
         suggestions: [],
         disambiguation_options: disambiguationOptions,
         clarification_type: null,

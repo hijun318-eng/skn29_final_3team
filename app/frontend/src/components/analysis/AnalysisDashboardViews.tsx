@@ -219,27 +219,27 @@ export function AnalysisDataSection({
 /** 후속 표현 요청과 저장·보고서·근거 액션을 하나의 일체형 툴바로 렌더링한다. */
 export function AnalysisUnifiedToolbar({
   activeView, onViewChange, onSave, onCreateReportDraft, onOpenEvidence, onPreview,
-  saveDisabled = false, viewActionsDisabled = false,
+  saveDisabled = false, viewActionsDisabled = false, hasMetrics = false, hasChart = false, hasTable = false,
 }: {
   activeView: string; onViewChange?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE") => void;
   onSave?: () => void; onCreateReportDraft?: () => void; onOpenEvidence?: () => void; onPreview?: () => void;
-  saveDisabled?: boolean; viewActionsDisabled?: boolean;
+  saveDisabled?: boolean; viewActionsDisabled?: boolean; hasMetrics?: boolean; hasChart?: boolean; hasTable?: boolean;
 }) {
   const norm = activeView.toUpperCase();
   const currentView = ["BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE", "DONUT"].includes(norm) ? "CHART" : norm;
   const viewRequests = [
-    { mode: "SUMMARY" as const, label: "요약으로 보기", icon: MessageSquareText },
-    { mode: "TABLE" as const, label: "표로 보기", icon: TableProperties },
-    { mode: "CHART" as const, label: "그래프로 보기", icon: BarChart3 },
-    { mode: "KPI" as const, label: "KPI만 보기", icon: Target },
-  ];
+    { mode: "SUMMARY" as const, label: "요약으로 보기", icon: MessageSquareText, available: true },
+    { mode: "KPI" as const, label: "KPI만 보기", icon: Target, available: hasMetrics },
+    { mode: "TABLE" as const, label: "표로 보기", icon: TableProperties, available: hasTable },
+    { mode: "CHART" as const, label: "그래프로 보기", icon: BarChart3, available: hasChart },
+  ].filter((item) => item.available);
   const hasActions = Boolean(onViewChange || onSave || onCreateReportDraft || onOpenEvidence || onPreview);
   if (!hasActions) return null;
   return (
     <div className="analysis-unified-toolbar" aria-label="후속 요청 및 분석 액션">
       {onViewChange && (
-        <div className="view-segment-group" role="group" aria-label="이 결과로 추가 요청">
-          <span>이어서 보기</span>
+        <div className="view-segment-group" role="group" aria-label="결과 보기 전환">
+          <span>결과 보기</span>
           {viewRequests.map(({ mode, label, icon: ViewIcon }) => (
             <button
               type="button"

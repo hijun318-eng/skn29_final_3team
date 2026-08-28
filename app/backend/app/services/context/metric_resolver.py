@@ -10,15 +10,24 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 import os
+import re
 from time import monotonic
 from typing import Any
+import unicodedata
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.contracts import AnalysisRequest, ClarificationType, DisambiguationOption, RequestContext
-from app.ports.data_platform import DataPlatformAdapter, MetadataUnavailableError
+from app.ports.data_platform import (
+    AssetCandidateSet,
+    DataPlatformAdapter,
+    ExecutionAssetSelection,
+    GovernedFieldReference,
+    MetadataUnavailableError,
+)
 from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
 from app.services.context.metric_execution_scope import (
     ratio_reference as _ratio_reference,
@@ -26,6 +35,7 @@ from app.services.context.metric_execution_scope import (
     synthetic_ratio_metric as _synthetic_ratio_metric,
 )
 from app.services.context.filter_candidate_resolver import (
+    dimension_member_receipts,
     dimension_terms as _resolve_dimension_terms,
     resolve_filter_candidates,
     validated_pre_filters,
@@ -41,8 +51,17 @@ from app.services.context.model_signals import (
     PRESENTATION_TYPES,
     enum_signal,
 )
-from app.services.context.model_time_context import previous_period_anchor
-from app.services.context.runtime_contracts import time_parameter_names
+from app.services.context.model_time_context import (
+    previous_period_anchor,
+    previous_result_shape,
+)
+from app.services.context.node1_interpretation import (
+    build_node1_interpretation_context,
+)
+from app.services.context.runtime_contracts import (
+    time_parameter_names,
+    time_selection_mode,
+)
 
 
 _ANALYSIS_OPERATIONS = frozenset(
@@ -55,6 +74,67 @@ _ANALYSIS_OPERATIONS = frozenset(
         "period_comparison",
     }
 )
+_ANALYSIS_TIME_BUCKETS = frozenset({"day", "week", "month", "quarter", "year"})
+_MAX_OMITTED_FILTER_DIMENSION_PROBES = 4
+_KOREAN_CALENDAR_UNITS = {
+    "분기": "quarter",
+    "연도": "year",
+    "년도": "year",
+    "일": "day",
+    "주": "week",
+    "월": "month",
+    "년": "year",
+}
+
+
+def _explicit_calendar_time_bucket(question: str) -> str | None:
+    """명시된 반복 달력 단위를 유한 time-bucket 계약으로만 변환한다.
+
+    날짜의 ``5월``·``2026년`` 자체는 cadence가 아니므로 선택하지 않는다. 한국어의
+    생산적 ``별/마다/매-`` 형태만 인정하고, 서로 다른 단위가 동시에 나타나면 임의
+    우선순위를 두지 않고 ``None``으로 닫는다.
+    """
+
+    normalized = unicodedata.normalize("NFKC", question).casefold()
+    buckets: set[str] = set()
+    for token in re.findall(r"[가-힣]+", normalized):
+        for stem, bucket in _KOREAN_CALENDAR_UNITS.items():
+            if (
+                token.startswith(f"{stem}별")
+                or token.startswith(f"{stem}마다")
+                or token.startswith(f"매{stem}")
+            ):
+                buckets.add(bucket)
+                break
+    return next(iter(buckets)) if len(buckets) == 1 else None
+
+
+def _reconcile_explicit_calendar_bucket(
+    normalized: dict[str, Any],
+    question: str,
+) -> dict[str, Any]:
+    """질문의 명시 cadence와 일반 shape 오판만 ``time_trend``로 결속한다.
+
+    Metric·기간·차원은 추가하지 않는다. 순위나 정확히 두 기간 비교처럼 다른 연산이
+    이미 선택됐거나 cadence가 충돌하면 모델 결정을 덮지 않고 후속 검증에 맡긴다.
+    """
+
+    bucket = _explicit_calendar_time_bucket(question)
+    operation = normalized.get("analysis_operation")
+    if (
+        bucket is None
+        or normalized.get("metric_resolution") != "selected"
+        or enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES)
+        in {"PRESENTATION", "REPORT_ACTION"}
+        or operation not in {None, "aggregate", "breakdown", "time_trend"}
+        or normalized.get("result_limit") is not None
+    ):
+        return normalized
+    reconciled = dict(normalized)
+    reconciled["analysis_operation"] = "time_trend"
+    reconciled["intent_candidates"] = ["time_trend"]
+    reconciled["analysis_time_bucket"] = bucket
+    return reconciled
 
 
 def _reconcile_comparison_axis(
@@ -69,18 +149,30 @@ def _reconcile_comparison_axis(
     result_limit: object,
     ambiguity: object,
 ) -> tuple[str | None, str, list[str]]:
-    """두 지표 비교를 불완전한 두 기간 비교로 오인한 Node 1 출력을 보정한다.
+    """검증된 기간 수와 일반 비교 결과 형태의 중복 신호를 일관되게 결속한다.
 
-    질문 문자열을 다시 파싱하지 않고 이미 검증된 구조만 사용한다. 서로 다른 측정값이
-    둘 이상 확정됐고 두 번째 기간 증거가 없으며 모호성도 선언되지 않은 경우에는
-    ``period_comparison``이 성립할 수 없다. 이때 하나의 공유 기간에서 지표들을 나란히
-    조회하는 aggregate/breakdown으로만 좁혀 복구한다. 두 기간이 실제로 있거나 시간
-    모호성이 남아 있으면 그대로 두어 기존 PERIOD_REQUIRED 경계가 닫도록 한다.
+    질문 문자열을 다시 파싱하지 않고 이미 검증된 구조만 사용한다. 정확히 두 기간과
+    comparison 관계가 확정됐는데 일반 aggregate/breakdown으로 남은 응답은
+    period_comparison으로 좁힌다. 반대로 서로 다른 측정값이 둘 이상 확정됐지만 두 번째
+    기간이 없으면 하나의 공유 기간에서 지표들을 나란히 조회하는 일반 형태로 복구한다.
+    추이·순위처럼 별도 의미가 있는 충돌과 시간 모호성은 보정하지 않고 후속 검증이
+    fail-closed하도록 둔다.
     """
 
     is_ambiguous = (
         isinstance(ambiguity, dict) and ambiguity.get("is_ambiguous") is True
     )
+    if (
+        relationship == "comparison"
+        and len(periods) == 2
+        and analysis_operation in {"aggregate", "breakdown"}
+        and intents == [analysis_operation]
+        and bool(selected_metric_ids)
+        and len(measurement_source_texts) == len(selected_metric_ids)
+        and result_limit is None
+        and not is_ambiguous
+    ):
+        return "period_comparison", relationship, ["period_comparison"]
     if not (
         analysis_operation == "period_comparison"
         and relationship == "comparison"
@@ -93,6 +185,41 @@ def _reconcile_comparison_axis(
         return analysis_operation, relationship, intents
     reconciled = "breakdown" if selected_dimensions else "aggregate"
     return reconciled, "single", [reconciled]
+
+
+def _reconcile_filter_only_dimensions(
+    normalized: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep equality predicates while removing their duplicate output grouping.
+
+    Aggregate, time-trend and period-comparison shapes do not request a categorical
+    breakdown. A dimension that is already an explicit filter must not become a
+    constant result column solely because Node 1 returned it in both lists.
+    """
+
+    if normalized.get("analysis_operation") not in {
+        "aggregate",
+        "time_trend",
+        "period_comparison",
+    }:
+        return normalized
+    dimensions = normalized.get("dimension_candidates")
+    filters = normalized.get("filter_candidates")
+    if not isinstance(dimensions, list) or not isinstance(filters, list):
+        return normalized
+    filtered_dimensions = {
+        str(candidate.get("dimension_id"))
+        for candidate in filters
+        if isinstance(candidate, dict) and candidate.get("dimension_id")
+    }
+    reconciled_dimensions = [
+        identifier
+        for identifier in dimensions
+        if identifier not in filtered_dimensions
+    ]
+    if reconciled_dimensions == dimensions:
+        return normalized
+    return {**normalized, "dimension_candidates": reconciled_dimensions}
 
 
 def _suggestions(
@@ -112,62 +239,414 @@ def _suggestions(
     return tuple(values)
 
 
-def _unique_business_metric_ids_from_sources(
-    measurement_source_texts: list[str],
-    glossary: dict[str, tuple[str, ...]],
-) -> list[str] | None:
-    """각 측정 구간에 포함된 DataHub 지표 ID·alias가 고유할 때만 지표를 확정한다."""
+def _candidate_metric_rank(metric: dict[str, object]) -> tuple[bool, int]:
+    """후보 adapter가 제공한 양의 rank를 우선하고 rank 없는 기존 adapter 순서는 안정적으로 유지한다."""
 
-    if not measurement_source_texts:
-        return None
-    index: dict[str, set[str]] = {}
-    for metric_id, aliases in glossary.items():
-        for value in (metric_id, *aliases):
-            normalized = value.strip().casefold()
-            if normalized:
-                index.setdefault(normalized, set()).add(metric_id)
-    resolved: list[str] = []
-    for source_text in measurement_source_texts:
-        source = source_text.strip().casefold()
-        matches = {
-            metric_id
-            for alias, metric_ids in index.items()
-            if alias in source
-            for metric_id in metric_ids
-        }
-        if len(matches) != 1:
-            return None
-        resolved.append(next(iter(matches)))
-    return resolved if len(resolved) == len(set(resolved)) else None
+    value = metric.get("candidate_rank")
+    valid = isinstance(value, int) and not isinstance(value, bool) and value > 0
+    return (not valid, value if valid else 0)
 
 
-def _validated_scoped_dimension_ids(
-    values: list[str],
-    dimension_terms: dict[str, dict[str, object]],
-    asset_fqns: set[str],
-) -> list[str]:
-    """선택된 metric asset 안에서만 dimension ID 또는 고유 column을 해석한다."""
+def _semantic_tokens(value: object) -> tuple[str, ...]:
+    """Return Unicode word tokens for metadata-to-metadata alias comparison."""
 
-    scoped = {
-        identifier: term
-        for identifier, term in dimension_terms.items()
-        if isinstance(term.get("field"), dict)
-        and str(term["field"].get("asset_fqn")) in asset_fqns
+    normalized = unicodedata.normalize("NFKC", str(value)).casefold()
+    return tuple(re.findall(r"[^\W_]+", normalized, flags=re.UNICODE))
+
+
+def _contains_token_sequence(
+    container: tuple[str, ...],
+    sequence: tuple[str, ...],
+) -> bool:
+    if not sequence or len(sequence) > len(container):
+        return False
+    return any(
+        container[index : index + len(sequence)] == sequence
+        for index in range(len(container) - len(sequence) + 1)
+    )
+
+
+def _metric_aliases_specialize(
+    specific_aliases: tuple[str, ...],
+    base_aliases: tuple[str, ...],
+) -> bool:
+    """Match a reviewed specialization using only multi-token DataHub aliases."""
+
+    specific_tokens = tuple(
+        tokens for alias in specific_aliases if (tokens := _semantic_tokens(alias))
+    )
+    base_tokens = tuple(
+        tokens
+        for alias in base_aliases
+        if len(tokens := _semantic_tokens(alias)) >= 2
+    )
+    return any(
+        len(specific) > len(base)
+        and _contains_token_sequence(specific, base)
+        for specific in specific_tokens
+        for base in base_tokens
+    )
+
+
+def _metric_dimension_keys(metric: dict[str, object]) -> set[tuple[str, str]]:
+    dimensions = metric.get("dimensions")
+    if not isinstance(dimensions, (list, tuple)):
+        return set()
+    return {
+        (str(item.get("asset_fqn") or ""), str(item.get("column") or ""))
+        for item in dimensions
+        if isinstance(item, dict)
+        and item.get("asset_fqn")
+        and item.get("column")
     }
-    columns: dict[str, list[str]] = {}
-    for identifier, term in scoped.items():
-        column = str(term["field"].get("column") or "")
-        if column:
-            columns.setdefault(column, []).append(identifier)
-    result: list[str] = []
-    for value in values:
-        if value in scoped:
-            result.append(value)
+
+
+def _metric_family_dimension_ids(
+    normalized: dict[str, Any],
+    candidates: list[dict[str, object]],
+    glossary: dict[str, tuple[str, ...]],
+    dimension_terms: dict[str, dict[str, object]],
+    *,
+    omitted_only: bool = False,
+) -> tuple[str, ...]:
+    """Find bounded extra dimensions shared by every selected metric family.
+
+    The relationship is derived from reviewed DataHub aliases and governed metric
+    dimensions. It does not infer a filter value or select a metric itself.
+    """
+
+    if (
+        normalized.get("metric_resolution") != "selected"
+        or (
+            omitted_only
+            and normalized.get("filter_candidates") not in ([], ())
+        )
+    ):
+        return ()
+    raw_selected = normalized.get("selected_metric_ids")
+    if not isinstance(raw_selected, list) or not raw_selected:
+        return ()
+    selected_ids = tuple(
+        item for item in raw_selected if isinstance(item, str) and item in glossary
+    )
+    if len(selected_ids) != len(raw_selected):
+        return ()
+
+    metrics = {
+        str(metric["id"]): metric
+        for metric in candidates
+        if isinstance(metric.get("id"), str)
+    }
+    field_identifiers: dict[tuple[str, str], list[str]] = {}
+    for identifier, term in dimension_terms.items():
+        field = term.get("field")
+        if not isinstance(field, dict):
             continue
-        candidates = columns.get(value, ())
-        if len(candidates) == 1:
-            result.append(candidates[0])
-    return list(dict.fromkeys(result))
+        key = (str(field.get("asset_fqn") or ""), str(field.get("column") or ""))
+        if all(key):
+            field_identifiers.setdefault(key, []).append(identifier)
+
+    eligible_by_selected: list[set[str]] = []
+    dimension_rank: dict[str, tuple[bool, int]] = {}
+    for selected_id in selected_ids:
+        selected_metric = metrics.get(selected_id)
+        if selected_metric is None:
+            return ()
+        selected_dimensions = {
+            column for _asset_fqn, column in _metric_dimension_keys(selected_metric)
+        }
+        eligible: set[str] = set()
+        for other_id, other_metric in metrics.items():
+            if other_id == selected_id or other_id not in glossary:
+                continue
+            other_dimensions = {
+                column for _asset_fqn, column in _metric_dimension_keys(other_metric)
+            }
+            extra_columns: set[str] = set()
+            specializing_metric: dict[str, object] | None = None
+            if (
+                _metric_aliases_specialize(glossary[other_id], glossary[selected_id])
+                and other_dimensions > selected_dimensions
+            ):
+                extra_columns = other_dimensions - selected_dimensions
+                specializing_metric = other_metric
+            elif (
+                _metric_aliases_specialize(glossary[selected_id], glossary[other_id])
+                and selected_dimensions > other_dimensions
+            ):
+                extra_columns = selected_dimensions - other_dimensions
+                specializing_metric = selected_metric
+            if specializing_metric is None:
+                continue
+            for key in _metric_dimension_keys(specializing_metric):
+                if key[1] not in extra_columns:
+                    continue
+                identifiers = field_identifiers.get(key, ())
+                if len(identifiers) != 1:
+                    continue
+                identifier = identifiers[0]
+                eligible.add(identifier)
+                rank = _candidate_metric_rank(specializing_metric)
+                dimension_rank[identifier] = min(
+                    dimension_rank.get(identifier, rank),
+                    rank,
+                )
+        if not eligible:
+            return ()
+        eligible_by_selected.append(eligible)
+
+    shared = set.intersection(*eligible_by_selected)
+    return tuple(
+        sorted(shared, key=lambda item: (dimension_rank[item], item))[
+            :_MAX_OMITTED_FILTER_DIMENSION_PROBES
+        ]
+    )
+
+
+def _canonical_value_in_question(question: str, value: str) -> bool:
+    """Require one literal canonical value with Unicode identifier boundaries."""
+
+    haystack = unicodedata.normalize("NFKC", question).casefold()
+    needle = unicodedata.normalize("NFKC", value).casefold().strip()
+    if not needle:
+        return False
+    for match in re.finditer(re.escape(needle), haystack):
+        left = haystack[match.start() - 1] if match.start() else ""
+        right = haystack[match.end()] if match.end() < len(haystack) else ""
+        if not (left and (left.isalnum() or left == "_")) and not (
+            right and (right.isalnum() or right == "_")
+        ):
+            return True
+    return False
+
+
+def _approved_member_matches(
+    question: str,
+    term: dict[str, object],
+) -> tuple[dict[str, object], ...]:
+    """질문에 경계가 맞는 승인 member alias를 canonical member로만 반환한다."""
+
+    members = term.get("members")
+    if not isinstance(members, list):
+        return ()
+    matches = []
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        aliases = member.get("aliases")
+        if isinstance(aliases, list) and any(
+            isinstance(alias, str)
+            and _canonical_value_in_question(question, alias)
+            for alias in aliases
+        ):
+            matches.append(member)
+    return tuple(matches)
+
+
+def _selected_metrics_bind_dimension(
+    normalized: dict[str, Any],
+    candidates: list[dict[str, object]],
+    dimension_terms: dict[str, dict[str, object]],
+    identifier: str,
+) -> bool:
+    raw_selected = normalized.get("selected_metric_ids")
+    if not isinstance(raw_selected, list) or not raw_selected:
+        return False
+    selected_metrics = {
+        str(metric["id"]): metric
+        for metric in candidates
+        if isinstance(metric.get("id"), str)
+    }
+    field = dimension_terms[identifier].get("field")
+    field_key = (
+        str(field.get("asset_fqn") or ""),
+        str(field.get("column") or ""),
+    ) if isinstance(field, dict) else ("", "")
+    return all(
+        isinstance(metric_id, str)
+        and metric_id in selected_metrics
+        and field_key in _metric_dimension_keys(selected_metrics[metric_id])
+        for metric_id in raw_selected
+    )
+
+
+def _constrain_metric_terms_to_dimension(
+    business_terms: dict[str, dict[str, object]],
+    candidates: list[dict[str, object]],
+    dimension_terms: dict[str, dict[str, object]],
+    identifier: str,
+) -> None:
+    """Node1 재해석 후보를 승인 Dimension과 결속 가능한 Metric으로 제한한다.
+
+    Dimension Member가 확정된 요청에서 해당 필드를 지원하지 않는 Metric은 실행 가능한
+    해석이 아니다. DataHub Metric-Dimension 관계로 불가능한 후보만 제거하며, 남은
+    Metric 중 어떤 측정값을 선택할지는 계속 Node1과 후속 서버 검증이 담당한다.
+    """
+
+    field = dimension_terms[identifier].get("field")
+    field_key = (
+        str(field.get("asset_fqn") or ""),
+        str(field.get("column") or ""),
+    ) if isinstance(field, dict) else ("", "")
+    compatible_ids = {
+        str(metric["id"])
+        for metric in candidates
+        if isinstance(metric.get("id"), str)
+        and field_key in _metric_dimension_keys(metric)
+    }
+    selectable_ids = {
+        metric_id
+        for metric_id, term in business_terms.items()
+        if term.get("kind") == "metric"
+    }
+    retained_ids = selectable_ids & compatible_ids
+    if not retained_ids:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "승인 차원 필터와 결속 가능한 지표 후보가 없습니다.",
+        )
+    for metric_id in selectable_ids - retained_ids:
+        del business_terms[metric_id]
+
+
+def _period_boundary(value: object) -> date:
+    """기간 경계를 timezone 유무와 무관하게 달력 날짜로 정규화한다."""
+
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value)
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return datetime.fromisoformat(text).date()
+
+
+def _validate_selected_data_availability(
+    assets: list[dict[str, object]],
+    periods: list[dict[str, Any]],
+    partial_context: dict[str, Any],
+) -> dict[str, str] | None:
+    """선택 자산들의 release-bound 승인 기간 교집합 안에서만 실행을 허용한다.
+
+    이 값은 현재 wall clock이나 물리 테이블의 임의 ``max(date)``가 아니라 sealed
+    product capability가 명시한 승인 watermark다. 여러 자산 실행에서는 모든 자산이
+    범위를 제공해야 하며, 공통으로 안전한 교집합만 사용한다.
+    """
+
+    presence = [
+        bool(asset.get("data_available_from"))
+        or bool(asset.get("data_available_through"))
+        for asset in assets
+    ]
+    if not any(presence):
+        return None
+    if not assets or not all(presence):
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "선택된 자산의 데이터 가용 기간 계약이 불완전합니다.",
+            partial_context=partial_context,
+        )
+    if any(not asset.get("product_release_id") for asset in assets):
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "데이터 가용 기간은 product release receipt와 함께 제공되어야 합니다.",
+            partial_context=partial_context,
+        )
+    try:
+        available_from = max(
+            date.fromisoformat(str(asset["data_available_from"]))
+            for asset in assets
+        )
+        available_through = min(
+            date.fromisoformat(str(asset["data_available_through"]))
+            for asset in assets
+        )
+    except (KeyError, ValueError) as error:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "선택된 자산의 데이터 가용 기간 형식이 유효하지 않습니다.",
+            partial_context=partial_context,
+        ) from error
+    if available_from > available_through:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "선택된 자산들이 공통 데이터 가용 기간을 공유하지 않습니다.",
+            partial_context=partial_context,
+        )
+    availability = {
+        "data_available_from": available_from.isoformat(),
+        "data_available_through": available_through.isoformat(),
+    }
+    partial_context["data_availability"] = dict(availability)
+    end_exclusive = available_through + timedelta(days=1)
+    if any(
+        _period_boundary(period.get("start")) < available_from
+        or _period_boundary(period.get("end_exclusive")) > end_exclusive
+        for period in periods
+    ):
+        available_period = {
+            "start": available_from.isoformat(),
+            "end_exclusive": end_exclusive.isoformat(),
+            "source_text": (
+                f"{available_from.isoformat()} ~ {available_through.isoformat()}"
+            ),
+        }
+        raise ContextBuildError(
+            ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+            (
+                "요청 기간이 승인된 데이터 가용 범위 밖입니다. "
+                f"가용 절대 기간은 {available_from.isoformat()}부터 "
+                f"{available_through.isoformat()}까지입니다."
+            ),
+            (str(available_period["source_text"]),),
+            disambiguation_options=_disambiguation_options_for_periods(
+                [available_period]
+            ),
+            partial_context=partial_context,
+        )
+    return availability
+
+
+def _apply_conversation_default_operation(
+    assets: list[dict[str, object]],
+    context: RequestContext,
+    analysis_operation: str | None,
+    intents: list[str],
+    partial_context: dict[str, Any],
+) -> tuple[str | None, list[str]]:
+    """Apply one release-bound presentation-ready default only in Conversation.
+
+    Direct single-turn analysis keeps Node 1's governed aggregate semantics.
+    A Conversation may opt into a richer default Artifact only when every
+    selected asset carries the same sealed capability value.  At present the
+    only valid default is ``time_trend``; other operations need user-provided
+    dimensions, limits, or comparison windows and are rejected by the compiler.
+    """
+
+    if context.conversation_id is None or analysis_operation != "aggregate":
+        return analysis_operation, intents
+    defaults = [asset.get("conversation_default_operation") for asset in assets]
+    if not any(defaults):
+        return analysis_operation, intents
+    if not assets or any(value is None for value in defaults):
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "선택된 자산의 Conversation 기본 Artifact 계약이 불완전합니다.",
+            partial_context=partial_context,
+        )
+    unique = {str(value) for value in defaults}
+    if unique != {"time_trend"}:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "선택된 자산의 Conversation 기본 Artifact 계약이 서로 다릅니다.",
+            partial_context=partial_context,
+        )
+    partial_context["conversation_default_operation"] = "time_trend"
+    partial_context["analysis_operation"] = "time_trend"
+    partial_context["intent_candidates"] = ["time_trend"]
+    return "time_trend", ["time_trend"]
 
 
 def _model_periods(candidates: object, timezone: ZoneInfo) -> list[dict[str, Any]]:
@@ -200,7 +679,7 @@ def _complete_periods_before_as_of(
     periods: list[dict[str, Any]],
     as_of: datetime,
 ) -> list[dict[str, Any]]:
-    """Cap intervals that contain the current business date at ``as_of``."""
+    """현재 진행 중인 구간의 미포함 종료 경계를 ``as_of``로 닫는다."""
 
     completed: list[dict[str, Any]] = []
     for period in periods:
@@ -211,6 +690,371 @@ def _complete_periods_before_as_of(
             item["end_exclusive"] = as_of.isoformat()
         completed.append(item)
     return completed
+
+
+def _range_period_recheck_required(
+    normalized: dict[str, Any],
+    assets: list[dict[str, object]],
+    candidate_ids: list[str],
+    metric_terms: dict[str, dict[str, object]],
+    executable_by_id: dict[str, dict[str, object]],
+    as_of: datetime,
+) -> bool:
+    """range 분석의 기간 슬롯이 비었을 때 1회 재검토가 필요한지 판정한다.
+
+    질문 문구를 파싱하지 않고 첫 Node 1 출력과 active release 계약만 사용한다. 선택된
+    range Metric뿐 아니라 Metric을 생략한 기간-only 후속 질문도 기간 근거만 한 번 다시
+    읽는다. 후자는 재검토 뒤에도 Metric 자체는 missing으로 남으므로 상위 대화 계층이
+    직전의 정확한 pending intent를 확인하지 않는 한 실행되지 않는다. snapshot Metric과
+    비분석 route는 재호출하지 않는다.
+    """
+
+    raw_periods = normalized.get("period_candidates")
+    ambiguity = normalized.get("ambiguity")
+    if isinstance(ambiguity, dict) and ambiguity.get("is_ambiguous") is True:
+        return False
+    future_start = False
+    if isinstance(raw_periods, list):
+        try:
+            future_start = any(
+                isinstance(item, dict)
+                and datetime.fromisoformat(str(item["start"])) >= as_of
+                for item in raw_periods
+            )
+        except (KeyError, TypeError, ValueError):
+            future_start = False
+    if raw_periods != [] and not future_start:
+        return False
+    # Metric을 생략한 후속 발화에서는 Node 1의 route도 provisional이다. 상위
+    # Conversation command가 typed ANALYSIS action을 결합할 수 있으므로, 빈 기간을
+    # provisional Presentation/Report 판정만으로 재검토하지 않는 것은 안전하지 않다.
+    # 기간만 한 번 다시 읽고도 Metric은 missing으로 유지되어 여기서 실행 권한은 생기지 않는다.
+    if normalized.get("metric_resolution") == "missing":
+        return True
+    if enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES) in {
+        "PRESENTATION",
+        "REPORT_ACTION",
+    }:
+        return False
+    if normalized.get("metric_resolution") != "selected":
+        return False
+    raw_ids = normalized.get("selected_metric_ids")
+    if (
+        not isinstance(raw_ids, list)
+        or not 1 <= len(raw_ids) <= 4
+        or len(raw_ids) != len(set(raw_ids))
+        or any(not isinstance(item, str) or item not in candidate_ids for item in raw_ids)
+    ):
+        return False
+    keep_ids = set(raw_ids)
+    synthetic: list[dict[str, object]] = []
+    try:
+        for metric_id in raw_ids:
+            ratio = _ratio_reference(metric_terms, executable_by_id, metric_id)
+            if ratio is None:
+                continue
+            keep_ids.update(
+                {
+                    ratio["numerator_metric_id"],
+                    ratio["denominator_metric_id"],
+                }
+            )
+            synthetic.append(
+                _synthetic_ratio_metric(
+                    metric_id,
+                    metric_terms[metric_id],
+                    ratio,
+                    executable_by_id[metric_id],
+                )
+            )
+        selected_assets = _select_assets_for_metrics(
+            assets,
+            keep_ids,
+            tuple(synthetic),
+        )
+        return time_selection_mode(selected_assets) == "range"
+    except (ContextBuildError, KeyError, TypeError, ValueError):
+        return False
+
+
+def _analysis_shape_recheck_violation(normalized: dict[str, Any]) -> str | None:
+    """선택된 분석 요청의 결과 형태 위반을 bounded 재검토 코드로 반환한다.
+
+    ``analysis_operation``과 ``intent_candidates``는 같은 결정을 표현하는 active Node 1
+    계약의 typed 필드다. 서버는 질문을 다시 파싱하지 않고 첫 응답이 실패한 구조적
+    제약만 모델에 알려 한 번의 재검토가 같은 오판을 반복하지 않게 한다.
+    """
+
+    if normalized.get("metric_resolution") != "selected":
+        return None
+    if enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES) in {
+        "PRESENTATION",
+        "REPORT_ACTION",
+    }:
+        return None
+    raw_ids = normalized.get("selected_metric_ids")
+    if (
+        not isinstance(raw_ids, list)
+        or not 1 <= len(raw_ids) <= 4
+        or len(raw_ids) != len(set(raw_ids))
+        or any(not isinstance(item, str) or not item for item in raw_ids)
+    ):
+        return None
+    operation = normalized.get("analysis_operation")
+    raw_intents = normalized.get("intent_candidates")
+    if not (
+        operation in _ANALYSIS_OPERATIONS
+        and isinstance(raw_intents, list)
+        and raw_intents == [operation]
+    ):
+        return (
+            "ANALYSIS_OPERATION_REQUIRED"
+            if operation is None and (raw_intents is None or raw_intents == [])
+            else "ANALYSIS_OPERATION_INCONSISTENT"
+        )
+    if "analysis_time_bucket" not in normalized:
+        return "ANALYSIS_OPERATION_INCONSISTENT"
+    dimensions = normalized.get("dimension_candidates")
+    if not isinstance(dimensions, list):
+        return "ANALYSIS_OPERATION_INCONSISTENT"
+    result_limit = normalized.get("result_limit")
+    bucket = normalized.get("analysis_time_bucket")
+    if operation == "aggregate":
+        return (
+            "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+            if dimensions or result_limit is not None or bucket is not None
+            else None
+        )
+    if operation == "breakdown":
+        if not dimensions:
+            return "ANALYSIS_DIMENSION_REQUIRED"
+        return (
+            "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+            if result_limit is not None or bucket is not None
+            else None
+        )
+    if operation == "time_trend":
+        if bucket not in _ANALYSIS_TIME_BUCKETS:
+            return "ANALYSIS_TIME_BUCKET_REQUIRED"
+        return (
+            "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+            if result_limit is not None
+            else None
+        )
+    if operation in {"top_n", "bottom_n"}:
+        if not dimensions:
+            return "ANALYSIS_DIMENSION_REQUIRED"
+        if (
+            isinstance(result_limit, bool)
+            or not isinstance(result_limit, int)
+            or not 1 <= result_limit <= 100
+        ):
+            return "ANALYSIS_RESULT_LIMIT_INVALID"
+        return "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT" if bucket is not None else None
+    return (
+        "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+        if result_limit is not None or bucket is not None
+        else None
+    )
+
+
+def _reconcile_analysis_bucket_signal(normalized: dict[str, Any]) -> dict[str, Any]:
+    """유효한 시간 버킷과 일반 집계 형태의 충돌만 ``time_trend``로 정규화한다.
+
+    bounded recheck 뒤에도 Node1이 ``aggregate`` 또는 ``breakdown``과 유효한
+    ``analysis_time_bucket``을 함께 반환할 수 있다. 버킷은 time trend에서만 허용되는
+    더 좁은 typed 신호이므로 이 두 일반 형태에 한해 연산을 맞춘다. 버킷·기간·지표를
+    새로 추론하지 않으며 ranking·period comparison 충돌은 계속 fail-closed다.
+    """
+
+    operation = normalized.get("analysis_operation")
+    bucket = normalized.get("analysis_time_bucket")
+    if (
+        normalized.get("metric_resolution") == "selected"
+        and enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES)
+        not in {"PRESENTATION", "REPORT_ACTION"}
+        and operation in {"aggregate", "breakdown"}
+        and bucket in _ANALYSIS_TIME_BUCKETS
+        and normalized.get("result_limit") is None
+    ):
+        reconciled = dict(normalized)
+        reconciled["analysis_operation"] = "time_trend"
+        reconciled["intent_candidates"] = ["time_trend"]
+        return reconciled
+    return normalized
+
+
+def _common_source_time_bucket(assets: list[dict[str, object]]) -> str:
+    """동일 release asset들의 공통 물리 time grain을 대화 기본 추이에만 사용한다."""
+
+    buckets: set[str] = set()
+    for asset in assets:
+        metadata = asset.get("time_metadata")
+        fields = metadata.get("fields") if isinstance(metadata, dict) else None
+        if not isinstance(fields, list) or not fields:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Conversation 기본 추이에 필요한 time metadata가 없습니다.",
+            )
+        for field in fields:
+            target = field.get("field") if isinstance(field, dict) else None
+            if (
+                isinstance(target, dict)
+                and target.get("asset_fqn") != asset.get("fqn")
+            ):
+                continue
+            bucket = field.get("bucket") if isinstance(field, dict) else None
+            if bucket not in _ANALYSIS_TIME_BUCKETS:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Conversation 기본 추이의 source time bucket이 유효하지 않습니다.",
+                )
+            buckets.add(str(bucket))
+    if len(buckets) != 1:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "Conversation 기본 추이의 source time bucket이 서로 다릅니다.",
+        )
+    return next(iter(buckets))
+
+
+def _finalize_metric_scope(
+    assets: list[dict[str, object]],
+    metric_terms: dict[str, dict[str, object]],
+    executable_by_id: dict[str, dict[str, object]],
+    selected_metric_ids: list[str] | tuple[str, ...],
+    *,
+    is_period_comparison: bool,
+) -> tuple[list[dict[str, object]], set[str], str]:
+    """두 해석 경로가 같은 ratio 확장·asset 선택·time mode 계약을 만들게 한다."""
+
+    keep_ids = set(selected_metric_ids)
+    synthetic: list[dict[str, object]] = []
+    for metric_id in selected_metric_ids:
+        ratio = _ratio_reference(metric_terms, executable_by_id, metric_id)
+        if ratio is None:
+            continue
+        if is_period_comparison:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "Ratio metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
+            )
+        keep_ids.update(
+            {
+                ratio["numerator_metric_id"],
+                ratio["denominator_metric_id"],
+            }
+        )
+        synthetic.append(
+            _synthetic_ratio_metric(
+                metric_id,
+                metric_terms[metric_id],
+                ratio,
+                executable_by_id[metric_id],
+            )
+        )
+    selected_assets = _select_assets_for_metrics(
+        assets,
+        keep_ids,
+        tuple(synthetic),
+    )
+    return selected_assets, keep_ids, time_selection_mode(selected_assets)
+
+
+def _structured_request(
+    *,
+    intents: list[str],
+    keep_ids: set[str],
+    selected_metric_ids: list[str] | tuple[str, ...],
+    selected_dimensions: list[str],
+    dimension_terms: dict[str, dict[str, object]],
+    filter_fields: list[dict[str, object]],
+    periods: list[dict[str, Any]],
+    relationship: str,
+    analysis_time_mode: str,
+    analysis_operation: str | None,
+    analysis_time_bucket: str | None,
+    result_limit: int | None,
+    metric_terms: dict[str, dict[str, object]],
+    model_signals: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """fast-path와 Node 1 경로의 최종 typed request를 한 조립 지점에서 생성한다."""
+
+    output_ids = list(selected_metric_ids)
+    selected = output_ids[0] if len(output_ids) == 1 else None
+    result: dict[str, object] = {
+        "intent_candidates": intents,
+        "metric_ids": sorted(keep_ids),
+        "dimension_candidates": selected_dimensions,
+        "dimension_fields": [
+            dimension_terms[item]["field"] for item in selected_dimensions
+        ],
+        "filter_fields": filter_fields,
+        "dimension_member_receipts": dimension_member_receipts(
+            filter_fields,
+            dimension_terms,
+        ),
+        "period_candidates": periods,
+        "period_relationship": relationship,
+        "time_mode": analysis_time_mode,
+        "selected_metric_id": selected,
+        "selected_metric_ids": output_ids,
+        "analysis_operation": analysis_operation,
+        "analysis_time_bucket": (
+            analysis_time_bucket if analysis_operation == "time_trend" else "none"
+        ),
+        "result_limit": result_limit,
+        # Ratio operand는 독립 BUSINESS Metric일 수 있다. 출력 Metric만 남기면 실행
+        # asset의 BUSINESS 범위와 Glossary 범위가 달라져 Context Gate가 닫히므로,
+        # 실제 실행 scope에 포함된 BUSINESS Term을 모두 증거로 보존한다.
+        "metric_terms": {
+            metric_id: metric_terms[metric_id]
+            for metric_id in sorted(keep_ids)
+            if metric_id in metric_terms
+        },
+    }
+    if model_signals is not None:
+        result.update(model_signals)
+    if selected is not None:
+        result["metric_term"] = metric_terms[selected]
+    return result
+
+
+async def _complete_business_metric_terms(
+    adapter: DataPlatformAdapter,
+    metric_terms: dict[str, dict[str, object]],
+    executable_by_id: dict[str, dict[str, object]],
+    keep_ids: set[str],
+    context: RequestContext,
+) -> dict[str, dict[str, object]]:
+    """실행 scope에 남은 독립 BUSINESS operand의 권위 있는 Term을 보완한다."""
+
+    business_ids = {
+        metric_id
+        for metric_id in keep_ids
+        if executable_by_id[metric_id].get("visibility", "BUSINESS") == "BUSINESS"
+    }
+    missing = tuple(sorted(business_ids - set(metric_terms)))
+    if not missing:
+        return metric_terms
+    try:
+        additional = await adapter.get_metric_terms(
+            missing,
+            context.model_dump(mode="json"),
+        )
+    except MetadataUnavailableError:
+        raise
+    except (OSError, TypeError, ValueError) as error:
+        raise MetadataUnavailableError(
+            "DataHub Metric Glossary 실행 dependency 조회에 실패했습니다."
+        ) from error
+    if set(additional) != set(missing) or any(
+        not isinstance(additional.get(metric_id), dict) for metric_id in missing
+    ):
+        raise MetadataUnavailableError(
+            "DataHub Metric Glossary에 BUSINESS 실행 dependency가 누락되었습니다."
+        )
+    return {**metric_terms, **additional}
 
 
 class MetricResolver:
@@ -227,35 +1071,185 @@ class MetricResolver:
             configured_ttl = 300.0
         self._dimension_value_cache_ttl = min(3_600.0, max(30.0, configured_ttl))
         self._dimension_value_cache: dict[
-            tuple[str, str], tuple[float, tuple[str, ...]]
+            tuple[str, str, str], tuple[float, tuple[str, ...]]
+        ] = {}
+        self._dimension_value_inflight: dict[
+            tuple[str, str, str], asyncio.Task[tuple[str, ...]]
         ] = {}
 
-    async def _dimension_values(self, asset_fqn: str, column: str) -> tuple[str, ...]:
-        """Return one bounded live value domain with a short process-local TTL."""
+    async def _load_dimension_values(
+        self,
+        key: tuple[str, str, str],
+        asset_fqn: str,
+        column: str,
+    ) -> tuple[str, ...]:
+        """Load and cache one release-bound value domain for all concurrent waiters."""
 
-        key = (asset_fqn, column)
+        try:
+            values = await discover_dimension_values(self._adapter, asset_fqn, column)
+            now = monotonic()
+            if len(self._dimension_value_cache) >= 256:
+                expired = [
+                    item
+                    for item, entry in self._dimension_value_cache.items()
+                    if now >= entry[0]
+                ]
+                for item in expired:
+                    self._dimension_value_cache.pop(item, None)
+                if len(self._dimension_value_cache) >= 256:
+                    self._dimension_value_cache.pop(
+                        next(iter(self._dimension_value_cache))
+                    )
+            self._dimension_value_cache[key] = (
+                now + self._dimension_value_cache_ttl,
+                values,
+            )
+            return values
+        finally:
+            current = asyncio.current_task()
+            if self._dimension_value_inflight.get(key) is current:
+                self._dimension_value_inflight.pop(key, None)
+
+    async def _dimension_values(
+        self,
+        cache_namespace: str | None,
+        asset_fqn: str,
+        column: str,
+    ) -> tuple[str, ...]:
+        """Return one bounded live domain cached only inside an exact release."""
+
+        if not cache_namespace:
+            return await discover_dimension_values(self._adapter, asset_fqn, column)
+        key = (cache_namespace, asset_fqn, column)
         now = monotonic()
         cached = self._dimension_value_cache.get(key)
         if cached is not None and now < cached[0]:
             return cached[1]
-        values = await discover_dimension_values(self._adapter, asset_fqn, column)
-        if len(self._dimension_value_cache) >= 256:
-            expired = [item for item, entry in self._dimension_value_cache.items() if now >= entry[0]]
-            for item in expired:
-                self._dimension_value_cache.pop(item, None)
-            if len(self._dimension_value_cache) >= 256:
-                self._dimension_value_cache.pop(next(iter(self._dimension_value_cache)))
-        self._dimension_value_cache[key] = (
-            now + self._dimension_value_cache_ttl,
-            values,
+        task = self._dimension_value_inflight.get(key)
+        if task is None:
+            task = asyncio.create_task(
+                self._load_dimension_values(key, asset_fqn, column)
+            )
+            self._dimension_value_inflight[key] = task
+        return await asyncio.shield(task)
+
+    async def _recheck_omitted_filter(
+        self,
+        *,
+        normalized: dict[str, Any],
+        question: str,
+        candidates: list[dict[str, object]],
+        glossary: dict[str, tuple[str, ...]],
+        dimension_terms: dict[str, dict[str, object]],
+        business_terms: dict[str, dict[str, object]],
+        cache_namespace: str | None,
+        normalize: Any,
+    ) -> dict[str, Any]:
+        """Recheck one explicit governed value that Node 1 omitted.
+
+        Only extra dimensions shared by the selected metric families are probed.
+        The model remains responsible for semantic selection; the server only
+        supplies a complete bounded value domain and verifies the second output.
+        """
+
+        dimension_ids = _metric_family_dimension_ids(
+            normalized,
+            candidates,
+            glossary,
+            dimension_terms,
+            omitted_only=True,
         )
-        return values
+        if not dimension_ids:
+            return normalized
+
+        matches: list[tuple[str, str, tuple[str, ...]]] = []
+        for identifier in dimension_ids:
+            term = dimension_terms[identifier]
+            field = term.get("field")
+            if not isinstance(field, dict):
+                continue
+            governed_matches = _approved_member_matches(question, term)
+            members = term.get("members")
+            if isinstance(members, list) and members:
+                if len(governed_matches) > 1:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                        "질문에 명시된 승인 차원값이 둘 이상이라 단일 필터로 확정할 수 없습니다.",
+                    )
+                if governed_matches:
+                    canonical = str(governed_matches[0]["canonical_value"])
+                    matches.append((identifier, canonical, (canonical,)))
+                # 승인 member가 완전한 controlled domain이면 live DISTINCT로 우회하지 않는다.
+                continue
+            try:
+                values = await self._dimension_values(
+                    cache_namespace,
+                    str(field["asset_fqn"]),
+                    str(field["column"]),
+                )
+            except (KeyError, OSError, TypeError, ValueError):
+                values = ()
+            for value in values:
+                if _canonical_value_in_question(question, value):
+                    matches.append((identifier, value, values))
+
+        if not matches:
+            return normalized
+        if len(matches) != 1:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "질문에 명시된 승인 차원값을 단일 필터로 확정하지 못했습니다.",
+            )
+
+        identifier, canonical_value, values = matches[0]
+        business_terms[identifier]["value_candidates"] = list(values)
+        _constrain_metric_terms_to_dimension(
+            business_terms,
+            candidates,
+            dimension_terms,
+            identifier,
+        )
+        rechecked = await normalize()
+        if not isinstance(rechecked, dict):
+            raise ValueError("Node1 필터 재해석 응답은 객체여야 합니다.")
+
+        raw_filters = rechecked.get("filter_candidates")
+        expected_value = unicodedata.normalize(
+            "NFKC", canonical_value
+        ).casefold()
+        filter_is_bound = (
+            isinstance(raw_filters, list)
+            and len(raw_filters) == 1
+            and isinstance(raw_filters[0], dict)
+            and raw_filters[0].get("dimension_id") == identifier
+            and isinstance(raw_filters[0].get("value_text"), str)
+            and unicodedata.normalize(
+                "NFKC", str(raw_filters[0]["value_text"])
+            ).casefold().strip()
+            == expected_value
+            and isinstance(raw_filters[0].get("exclude"), bool)
+        )
+        metrics_are_bound = _selected_metrics_bind_dimension(
+            rechecked,
+            candidates,
+            dimension_terms,
+            identifier,
+        )
+        if not filter_is_bound or not metrics_are_bound:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "질문에 명시된 승인 필터를 선택 지표와 결속하지 못했습니다.",
+            )
+        return rechecked
 
     async def resolve(
         self,
         payload: AnalysisRequest,
         context: RequestContext,
         assets: list[dict[str, object]],
+        *,
+        candidate_set: AssetCandidateSet | None = None,
+        budget: Any = None,
     ) -> tuple[list[dict[str, object]], str, dict[str, object]]:
         """사용자 요청으로부터 지표, 차원, 기간, 의도를 확정하고 구조화된 요청 객체를 생성합니다."""
         calendar_ids = {
@@ -288,42 +1282,18 @@ class MetricResolver:
             metric
             for metric in executable_metrics
             if metric.get("visibility", "BUSINESS") == "BUSINESS"
+            and metric.get("candidate_selectable", True) is True
         ]
+        candidates.sort(key=_candidate_metric_rank)
         candidate_ids = [str(metric["id"]) for metric in candidates]
-        if not candidate_ids:
-            raise ContextBuildError(
-                ContextBuildErrorCode.INVALID_METRIC,
-                "런타임 메타데이터에서 거버넌스 지표를 찾을 수 없습니다.",
-            )
-        try:
-            metric_terms = await self._adapter.get_metric_terms(tuple(candidate_ids))
-        except MetadataUnavailableError:
-            raise
-        except (OSError, TypeError, ValueError) as error:
-            raise MetadataUnavailableError(
-                "DataHub Metric Glossary 조회에 실패했습니다."
-            ) from error
-        if set(metric_terms) != set(candidate_ids):
-            raise MetadataUnavailableError(
-                "DataHub Metric Glossary에 일부 지표 정의가 누락되었습니다."
-            )
-        glossary: dict[str, tuple[str, ...]] = {}
-        for metric_id in candidate_ids:
-            term = metric_terms[metric_id]
-            label = str(term["label"])
-            aliases = tuple(map(str, term["aliases"]))
-            glossary[metric_id] = (
-                label,
-                *(alias for alias in aliases if alias != label),
-            )
-        business_terms: dict[str, dict[str, object]] = {
-            metric_id: {"kind": "metric", "aliases": list(glossary[metric_id])}
-            for metric_id in candidate_ids
-        }
         support_terms: dict[str, dict[str, object]] = {}
         for metric in executable_metrics:
             metric_id = str(metric["id"])
-            if metric_id in candidate_ids or metric.get("visibility") != "SUPPORT":
+            if (
+                metric_id in candidate_ids
+                or metric.get("visibility") != "SUPPORT"
+                or metric.get("candidate_selectable", True) is not True
+            ):
                 continue
             semantic = metric.get("semantic")
             if not isinstance(semantic, dict):
@@ -344,6 +1314,41 @@ class MetricResolver:
                     "kind": "support_metric",
                     "aliases": searchable_aliases,
                 }
+        if not candidate_ids and not support_terms:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "런타임 메타데이터에서 거버넌스 지표를 찾을 수 없습니다.",
+            )
+        metric_terms: dict[str, dict[str, object]] = {}
+        if candidate_ids:
+            try:
+                metric_terms = await self._adapter.get_metric_terms(
+                    tuple(candidate_ids),
+                    context.model_dump(mode="json"),
+                )
+            except MetadataUnavailableError:
+                raise
+            except (OSError, TypeError, ValueError) as error:
+                raise MetadataUnavailableError(
+                    "DataHub Metric Glossary 조회에 실패했습니다."
+                ) from error
+            if set(metric_terms) != set(candidate_ids):
+                raise MetadataUnavailableError(
+                    "DataHub Metric Glossary에 일부 지표 정의가 누락되었습니다."
+                )
+        glossary: dict[str, tuple[str, ...]] = {}
+        for metric_id in candidate_ids:
+            term = metric_terms[metric_id]
+            label = str(term["label"])
+            aliases = tuple(map(str, term["aliases"]))
+            glossary[metric_id] = (
+                label,
+                *(alias for alias in aliases if alias != label),
+            )
+        business_terms: dict[str, dict[str, object]] = {
+            metric_id: {"kind": "metric", "aliases": list(glossary[metric_id])}
+            for metric_id in candidate_ids
+        }
         business_terms.update(support_terms)
         dimension_terms = _resolve_dimension_terms(assets)
         business_terms.update(
@@ -355,6 +1360,17 @@ class MetricResolver:
                 for identifier, term in dimension_terms.items()
             }
         )
+        for identifier, term in dimension_terms.items():
+            matches = _approved_member_matches(payload.question, term)
+            if len(matches) > 1:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "질문에 같은 차원의 승인 값이 둘 이상 포함되어 단일 필터로 확정할 수 없습니다.",
+                )
+            if matches:
+                business_terms[identifier]["value_candidates"] = [
+                    str(matches[0]["canonical_value"])
+                ]
         allowed_dimensions = {
             identifier
             for identifier, term in business_terms.items()
@@ -376,56 +1392,138 @@ class MetricResolver:
         )
         if resolved_metric_ids:
             if set(resolved_metric_ids).issubset(candidate_ids):
-                pre_dims = list(payload.resolved_slots.dimension_ids)
-                pre_keep_ids = set(resolved_metric_ids)
-                pre_synthetic: list[dict[str, object]] = []
-                for pre_metric in resolved_metric_ids:
-                    pre_ratio = _ratio_reference(
-                        metric_terms, executable_by_id, pre_metric
+                selected_assets, pre_keep_ids, analysis_time_mode = (
+                    _finalize_metric_scope(
+                        assets,
+                        metric_terms,
+                        executable_by_id,
+                        resolved_metric_ids,
+                        is_period_comparison=(
+                            payload.resolved_slots.analysis_operation
+                            == "period_comparison"
+                        ),
                     )
-                    if pre_ratio is None:
-                        continue
-                    if payload.resolved_slots.analysis_operation == "period_comparison":
+                )
+
+                # 검색 후보는 Node 1용 bounded hint라서 선택 Metric의 차원만 남길 수
+                # 있다. 상속된 filter-only side를 그 후보 안에서 검증하면 승인된 필터도
+                # 조용히 사라진다. exact field reference를 동일 release receipt에 먼저
+                # 재결속해 권한·JOIN·live schema가 확인된 실행 subgraph에서 재검증한다.
+                if payload.resolved_slots.user_filters and candidate_set is not None:
+                    try:
+                        filter_references = tuple(
+                            sorted(
+                                {
+                                    GovernedFieldReference(
+                                        asset_fqn=str(item.get("asset_fqn", "")),
+                                        column=str(item.get("column", "")),
+                                    )
+                                    for item in payload.resolved_slots.user_filters
+                                    if isinstance(item, dict)
+                                }
+                            )
+                        )
+                        if not filter_references:
+                            raise ValueError("filter field reference is empty")
+                        pre_selection = ExecutionAssetSelection(
+                            output_metric_ids=tuple(resolved_metric_ids),
+                            execution_metric_ids=tuple(sorted(pre_keep_ids)),
+                            field_references=filter_references,
+                            receipt_context_release=candidate_set.context_release,
+                            receipt_catalog_checksum=candidate_set.catalog_checksum,
+                            receipt_canonical_checksum=candidate_set.canonical_checksum,
+                            receipt_product_release_id=candidate_set.product_release_id,
+                            receipt_runtime_projection_checksum=(
+                                candidate_set.runtime_projection_checksum
+                            ),
+                        )
+                    except ValueError as error:
+                        raise ContextBuildError(
+                            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                            "상속 필터의 asset·column 계약이 유효하지 않습니다.",
+                        ) from error
+                    assets = await self._adapter.resolve_execution_assets(
+                        pre_selection,
+                        {
+                            **context.model_dump(mode="json"),
+                            "parameters": payload.parameters,
+                        },
+                    )
+                    expanded_metrics = [
+                        metric
+                        for asset in assets
+                        for metric in asset.get("metrics", ())
+                        if isinstance(metric, dict)
+                        and isinstance(metric.get("id"), str)
+                    ]
+                    expanded_ids = [str(metric["id"]) for metric in expanded_metrics]
+                    if len(expanded_ids) != len(set(expanded_ids)):
+                        raise ContextBuildError(
+                            ContextBuildErrorCode.DUPLICATE_METRIC,
+                            "실행 subgraph에 중복된 지표 식별자가 존재합니다.",
+                        )
+                    executable_by_id = {
+                        str(metric["id"]): metric for metric in expanded_metrics
+                    }
+                    selected_assets, expanded_keep_ids, analysis_time_mode = (
+                        _finalize_metric_scope(
+                            assets,
+                            metric_terms,
+                            executable_by_id,
+                            resolved_metric_ids,
+                            is_period_comparison=(
+                                payload.resolved_slots.analysis_operation
+                                == "period_comparison"
+                            ),
+                        )
+                    )
+                    if expanded_keep_ids != pre_keep_ids:
                         raise ContextBuildError(
                             ContextBuildErrorCode.INVALID_METRIC,
-                            "Ratio metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
+                            "실행 subgraph의 Metric dependency가 후보 receipt와 다릅니다.",
                         )
-                    pre_keep_ids |= {
-                        pre_ratio["numerator_metric_id"],
-                        pre_ratio["denominator_metric_id"],
-                    }
-                    pre_synthetic.append(
-                        _synthetic_ratio_metric(
-                            pre_metric,
-                            metric_terms[pre_metric],
-                            pre_ratio,
-                            executable_by_id[pre_metric],
-                        )
-                    )
-                selected_assets = _select_assets_for_metrics(
-                    assets,
-                    pre_keep_ids,
-                    tuple(pre_synthetic),
-                )
-                selected_asset_fqns = {
-                    str(asset.get("fqn") or "") for asset in selected_assets
-                }
-                validated_dims = _validated_scoped_dimension_ids(
-                    pre_dims,
-                    dimension_terms,
-                    selected_asset_fqns,
-                )
-                allowed_dimensions = set(validated_dims) | {
-                    identifier
+                    dimension_terms = _resolve_dimension_terms(assets)
+
+                pre_dims = list(payload.resolved_slots.dimension_ids)
+                allowed_dimensions = set(dimension_terms)
+                col_to_dim = {
+                    str(term.get("field", {}).get("column")): identifier
                     for identifier, term in dimension_terms.items()
                     if isinstance(term.get("field"), dict)
-                    and str(term["field"].get("asset_fqn"))
-                    in selected_asset_fqns
+                    and term.get("field", {}).get("column")
                 }
-                pre_filters = validated_pre_filters(
-                    payload.resolved_slots.user_filters,
-                    dimension_terms,
-                    allowed_dimensions,
+                validated_dims = []
+                for dimension_id in pre_dims:
+                    if dimension_id in allowed_dimensions:
+                        validated_dims.append(dimension_id)
+                    elif (
+                        dimension_id in col_to_dim
+                        and col_to_dim[dimension_id] in allowed_dimensions
+                    ):
+                        validated_dims.append(col_to_dim[dimension_id])
+                if len(validated_dims) != len(pre_dims):
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                        "상속 차원이 현재 승인된 실행 subgraph와 일치하지 않습니다.",
+                    )
+                try:
+                    pre_filters = validated_pre_filters(
+                        payload.resolved_slots.user_filters,
+                        dimension_terms,
+                        allowed_dimensions,
+                    )
+                except ValueError as error:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                        "상속 필터가 현재 승인된 실행 subgraph와 일치하지 않습니다.",
+                    ) from error
+
+                metric_terms = await _complete_business_metric_terms(
+                    self._adapter,
+                    metric_terms,
+                    executable_by_id,
+                    pre_keep_ids,
+                    context,
                 )
 
                 periods: list[dict[str, Any]] = []
@@ -449,41 +1547,64 @@ class MetricResolver:
                             ),
                         }
                     )
+                if analysis_time_mode == "latest_snapshot":
+                    if (
+                        payload.resolved_slots.analysis_operation
+                        in {"time_trend", "period_comparison"}
+                        or periods
+                    ):
+                        raise ContextBuildError(
+                            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                            "최신 스냅샷 지표에는 기간 범위·추이·기간 비교 전략이 승인되지 않았습니다.",
+                        )
 
-                structured_request = {
-                    "intent_candidates": [
-                        payload.resolved_slots.analysis_operation or "general"
-                    ],
-                    "metric_ids": sorted(pre_keep_ids),
+                preflight_context: dict[str, Any] = {
+                    "metric_ids": list(resolved_metric_ids),
+                    "selected_metric_ids": list(resolved_metric_ids),
+                    "analysis_operation": payload.resolved_slots.analysis_operation,
                     "dimension_candidates": validated_dims,
-                    "dimension_fields": [
-                        dimension_terms[d]["field"]
-                        for d in validated_dims
-                        if d in dimension_terms
-                    ],
                     "filter_fields": pre_filters,
                     "period_candidates": periods,
                     "period_relationship": (
                         "comparison" if len(periods) == 2 else "single"
                     ),
-                    "selected_metric_id": (
-                        resolved_metric_ids[0]
-                        if len(resolved_metric_ids) == 1
-                        else None
-                    ),
-                    "selected_metric_ids": list(resolved_metric_ids),
-                    "analysis_operation": payload.resolved_slots.analysis_operation,
-                    "result_limit": payload.resolved_slots.result_limit,
-                    "metric_terms": {
-                        mid: metric_terms[mid]
-                        for mid in resolved_metric_ids
-                        if mid in metric_terms
-                    },
                 }
-                if len(resolved_metric_ids) == 1:
-                    structured_request["metric_term"] = metric_terms[
-                        resolved_metric_ids[0]
-                    ]
+                pre_operation, pre_intents = _apply_conversation_default_operation(
+                    selected_assets,
+                    context,
+                    payload.resolved_slots.analysis_operation,
+                    [payload.resolved_slots.analysis_operation or "general"],
+                    preflight_context,
+                )
+                availability = _validate_selected_data_availability(
+                    selected_assets,
+                    periods,
+                    preflight_context,
+                )
+                pre_time_bucket = (
+                    payload.resolved_slots.analysis_time_bucket
+                    if pre_operation == "time_trend"
+                    else None
+                )
+                if pre_operation == "time_trend" and pre_time_bucket is None:
+                    pre_time_bucket = _common_source_time_bucket(selected_assets)
+                structured_request = _structured_request(
+                    intents=pre_intents,
+                    keep_ids=pre_keep_ids,
+                    selected_metric_ids=resolved_metric_ids,
+                    selected_dimensions=validated_dims,
+                    dimension_terms=dimension_terms,
+                    filter_fields=pre_filters,
+                    periods=periods,
+                    relationship="comparison" if len(periods) == 2 else "single",
+                    analysis_time_mode=analysis_time_mode,
+                    analysis_operation=pre_operation,
+                    analysis_time_bucket=pre_time_bucket,
+                    result_limit=payload.resolved_slots.result_limit,
+                    metric_terms=metric_terms,
+                )
+                if availability is not None:
+                    structured_request["data_availability"] = availability
                 return selected_assets, payload.question, structured_request
 
         # ── 2. 단일 턴: LLM Node 1을 호출하여 질문 정규화 ──
@@ -493,26 +1614,61 @@ class MetricResolver:
                 ContextBuildErrorCode.INVALID_METADATA,
                 "구조화된 Node1 resolver 모델 호출기가 필요합니다.",
             )
+        as_of_datetime = datetime.combine(
+            context.as_of,
+            time.min,
+            timezone,
+        )
         node1_input = {
             "question": payload.question,
             "role_hint": context.role.value,
-            "as_of": datetime.combine(
-                context.as_of,
-                time.min,
-                timezone,
-            ).isoformat(),
+            "as_of": as_of_datetime.isoformat(),
             "timezone": context.timezone,
             "calendar_id": calendar_id,
             "allowed_routes": ["general", "template"],
             "business_terms": business_terms,
         }
+        if candidate_set is not None:
+            node1_input["interpretation_context"] = (
+                build_node1_interpretation_context(
+                    candidate_set,
+                    context,
+                    metric_terms,
+                    dimension_terms,
+                )
+            )
         # 직전 턴 기간은 대화 앵커다. 이 값을 넘기지 않으면 "그 전 달"처럼 앵커가 이전
         # 기간인 표현을 Node1이 as_of 기준으로 잘못 해석하고, 서버가 문장을 다시 파싱해
         # 보정해야 한다. 앵커를 권위 시간 컨텍스트로 함께 전달해 해석을 한 곳에 모은다.
         previous_period = previous_period_anchor(payload.resolved_slots, timezone)
         if previous_period is not None:
             node1_input["previous_period"] = previous_period
-        normalized = await normalizer(node1_input)
+        prior_shape = previous_result_shape(payload.resolved_slots)
+        if prior_shape is not None:
+            node1_input["previous_result_shape"] = prior_shape
+
+        async def normalize() -> dict[str, Any]:
+            if budget is not None:
+                consume_budget = getattr(budget, "consume", None)
+                if not callable(consume_budget):
+                    raise TypeError("model call budget is invalid")
+                consume_budget()
+            return await normalizer(node1_input)
+
+        cache_namespace = (
+            ":".join(
+                (
+                    candidate_set.product_release_id,
+                    candidate_set.runtime_projection_checksum,
+                    candidate_set.canonical_checksum,
+                )
+            )
+            if candidate_set is not None
+            and candidate_set.product_release_id is not None
+            and candidate_set.runtime_projection_checksum is not None
+            else None
+        )
+        normalized = await normalize()
         if not isinstance(normalized, dict):
             raise ValueError("Node1 응답은 객체여야 합니다.")
 
@@ -521,13 +1677,27 @@ class MetricResolver:
         # turns and ordinary metric questions from touching Trino. When a bounded
         # domain is available, one constrained re-interpretation may select its
         # exact canonical value; the server still verifies that value afterward.
-        detected_filters = normalized.get("filter_candidates")
         requested_route = enum_signal(
             normalized.get("requested_route"), CONVERSATION_ROUTES
         )
         can_discover_values = callable(
             getattr(self._adapter, "execute_query", None)
         ) and callable(getattr(self._adapter, "get_query_status", None))
+        if (
+            can_discover_values
+            and requested_route not in {"PRESENTATION", "REPORT_ACTION"}
+        ):
+            normalized = await self._recheck_omitted_filter(
+                normalized=normalized,
+                question=payload.question,
+                candidates=candidates,
+                glossary=glossary,
+                dimension_terms=dimension_terms,
+                business_terms=business_terms,
+                cache_namespace=cache_namespace,
+                normalize=normalize,
+            )
+        detected_filters = normalized.get("filter_candidates")
         relevant_dimensions = {
             str(candidate.get("dimension_id"))
             for candidate in detected_filters
@@ -536,38 +1706,184 @@ class MetricResolver:
             and isinstance(candidate.get("value_text"), str)
             and str(candidate["value_text"]).strip()
         } if isinstance(detected_filters, (list, tuple)) else set()
+        family_dimensions = set(
+            _metric_family_dimension_ids(
+                normalized,
+                candidates,
+                glossary,
+                dimension_terms,
+            )
+        )
+        required_family_values: dict[str, str] = {}
         should_reinterpret = False
         if can_discover_values and requested_route not in {"PRESENTATION", "REPORT_ACTION"}:
             for identifier in sorted(relevant_dimensions):
-                field = dimension_terms[identifier].get("field")
+                term = dimension_terms[identifier]
+                field = term.get("field")
                 if not isinstance(field, dict):
                     continue
-                try:
-                    values = await self._dimension_values(
-                        str(field["asset_fqn"]),
-                        str(field["column"]),
+                members = term.get("members")
+                governed_matches = _approved_member_matches(payload.question, term)
+                if isinstance(members, list) and members:
+                    values = tuple(
+                        str(member["canonical_value"])
+                        for member in members
+                        if isinstance(member, dict)
                     )
-                except (KeyError, OSError, TypeError, ValueError):
-                    values = ()
+                else:
+                    try:
+                        values = await self._dimension_values(
+                            cache_namespace,
+                            str(field["asset_fqn"]),
+                            str(field["column"]),
+                        )
+                    except (KeyError, OSError, TypeError, ValueError):
+                        values = ()
                 if not values:
                     continue
                 business_terms[identifier]["value_candidates"] = list(values)
                 raw_values = {
-                    str(candidate["value_text"]).strip().casefold()
+                    unicodedata.normalize(
+                        "NFKC", str(candidate["value_text"])
+                    ).casefold().strip()
                     for candidate in detected_filters
                     if isinstance(candidate, dict)
                     and candidate.get("dimension_id") == identifier
                 }
-                if not raw_values.issubset({value.casefold() for value in values}):
+                canonical_values = {
+                    unicodedata.normalize("NFKC", value).casefold(): value
+                    for value in values
+                }
+                explicit_values = (
+                    [str(member["canonical_value"]) for member in governed_matches]
+                    if isinstance(members, list) and members
+                    else [
+                        value
+                        for value in values
+                        if _canonical_value_in_question(payload.question, value)
+                    ]
+                ) if identifier in family_dimensions else []
+                if len(explicit_values) > 1:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                        "질문에 명시된 승인 차원값을 단일 필터로 확정하지 못했습니다.",
+                    )
+                if explicit_values:
+                    required_family_values[identifier] = explicit_values[0]
+                if (
+                    not raw_values.issubset(canonical_values)
+                    or (
+                        identifier in required_family_values
+                        and not _selected_metrics_bind_dimension(
+                            normalized,
+                            candidates,
+                            dimension_terms,
+                            identifier,
+                        )
+                    )
+                ):
+                    if identifier in required_family_values:
+                        _constrain_metric_terms_to_dimension(
+                            business_terms,
+                            candidates,
+                            dimension_terms,
+                            identifier,
+                        )
                     should_reinterpret = True
         if should_reinterpret:
-            normalized = await normalizer(node1_input)
+            normalized = await normalize()
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 재해석 응답은 객체여야 합니다.")
+        interpretation_rechecked = False
+        if _range_period_recheck_required(
+            normalized,
+            assets,
+            candidate_ids,
+            metric_terms,
+            executable_by_id,
+            as_of_datetime,
+        ):
+            node1_input["interpretation_recheck"] = {
+                "target": "period_candidates",
+                "attempt": 1,
+                "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
+            }
+            normalized = await normalize()
+            if not isinstance(normalized, dict):
+                raise ValueError("Node1 기간 재검토 응답은 객체여야 합니다.")
+            interpretation_rechecked = True
+        normalized = _reconcile_explicit_calendar_bucket(
+            normalized,
+            payload.question,
+        )
+        shape_violation = (
+            None
+            if interpretation_rechecked
+            else _analysis_shape_recheck_violation(normalized)
+        )
+        if shape_violation is not None:
+            node1_input["interpretation_recheck"] = {
+                "target": "analysis_operation",
+                "attempt": 1,
+                "violation": shape_violation,
+            }
+            normalized = await normalize()
+            if not isinstance(normalized, dict):
+                raise ValueError("Node1 결과 형태 재검토 응답은 객체여야 합니다.")
+        normalized = _reconcile_explicit_calendar_bucket(
+            normalized,
+            payload.question,
+        )
+        normalized = _reconcile_analysis_bucket_signal(normalized)
+        normalized = _reconcile_filter_only_dimensions(normalized)
+        final_filters = normalized.get("filter_candidates")
+        for identifier, expected in required_family_values.items():
+            matching_filters = [
+                candidate
+                for candidate in final_filters
+                if isinstance(candidate, dict)
+                and candidate.get("dimension_id") == identifier
+                and isinstance(candidate.get("value_text"), str)
+                and unicodedata.normalize(
+                    "NFKC", str(candidate["value_text"])
+                ).casefold().strip()
+                == unicodedata.normalize("NFKC", expected).casefold()
+                and isinstance(candidate.get("exclude"), bool)
+            ] if isinstance(final_filters, list) else []
+            if (
+                len(matching_filters) != 1
+                or not _selected_metrics_bind_dimension(
+                    normalized,
+                    candidates,
+                    dimension_terms,
+                    identifier,
+                )
+            ):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "질문에 명시된 승인 필터를 선택 지표와 결속하지 못했습니다.",
+                )
         periods = _complete_periods_before_as_of(
             _model_periods(normalized.get("period_candidates"), timezone),
-            datetime.combine(context.as_of, time.min, timezone),
+            as_of_datetime,
         )
+        ambiguity = normalized.get("ambiguity")
+        period_is_ambiguous = (
+            isinstance(ambiguity, dict)
+            and ambiguity.get("is_ambiguous") is True
+        )
+        if (
+            normalized.get("metric_resolution") == "selected"
+            and not period_is_ambiguous
+            and any(
+                datetime.fromisoformat(str(item["start"])) >= as_of_datetime
+                for item in periods
+            )
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                "요청 기간은 데이터 기준일보다 이전에 시작해야 합니다.",
+            )
         relationship = normalized.get("period_relationship")
         if relationship not in ("single", "comparison"):
             raise ValueError("Node1 period_relationship 은 'single' 또는 'comparison' 이어야 합니다.")
@@ -577,7 +1893,12 @@ class MetricResolver:
             for item in normalized.get("intent_candidates", ())
             if isinstance(item, str) and item
         ]
-        if len(intents) != 1:
+        shape_elided_followup = (
+            normalized.get("metric_resolution") == "missing"
+            and normalized.get("is_elliptical") is True
+            and not intents
+        )
+        if len(intents) != 1 and not shape_elided_followup:
             raise ValueError("Node1은 정확히 1개의 분석 의도를 선택해야 합니다.")
         raw_dimensions = normalized.get("dimension_candidates", ())
         if not isinstance(raw_dimensions, list):
@@ -639,9 +1960,27 @@ class MetricResolver:
         selected = expected_single_selected
 
         analysis_operation = normalized.get("analysis_operation")
+        if "analysis_time_bucket" not in normalized:
+            raise ValueError("Node1 analysis_time_bucket 필드가 필요합니다.")
+        analysis_time_bucket = normalized.get("analysis_time_bucket")
         result_limit = normalized.get("result_limit")
         if analysis_operation is not None and analysis_operation not in _ANALYSIS_OPERATIONS:
             raise ValueError("Node1 analysis_operation 값이 유효하지 않습니다.")
+        if shape_elided_followup:
+            if analysis_operation is not None or analysis_time_bucket is not None:
+                raise ValueError(
+                    "Node1 결과 형태 생략 후속 질문은 분석 연산·시간 버킷을 지정할 수 없습니다."
+                )
+        elif analysis_operation is not None and intents != [analysis_operation]:
+            raise ValueError("Node1 분석 연산과 의도가 일치하지 않습니다.")
+        if analysis_time_bucket is not None and analysis_time_bucket not in _ANALYSIS_TIME_BUCKETS:
+            raise ValueError("Node1 analysis_time_bucket 값이 유효하지 않습니다.")
+        if (analysis_operation == "time_trend") != (
+            analysis_time_bucket is not None
+        ):
+            raise ValueError(
+                "Node1 time_trend와 analysis_time_bucket이 일치하지 않습니다."
+            )
         if result_limit is not None and (
             analysis_operation not in {"top_n", "bottom_n"}
             or isinstance(result_limit, bool)
@@ -679,22 +2018,6 @@ class MetricResolver:
             for item in raw_metric_ids
             if item in candidate_ids
         ]
-        exact_metric_ids = _unique_business_metric_ids_from_sources(
-            measurement_source_texts,
-            glossary,
-        )
-        if exact_metric_ids is not None:
-            # 모델의 selected/ambiguous 판정이 흔들려도 질문에서 복사한 측정 구간이
-            # live DataHub의 고유 ID·alias가 측정 구간에서 하나로만 매칭되면 서버가
-            # 그 관계만 확정한다.
-            # 부분 문자열이나 운영 코드의 정적 사전은 사용하지 않는다.
-            metric_resolution = "selected"
-            selected_metric_ids = exact_metric_ids
-            selected = (
-                exact_metric_ids[0] if len(exact_metric_ids) == 1 else None
-            )
-            raw_metric_ids = list(exact_metric_ids)
-            suggestion_ids = list(exact_metric_ids)
         analysis_operation, relationship, intents = _reconcile_comparison_axis(
             analysis_operation=analysis_operation,
             relationship=relationship,
@@ -724,6 +2047,7 @@ class MetricResolver:
             "selected_metric_id": selected,
             "selected_metric_ids": selected_metric_ids,
             "analysis_operation": analysis_operation,
+            "analysis_time_bucket": analysis_time_bucket,
             "result_limit": result_limit,
             "dimension_candidates": selected_dimensions,
             "dimension_fields": [
@@ -793,9 +2117,22 @@ class MetricResolver:
                     ),
                     partial_context=clarification_context,
                 )
-            if analysis_operation is None or intents != [analysis_operation]:
+            if analysis_operation is None:
                 raise ValueError(
                     "Node1 selected 분석 연산과 의도가 일치하지 않습니다."
+                )
+            if (
+                analysis_operation in {"breakdown", "top_n", "bottom_n"}
+                and not selected_dimensions
+            ):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED,
+                    (
+                        "분석 결과 형태를 확정하지 못했습니다. 전체 값, 기간별 추이, "
+                        "승인된 분류 기준별 값 또는 순위 중 원하는 형태를 질문에 "
+                        "명확히 포함해 주세요."
+                    ),
+                    partial_context=partial_context,
                 )
         elif selected_metric_ids:
             raise ValueError(
@@ -832,37 +2169,6 @@ class MetricResolver:
                 "요청한 분석 지표는 현재 승인된 분석 범위에 없습니다.",
                 partial_context=partial_context,
             )
-        has_saved_period = not is_comparison and all(
-            name in payload.parameters for name in time_parameter_names(assets)
-        )
-        if is_comparison:
-            if len(periods) != 2:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.PERIOD_REQUIRED,
-                    "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다.",
-                    _period_suggestions(periods),
-                    disambiguation_options=_disambiguation_options_for_periods(periods),
-                    partial_context=partial_context,
-                )
-        elif not has_saved_period and len(periods) != 1:
-            if (
-                payload.resolved_slots is not None
-                and payload.resolved_slots.period_start
-                and payload.resolved_slots.period_end_exclusive
-            ):
-                periods = [{
-                    "start": payload.resolved_slots.period_start,
-                    "end_exclusive": payload.resolved_slots.period_end_exclusive,
-                    "source_text": f"{payload.resolved_slots.period_start} ~ {payload.resolved_slots.period_end_exclusive}",
-                }]
-            else:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.PERIOD_REQUIRED,
-                    "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
-                    _period_suggestions(periods),
-                    disambiguation_options=_disambiguation_options_for_periods(periods),
-                    partial_context=partial_context,
-                )
         if metric_resolution == "missing":
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
@@ -881,59 +2187,120 @@ class MetricResolver:
                 ),
                 partial_context=partial_context,
             )
-        keep_ids = set(selected_metric_ids)
-        synthetic: list[dict[str, object]] = []
-        for selected_id in selected_metric_ids:
-            ratio = _ratio_reference(metric_terms, executable_by_id, selected_id)
-            if is_comparison and ratio is not None:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.INVALID_METRIC,
-                    "Ratio metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
-                )
-            if ratio is None:
-                continue
-            keep_ids |= {
-                ratio["numerator_metric_id"],
-                ratio["denominator_metric_id"],
-            }
-            synthetic.append(
-                _synthetic_ratio_metric(
-                    selected_id,
-                    metric_terms[selected_id],
-                    ratio,
-                    executable_by_id[selected_id],
-                )
-            )
-        selected_assets = _select_assets_for_metrics(
+        selected_assets, keep_ids, analysis_time_mode = _finalize_metric_scope(
             assets,
-            keep_ids,
-            tuple(synthetic),
+            metric_terms,
+            executable_by_id,
+            selected_metric_ids,
+            is_period_comparison=is_comparison,
         )
-        structured_request = {
-            "intent_candidates": intents,
-            "metric_ids": sorted(keep_ids),
-            "dimension_candidates": selected_dimensions,
-            "dimension_fields": [dimension_terms[item]["field"] for item in selected_dimensions],
-            "filter_fields": filter_fields,
-            "period_candidates": periods,
-            "period_relationship": relationship,
-            "selected_metric_id": selected,
-            "selected_metric_ids": selected_metric_ids,
-            "analysis_operation": analysis_operation,
-            "result_limit": result_limit,
-            # Node1의 route/표현/생략문 신호는 후보다. 계약 enum 안의 값만 통과시키고
-            # 라우트 확정과 전제조건 검증은 ConversationSlotResolver가 한다.
-            "requested_route": enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES),
-            "presentation_type": enum_signal(
-                normalized.get("presentation_type"), PRESENTATION_TYPES
-            ),
-            "is_elliptical": normalized.get("is_elliptical"),
-            "metric_terms": {
-                mid: metric_terms[mid] for mid in selected_metric_ids
+        metric_terms = await _complete_business_metric_terms(
+            self._adapter,
+            metric_terms,
+            executable_by_id,
+            keep_ids,
+            context,
+        )
+        partial_context["time_mode"] = analysis_time_mode
+        if analysis_time_mode == "latest_snapshot":
+            if is_comparison or analysis_operation in {
+                "time_trend",
+                "period_comparison",
+            }:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "최신 스냅샷 지표에는 추이 또는 기간 비교 전략이 승인되지 않았습니다.",
+                    partial_context=partial_context,
+                )
+            if periods:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "기간 범위를 최신 스냅샷 기준일로 임의 변환할 수 없습니다.",
+                    partial_context=partial_context,
+                )
+        else:
+            has_saved_period = not is_comparison and all(
+                name in payload.parameters
+                for name in time_parameter_names(selected_assets)
+            )
+            if is_comparison:
+                if len(periods) != 2:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.PERIOD_REQUIRED,
+                        "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다.",
+                        _period_suggestions(periods),
+                        disambiguation_options=_disambiguation_options_for_periods(periods),
+                        partial_context=partial_context,
+                    )
+            elif not has_saved_period and len(periods) != 1:
+                if (
+                    payload.resolved_slots is not None
+                    and payload.resolved_slots.period_start
+                    and payload.resolved_slots.period_end_exclusive
+                ):
+                    periods = [
+                        {
+                            "start": payload.resolved_slots.period_start,
+                            "end_exclusive": payload.resolved_slots.period_end_exclusive,
+                            "source_text": (
+                                f"{payload.resolved_slots.period_start} ~ "
+                                f"{payload.resolved_slots.period_end_exclusive}"
+                            ),
+                        }
+                    ]
+                else:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.PERIOD_REQUIRED,
+                        "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
+                        _period_suggestions(periods),
+                        disambiguation_options=_disambiguation_options_for_periods(periods),
+                        partial_context=partial_context,
+                    )
+        analysis_operation, intents = _apply_conversation_default_operation(
+            selected_assets,
+            context,
+            analysis_operation,
+            intents,
+            partial_context,
+        )
+        if analysis_operation == "time_trend" and analysis_time_bucket is None:
+            analysis_time_bucket = _common_source_time_bucket(selected_assets)
+            partial_context["analysis_time_bucket"] = analysis_time_bucket
+        availability = _validate_selected_data_availability(
+            selected_assets,
+            periods,
+            partial_context,
+        )
+        structured_request = _structured_request(
+            intents=intents,
+            keep_ids=keep_ids,
+            selected_metric_ids=selected_metric_ids,
+            selected_dimensions=selected_dimensions,
+            dimension_terms=dimension_terms,
+            filter_fields=filter_fields,
+            periods=periods,
+            relationship=relationship,
+            analysis_time_mode=analysis_time_mode,
+            analysis_operation=analysis_operation,
+            analysis_time_bucket=analysis_time_bucket,
+            result_limit=result_limit,
+            metric_terms=metric_terms,
+            model_signals={
+                # Node1의 route/표현/생략문 신호는 후보다. 계약 enum 안의 값만 통과시키고
+                # 라우트 확정과 전제조건 검증은 ConversationSlotResolver가 한다.
+                "requested_route": enum_signal(
+                    normalized.get("requested_route"), CONVERSATION_ROUTES
+                ),
+                "presentation_type": enum_signal(
+                    normalized.get("presentation_type"), PRESENTATION_TYPES
+                ),
+                "is_elliptical": normalized.get("is_elliptical"),
+                "measurement_source_text": measurement_source_text,
+                "measurement_source_texts": measurement_source_texts,
             },
-        }
-        if selected is not None:
-            structured_request["metric_term"] = metric_terms[selected]
+        )
+        if availability is not None:
+            structured_request["data_availability"] = availability
         question = normalized.get("normalized_question")
         if not isinstance(question, str) or not question.strip():
             raise ValueError("Node1 normalized_question 은 필수입니다.")

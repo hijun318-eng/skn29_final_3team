@@ -5,6 +5,8 @@ import { createReportClient } from "../../api/reportClient.ts";
 import {
   seoulWallClockToIso,
   type ReportBlockRequest,
+  type ReportAssistantSessionResponse,
+  type ReportAssistantEvaluationResponse,
   type ReportDefinitionVersion,
   type ReportOrientation,
   type ReportRun,
@@ -63,18 +65,24 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const [scheduleAt, setScheduleAt] = useState("");
   const [assistantInstruction, setAssistantInstruction] = useState("");
   const [assistantTrace, setAssistantTrace] = useState<AssistantTrace | null>(null);
+  const [assistantSession, setAssistantSession] = useState<ReportAssistantSessionResponse | null>(null);
+  const [assistantEvaluation, setAssistantEvaluation] = useState<ReportAssistantEvaluationResponse | null>(null);
 
   const definitionsRef = useRef(definitions);
   const selectedDefinitionRef = useRef(selectedDefinition);
+  const assistantSessionRef = useRef(assistantSession);
   const runsRequestRef = useRef("");
   definitionsRef.current = definitions;
   selectedDefinitionRef.current = selectedDefinition;
+  assistantSessionRef.current = assistantSession;
 
-  const beginOperation = useCallback((name: string) => {
+  const beginOperation = useCallback((name: string, resetFeedback = true) => {
     const operation = { id: createUuid(), name };
     setPendingOperations((current) => [...current, operation]);
-    setError("");
-    setNotice("");
+    if (resetFeedback) {
+      setError("");
+      setNotice("");
+    }
     return operation.id;
   }, []);
 
@@ -85,8 +93,9 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const mutate = useCallback(async <T,>(
     name: string,
     action: () => Promise<T> | T,
+    options: { preserveFeedback?: boolean } = {},
   ): Promise<T | null> => {
-    const operationId = beginOperation(name);
+    const operationId = beginOperation(name, !options.preserveFeedback);
     try {
       return await action();
     } catch (nextError) {
@@ -110,7 +119,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setError("");
     setNotice("");
   }, []);
-  const clearAssistantTrace = useCallback(() => setAssistantTrace(null), []);
+  const clearAssistantTrace = useCallback(() => {
+    setAssistantTrace(null);
+    setAssistantEvaluation(null);
+  }, []);
 
   const selectDefinition = useCallback((definition: ReportDefinitionVersion | null) => {
     setSelectedDefinition(definition);
@@ -354,11 +366,175 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return result;
   }, [mutate, reportClient, upsertDefinition]);
 
+  const submitAssistantInstruction = useCallback(async (
+    definition: ReportDefinitionVersion,
+    artifactId: string,
+    instruction: string,
+  ) => {
+    const normalized = instruction.trim();
+    if (!artifactId || !normalized || definition.status !== "draft") return null;
+    let session = assistantSessionRef.current;
+    if (
+      !session
+      || session.definition_id !== definition.definitionId
+      || session.definition_version !== definition.version
+      || session.artifact_id !== artifactId
+      || ["completed", "failed", "cancelled"].includes(session.phase)
+    ) {
+      session = await mutate("assistant", () => reportClient.createAssistantSession(
+        definition.definitionId,
+        definition.version,
+        artifactId,
+      ));
+      if (!session) return null;
+      setAssistantSession(session);
+    }
+    const proposal = await mutate("assistant", () => reportClient.submitAssistantMessage(
+      session.assistant_request_id,
+      normalized,
+    ));
+    if (!proposal) {
+      const recovered = await mutate(
+        "assistant-recover",
+        () => reportClient.getAssistantSession(session.assistant_request_id),
+        { preserveFeedback: true },
+      );
+      if (recovered) setAssistantSession(recovered);
+      return null;
+    }
+    setAssistantSession(proposal.session);
+    setAssistantInstruction("");
+    setNotice(proposal.change_kind === "new_data"
+      ? "새 데이터 분석 계획을 검토한 뒤 승인해 주세요."
+      : proposal.change_kind === "existing_artifact"
+        ? "AI 변경안을 검토한 뒤 적용하거나 취소해 주세요."
+        : proposal.message);
+    return {
+      status: proposal.change_kind === "new_data"
+        ? "approval_required"
+        : proposal.change_kind === "existing_artifact"
+          ? "patch_approval_required"
+        : proposal.change_kind === "clarification"
+          ? "clarification_required"
+          : "clarification_required",
+      message: proposal.message,
+      session: proposal.session,
+      definition: null,
+    };
+  }, [mutate, reportClient, upsertDefinition]);
+
+  const restoreAssistantSession = useCallback(async (assistantRequestId: string) => {
+    const session = await mutate(
+      "assistant-recover",
+      () => reportClient.getAssistantSession(assistantRequestId),
+    );
+    if (session) setAssistantSession(session);
+    return session;
+  }, [mutate, reportClient]);
+
+  const retryAssistantSession = useCallback(async () => {
+    const current = assistantSessionRef.current;
+    if (!current?.retryable || current.phase !== "failed") return null;
+    const session = await mutate(
+      "assistant-retry",
+      () => reportClient.retryAssistantSession(current.assistant_request_id),
+    );
+    if (!session) return null;
+    setAssistantSession(session);
+    setAssistantEvaluation(null);
+    setAssistantInstruction("");
+    setNotice("새 Assistant 세션을 열었습니다. 지시를 다시 입력해 주세요.");
+    return session;
+  }, [mutate, reportClient]);
+
+  const approveAssistantRequest = useCallback(async () => {
+    const current = assistantSessionRef.current;
+    const requestId = current?.analysis_plan?.request_id;
+    if (!current || !requestId) return null;
+    const session = await mutate("assistant-approval", () => reportClient.approveAssistantPlan(
+      current.assistant_request_id,
+      requestId,
+    ));
+    if (!session) return null;
+    setAssistantSession(session);
+    if (session.phase !== "completed" || !session.result_revision) return { session, definition: null };
+    const definition = await mutate("assistant-revision", () => reportClient.getDefinition(
+      session.definition_id,
+      session.result_revision as number,
+    ));
+    if (!definition) return { session, definition: null };
+    upsertDefinition(definition);
+    setNotice(`AI가 검증된 Artifact를 반영한 v${definition.version} 초안을 만들었습니다.`);
+    return { session, definition };
+  }, [mutate, reportClient, upsertDefinition]);
+
+  const rejectAssistantRequest = useCallback(async () => {
+    const current = assistantSessionRef.current;
+    const requestId = current?.analysis_plan?.request_id;
+    if (!current || !requestId) return null;
+    const session = await mutate("assistant-rejection", () => reportClient.rejectAssistantPlan(
+      current.assistant_request_id,
+      requestId,
+    ));
+    if (!session) return null;
+    setAssistantSession(session);
+    setNotice("새 데이터 분석 계획을 거절했습니다.");
+    return session;
+  }, [mutate, reportClient]);
+
+  const approveAssistantPatch = useCallback(async () => {
+    const current = assistantSessionRef.current;
+    const requestId = current?.patch_request_id;
+    if (!current || !requestId) return null;
+    const session = await mutate("assistant-patch-approval", () => reportClient.approveAssistantPatch(
+      current.assistant_request_id,
+      requestId,
+    ));
+    if (!session) return null;
+    setAssistantSession(session);
+    if (session.phase !== "completed" || !session.result_revision) return { session, definition: null };
+    const definition = await mutate("assistant-revision", () => reportClient.getDefinition(
+      session.definition_id,
+      session.result_revision as number,
+    ));
+    if (!definition) return { session, definition: null };
+    upsertDefinition(definition);
+    setNotice(`검토한 AI 변경안을 v${definition.version} 초안으로 저장했습니다.`);
+    return { session, definition };
+  }, [mutate, reportClient, upsertDefinition]);
+
+  const rejectAssistantPatch = useCallback(async () => {
+    const current = assistantSessionRef.current;
+    const requestId = current?.patch_request_id;
+    if (!current || !requestId) return null;
+    const session = await mutate("assistant-patch-rejection", () => reportClient.rejectAssistantPatch(
+      current.assistant_request_id,
+      requestId,
+    ));
+    if (!session) return null;
+    setAssistantSession(session);
+    setNotice("AI 변경안을 취소했습니다. 보고서는 변경되지 않았습니다.");
+    return session;
+  }, [mutate, reportClient]);
+
   useEffect(() => {
     if (!autoLoad) return;
     void loadDefinitions();
     if (isAdmin) void loadSchedules();
   }, [autoLoad, isAdmin, loadDefinitions, loadSchedules]);
+
+  useEffect(() => {
+    const session = assistantSession;
+    if (!session || !["completed", "failed", "cancelled"].includes(session.phase)) {
+      setAssistantEvaluation(null);
+      return undefined;
+    }
+    let active = true;
+    void reportClient.getAssistantEvaluation(session.assistant_request_id)
+      .then((evaluation) => { if (active) setAssistantEvaluation(evaluation); })
+      .catch(() => { if (active) setAssistantEvaluation(null); });
+    return () => { active = false; };
+  }, [assistantSession, reportClient]);
 
   const visibleDefinitions = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("ko-KR");
@@ -424,6 +600,8 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     scheduleAt,
     assistantInstruction,
     assistantTrace,
+    assistantSession,
+    assistantEvaluation,
     setQuery,
     setStatusFilter,
     setCreateOpen,
@@ -456,15 +634,24 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     createSchedule,
     setScheduleEnabled,
     requestAssistantDraft,
+    submitAssistantInstruction,
+    restoreAssistantSession,
+    approveAssistantRequest,
+    rejectAssistantRequest,
+    approveAssistantPatch,
+    rejectAssistantPatch,
+    retryAssistantSession,
   }), [
-    analysisClient, approveDefinition, assistantInstruction, assistantTrace, cadence,
+    analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, assistantInstruction,
+    assistantEvaluation, assistantSession, assistantTrace, cadence,
     clearAssistantTrace, clearFeedback, createDefinition, createNextDraft, createOpen, createSchedule,
     definitionState, definitions, error, fetchDefinition, filteredRuns, finalDocument,
     finalDocumentState, findLatestDraft, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
-    pendingOperations, query, reportClient, requestAssistantDraft, runDefinition, runQuery,
+    pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient, requestAssistantDraft,
+    restoreAssistantSession, retryAssistantSession, runDefinition, runQuery,
     runs, scheduleAt, schedules, selectedDefinition, selectedRun, selectedSchedules,
     selectDefinition, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
-    visibleDefinitions, visibleRunCount, visibleRuns,
+    submitAssistantInstruction, visibleDefinitions, visibleRunCount, visibleRuns,
   ]);
 }

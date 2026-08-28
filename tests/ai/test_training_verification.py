@@ -189,6 +189,72 @@ def test_validate_output_resolves_multiple_metrics_without_unselected_rules():
     assert validate_sql(plan["executable_sql"]).placeholders == ()
 
 
+def test_validate_g2_accepts_governed_ratio_metric() -> None:
+    namespace = "ratio"
+    request = arbitrary_node2_request(namespace)
+    fact = f"{namespace}_catalog.semantic.fact_observations"
+    dimension = f"{namespace}_catalog.semantic.dim_entities"
+    numerator = request["metric_rules"][0]
+    denominator = copy.deepcopy(numerator)
+    denominator.update(
+        id=f"{namespace}_count",
+        source={
+            "kind": "column",
+            "field": {"asset_fqn": fact, "column": "entity_id"},
+        },
+        aggregation="count",
+        result_field="resolved_count",
+        unit="row",
+    )
+    ratio = {
+        "id": f"{namespace}_ratio",
+        "source": {
+            "kind": "ratio",
+            "numerator_metric_id": numerator["id"],
+            "denominator_metric_id": denominator["id"],
+            "zero_policy": "null_on_zero_denominator",
+        },
+        "aggregation": "ratio",
+        "result_field": "resolved_ratio",
+        "unit": "ratio",
+        "time_field": None,
+        "dimensions": [],
+        "required_filters": [],
+    }
+    request["metric_rules"] = [numerator, denominator, ratio]
+    request["resolved_request"]["metric_ids"] = [
+        numerator["id"],
+        denominator["id"],
+        ratio["id"],
+    ]
+    request["resolved_request"]["output_metric_ids"] = [ratio["id"]]
+    request["query_policy"]["allowed_functions"].extend(["count", "cast", "nullif"])
+    sql = (
+        "SELECT d.category_code, SUM(f.amount) AS resolved_measure, "
+        "COUNT(f.entity_id) AS resolved_count, "
+        "CAST(SUM(f.amount) AS DOUBLE) / NULLIF(COUNT(f.entity_id), 0) "
+        "AS resolved_ratio "
+        f"FROM {fact} AS f LEFT JOIN {dimension} AS d "
+        "ON f.entity_id = d.entity_id "
+        "AND f.observed_at >= d.valid_from AND f.observed_at < d.valid_to "
+        "WHERE f.observed_at >= "
+        f"from_iso8601_timestamp(:{namespace}_window_start) "
+        "AND f.observed_at < "
+        f"from_iso8601_timestamp(:{namespace}_window_end) "
+        f"AND f.status_code = :{namespace}_status "
+        "GROUP BY d.category_code LIMIT 500"
+    )
+    case = {
+        "node": "node2",
+        "input": request,
+        "expected_output": {"sql": sql},
+    }
+
+    plan = validate_g2(case, _bindings(request))
+
+    assert validate_sql(plan["executable_sql"]).placeholders == ()
+
+
 @pytest.mark.parametrize("mutation", ["missing", "extra", "type", "value"])
 def test_binding_contract_fails_closed(mutation):
     request = arbitrary_node2_request("cinder")

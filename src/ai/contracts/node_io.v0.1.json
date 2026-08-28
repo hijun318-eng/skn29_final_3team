@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.17.0",
+  "version": "MODEL-v1.25.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -459,6 +459,196 @@
         }
       }
     },
+    "node1_interpretation_time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "calendar_id", "time_field"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["range", "latest_snapshot"]},
+        "calendar_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "time_field": {"type": ["string", "null"], "minLength": 1, "maxLength": 128}
+      }
+    },
+    "node1_interpretation_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "datahub_urn",
+        "canonical_id",
+        "canonical_name",
+        "label",
+        "definition",
+        "synonyms",
+        "unit",
+        "aggregation",
+        "time_semantics",
+        "allowed_dimension_ids",
+        "allowed_filter_ids",
+        "positive_examples",
+        "negative_examples",
+        "approval_status",
+        "quality_status",
+        "source_authority"
+      ],
+      "properties": {
+        "datahub_urn": {"type": "string", "minLength": 1, "maxLength": 512},
+        "canonical_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "canonical_name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "label": {"type": "string", "minLength": 1, "maxLength": 160},
+        "definition": {"type": "string", "minLength": 1, "maxLength": 1200},
+        "synonyms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 33,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 160}
+        },
+        "unit": {"type": "string", "minLength": 1, "maxLength": 64},
+        "aggregation": {"type": "string", "minLength": 1, "maxLength": 64},
+        "time_semantics": {"$ref": "#/$defs/node1_interpretation_time"},
+        "allowed_dimension_ids": {
+          "type": "array",
+          "maxItems": 60,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "allowed_filter_ids": {
+          "type": "array",
+          "maxItems": 60,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "positive_examples": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "negative_examples": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "approval_status": {"type": "string", "const": "APPROVED"},
+        "quality_status": {"type": "string", "const": "ACTIVE_RELEASE_VERIFIED"},
+        "source_authority": {
+          "type": "string",
+          "enum": ["DATAHUB_NATIVE_METRIC_V1", "DATAHUB_GLOSSARY_MIGRATION_V1"]
+        }
+      }
+    },
+    "node1_interpretation_dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_id",
+        "label",
+        "synonyms",
+        "asset_urn",
+        "column",
+        "filter_allowed"
+      ],
+      "properties": {
+        "canonical_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "label": {"type": "string", "minLength": 1, "maxLength": 80},
+        "synonyms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 80}
+        },
+        "asset_urn": {"type": "string", "minLength": 1, "maxLength": 512},
+        "column": {"type": "string", "minLength": 1, "maxLength": 128},
+        "filter_allowed": {"type": "boolean", "const": true}
+      }
+    },
+    "node1_interpretation_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "source_authority",
+        "release_evidence",
+        "permission_snapshot_id",
+        "retrieval_evidence",
+        "metrics",
+        "dimensions"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "Node1InterpretationContext.v1"},
+        "source_authority": {
+          "type": "string",
+          "enum": ["DATAHUB_NATIVE_METRIC_V1", "DATAHUB_GLOSSARY_MIGRATION_V1"]
+        },
+        "release_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "product_release_id",
+            "semantic_release_id",
+            "catalog_sha256",
+            "canonical_sha256",
+            "runtime_projection_sha256"
+          ],
+          "properties": {
+            "product_release_id": {"type": "string", "minLength": 1, "maxLength": 160},
+            "semantic_release_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "catalog_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "canonical_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "runtime_projection_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        "permission_snapshot_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "retrieval_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "asset_urns", "metric_ranks"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["lexical", "lexical_shadow", "datahub_lexical", "hybrid"]
+            },
+            "asset_urns": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1, "maxLength": 512}
+            },
+            "metric_ranks": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 24,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["metric_id", "rank"],
+                "properties": {
+                  "metric_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                  "rank": {"type": "integer", "minimum": 1, "maximum": 24}
+                }
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 24,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/node1_interpretation_metric"}
+        },
+        "dimensions": {
+          "type": "array",
+          "maxItems": 60,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/node1_interpretation_dimension"}
+        }
+      }
+    },
     "node1_request": {
       "type": "object",
       "additionalProperties": false,
@@ -469,7 +659,8 @@
         "timezone",
         "calendar_id",
         "allowed_routes",
-        "business_terms"
+        "business_terms",
+        "interpretation_context"
       ],
       "properties": {
         "question": {"type": "string", "minLength": 1},
@@ -484,6 +675,62 @@
           "properties": {
             "start": {"type": "string", "format": "date-time"},
             "end_exclusive": {"type": "string", "format": "date-time"}
+          }
+        },
+        "previous_result_shape": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["analysis_operation", "analysis_time_bucket", "dimension_count", "result_limit"],
+          "properties": {
+            "analysis_operation": {
+              "type": "string",
+              "enum": [
+                "aggregate",
+                "breakdown",
+                "time_trend",
+                "top_n",
+                "bottom_n",
+                "period_comparison"
+              ]
+            },
+            "analysis_time_bucket": {
+              "type": ["string", "null"],
+              "enum": ["day", "week", "month", "quarter", "year", null]
+            },
+            "dimension_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "result_limit": {
+              "type": ["integer", "null"],
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "interpretation_recheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "attempt", "violation"],
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": ["period_candidates", "analysis_operation"]
+            },
+            "attempt": {"type": "integer", "const": 1},
+            "violation": {
+              "type": "string",
+              "enum": [
+                "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
+                "ANALYSIS_OPERATION_REQUIRED",
+                "ANALYSIS_OPERATION_INCONSISTENT",
+                "ANALYSIS_DIMENSION_REQUIRED",
+                "ANALYSIS_TIME_BUCKET_REQUIRED",
+                "ANALYSIS_RESULT_LIMIT_INVALID",
+                "ANALYSIS_SHAPE_HAS_UNEXPECTED_SLOT"
+              ]
+            }
           }
         },
         "allowed_routes": {
@@ -512,7 +759,8 @@
               }
             }
           }
-        }
+        },
+        "interpretation_context": {"$ref": "#/$defs/node1_interpretation_context"}
       }
     },
     "node1_response": {
@@ -528,6 +776,7 @@
         "selected_metric_id",
         "selected_metric_ids",
         "analysis_operation",
+        "analysis_time_bucket",
         "result_limit",
         "dimension_candidates",
         "filter_candidates",
@@ -572,6 +821,10 @@
             null
           ]
         },
+        "analysis_time_bucket": {
+          "type": ["string", "null"],
+          "enum": ["day", "week", "month", "quarter", "year", null]
+        },
         "result_limit": {
           "type": ["integer", "null"],
           "minimum": 1,
@@ -585,12 +838,14 @@
           "type": ["string", "null"],
           "enum": [
             "SUMMARY",
+            "KPI",
             "TABLE",
             "BAR",
             "LINE",
             "PIE",
             "HORIZONTAL_BAR",
             "DONUT",
+            "FULL",
             null
           ]
         },
@@ -892,6 +1147,182 @@
         "table_title": {"type": "string", "minLength": 1, "maxLength": 255},
         "chart_title": {"type": "string", "minLength": 1, "maxLength": 255}
       }
+    },
+    "report_assistant_turn_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instruction", "artifact", "report", "history"],
+      "properties": {
+        "instruction": {"type": "string", "minLength": 1, "maxLength": 500},
+        "artifact": {"$ref": "#/$defs/report_assistant_artifact"},
+        "history": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "content"],
+            "properties": {
+              "role": {"type": "string", "enum": ["user", "assistant"]},
+              "content": {"type": "string", "minLength": 1, "maxLength": 1000}
+            }
+          }
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["title", "orientation", "currency_display_unit", "blocks"],
+          "properties": {
+            "title": {"type": "string", "minLength": 1, "maxLength": 255},
+            "orientation": {"type": "string", "enum": ["portrait", "landscape"]},
+            "currency_display_unit": {"type": "string", "enum": ["auto", "one", "thousand", "million", "hundredMillion", "billion"]},
+            "blocks": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["block_id", "title", "type", "content", "artifact_ref", "x", "y", "w", "h"],
+                "properties": {
+                  "block_id": {"type": "string", "minLength": 1},
+                  "title": {"type": "string", "minLength": 1, "maxLength": 255},
+                  "type": {"type": "string", "enum": ["table", "chart", "artifact", "text"]},
+                  "content": {"type": "string", "maxLength": 4000},
+                  "artifact_ref": {"type": ["string", "null"], "enum": ["source_artifact", null]},
+                  "x": {"type": "integer", "minimum": 0, "maximum": 11},
+                  "y": {"type": "integer", "minimum": 0},
+                  "w": {"type": "integer", "minimum": 1, "maximum": 12},
+                  "h": {"type": "integer", "minimum": 1}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "report_assistant_turn_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_kind", "message", "analysis_plan", "patch"],
+      "properties": {
+        "change_kind": {"type": "string", "enum": ["clarification", "existing_artifact", "new_data"]},
+        "message": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "analysis_plan": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["question", "reason", "scope"],
+          "properties": {
+            "question": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+            "scope": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["period", "metrics", "dimensions"],
+              "properties": {
+                "period": {"type": "string", "minLength": 1, "maxLength": 255},
+                "metrics": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "uniqueItems": true,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 128}
+                },
+                "dimensions": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "uniqueItems": true,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 128}
+                }
+              }
+            }
+          }
+        },
+        "patch": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["summary", "operations"],
+          "properties": {
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "operations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["op", "block_id", "artifact_ref", "view", "title", "content", "after_block_id", "width"],
+                "properties": {
+                  "op": {"type": "string", "enum": ["set_report_title", "add_text", "update_text", "add_artifact_view", "reposition_block", "remove_block", "duplicate_block", "restore_previous_revision"]},
+                  "block_id": {"type": ["string", "null"]},
+                  "artifact_ref": {"type": ["string", "null"], "enum": ["source_artifact", null]},
+                  "view": {"type": ["string", "null"], "enum": ["chart", "table", "artifact", null]},
+                  "title": {"type": ["string", "null"], "maxLength": 255},
+                  "content": {"type": ["string", "null"], "maxLength": 4000},
+                  "after_block_id": {"type": ["string", "null"]},
+                  "width": {"type": ["string", "null"], "enum": ["half", "full", null]}
+                },
+                "allOf": [
+                  {
+                    "if": {"properties": {"op": {"const": "reposition_block"}}},
+                    "then": {
+                      "properties": {
+                        "block_id": {"type": "string", "minLength": 1},
+                        "artifact_ref": {"type": "null"},
+                        "view": {"type": "null"},
+                        "title": {"type": "null"},
+                        "content": {"type": "null"},
+                        "width": {"type": "string", "enum": ["half", "full"]}
+                      }
+                    }
+                  },
+                  {
+                    "if": {"properties": {"op": {"enum": ["remove_block", "duplicate_block"]}}},
+                    "then": {
+                      "properties": {
+                        "block_id": {"type": "string", "minLength": 1},
+                        "artifact_ref": {"type": "null"},
+                        "view": {"type": "null"},
+                        "title": {"type": "null"},
+                        "content": {"type": "null"},
+                        "after_block_id": {"type": "null"},
+                        "width": {"type": "null"}
+                      }
+                    }
+                  },
+                  {
+                    "if": {"properties": {"op": {"const": "restore_previous_revision"}}},
+                    "then": {
+                      "properties": {
+                        "block_id": {"type": "null"},
+                        "artifact_ref": {"type": "null"},
+                        "view": {"type": "null"},
+                        "title": {"type": "null"},
+                        "content": {"type": "null"},
+                        "after_block_id": {"type": "null"},
+                        "width": {"type": "null"}
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"change_kind": {"const": "clarification"}}},
+          "then": {"properties": {"analysis_plan": {"type": "null"}, "patch": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"change_kind": {"const": "existing_artifact"}}},
+          "then": {"properties": {"analysis_plan": {"type": "null"}, "patch": {"type": "object"}}}
+        },
+        {
+          "if": {"properties": {"change_kind": {"const": "new_data"}}},
+          "then": {"properties": {"analysis_plan": {"type": "object"}, "patch": {"type": "null"}}}
+        }
+      ]
     }
   }
 }

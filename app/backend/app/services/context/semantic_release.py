@@ -95,6 +95,19 @@ class CanonicalMetric:
 
 
 @dataclass(frozen=True)
+class CanonicalDimensionMember:
+    """승인된 Dimension 값과 Glossary Term identity를 release 안에 고정한다."""
+
+    id: str
+    urn: str
+    name: str
+    aliases: tuple[str, ...]
+    definition: str
+    canonical_value: str
+    version: str
+
+
+@dataclass(frozen=True)
 class CanonicalDimension:
     """업무 차원 ID를 한 asset의 실제 컬럼에 결속한 release 단위 Dimension 계약이다."""
 
@@ -103,6 +116,7 @@ class CanonicalDimension:
     definition: str
     asset_fqn: str
     column: str
+    members: tuple[CanonicalDimensionMember, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -506,10 +520,21 @@ def _compile_metrics(
             and not time_field.startswith(f"{source_asset.fqn}.")
         ) or any(
             not field.startswith(f"{source_asset.fqn}.")
-            for field in (*dimension_fields, *(item[0] for item in filters))
+            for field in (item[0] for item in filters)
         ):
             raise CanonicalSemanticReleaseError(
-                "semantic release metric fields span multiple execution assets"
+                "semantic release metric calculation fields span multiple execution assets"
+            )
+        reachable_assets = _reachable_assets(
+            source_asset.fqn,
+            tuple(item for item in joins if item.id in allowed_join_ids),
+        )
+        if any(
+            _field_asset(field, assets_by_fqn) not in reachable_assets
+            for field in dimension_fields
+        ):
+            raise CanonicalSemanticReleaseError(
+                "semantic release metric dimension is outside its approved join graph"
             )
         if not set(grain_keys).issubset(
             {column.name for column in source_asset.columns}
@@ -540,6 +565,37 @@ def _compile_metrics(
             )
         )
     return tuple(result)
+
+
+def _reachable_assets(
+    source_fqn: str,
+    joins: tuple[GovernedJoin, ...],
+) -> frozenset[str]:
+    adjacency: dict[str, set[str]] = {}
+    for join in joins:
+        adjacency.setdefault(join.left, set()).add(join.right)
+        adjacency.setdefault(join.right, set()).add(join.left)
+    pending = [source_fqn]
+    visited: set[str] = set()
+    while pending:
+        current = pending.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(adjacency.get(current, ()))
+    return frozenset(visited)
+
+
+def _field_asset(
+    field: str,
+    assets: Mapping[str, CanonicalAsset],
+) -> str:
+    matches = [fqn for fqn in assets if field.startswith(f"{fqn}.")]
+    if len(matches) != 1:
+        raise CanonicalSemanticReleaseError(
+            "semantic release field does not resolve one asset"
+        )
+    return matches[0]
 
 
 def _metric_source_assets(
@@ -615,6 +671,33 @@ def _compile_dimensions(
                 definition=_text(raw.get("definition"), f"{dimension_id} definition"),
                 asset_fqn=asset_fqn,
                 column=column,
+                members=tuple(
+                    CanonicalDimensionMember(
+                        id=_text(member.get("id"), f"{dimension_id} member id"),
+                        urn=_text(member.get("urn"), f"{dimension_id} member urn"),
+                        name=_text(member.get("name"), f"{dimension_id} member name"),
+                        aliases=_texts(
+                            member.get("aliases"),
+                            f"{dimension_id} member aliases",
+                        ),
+                        definition=_text(
+                            member.get("definition"),
+                            f"{dimension_id} member definition",
+                        ),
+                        canonical_value=_text(
+                            member.get("canonical_value"),
+                            f"{dimension_id} canonical value",
+                        ),
+                        version=_text(
+                            member.get("version"),
+                            f"{dimension_id} member version",
+                        ),
+                    )
+                    for member in _array(
+                        raw.get("members", []),
+                        f"{dimension_id} members",
+                    )
+                ),
             )
         )
     return tuple(sorted(result, key=lambda item: item.id))

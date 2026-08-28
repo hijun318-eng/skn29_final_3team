@@ -20,16 +20,29 @@ from app.contracts import (
     ResolvedSlots,
     Role,
 )
-from app.ports.data_platform import NoEntitledAssetsError, NoMetricMatchError
+from app.ports.data_platform import (
+    AssetCandidateSet,
+    ExecutionAssetSelection,
+    NoEntitledAssetsError,
+    NoMetricMatchError,
+    ReleaseReceiptChangedError,
+    UnsupportedSemanticError,
+)
 from app.services.analysis import AnalysisService
+from app.services.analysis.pipeline_support import PipelineSupport
 from app.services.analysis.result_validator import PipelineResultValidator
+from app.services.context.builder import ContextPackageBuilder
+from app.services.execution_control import ModelCallBudget
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 ASSET_FQN = "orion_catalog.analytics.observations"
-ASSET_URN = "urn:example:dataset:orion-observations"
+ASSET_URN = (
+    "urn:li:dataset:(urn:li:dataPlatform:trino,"
+    "orion_catalog.analytics.observations,PROD)"
+)
 METRIC_ID = "observed_measure"
 RESULT_FIELD = "observed_total"
 REQUEST_TEXT = "summarize the governed observation measure"
@@ -130,6 +143,7 @@ NODE1_RESPONSE = {
     "selected_metric_id": METRIC_ID,
     "selected_metric_ids": [METRIC_ID],
     "analysis_operation": "aggregate",
+    "analysis_time_bucket": None,
     "result_limit": None,
     "dimension_candidates": [],
     "filter_candidates": [],
@@ -297,13 +311,16 @@ class AsyncRuntimeDataPlatform:
         self,
         *,
         search_error=None,
+        resolve_error=None,
         execute_error=None,
         result=None,
         asset=None,
         schema=None,
         metric_terms=None,
+        resolved_assets=None,
     ):
         self.search_error = search_error
+        self.resolve_error = resolve_error
         self.execute_error = execute_error
         self.result = copy.deepcopy(result or QUERY_RESULT)
         self.asset = copy.deepcopy(asset or ASSET)
@@ -311,23 +328,63 @@ class AsyncRuntimeDataPlatform:
         self.metric_terms = copy.deepcopy(
             metric_terms or {METRIC_ID: METRIC_TERM}
         )
+        self.resolved_assets = copy.deepcopy(
+            resolved_assets if resolved_assets is not None else [self.asset]
+        )
         self.search_count = 0
+        self.search_contexts = []
+        self.resolve_count = 0
+        self.last_execution_selection = None
         self.execute_count = 0
         self.cancelled = []
         self.closed = False
 
-    async def search_assets(self, query, context):
+    async def _candidate_assets(self, query, context):
         self.search_count += 1
+        self.search_contexts.append(copy.deepcopy(context))
         if self.search_error is not None:
             raise self.search_error
         return [copy.deepcopy(self.asset)]
 
-    async def get_asset_schema(self, urn):
+    async def search_asset_candidates(self, query, context):
+        assets = tuple(await self._candidate_assets(query, context))
+        rank = 1
+        for asset in assets:
+            for metric in asset.get("metrics", ()):
+                if metric.get("visibility", "BUSINESS") == "BUSINESS":
+                    metric["candidate_selectable"] = True
+                    metric["candidate_rank"] = rank
+                    metric["source_authority"] = "DATAHUB_NATIVE_METRIC_V1"
+                    metric["source_urn"] = f"urn:li:metric:{metric['id']}"
+                    rank += 1
+        return AssetCandidateSet(
+            assets=assets,
+            context_release=str(self.asset["context_release"]),
+            catalog_checksum="1" * 64,
+            canonical_checksum="2" * 64,
+            product_release_id="pipeline-test-product-release",
+            runtime_projection_checksum="3" * 64,
+            source_authority="DATAHUB_NATIVE_METRIC_V1",
+            retrieval_mode="lexical",
+        )
+
+    async def resolve_execution_assets(
+        self,
+        selection: ExecutionAssetSelection,
+        context,
+    ):
+        self.resolve_count += 1
+        self.last_execution_selection = selection
+        if self.resolve_error is not None:
+            raise self.resolve_error
+        return copy.deepcopy(self.resolved_assets)
+
+    async def get_asset_schema(self, urn, context=None):
         if urn != ASSET_URN:
             raise ValueError("unknown runtime asset")
         return copy.deepcopy(self.schema)
 
-    async def get_metric_terms(self, metric_ids):
+    async def get_metric_terms(self, metric_ids, context=None):
         return {
             metric_id: copy.deepcopy(self.metric_terms[metric_id])
             for metric_id in metric_ids
@@ -388,9 +445,20 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
     async def test_success_preserves_orchestration_gates_and_artifact_evidence(self):
         execution = {}
         progress = []
+        admissions = []
+
+        async def admit_run(admission_context):
+            admissions.append(
+                (
+                    tuple(stage for stage, _outcome in progress),
+                    admission_context,
+                )
+            )
+
         response, adapter, model, _service = await self.run_pipeline(
             execution_sink=execution.update,
             progress_sink=lambda stage, outcome: progress.append((stage, outcome)),
+            run_admission_sink=admit_run,
         )
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
@@ -408,10 +476,162 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(stages.index(PipelineStage.G2), stages.index(PipelineStage.G3))
         self.assertEqual(response.data.artifact.artifact_id, response.data.result.evidence.artifact_id)
         self.assertEqual(17, response.data.result.metrics[0].value)
+        self.assertEqual(1, adapter.resolve_count)
+        self.assertEqual(
+            (METRIC_ID,),
+            adapter.last_execution_selection.output_metric_ids,
+        )
         self.assertEqual(1, adapter.execute_count)
         self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
         self.assertEqual({"plan", "query", "package"}, set(execution))
         self.assertTrue(progress)
+        self.assertEqual(1, len(admissions))
+        self.assertNotIn(PipelineStage.CONTEXT, admissions[0][0])
+        self.assertNotIn(PipelineStage.G1, admissions[0][0])
+        self.assertNotIn(PipelineStage.G2, admissions[0][0])
+        admitted_context = admissions[0][1]
+        self.assertEqual(
+            "pipeline-test-product-release",
+            admitted_context.product_release_id,
+        )
+        self.assertEqual("context-v3", admitted_context.semantic_release_id)
+        self.assertTrue(admitted_context.permission_snapshot_id)
+
+    async def test_runtime_context_receipt_is_saved_after_admission_before_query(self):
+        adapter = AsyncRuntimeDataPlatform()
+        events = []
+
+        async def admit_run(_context):
+            events.append("admitted")
+
+        async def persist_context(receipt_context, package):
+            self.assertEqual(["admitted"], events)
+            self.assertEqual(0, adapter.execute_count)
+            self.assertEqual(receipt_context.semantic_release_id, package.context_release)
+            self.assertEqual(receipt_context.product_release_id, package.product_release_id)
+            events.append("context-receipt")
+
+        response, adapter, _model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+            context_receipt_sink=persist_context,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(["admitted", "context-receipt"], events)
+        self.assertEqual(1, adapter.execute_count)
+
+    async def test_runtime_context_receipt_failure_submits_no_query(self):
+        adapter = AsyncRuntimeDataPlatform()
+
+        async def admit_run(_context):
+            return None
+
+        async def fail_context_receipt(_context, _package):
+            raise RuntimeError("context receipt store unavailable")
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+            context_receipt_sink=fail_context_receipt,
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.ARTIFACT_PERSIST_FAILED, response.error.code)
+        self.assertEqual(0, adapter.execute_count)
+        self.assertEqual(["node1"], [node for node, _payload in model.calls])
+
+    async def test_empty_result_is_blocked_without_artifact(self):
+        execution = {}
+        empty_result = copy.deepcopy(QUERY_RESULT)
+        empty_result["rows"] = []
+        empty_result["result_metadata"] = PipelineResultValidator.result_metadata(
+            [],
+            (RESULT_FIELD,),
+        )
+        empty_result["sampling"] = {
+            "applied": False,
+            "returned_rows": 0,
+            "total_rows": 0,
+        }
+        asset_filter = copy.deepcopy(ASSET)
+        asset_filter["required_filters"] = copy.deepcopy(
+            asset_filter["metrics"][0]["required_filters"]
+        )
+        asset_filter["metrics"][0]["required_filters"] = []
+        adapter = AsyncRuntimeDataPlatform(
+            result=empty_result,
+            asset=asset_filter,
+        )
+
+        response, _adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            execution_sink=execution.update,
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.EMPTY_RESULT, response.error.code)
+        self.assertIsNone(response.data.result)
+        self.assertIsNone(response.data.artifact)
+        self.assertIsNotNone(response.data.evidence)
+        self.assertEqual("query-arbitrary-1", response.data.evidence.query_id)
+        self.assertEqual("2042-06-01", response.data.evidence.period.start.isoformat())
+        self.assertEqual("2042-06-15", response.data.evidence.period.end_exclusive.isoformat())
+        self.assertEqual(
+            {f"{ASSET_FQN}.state_code": "accepted"},
+            response.data.evidence.filters,
+        )
+        self.assertEqual(ASSET_URN, response.data.evidence.sources[0].urn)
+        self.assertEqual({"plan", "query", "package"}, set(execution))
+        self.assertEqual([], execution["query"]["rows"])
+        self.assertNotIn("node3", [node for node, _ in model.calls])
+
+    async def test_unproven_partial_query_does_not_create_artifact(self):
+        partial_result = copy.deepcopy(QUERY_RESULT)
+        partial_result["status"] = "PARTIAL"
+        partial_result["warning_count"] = 1
+        partial_result["critical_warning_count"] = 1
+
+        response, _adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(result=partial_result),
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.RESULT_EVIDENCE_MISSING, response.error.code)
+        self.assertIsNone(response.data.result)
+        self.assertIsNone(response.data.artifact)
+        self.assertNotIn("node3", [node for node, _ in model.calls])
+
+    async def test_completed_query_warning_is_evidence_not_partial_status(self):
+        warned_result = copy.deepcopy(QUERY_RESULT)
+        warned_result["warnings"] = ("planner notice",)
+        warned_result["warning_count"] = 1
+        warned_result["critical_warning_count"] = 0
+
+        response, _adapter, _model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(result=warned_result),
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertIsNone(response.error)
+        self.assertEqual(1, response.data.result.evidence.execution.warning_count)
+        self.assertEqual(
+            0,
+            response.data.result.evidence.execution.critical_warning_count,
+        )
+
+    async def test_node1_is_counted_by_the_shared_model_budget(self):
+        budget = ModelCallBudget()
+        budget.count = budget.MAX_CALLS
+
+        response, adapter, model, _service = await self.run_pipeline(
+            model_budget=budget,
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.MODEL_CONTRACT_INVALID, response.error.code)
+        self.assertEqual([], model.calls)
+        self.assertEqual(0, adapter.execute_count)
 
     async def test_view_reuse_uses_typed_sql_without_calling_node2(self):
         """승인 단일 Serving View는 Node 1 결과를 다시 추측하지 않고 AST로 실행한다."""
@@ -557,7 +777,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
 
     async def test_grounded_node3_numbers_are_preserved(self):
-        summary = "The governed total is 17 for the requested period."
+        summary = "Observed measure is 17 for the requested period."
         response, _adapter, _model, _service = await self.run_pipeline(
             model=model_with(
                 node3={"summary": summary, "model_version": "programmable-v1"}
@@ -567,6 +787,24 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(summary, response.data.result.summary)
         self.assertEqual(
             "programmable-v1",
+            response.data.result.evidence.model_version,
+        )
+
+    async def test_grounded_number_with_unsupported_cause_uses_safe_summary(self):
+        response, _adapter, _model, _service = await self.run_pipeline(
+            model=model_with(
+                node3={
+                    "summary": (
+                        "Observed measure is 17 because a local event increased demand."
+                    ),
+                    "model_version": "programmable-v1",
+                }
+            )
+        )
+
+        self.assertNotIn("local event", response.data.result.summary)
+        self.assertEqual(
+            "GROUNDED-NARRATIVE-v1.0.0",
             response.data.result.evidence.model_version,
         )
 
@@ -645,23 +883,105 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
 
+    async def test_release_change_during_execution_resolution_is_retryable(self):
+        """후보 이후 release 교체는 입력 부족이 아니라 재시도 가능한 catalog 충돌이다."""
+
+        adapter = AsyncRuntimeDataPlatform(
+            resolve_error=ReleaseReceiptChangedError("release receipt changed")
+        )
+        admissions = []
+
+        async def admit_run(_admission_context):
+            admissions.append(True)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_SOURCE_FAILED, response.error.code)
+        self.assertTrue(response.error.retryable)
+        self.assertIn("카탈로그가 갱신", response.error.message)
+        self.assertEqual(["node1"], [node for node, _ in model.calls])
+        self.assertEqual(0, adapter.execute_count)
+        self.assertEqual([True], admissions)
+
+    async def test_pre_resolved_request_cannot_overwrite_its_pinned_release(self):
+        """Node 1 fast-path도 고정된 릴리스와 다른 후보 영수증으로 재결속하지 않는다."""
+
+        self.payload = AnalysisRequest(
+            question=REQUEST_TEXT,
+            resolved_slots=ResolvedSlots(
+                metric_id=METRIC_ID,
+                period_start="2042-06-01",
+                period_end_exclusive="2042-07-01",
+            ),
+        )
+        pinned_context = self.context.model_copy(
+            update={
+                "product_release_id": "different-product-release",
+                "semantic_release_id": "context-v3",
+            }
+        )
+        admissions = []
+
+        async def admit_run(_admission_context):
+            admissions.append(True)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            context=pinned_context,
+            run_admission_sink=admit_run,
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_SOURCE_FAILED, response.error.code)
+        self.assertTrue(response.error.retryable)
+        self.assertEqual([], model.calls)
+        self.assertEqual(0, adapter.resolve_count)
+        self.assertEqual([], admissions)
+
+    async def test_execution_graph_gap_is_a_semantic_contract_failure(self):
+        """승인 JOIN·grain 부재를 모델 장애나 사용자 기간 누락으로 오분류하지 않는다."""
+
+        adapter = AsyncRuntimeDataPlatform(
+            resolve_error=UnsupportedSemanticError("no unique approved join path")
+        )
+
+        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SEMANTIC_CONTRACT_INVALID, response.error.code)
+        self.assertIn("승인 관계", response.error.message)
+        self.assertEqual(["node1"], [node for node, _ in model.calls])
+        self.assertEqual(0, adapter.execute_count)
+
     async def test_new_analysis_without_metric_requests_metric_context(self):
         adapter = AsyncRuntimeDataPlatform(
             search_error=NoMetricMatchError("no governed metric matches the request")
         )
+        admissions = []
 
-        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+        async def admit_run(_admission_context):
+            admissions.append(True)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+        )
 
         self.assertEqual(AnalysisStatus.CLARIFICATION_REQUIRED, response.data.status)
         self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, response.error.code)
         self.assertEqual(ClarificationType.METRIC, response.error.clarification_type)
         self.assertIn("분석할 지표", response.error.message)
         self.assertEqual(1, adapter.search_count)
+        self.assertEqual([], adapter.search_contexts[0]["preferred_metric_ids"])
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
+        self.assertEqual([], admissions)
 
     async def test_partial_conversation_slots_return_exact_clarification_cause(self):
-        """서버가 아는 지표·기간 누락은 자산 없음으로 뭉개지 않고 typed 원인을 돌려준다."""
+        """지표 누락은 즉시, range 기간 누락은 선택 자산의 시간 계약 확인 후 구분한다."""
 
         adapter = AsyncRuntimeDataPlatform(
             search_error=NoEntitledAssetsError("must not search partial slots")
@@ -703,7 +1023,160 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             ClarificationType.PERIOD,
             period_response.error.clarification_type,
         )
-        self.assertEqual(0, adapter.search_count)
+        self.assertEqual(1, adapter.search_count)
+        self.assertEqual(
+            [METRIC_ID],
+            adapter.search_contexts[0]["preferred_metric_ids"],
+        )
+        self.assertEqual([], model.calls)
+
+    async def test_pre_resolved_latest_snapshot_without_period_reaches_typed_execution(self):
+        """기간 없는 typed 슬롯도 승인 time mode가 snapshot이면 검색 이후 실행까지 도달한다."""
+
+        snapshot_fqn = "serving.semantic.current_snapshot"
+        snapshot_asset = copy.deepcopy(ASSET)
+        snapshot_asset["fqn"] = snapshot_fqn
+        snapshot_asset["metrics"][0]["asset_fqn"] = snapshot_fqn
+        snapshot_asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        snapshot_asset["time_metadata"] = {
+            "calendar_id": "gregorian-test",
+            "mode": "latest_snapshot",
+            "selection": "max_source_value_lt_as_of",
+            "as_of_parameter": "snapshot_as_of",
+            "fields": copy.deepcopy(ASSET["time_metadata"]["fields"]),
+        }
+        snapshot_asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = (
+            snapshot_fqn
+        )
+        snapshot_asset["query_policy"]["allowed_functions"].append("max")
+        snapshot_asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        self.payload = AnalysisRequest(
+            question="summarize the governed current observation measure",
+            resolved_slots=ResolvedSlots(
+                metric_id=METRIC_ID,
+                metric_ids=(METRIC_ID,),
+                analysis_operation="aggregate",
+            ),
+        )
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(asset=snapshot_asset),
+        )
+
+        self.assertEqual(
+            AnalysisStatus.SUCCEEDED,
+            response.data.status,
+            response.model_dump(mode="json"),
+        )
+        self.assertEqual(1, adapter.search_count)
+        self.assertEqual(1, adapter.resolve_count)
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(["node3"], [node for node, _ in model.calls])
+        evidence = response.data.result.evidence
+        self.assertIsNone(evidence.period)
+        self.assertEqual(self.context.as_of, evidence.snapshot.cutoff)
+        self.assertEqual(
+            "max_source_value_lt_as_of",
+            evidence.snapshot.selection,
+        )
+
+    async def test_pre_resolved_filter_only_asset_is_rebound_before_typed_request(self):
+        """검색 후보 밖의 상속 필터도 동일 release 실행 subgraph에서 보존한다."""
+
+        related_fqn = "orion_catalog.analytics.observation_flags"
+        related_urn = (
+            "urn:li:dataset:(urn:li:dataPlatform:trino,"
+            "orion_catalog.analytics.observation_flags,PROD)"
+        )
+        join_id = "observations_to_flags"
+        candidate = copy.deepcopy(ASSET)
+        candidate["metrics"][0]["allowed_join_ids"] = [join_id]
+        candidate["dimensions"] = []
+
+        resolved_fact = copy.deepcopy(candidate)
+        resolved_fact["join_ids"] = [join_id]
+        resolved_fact["join_graph"] = {"edges": [{"id": join_id}]}
+        related = {
+            **copy.deepcopy(ASSET),
+            "urn": related_urn,
+            "fqn": related_fqn,
+            "name": "Arbitrary observation flags",
+            "grain": {"kind": "event", "keys": ["observation_id"]},
+            "join_ids": [join_id],
+            "join_graph": {"edges": [{"id": join_id}]},
+            "metrics": [],
+            "dimensions": [
+                {
+                    "id": "flag_state",
+                    "asset_fqn": related_fqn,
+                    "column": "flag_state",
+                    "aliases": ["Flag state"],
+                }
+            ],
+        }
+        adapter = AsyncRuntimeDataPlatform(
+            asset=candidate,
+            resolved_assets=[resolved_fact, related],
+        )
+        model = model_with()
+        payload = AnalysisRequest(
+            question="summarize observations having an accepted related flag",
+            resolved_slots=ResolvedSlots(
+                metric_id=METRIC_ID,
+                metric_ids=(METRIC_ID,),
+                user_filters=(
+                    {
+                        "asset_fqn": related_fqn,
+                        "column": "flag_state",
+                        "operator": "eq",
+                        "value_text": "accepted",
+                    },
+                ),
+                period_start="2042-06-01",
+                period_end_exclusive="2042-07-01",
+                analysis_operation="aggregate",
+            ),
+        )
+        candidates = await adapter.search_asset_candidates(
+            payload.question,
+            {
+                **self.context.model_dump(mode="json"),
+                "preferred_metric_ids": [METRIC_ID],
+                "parameters": {},
+            },
+        )
+        support = PipelineSupport(
+            adapter,
+            ContextPackageBuilder(),
+            model,
+        )
+
+        _assets, normalized, structured = await support.select_metric(
+            payload,
+            self.context,
+            candidates,
+        )
+
+        self.assertEqual(payload.question, normalized)
+        self.assertEqual(
+            [
+                {
+                    "asset_fqn": related_fqn,
+                    "column": "flag_state",
+                    "operator": "eq",
+                    "value_text": "accepted",
+                }
+            ],
+            structured["filter_fields"],
+        )
+        self.assertEqual(1, adapter.resolve_count)
+        self.assertEqual(
+            {(related_fqn, "flag_state")},
+            {
+                (item.asset_fqn, item.column)
+                for item in adapter.last_execution_selection.field_references
+            },
+        )
         self.assertEqual([], model.calls)
 
     async def test_unapproved_query_strategy_is_semantic_not_model_failure(self):
@@ -756,6 +1229,45 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
         self.assertEqual(1, adapter.execute_count)
+        result = response.data.result
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(("period", RESULT_FIELD), result.table.columns)
+        self.assertEqual(
+            (
+                {"period": "2042-06-01", RESULT_FIELD: 17},
+                {"period": "2042-05-01", RESULT_FIELD: 11},
+            ),
+            result.table.rows,
+        )
+        self.assertIsNotNone(result.chart)
+        assert result.chart is not None
+        self.assertEqual("period", result.chart.x_field)
+        self.assertEqual((RESULT_FIELD,), result.chart.y_fields)
+        self.assertIsNotNone(result.evidence.comparison_period)
+        assert result.evidence.comparison_period is not None
+        self.assertEqual(
+            "2042-05-01",
+            result.evidence.comparison_period.start.isoformat(),
+        )
+        self.assertEqual(2, result.evidence.sampling.returned_rows)
+        self.assertIn("17", result.summary)
+        self.assertIn("11", result.summary)
+
+    async def test_single_period_uses_comparison_capable_asset_without_second_window(self):
+        adapter = AsyncRuntimeDataPlatform(asset=COMPARISON_ASSET, result=QUERY_RESULT)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model_with(node1=NODE1_RESPONSE, node2=VALID_PLAN),
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        result = response.data.result
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(result.evidence.comparison_period)
 
     async def test_pre_resolved_comparison_keeps_both_windows_and_skips_node1(self):
         original_payload = self.payload

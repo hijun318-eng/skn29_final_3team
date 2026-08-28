@@ -131,8 +131,9 @@ class ContractModelAdapter:
     async def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
         """노드별 governed payload를 active 모델 계약으로 변환하고 검증된 응답만 반환한다.
 
-        Node 2는 runtime Context 여섯 계약과 lineage를 보존하며, repair와 설명 노드도 각자
-        허용된 필드만 전달해 모델이 지표·SQL 권한 경계를 새로 만들지 못하게 한다.
+        Node 2는 runtime Context 일곱 계약을 검증한 뒤 봉인된 provider용 여섯 계약과
+        lineage만 전달하며, repair와 설명 노드도 각자 허용된 필드만 전달해 모델이
+        지표·SQL 권한 경계를 새로 만들지 못하게 한다.
         """
         if node == "node1":
             return await self.normalize_question(payload)

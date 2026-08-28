@@ -5,7 +5,6 @@
 | 설계 목표 | AI의 언어 처리 능력과 시스템의 권한·규칙·실행 통제를 분리해 재현 가능한 분석 흐름 구성 |
 | 제어 방식 | 명시적 상태와 제한된 분기를 가진 Deterministic Orchestrator |
 | 핵심 경계 | Approved Context, G1, G2, G3, read-only query, immutable run history |
-| 관련 시각 자료 | [Core 아키텍처 Visual](01_Answervice_Core_아키텍처_Visual.html) |
 
 > 이 문서의 `Asset Binding`, `Business Rule`, `G1/G2/G3`는 Answervice가 정의한 구성요소다. DataHub 또는 Trino가 같은 이름의 기능을 자동 제공한다는 뜻이 아니다.
 

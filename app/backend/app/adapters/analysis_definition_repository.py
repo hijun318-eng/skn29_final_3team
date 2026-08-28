@@ -70,6 +70,9 @@ class AnalysisDefinitionRepositoryMixin:
                     raise ValueError("성공하거나 허용된 부분 성공 Analysis Artifact만 저장할 수 있습니다.")
                 evidence = dict(source["evidence_json"])
                 period = dict(evidence.get("period") or {})
+                snapshot = dict(evidence.get("snapshot") or {})
+                if period and snapshot:
+                    raise ValueError("분석 실행의 시간 증거가 하나의 mode로 확정되지 않았습니다.")
                 parameters = {
                     "period_start": period.get("start"),
                     "period_end_exclusive": period.get("end_exclusive"),
@@ -84,6 +87,8 @@ class AnalysisDefinitionRepositoryMixin:
                     "policy_version": evidence.get("policy_version"),
                     "source_request_id": str(source_request_id),
                 }
+                if snapshot:
+                    semantic_request["snapshot"] = snapshot
                 parameter_schema = {key: "date" for key in parameters}
                 row = (await session.execute(
                     text(

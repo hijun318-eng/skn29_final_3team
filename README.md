@@ -92,6 +92,8 @@ principal은 운영에서는 저장소 밖의 명시적 경로에 생성한다. 
 명시적 switch와 `.gitignore` 검증을 통과해야 하며 정적 principal JSON으로 fallback하지 않는다.
 
 ```powershell
+python infrastructure/database/security/provision-app-catalog-publisher.py `
+  --env-file $deploymentEnv
 powershell -ExecutionPolicy Bypass `
   -File infrastructure/database/security/provision-release-principals.ps1 `
   -EnvPath $deploymentEnv `
@@ -166,7 +168,6 @@ Docker volume이나 외부 deployment env, principal·Trino secret을 다른 환
 - `infrastructure/database/sql/ddl/`, `infrastructure/database/sql/app/`: schema-only 런타임 DDL
 - `infrastructure/database/datahub/recipes/*.runtime.yml`: runtime metadata discovery 설정
 - `docs/product/`: 현재 제품·PRD·사용자 흐름·아키텍처 기준
-- `docs/reference/Walkerhill_V4.1_SQL_검토.md`: 현재 실행 경로가 아닌 과거 후보의 NO-GO 감사 기록
 - `app/backend/migrations/versions/`: App DB 증분 migration
 
 `infrastructure/database/releases/`와 `infrastructure/database/sql/data/`는 재현성과

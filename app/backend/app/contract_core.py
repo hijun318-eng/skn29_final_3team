@@ -101,6 +101,7 @@ class ErrorCode(str, Enum):
     TRINO_CONNECTION_FAILED = "TRINO_CONNECTION_FAILED"
     QUERY_TIMEOUT = "QUERY_TIMEOUT"
     QUERY_SOURCE_FAILED = "QUERY_SOURCE_FAILED"
+    EMPTY_RESULT = "EMPTY_RESULT"
     RESULT_VALIDATION_FAILED = "RESULT_VALIDATION_FAILED"
     RESULT_EVIDENCE_MISSING = "RESULT_EVIDENCE_MISSING"
     ARTIFACT_PERSIST_FAILED = "ARTIFACT_PERSIST_FAILED"
@@ -113,6 +114,11 @@ class ErrorCode(str, Enum):
     RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
     RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
     LAST_ADMIN_REQUIRED = "LAST_ADMIN_REQUIRED"
+    CONVERSATION_CONFLICT = "CONVERSATION_CONFLICT"
+    CONVERSATION_BUSY = "CONVERSATION_BUSY"
+    CONVERSATION_ARCHIVED = "CONVERSATION_ARCHIVED"
+    IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT"
+    REPORT_DRAFT_CONFLICT = "REPORT_DRAFT_CONFLICT"
     DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -149,20 +155,25 @@ class RequestContext(ContractModel):
     """요청·추적 식별자, 인증 주체, 기준일, 시간대와 계약 버전을 한 분석 실행에 고정한다."""
     request_id: UUID = Field(default_factory=uuid4)
     trace_id: str = Field(default_factory=lambda: uuid4().hex)
+    require_fresh_query: bool = False
     conversation_id: UUID | None = None
     user_id: UUID = UUID(int=0)
     role: Role = Role.ANALYST
     as_of: date = Field(default_factory=date.today)
     timezone: str = "Asia/Seoul"
     contract_version: str = CONTRACT_VERSION
+    permission_snapshot_id: str | None = None
+    product_release_id: str | None = None
+    semantic_release_id: str | None = None
+    command_id: UUID | None = None
 
 
 class ResolvedSlots(ContractModel):
     """멀티턴 대화에서 이전 턴의 슬롯을 구조화된 형태로 상속할 때 사용한다.
 
-    Orchestrator가 ConversationSlotResolver로 확정한 지표·차원·기간을
-    MetricResolver의 pre-resolved fast-path에 전달하여 Node 1 LLM 호출을
-    건너뛰되 거버넌스 대조 검증은 유지한다.
+    지표가 확정된 슬롯은 MetricResolver의 pre-resolved fast-path로 전달해 Node 1
+    재해석을 생략하고, 지표가 비어 있는 슬롯은 직전 기간·결과 형태만 Node 1의 typed
+    대화 컨텍스트로 제공한다. 두 경로 모두 active governance 대조 검증을 유지한다.
     """
     metric_id: str | None = None
     metric_ids: tuple[str, ...] = ()
@@ -173,6 +184,7 @@ class ResolvedSlots(ContractModel):
     comparison_period_start: str | None = None
     comparison_period_end_exclusive: str | None = None
     analysis_operation: str | None = None
+    analysis_time_bucket: str | None = None
     result_limit: int | None = None
 
     @model_validator(mode="after")
@@ -198,6 +210,15 @@ class ResolvedSlots(ContractModel):
         }
         if self.analysis_operation is not None and self.analysis_operation not in operations:
             raise ValueError("analysis_operation이 지원 계약 범위를 벗어났습니다.")
+        time_buckets = {"day", "week", "month", "quarter", "year"}
+        if self.analysis_time_bucket is not None and self.analysis_time_bucket not in time_buckets:
+            raise ValueError("analysis_time_bucket이 지원 계약 범위를 벗어났습니다.")
+        if (self.analysis_operation == "time_trend") != (
+            self.analysis_time_bucket is not None
+        ):
+            raise ValueError(
+                "time_trend 연산과 analysis_time_bucket은 함께 지정해야 합니다."
+            )
         comparison_values = (
             self.comparison_period_start,
             self.comparison_period_end_exclusive,
@@ -303,6 +324,9 @@ _RETRYABLE_ERROR_CODES = {
     ErrorCode.RATE_LIMITED,
     ErrorCode.DEPENDENCY_UNAVAILABLE,
     ErrorCode.SOURCE_NOT_READY,
+    ErrorCode.CONVERSATION_CONFLICT,
+    ErrorCode.CONVERSATION_BUSY,
+    ErrorCode.REPORT_DRAFT_CONFLICT,
 }
 
 _REQUIRED_ACTION_BY_ERROR = {
@@ -323,6 +347,11 @@ _REQUIRED_ACTION_BY_ERROR = {
     ErrorCode.RESOURCE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,
     ErrorCode.RESOURCE_CONFLICT: RequiredAction.MODIFY_REQUEST,
     ErrorCode.LAST_ADMIN_REQUIRED: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.CONVERSATION_CONFLICT: RequiredAction.RETRY,
+    ErrorCode.CONVERSATION_BUSY: RequiredAction.RETRY,
+    ErrorCode.CONVERSATION_ARCHIVED: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.IDEMPOTENCY_CONFLICT: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.REPORT_DRAFT_CONFLICT: RequiredAction.RETRY,
     ErrorCode.SQL_POLICY_BLOCKED: RequiredAction.MODIFY_REQUEST,
     ErrorCode.MODEL_TIMEOUT: RequiredAction.RETRY,
     ErrorCode.MODEL_ENDPOINT_UNAVAILABLE: RequiredAction.RETRY,
@@ -330,6 +359,7 @@ _REQUIRED_ACTION_BY_ERROR = {
     ErrorCode.TRINO_CONNECTION_FAILED: RequiredAction.RETRY,
     ErrorCode.QUERY_TIMEOUT: RequiredAction.RETRY,
     ErrorCode.QUERY_SOURCE_FAILED: RequiredAction.RETRY,
+    ErrorCode.EMPTY_RESULT: RequiredAction.MODIFY_REQUEST,
     ErrorCode.ARTIFACT_PERSIST_FAILED: RequiredAction.RETRY,
     ErrorCode.PARTIAL_FAILURE: RequiredAction.RETRY,
     ErrorCode.RATE_LIMITED: RequiredAction.RETRY,

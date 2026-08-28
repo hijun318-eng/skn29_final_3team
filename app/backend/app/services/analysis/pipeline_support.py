@@ -14,8 +14,18 @@ from datetime import date
 from typing import Any
 
 from app.contracts import AnalysisRequest, PeriodEvidence, RequestContext, SourceReference
-from app.ports.data_platform import DataPlatformAdapter
-from app.services.context.builder import ContextPackage, ContextPackageBuilder
+from app.ports.data_platform import (
+    AssetCandidateSet,
+    DataPlatformAdapter,
+    ExecutionAssetSelection,
+    GovernedFieldReference,
+    UnsupportedSemanticError,
+)
+from app.services.context.builder import (
+    ContextPackage,
+    ContextPackageBuilder,
+)
+from app.services.context.metric_execution_scope import select_assets_for_metrics
 from app.services.context.service import PipelineContextService
 from app.services.context.metric_resolver import MetricResolver
 from app.services.analysis.result_validator import PipelineResultValidator
@@ -37,6 +47,7 @@ class PipelineSupport:
         context_builder: ContextPackageBuilder,
         model: object | None = None,
     ) -> None:
+        self._adapter = adapter
         self._resolver = MetricResolver(adapter, model)
         self._context = PipelineContextService(adapter, context_builder)
         self._results = PipelineResultValidator()
@@ -56,10 +67,104 @@ class PipelineSupport:
         self,
         payload: AnalysisRequest,
         context: RequestContext,
-        assets: list[dict[str, object]],
+        candidates: AssetCandidateSet,
+        *,
+        budget: Any = None,
     ) -> tuple[list[dict[str, object]], str, dict[str, object]]:
         """질문과 자산 메타데이터를 대조하여 단일 지표 및 구조화 요청 객체를 확정합니다."""
-        return await self._resolver.resolve(payload, context, assets)
+        if (
+            candidates.product_release_id is None
+            or candidates.runtime_projection_checksum is None
+        ):
+            from app.ports.data_platform import MetadataUnavailableError
+
+            raise MetadataUnavailableError(
+                "Node1 grounding requires an active RuntimeCatalogProjection receipt"
+            )
+        return await self._resolver.resolve(
+            payload,
+            context,
+            list(candidates.assets),
+            candidate_set=candidates,
+            budget=budget,
+        )
+
+    async def resolve_execution_assets(
+        self,
+        payload: AnalysisRequest,
+        context: RequestContext,
+        candidates: AssetCandidateSet,
+        structured_request: dict[str, object],
+    ) -> list[dict[str, object]]:
+        """Node 1 선택을 후보 payload가 아닌 동일 active release 전체에서 다시 해결한다."""
+
+        raw_execution_ids = structured_request.get("metric_ids")
+        raw_output_ids = structured_request.get("selected_metric_ids")
+        if (
+            not isinstance(raw_execution_ids, list)
+            or not isinstance(raw_output_ids, list)
+            or any(not isinstance(item, str) for item in raw_execution_ids)
+            or any(not isinstance(item, str) for item in raw_output_ids)
+        ):
+            raise UnsupportedSemanticError(
+                "실행 자산 재해결에 필요한 Metric 선택이 불완전합니다.",
+            )
+        field_references: set[GovernedFieldReference] = set()
+        for key in ("dimension_fields", "filter_fields"):
+            raw_fields = structured_request.get(key) or []
+            if not isinstance(raw_fields, list):
+                raise UnsupportedSemanticError(
+                    "실행 자산 재해결에 필요한 필드 선택이 유효하지 않습니다.",
+                )
+            for item in raw_fields:
+                if (
+                    not isinstance(item, dict)
+                    or not isinstance(item.get("asset_fqn"), str)
+                    or not isinstance(item.get("column"), str)
+                ):
+                    raise UnsupportedSemanticError(
+                        "실행 필드 참조는 asset과 column을 포함해야 합니다.",
+                    )
+                try:
+                    field_references.add(
+                        GovernedFieldReference(
+                            asset_fqn=item["asset_fqn"],
+                            column=item["column"],
+                        )
+                    )
+                except ValueError as error:
+                    raise UnsupportedSemanticError(
+                        "실행 필드 참조가 active release 형식과 맞지 않습니다.",
+                    ) from error
+        try:
+            selection = ExecutionAssetSelection(
+                output_metric_ids=tuple(raw_output_ids),
+                execution_metric_ids=tuple(raw_execution_ids),
+                field_references=tuple(sorted(field_references)),
+                receipt_context_release=candidates.context_release,
+                receipt_catalog_checksum=candidates.catalog_checksum,
+                receipt_canonical_checksum=candidates.canonical_checksum,
+                receipt_product_release_id=candidates.product_release_id,
+                receipt_runtime_projection_checksum=(
+                    candidates.runtime_projection_checksum
+                ),
+            )
+        except ValueError as error:
+            raise UnsupportedSemanticError(
+                "실행 자산 선택과 candidate release receipt가 유효하지 않습니다.",
+            ) from error
+        resolved = await self._adapter.resolve_execution_assets(
+            selection,
+            {
+                **context.model_dump(mode="json"),
+                "parameters": payload.parameters,
+            },
+        )
+        return select_assets_for_metrics(
+            resolved,
+            set(selection.execution_metric_ids),
+            None,
+        )
 
     def g2_violation(
         self,

@@ -23,6 +23,7 @@ from app.services.context.builder_errors import ContextBuildError, ContextBuildE
 from app.services.context.package_types import (
     ContextAsset,
     ContextBuildRequest,
+    ContextDimensionMemberReceipt,
     ContextMetric,
     ContextMetricTerm,
     ContextPackage,
@@ -38,6 +39,7 @@ __all__ = [
     "ContextBuildError",
     "ContextBuildErrorCode",
     "ContextBuildRequest",
+    "ContextDimensionMemberReceipt",
     "ContextMetric",
     "ContextMetricTerm",
     "ContextPackage",
@@ -80,6 +82,22 @@ class ContextPackageBuilder:
             )
         )
         metric_terms = tuple(sorted(request.metric_terms, key=lambda term: term.id))
+        dimension_member_receipts = tuple(
+            sorted(
+                request.dimension_member_receipts,
+                key=lambda item: (item.dimension_id, item.member_id),
+            )
+        )
+        if len(
+            {
+                (item.dimension_id, item.member_id)
+                for item in dimension_member_receipts
+            }
+        ) != len(dimension_member_receipts):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt는 중복될 수 없습니다.",
+            )
         if len({term.id for term in metric_terms}) != len(metric_terms):
             raise ContextBuildError(
                 ContextBuildErrorCode.DUPLICATE_METRIC,
@@ -198,6 +216,20 @@ class ContextPackageBuilder:
                 for item in required_filters
             ],
         }
+        if dimension_member_receipts:
+            canonical["dimension_member_receipts"] = [
+                {
+                    "dimension_id": item.dimension_id,
+                    "member_id": item.member_id,
+                    "term_urn": item.term_urn,
+                    "canonical_value": item.canonical_value,
+                    "version": item.version,
+                    "semantic_sha256": item.semantic_sha256,
+                    "asset_fqn": item.asset_fqn,
+                    "column": item.column,
+                }
+                for item in dimension_member_receipts
+            ]
         if request.product_release_id is not None:
             canonical["product_release_id"] = request.product_release_id
         if request.evidence_cutoff is not None:
@@ -228,6 +260,7 @@ class ContextPackageBuilder:
             parameter_bindings=request.parameter_bindings,
             required_filters=required_filters,
             metric_terms=metric_terms,
+            dimension_member_receipts=dimension_member_receipts,
         )
 
     @staticmethod

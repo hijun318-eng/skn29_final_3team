@@ -7,7 +7,7 @@ Trino 등 실행 엔진에서 반환된 쿼리 결과(행, 컬럼, 셀)에 대�
 3. 마스킹되지 않은 민감 식별자(Unmasked Identifier) 노출 차단
 4. 의심스러운 빈 집계 결과 정규화(`normalize_empty_aggregate`)
 5. 결정론적 아티팩트 ID(`uuid5`) 및 실행 Capability 토큰 발급
-을 수행하여 안전성과 결과 신뢰성을 100% 보장합니다.
+을 수행하여 계약으로 확인 가능한 결과 범위를 검증합니다.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from app.contracts import PeriodEvidence, SourceReference
+from app.contracts import PeriodEvidence, SnapshotEvidence, SourceReference
 from app.query_capability import issue_query_capability
 from app.services.context.builder import ContextPackage
 
@@ -153,8 +153,8 @@ class PipelineResultValidator:
             or masking_applied != bool(masking_fields)
         ):
             return "MASKING_EVIDENCE_INVALID"
-        if query.get("zero_result_suspicious"):
-            return "SUSPICIOUS_EMPTY_RESULT"
+        if not rows or query.get("zero_result_suspicious"):
+            return "EMPTY_RESULT"
         if cls._ratio_value_violation(rows, package):
             return "EVIDENCE_MISMATCH"
         column_count = max((len(row) for row in rows), default=0)
@@ -223,6 +223,7 @@ class PipelineResultValidator:
             return query
         normalized = dict(query)
         normalized["rows"] = []
+        normalized["zero_result_suspicious"] = True
         metadata = query.get("result_metadata")
         columns = tuple(
             str(item["name"])
@@ -246,6 +247,30 @@ class PipelineResultValidator:
         if not isinstance(start, str) or not isinstance(end, str):
             raise ValueError("런타임 기간 증거 데이터가 불완전합니다.")
         return PeriodEvidence(start=date.fromisoformat(start), end_exclusive=date.fromisoformat(end))
+
+    @staticmethod
+    def snapshot(package: ContextPackage) -> SnapshotEvidence:
+        """ContextPackage의 서버 소유 기준일 binding에서 snapshot evidence를 만든다."""
+
+        contracts = getattr(package, "runtime_contracts", None) or {}
+        time_rules = contracts.get("time_rules") or {}
+        if (
+            time_rules.get("mode") != "latest_snapshot"
+            or time_rules.get("selection") != "max_source_value_lt_as_of"
+        ):
+            raise ValueError("런타임 최신 스냅샷 계약이 불완전합니다.")
+        bindings = {item.name: item for item in package.parameter_bindings}
+        binding = bindings.get(time_rules.get("as_of_parameter"))
+        if (
+            binding is None
+            or binding.value_type != "date"
+            or not isinstance(binding.value, str)
+        ):
+            raise ValueError("런타임 스냅샷 기준일 binding이 불완전합니다.")
+        return SnapshotEvidence(
+            cutoff=date.fromisoformat(binding.value),
+            selection="max_source_value_lt_as_of",
+        )
 
     @staticmethod
     def gate_token(package: ContextPackage, sql: str) -> str:
@@ -278,22 +303,60 @@ class PipelineResultValidator:
         contracts = getattr(package, "runtime_contracts", None) or {}
         time_rules = contracts.get("time_rules") or {}
         bindings = {item.name: item.value for item in package.parameter_bindings}
-        start_name = time_rules.get("start_parameter")
-        end_name = time_rules.get("end_parameter")
-        if start_name not in bindings or end_name not in bindings:
-            raise ValueError("런타임 기간 파라미터 바인딩이 불완전합니다.")
-        filter_names = {
-            item["parameter"]
+        mode = str(time_rules.get("mode") or "range")
+        if mode == "latest_snapshot":
+            snapshot = PipelineResultValidator.snapshot(package)
+            time_evidence: dict[str, object] = {
+                "snapshot": snapshot.model_dump(mode="json")
+            }
+        elif mode == "range":
+            start_name = time_rules.get("start_parameter")
+            end_name = time_rules.get("end_parameter")
+            if start_name not in bindings or end_name not in bindings:
+                raise ValueError("런타임 기간 파라미터 바인딩이 불완전합니다.")
+            time_evidence = {
+                "period": {
+                    "start": bindings[start_name],
+                    "end_exclusive": bindings[end_name],
+                }
+            }
+            comparison = time_rules.get("comparison_window")
+            if comparison is not None:
+                if not isinstance(comparison, dict):
+                    raise ValueError("런타임 비교 기간 계약이 유효하지 않습니다.")
+                comparison_start = comparison.get("start_parameter")
+                comparison_end = comparison.get("end_parameter")
+                if (
+                    not isinstance(comparison_start, str)
+                    or not comparison_start
+                    or not isinstance(comparison_end, str)
+                    or not comparison_end
+                ):
+                    raise ValueError("런타임 비교 기간 계약이 유효하지 않습니다.")
+                bound_comparison_edges = (
+                    comparison_start in bindings,
+                    comparison_end in bindings,
+                )
+                if any(bound_comparison_edges) and not all(bound_comparison_edges):
+                    raise ValueError("런타임 비교 기간 파라미터 바인딩이 불완전합니다.")
+                if all(bound_comparison_edges):
+                    time_evidence["comparison_period"] = {
+                        "start": bindings[comparison_start],
+                        "end_exclusive": bindings[comparison_end],
+                    }
+        else:
+            raise ValueError("지원되지 않는 런타임 시간 선택 mode입니다.")
+        filter_rules = [
+            item
             for metric in contracts.get("metric_rules", ())
             for item in metric.get("required_filters", ())
-        }
+        ]
+        filter_rules.extend(contracts.get("filter_rules", ()) or ())
+        filter_names = {item["parameter"] for item in filter_rules}
         if not filter_names.issubset(bindings):
             raise ValueError("런타임 필터 파라미터 바인딩이 불완전합니다.")
         return {
-            "period": {
-                "start": bindings[start_name],
-                "end_exclusive": bindings[end_name],
-            },
+            **time_evidence,
             "filters": {name: bindings[name] for name in sorted(filter_names)},
         }
 

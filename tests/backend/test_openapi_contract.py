@@ -77,6 +77,15 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/schedules/{schedule_id}",
                 "/reports/schedules/{schedule_id}/run-due",
                 "/reports/assistant/drafts",
+                "/reports/assistant/operations/failures",
+                "/reports/assistant/operations/summary",
+                "/reports/assistant/sessions",
+                "/reports/assistant/sessions/{assistant_request_id}",
+                "/reports/assistant/sessions/{assistant_request_id}/approval",
+                "/reports/assistant/sessions/{assistant_request_id}/evaluation",
+                "/reports/assistant/sessions/{assistant_request_id}/messages",
+                "/reports/assistant/sessions/{assistant_request_id}/patch-approval",
+                "/reports/assistant/sessions/{assistant_request_id}/retry",
             },
             set(committed["paths"]),
         )
@@ -135,6 +144,15 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportUpdateSchedule",
                 "reportRunDueSchedule",
                 "reportAssistantCreateDraft",
+                "reportAssistantOperationsFailures",
+                "reportAssistantOperationsSummary",
+                "reportAssistantCreateSession",
+                "reportAssistantGetSession",
+                "reportAssistantDecidePlan",
+                "reportAssistantGetEvaluation",
+                "reportAssistantSubmitMessage",
+                "reportAssistantDecidePatch",
+                "reportAssistantRetrySession",
                 "mcpGet",
                 "mcpPost",
             },
@@ -150,6 +168,8 @@ class OpenApiContractTest(unittest.TestCase):
         run = schemas["AnalysisRunResponse"]["properties"]
         self.assertIn("CANCELLED", run["status"]["enum"])
         self.assertIn("CLARIFYING", run["status"]["enum"])
+        self.assertIn("snapshot_cutoff", run)
+        self.assertIn("snapshot_selection", run)
         for forbidden in ("sql", "parameters", "result", "snapshot"):
             self.assertNotIn(forbidden, run)
 

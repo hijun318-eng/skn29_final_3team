@@ -45,6 +45,7 @@ export function seoulWallClockToIso(value: string): string {
   readonly title: string;
   readonly artifactId?: string;
   readonly queryId?: string;
+  readonly viewSpecId?: string;
   readonly question?: string;
   readonly sourceUrns?: readonly string[];
   readonly columns: number;
@@ -171,6 +172,7 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly title: string;
   readonly artifact_id: string | null;
   readonly query_id: string | null;
+  readonly view_spec_id: string | null;
   readonly columns: number;
   readonly type: ReportBlockType;
   readonly x: number;
@@ -255,11 +257,133 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   };
 }
 
+/** 서버가 소유하며 새로고침 후 복구할 수 있는 Report Assistant 단계다. */
+export type ReportAssistantPhase =
+  | "ready"
+  | "waiting_patch_approval"
+  | "waiting_approval"
+  | "running_data_agent"
+  | "waiting_artifact"
+  | "saving_revision"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** 서버가 실패 원인에 따라 결정한 사용자 후속 조치다. */
+export type ReportAssistantRequiredAction =
+  | "NONE"
+  | "RETRY"
+  | "REFRESH"
+  | "REAUTHENTICATE"
+  | "REOPEN_LATEST_REPORT"
+  | "CONTACT_ADMIN";
+
+/** 사용자 승인 전에 질문·이유·조회 범위를 공개하는 분석 계획이다. */
+export interface ReportAssistantAnalysisPlan {
+  readonly request_id: string;
+  readonly question: string;
+  readonly reason: string;
+  readonly scope: {
+    readonly period: string;
+    readonly metrics: readonly string[];
+    readonly dimensions: readonly string[];
+  };
+}
+
+/** 대화형 Assistant 세션의 서버 권위 상태 계약이다. */
+export interface ReportAssistantSessionResponse {
+  readonly assistant_request_id: string;
+  readonly phase: ReportAssistantPhase;
+  readonly definition_id: string;
+  readonly definition_version: number;
+  readonly base_revision: number;
+  readonly artifact_id: string;
+  readonly analysis_plan: ReportAssistantAnalysisPlan | null;
+  readonly patch_request_id: string | null;
+  readonly patch_summary: string | null;
+  readonly patch_operations: readonly (
+    | "set_report_title" | "add_text" | "update_text" | "add_artifact_view"
+    | "reposition_block" | "remove_block" | "duplicate_block"
+    | "restore_previous_revision"
+  )[];
+  readonly result_artifact_id: string | null;
+  readonly result_revision: number | null;
+  readonly error_code: string | null;
+  readonly retryable: boolean;
+  readonly required_action: ReportAssistantRequiredAction;
+  readonly retry_of_assistant_request_id: string | null;
+}
+
+/** 변경 제안과 그 결과로 저장된 서버 phase를 함께 반환하는 계약이다. */
+export interface ReportAssistantProposalResponse {
+  readonly change_kind: "clarification" | "existing_artifact" | "new_data";
+  readonly message: string;
+  readonly session: ReportAssistantSessionResponse;
+}
+
+/** 원문 prompt·SQL 없이 관리자와 세션 소유자에게 공개되는 요청별 평가다. */
+export interface ReportAssistantEvaluationResponse {
+  readonly evaluation_id: string;
+  readonly assistant_request_id: string;
+  readonly data_request_id: string | null;
+  readonly patch_request_id: string | null;
+  readonly definition_id: string | null;
+  readonly definition_version: number | null;
+  readonly artifact_id: string | null;
+  readonly prompt_id: string | null;
+  readonly prompt_version: string | null;
+  readonly model_version: string | null;
+  readonly route: "existing_artifact" | "new_data" | null;
+  readonly operation_types: readonly string[];
+  readonly contract_valid: boolean;
+  readonly approval_decision: "approved" | "rejected" | "pending";
+  readonly final_phase: string;
+  readonly revision_created: boolean;
+  readonly duplicate_revision_prevented: boolean;
+  readonly model_attempts: number | null;
+  readonly latency_ms: number | null;
+  readonly input_tokens: number | null;
+  readonly output_tokens: number | null;
+  readonly estimated_cost: string | null;
+  readonly cost_is_estimate: boolean;
+  readonly error_code: string | null;
+  readonly evaluated_at: string;
+}
+
+/** 관리자 전용 Assistant 기간 품질·비용 집계다. */
+export interface ReportAssistantOperationsSummaryResponse {
+  readonly period_start: string;
+  readonly period_end: string;
+  readonly denominator: number;
+  readonly total_requests: number;
+  readonly contract_success_rate: number | null;
+  readonly patch_validation_success_rate: number | null;
+  readonly approval_rate: number | null;
+  readonly rejection_rate: number | null;
+  readonly revision_success_rate: number | null;
+  readonly duplicate_revision_prevention_rate: number | null;
+  readonly failure_rate_by_error_code: Readonly<Record<string, number>>;
+  readonly average_model_latency_ms: number | null;
+  readonly p95_model_latency_ms: number | null;
+  readonly average_model_attempts: number | null;
+  readonly total_input_tokens: number | null;
+  readonly total_output_tokens: number | null;
+  readonly estimated_cost_total: string | null;
+}
+
+/** 관리자에게 공개되는 bounded 기간 Assistant 실패 목록이다. */
+export interface ReportAssistantFailureListResponse {
+  readonly period_start: string;
+  readonly period_end: string;
+  readonly items: readonly ReportAssistantEvaluationResponse[];
+}
+
 /** 보고서 블록 저장 명령의 wire 입력 계약이다. */ export interface ReportBlockRequest {
   readonly block_id: string;
   readonly title: string;
   readonly artifact_id?: string;
   readonly query_id?: string;
+  readonly view_spec_id?: string;
   readonly columns: number;
   readonly type: ReportBlockType;
   readonly x: number;

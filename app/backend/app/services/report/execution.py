@@ -18,6 +18,7 @@ from app.adapters.analysis_repository import (
     AnalysisRepositoryUnavailable,
     PostgresAnalysisRepository,
 )
+from app.authorization import permission_snapshot_id as build_permission_snapshot_id
 from app.auth import AuthenticationError, require_active_subject_with_capability
 from app.context import ContextValidationError
 from app.contracts import (
@@ -116,6 +117,9 @@ class AnalysisDefinitionReplay:
         definition_version: int,
         as_of: datetime,
         idempotency_key: str,
+        product_release_id: str | None = None,
+        permission_snapshot_id: str | None = None,
+        semantic_release_id: str | None = None,
     ) -> ReplayOutcome:
         """저장된 분석 정의 1건을 재생 실행합니다."""
         repository = PostgresAnalysisRepository(self._database_url, owner_id)
@@ -124,6 +128,20 @@ class AnalysisDefinitionReplay:
                 owner_id,
                 Capability.RUN_ANALYSIS,
             )
+            receipt = (
+                product_release_id,
+                permission_snapshot_id,
+                semantic_release_id,
+            )
+            if any(receipt) and not all(receipt):
+                raise ValueError("Report replay release receipt is incomplete")
+            if permission_snapshot_id and permission_snapshot_id != build_permission_snapshot_id(
+                owner_id, owner.role
+            ):
+                return _failure(
+                    BlockFailureCode.ACCESS_DENIED,
+                    "The Report permission snapshot is no longer current.",
+                )
             definition = await repository.get_definition_for_report(
                 definition_id, definition_version
             )
@@ -156,6 +174,9 @@ class AnalysisDefinitionReplay:
             role=owner.role,
             as_of=report_date,
             timezone="Asia/Seoul",
+            product_release_id=product_release_id,
+            permission_snapshot_id=permission_snapshot_id,
+            semantic_release_id=semantic_release_id,
         )
         request_id: UUID | None = None
         try:
@@ -169,7 +190,7 @@ class AnalysisDefinitionReplay:
             if not created:
                 return await self._existing_outcome(repository, request_id)
             if not await self._execution_gate.acquire(self._queue_wait_seconds):
-                await repository.fail_run(request_id, ErrorCode.RATE_LIMITED.value)
+                await repository.fail_run(request_id, "RECOVERY")
                 return _failure(
                     BlockFailureCode.RATE_LIMITED,
                     "The analysis execution limit was reached.",
@@ -177,6 +198,13 @@ class AnalysisDefinitionReplay:
                 )
 
             execution: dict[str, object] = {}
+
+            async def _persist_context_receipt(
+                receipt_context: RequestContext,
+                package: object,
+            ) -> None:
+                await repository.persist_context_receipt(receipt_context, package)
+
             try:
                 response = await self._controller.submit(
                     AnalysisRequest(
@@ -185,6 +213,7 @@ class AnalysisDefinitionReplay:
                     ),
                     context,
                     execution.update,
+                    context_receipt_sink=_persist_context_receipt,
                 )
             except ContextValidationError as error:
                 await repository.fail_run(
@@ -238,7 +267,7 @@ class AnalysisDefinitionReplay:
             if request_id is not None:
                 try:
                     await repository.fail_run(
-                        request_id, ErrorCode.ARTIFACT_PERSIST_FAILED.value
+                        request_id, "PERSISTENCE"
                     )
                 except Exception:
                     pass
@@ -334,6 +363,9 @@ class ReportExecutionService:
                         idempotency_key=(
                             f"report:{claim['run_id']}:{block['block_id']}"
                         ),
+                        product_release_id=claim.get("product_release_id"),
+                        permission_snapshot_id=claim.get("permission_snapshot_id"),
+                        semantic_release_id=claim.get("semantic_release_id"),
                     )
                 except Exception:
                     outcome = _failure(

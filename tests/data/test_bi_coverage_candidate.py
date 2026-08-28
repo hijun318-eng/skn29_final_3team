@@ -132,7 +132,7 @@ def test_snapshot_and_range_time_modes_are_not_conflated() -> None:
     assert snapshot["time"] == {
         "mode": "latest_snapshot",
         "field": "snapshot_date",
-        "default": "max_source_value_lte_as_of",
+        "default": "max_source_value_lt_as_of",
     }
     assert all(
         item["time"]["mode"] == "range"

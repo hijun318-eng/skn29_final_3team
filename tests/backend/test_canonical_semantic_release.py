@@ -94,6 +94,37 @@ def test_legacy_snapshot_compiles_to_complete_immutable_release() -> None:
     ]
 
 
+def test_dimension_member_glossary_is_sealed_in_the_canonical_release() -> None:
+    bundle = _runtime_bundle()
+    dimension = bundle["dimensions"][0]
+    asset = next(
+        item
+        for item in bundle["schema_context"]["assets"]
+        if item["fqn"] == dimension["asset_fqn"]
+    )
+    dimension["members"] = [
+        {
+            "id": "approved_value",
+            "urn": "urn:li:glossaryTerm:approved_dimension_value",
+            "name": "APPROVED",
+            "definition": "Approved member used by the governed dimension.",
+            "aliases": ["APPROVED", "승인 값"],
+            "canonical_value": "APPROVED",
+            "version": "glossary-r4",
+            "approval_status": "APPROVED",
+            "owner_urn": asset["owner_urn"],
+            "domain_urn": asset["domain_urn"],
+            "approved_lifecycle_urn": asset["approved_lifecycle_urn"],
+        }
+    ]
+    validate_bundle(bundle)
+
+    release = compile_legacy_semantic_release(_snapshot(bundle))
+
+    assert release.dimensions[0].members[0].canonical_value == "APPROVED"
+    assert release.as_manifest()["dimension_member_term_count"] == 1
+
+
 def test_source_kind_is_not_part_of_canonical_identity() -> None:
     bundle = _runtime_bundle()
     legacy = compile_legacy_semantic_release(_snapshot(bundle))

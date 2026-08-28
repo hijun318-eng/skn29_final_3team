@@ -41,6 +41,19 @@ class ResolvedFilterValue:
 _MAX_DISCOVERED_VALUES = 64
 
 
+async def _execute_auxiliary_query(
+    adapter: DataPlatformAdapter,
+    sql: str,
+    gate_token: str,
+) -> dict[str, object]:
+    """제품 adapter에서는 본 분석 lifecycle과 분리하고 단순 test double은 호환한다."""
+
+    execute = getattr(adapter, "execute_auxiliary_query", None)
+    if not callable(execute):
+        execute = adapter.execute_query
+    return await execute(sql, {}, gate_token)
+
+
 async def discover_dimension_values(
     adapter: DataPlatformAdapter,
     asset_fqn: str,
@@ -66,7 +79,7 @@ async def discover_dimension_values(
         f"dimension-value-domain:{asset_fqn}:{column}".encode()
     ).hexdigest()
     gate_token = issue_query_capability(scope_hash, executable_sql)
-    submitted = await adapter.execute_query(executable_sql, {}, gate_token)
+    submitted = await _execute_auxiliary_query(adapter, executable_sql, gate_token)
     query = await adapter.get_query_status(str(submitted["query_id"]))
     rows = query.get("rows")
     if query.get("status") not in {"SUCCEEDED", "PARTIAL"} or not isinstance(rows, list):
@@ -122,7 +135,7 @@ async def resolve_filter_value(
     )
     scope_hash = sha256(f"filter-value-check:{asset_fqn}:{column}".encode()).hexdigest()
     gate_token = issue_query_capability(scope_hash, executable_sql)
-    submitted = await adapter.execute_query(executable_sql, {}, gate_token)
+    submitted = await _execute_auxiliary_query(adapter, executable_sql, gate_token)
     query = await adapter.get_query_status(str(submitted["query_id"]))
 
     if query.get("status") not in {"SUCCEEDED", "PARTIAL"}:

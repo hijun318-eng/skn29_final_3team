@@ -12,6 +12,7 @@ import {
   adaptAnalysisRunArtifact,
   analysisArtifactTitle,
   analysisRunArtifactSources,
+  analysisTimeLabel,
   artifactViewBlockSettings,
   artifactMetricCards,
   createFrontendDraftSnapshot,
@@ -31,6 +32,7 @@ import {
   saveFrontendDraft,
 } from "../../app/frontend/src/features/reports/reportDraftV2.js";
 import { reportEvidenceReady } from "../../app/frontend/src/features/reports/reportArtifactEvidence.ts";
+import { resizeDraftBlocks } from "../../app/frontend/src/features/reports/reportDraftMutations.ts";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
@@ -67,8 +69,13 @@ const beforeMove = structuredClone(side.blocks);
 const moved = moveFrontendBlock(side.blocks, "whole-b", { type: "before", targetBlockId: "summary" }, report);
 assert.equal(moved.ok, true);
 assert.equal(moved.blocks[0].id, "whole-b");
+assert.equal(moved.blocks[0].artifactId, sourceB.artifactId);
+assert.equal(moved.blocks[0].queryId, sourceB.queryId);
 assert.equal(moved.blocks.find((block) => block.id === "whole-a").w, 12);
 assert.deepEqual(side.blocks, beforeMove, "valid operations must not mutate their input");
+const resizedArtifact = resizeDraftBlocks(moved.blocks, "whole-b", 8, 12, "portrait");
+assert.equal(resizedArtifact.blocks.find((block) => block.id === "whole-b").artifactId, sourceB.artifactId);
+assert.equal(resizedArtifact.blocks.find((block) => block.id === "whole-b").queryId, sourceB.queryId);
 
 const deleted = deleteFrontendBlock(moved.blocks, "whole-a", report);
 assert.equal(deleted.ok, true);
@@ -160,6 +167,24 @@ assert.deepEqual(analysisLibraryFixture.artifact, analysisArtifactBefore, "analy
 assert.equal(analysisArtifactTitle(adaptedAnalysisArtifact), "2026-01-01–2026-07-01 객실 매출 분석");
 assert.equal(adaptAnalysisRunArtifact({ ...analysisLibraryFixture.artifact, evidenceReady: false }), null);
 
+const snapshotRun = structuredClone(analysisLibraryFixture.artifact);
+delete snapshotRun.evidence.period;
+snapshotRun.evidence.snapshot = {
+  cutoff: "2026-08-20",
+  selection: "max_source_value_lt_as_of",
+};
+const adaptedSnapshotArtifact = adaptAnalysisRunArtifact(snapshotRun);
+assert.deepEqual(adaptedSnapshotArtifact.evidence.snapshot, {
+  cutoff: "2026-08-20",
+  selection: "max_source_value_lt_as_of",
+});
+assert.equal(analysisTimeLabel(adaptedSnapshotArtifact.evidence), "2026-08-20 이전 최신 스냅샷");
+assert.equal(
+  analysisArtifactTitle(adaptedSnapshotArtifact),
+  "2026-08-20 이전 최신 스냅샷 객실 매출 분석",
+);
+assert.equal(reportEvidenceReady(adaptedSnapshotArtifact), true);
+
 const insertedAnalysisArtifact = insertFrontendArtifact([], {
   ...analysisSources[1],
   blockId: "analysis-whole",
@@ -181,7 +206,7 @@ const serverOnlyDefinition = normalizeReportDefinition({
   version: report.version,
   status: "draft",
   title: report.title,
-  blocks: [persistedAnalysisBlock],
+  blocks: [{ ...persistedAnalysisBlock, view_spec_id: "view-spec-1" }],
   orientation: "landscape",
   currency_display_unit: "million",
   approved_at: null,
@@ -190,6 +215,8 @@ assert.equal(loadFrontendDraft({ getItem: () => null }, report.definitionId, rep
 assert.equal(serverOnlyDefinition.blocks[0].type, "artifact");
 assert.equal(serverOnlyDefinition.blocks[0].artifactId, "artifact-revenue");
 assert.equal(serverOnlyDefinition.blocks[0].queryId, "query-revenue");
+assert.equal(serverOnlyDefinition.blocks[0].viewSpecId, "view-spec-1");
+assert.equal(toReportBlockRequest(serverOnlyDefinition.blocks[0]).view_spec_id, "view-spec-1");
 assert.equal(serverOnlyDefinition.orientation, "landscape");
 assert.equal(serverOnlyDefinition.currencyDisplayUnit, "million");
 assert.equal(reportArtifactLibrarySources(serverOnlyDefinition, [])[0].artifactRequestId, "request-revenue-new");
@@ -313,6 +340,10 @@ assert.match(reportSources.dragAndDrop, /wholeArtifactTemplateFor\(libraryArtifa
 assert.match(reportSources.draftMutations, /sizeMode: "manual"/);
 assert.match(reportSources.blockControls, /내용에 맞춤/);
 assert.match(reportSources.controller, /draftBridgeRef\.current\?\.fitHydratedArtifactViews\(artifactMap\)/);
+const hydratedFit = reportSources.draftState.match(/const fitHydratedArtifactViews[\s\S]*?const changeOrientation/)?.[0] || "";
+assert.match(hydratedFit, /savedBlocksRef\.current = copyDraftBlocks\(fittedSaved\)/);
+assert.match(hydratedFit, /setIsDirty\(draftChanged\(blocksRef\.current\)\)/);
+assert.doesNotMatch(hydratedFit, /commitBlocks\(/, "artifact hydration must not create user history or dirty state");
 assert.match(reportSources.draftState, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
 assert.match(reportSources.draftMutations, /const compacted = compactDraftLayout\(inputBlocks\)/);
 assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
@@ -320,6 +351,18 @@ assert.match(reportSources.draftMutations, /\["artifact", "chart", "table"\]\.in
 assert.match(reportSources.draftState, /density: "comfortable", sizeMode: "auto"/);
 
 assert.equal(reportEvidenceReady(monthlyArtifact), true);
+const snapshotArtifact = structuredClone(monthlyArtifact);
+delete snapshotArtifact.evidence.period;
+snapshotArtifact.evidence.snapshot = {
+  cutoff: "2026-08-20",
+  selection: "max_source_value_lt_as_of",
+};
+assert.equal(reportEvidenceReady(snapshotArtifact), true);
+snapshotArtifact.evidence.period = {
+  start: "2026-08-01",
+  end_exclusive: "2026-08-21",
+};
+assert.equal(reportEvidenceReady(snapshotArtifact), false);
 assert.equal(
   reportEvidenceReady({ ...monthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["unknown_measure"] } }),
   false,

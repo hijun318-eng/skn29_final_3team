@@ -20,7 +20,7 @@ from metric_review_transition import (  # noqa: E402
     READY_STATUS,
     plan_metric_review_transition,
 )
-from release_builder import ReleaseNotReady, inspect_release  # noqa: E402
+from release_builder import build_active_release_bundle  # noqa: E402
 from release_datahub import DataHubDiscoveryClient  # noqa: E402
 from release_scope import load_release_scopes_with_serving  # noqa: E402
 from release_trino import TrinoMetadataClient  # noqa: E402
@@ -89,10 +89,12 @@ async def load_live_review_context(
     candidate: dict[str, object],
     args: argparse.Namespace,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
-    """검증 receipt·live baseline·전환 계획을 한 discovery 시점에서 함께 반환한다.
+    """검증 receipt·active baseline·전환 계획을 한 discovery 시점에서 함께 반환한다.
 
     승인 CLI가 transition 검사와 policy decision 작성 사이에 다른 release를 읽지
-    않도록 read-only discovery 결과를 공유한다. 반환값 자체는 승인이나 발행 권한을
+    않도록 read-only discovery 결과를 공유한다. Manifest 밖의 base-ingested 신규
+    asset은 후속 authoring 후보일 수 있으므로 baseline으로 승격하지 않되, 현재 manifest
+    구성원은 live Trino와 다시 일치해야 한다. 반환값 자체는 승인이나 발행 권한을
     만들지 않는다.
     """
 
@@ -142,11 +144,9 @@ async def load_live_review_context(
             timeout_seconds=args.timeout,
         ) as datahub,
     ):
-        discovered = await inspect_release(scopes, trino, datahub)
-    if discovered.bundle is None:
-        raise ReleaseNotReady(discovered.report)
-    transition = plan_metric_review_transition(candidate, validation, discovered.bundle)
-    return validation, discovered.bundle, transition
+        baseline = await build_active_release_bundle(scopes, trino, datahub)
+    transition = plan_metric_review_transition(candidate, validation, baseline)
+    return validation, baseline, transition
 
 
 def load_candidate(path: Path) -> dict[str, object]:

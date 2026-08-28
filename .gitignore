@@ -15,6 +15,7 @@ env/
 .pytest_cache/
 .pytest-*/
 .pytest_tmp*/
+/.tmp_pytest*/
 .test-tmp/
 .mypy_cache/
 .ruff_cache/
@@ -29,6 +30,10 @@ coverage/
 .playwright-cli/
 /output/
 /tmp/
+
+# Local-only phase acceptance harness
+/infrastructure/acceptance/
+
 # Local tools and logs
 .tmp/
 .codex-log/

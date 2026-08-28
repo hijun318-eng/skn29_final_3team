@@ -4,7 +4,7 @@
 DataPlatformAdapter(DataHub/Trino)를 통해:
 1. 런타임 스키마 및 비즈니스 용어사전 조회
 2. 차원 필터 값 실데이터 검증 및 주입 (Filter Value Resolution)
-3. 반개방 구간(Half-Open Range) 시간 파라미터 바인딩 생성 및 데이터 기준일(Cutoff) 초과 검사
+3. 승인된 반개방 기간 또는 최신 스냅샷 시간 파라미터 바인딩과 기준일(Cutoff) 검사
 4. ContextPackage 생성 후 런타임 계약(`runtime_contracts`)과 조인 그래프를 결합한 최종 `RuntimeContextPackage` 반환
 """
 
@@ -21,6 +21,7 @@ from app.services.context.builder import (
     ContextBuildError,
     ContextBuildErrorCode,
     ContextBuildRequest,
+    ContextDimensionMemberReceipt,
     ContextMetric,
     ContextMetricTerm,
     ContextPackage,
@@ -42,6 +43,8 @@ from app.services.context.runtime_contracts import (
     comparison_time_parameter_names,
     filter_parameter_bindings,
     schema_columns,
+    snapshot_parameter_name,
+    time_selection_mode,
     time_parameter_names,
 )
 from src.modelops.runtime import estimate_token_count
@@ -58,6 +61,146 @@ def _period_suggestions(candidates: object) -> tuple[str, ...]:
     )
 
 
+def _time_bindings(
+    payload: AnalysisRequest,
+    structured_request: dict[str, Any] | None,
+    context: RequestContext,
+    assets: list[dict[str, object]],
+) -> tuple[
+    tuple[ContextParameterBinding, ...],
+    dict[str, str],
+    list[tuple[str, str]],
+]:
+    """governed range 또는 최신 snapshot mode에 맞는 서버 소유 binding을 만든다."""
+
+    if time_selection_mode(assets) == "latest_snapshot":
+        relationship = (
+            structured_request.get("period_relationship")
+            if isinstance(structured_request, dict)
+            else None
+        )
+        periods = (
+            structured_request.get("period_candidates")
+            if isinstance(structured_request, dict)
+            else None
+        )
+        if relationship == "comparison" or periods:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "최신 스냅샷 분석은 기간 범위 또는 기간 비교로 재해석할 수 없습니다.",
+            )
+        name = snapshot_parameter_name(assets)
+        supplied = payload.parameters.get(name)
+        cutoff = context.as_of.isoformat()
+        if supplied is not None and supplied != cutoff:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "최신 스냅샷 기준일은 서버가 확정한 분석 기준일과 일치해야 합니다.",
+            )
+        return (ContextParameterBinding(name, "date", cutoff),), {}, []
+    return _range_time_bindings(payload, structured_request, context, assets)
+
+
+def _range_time_bindings(
+    payload: AnalysisRequest,
+    structured_request: dict[str, Any] | None,
+    context: RequestContext,
+    assets: list[dict[str, object]],
+) -> tuple[
+    tuple[ContextParameterBinding, ...],
+    dict[str, str],
+    list[tuple[str, str]],
+]:
+    start_parameter, end_parameter = time_parameter_names(assets)
+    comparison_names = comparison_time_parameter_names(assets)
+    relationship = (
+        structured_request.get("period_relationship")
+        if isinstance(structured_request, dict)
+        else None
+    )
+    is_comparison_request = relationship == "comparison"
+    if is_comparison_request and comparison_names is None:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "선택된 자산들이 거버넌스 비교 윈도우를 지원하지 않습니다.",
+        )
+    comparison_start, comparison_end = comparison_names or ("", "")
+    window_names = (start_parameter, end_parameter, comparison_start, comparison_end)
+    period_values = {
+        name: payload.parameters[name]
+        for name in window_names
+        if name and name in payload.parameters
+    }
+    if not period_values and structured_request is not None:
+        candidates = structured_request.get("period_candidates")
+        expected_count = 2 if is_comparison_request else 1
+        if not isinstance(candidates, list) or len(candidates) != expected_count:
+            raise ContextBuildError(
+                ContextBuildErrorCode.PERIOD_REQUIRED,
+                "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다."
+                if is_comparison_request
+                else "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
+                _period_suggestions(candidates),
+            )
+        windows = [(start_parameter, end_parameter, candidates[0])]
+        if is_comparison_request:
+            windows.append((comparison_start, comparison_end, candidates[1]))
+        period_values = {}
+        for window_start, window_end, candidate in windows:
+            if not isinstance(candidate, dict):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Node1 기간 후보 항목은 객체여야 합니다.",
+                )
+            try:
+                period_values[window_start] = datetime.fromisoformat(
+                    str(candidate["start"])
+                ).date().isoformat()
+                period_values[window_end] = datetime.fromisoformat(
+                    str(candidate["end_exclusive"])
+                ).date().isoformat()
+            except (KeyError, ValueError) as error:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Node1 기간 후보가 올바른 ISO 날짜-시간 형식이 아닙니다.",
+                ) from error
+    expected_names = {start_parameter, end_parameter}
+    if is_comparison_request:
+        expected_names |= {comparison_start, comparison_end}
+    if period_values and set(period_values) != expected_names:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "분석 기간은 시작과 종료 경계값을 모두 포함해야 합니다.",
+        )
+    window_pairs = [(start_parameter, end_parameter)]
+    if is_comparison_request:
+        window_pairs.append((comparison_start, comparison_end))
+    for window_start, window_end in window_pairs:
+        if not period_values:
+            continue
+        start_date = date.fromisoformat(period_values[window_start])
+        end_date = date.fromisoformat(period_values[window_end])
+        if start_date >= context.as_of:
+            raise ContextBuildError(
+                ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                "요청 기간은 오늘 이전의 완료된 영업일을 포함해야 합니다.",
+            )
+        if end_date > context.as_of:
+            period_values[window_end] = context.as_of.isoformat()
+            end_date = context.as_of
+        if start_date >= end_date:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "분석 기간은 비어있지 않은 반개구간 [start, end) 이어야 합니다.",
+            )
+    bindings = tuple(
+        ContextParameterBinding(name, "date", period_values[name])
+        for name in window_names
+        if name and name in period_values
+    )
+    return bindings, period_values, window_pairs
+
+
 def _required_filter(item: dict[str, Any]) -> ContextRequiredFilter:
     return ContextRequiredFilter(
         field=str(item["field"]),
@@ -71,12 +214,26 @@ def _inject_turn_filters(
     assets: list[dict[str, object]],
     turn_filters: list[ResolvedFilterValue],
 ) -> list[dict[str, object]]:
-    """실제 Trino DB 조회를 통해 검증된 turn 필터를 대상 테이블의 지표 required_filters에 병합합니다."""
+    """검증된 turn 필터를 asset 계약과 해당 asset의 leaf Metric에 함께 병합한다."""
     if not turn_filters:
         return assets
     updated: list[dict[str, object]] = []
     for asset in assets:
         asset_copy = dict(asset)
+        asset_required = list(asset_copy.get("required_filters") or ())
+        for index, turn_filter in enumerate(turn_filters):
+            if turn_filter.asset_fqn != str(asset_copy.get("fqn", "")):
+                continue
+            asset_required.append(
+                {
+                    "field": turn_filter.column,
+                    "operator": turn_filter.operator,
+                    "value": turn_filter.value,
+                    "value_type": "string",
+                    "parameter": f"user_filter_{index}",
+                }
+            )
+        asset_copy["required_filters"] = asset_required
         metrics = asset_copy.get("metrics")
         if isinstance(metrics, (list, tuple)):
             new_metrics = []
@@ -161,12 +318,16 @@ class PipelineContextService:
         for asset in assets:
             urn = str(asset["urn"])
             if urn not in schemas:
-                schemas[urn] = await self._adapter.get_asset_schema(urn)
+                schemas[urn] = await self._adapter.get_asset_schema(
+                    urn,
+                    context.model_dump(mode="json"),
+                )
         validated_schemas = {
             urn: schema_columns(schema) for urn, schema in schemas.items()
         }
 
         # 2. 필터 값 실데이터 확인 및 주입 (Filter Value Resolution)
+        resolved_turn_filters: list[ResolvedFilterValue] = []
         filter_fields = (
             structured_request.get("filter_fields")
             if isinstance(structured_request, dict)
@@ -174,7 +335,6 @@ class PipelineContextService:
         )
         if isinstance(filter_fields, list) and filter_fields:
             fqn_to_urn = {str(asset["fqn"]): str(asset["urn"]) for asset in assets}
-            resolved_turn_filters: list[ResolvedFilterValue] = []
             for item in filter_fields:
                 if not isinstance(item, dict):
                     continue
@@ -205,6 +365,50 @@ class PipelineContextService:
                         str(error),
                     ) from error
             assets = _inject_turn_filters(assets, resolved_turn_filters)
+        raw_member_receipts = (
+            structured_request.get("dimension_member_receipts", [])
+            if isinstance(structured_request, dict)
+            else []
+        )
+        if not isinstance(raw_member_receipts, list) or any(
+            not isinstance(item, dict) for item in raw_member_receipts
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt는 구조화된 배열이어야 합니다.",
+            )
+        try:
+            member_receipts = tuple(
+                ContextDimensionMemberReceipt(
+                    dimension_id=str(item["dimension_id"]),
+                    member_id=str(item["member_id"]),
+                    term_urn=str(item["term_urn"]),
+                    canonical_value=str(item["canonical_value"]),
+                    version=str(item["version"]),
+                    semantic_sha256=str(item["semantic_sha256"]),
+                    asset_fqn=str(item["asset_fqn"]),
+                    column=str(item["column"]),
+                )
+                for item in raw_member_receipts
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt가 불완전합니다.",
+            ) from error
+        if any(
+            not any(
+                resolved.asset_fqn == receipt.asset_fqn
+                and resolved.column == receipt.column
+                and resolved.value == receipt.canonical_value
+                for resolved in resolved_turn_filters
+            )
+            for receipt in member_receipts
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt와 실제 필터 확인값이 일치하지 않습니다.",
+            )
 
         # 3. ContextAsset 객체 튜플 조립
         items = tuple(
@@ -235,97 +439,13 @@ class PipelineContextService:
             for asset in assets
         )
 
-        # 4. 시간 파라미터 및 비교 윈도우 계산
-        start_parameter, end_parameter = time_parameter_names(assets)
-        comparison_names = comparison_time_parameter_names(assets)
-        relationship = (
-            structured_request.get("period_relationship")
-            if isinstance(structured_request, dict)
-            else None
-        )
-        is_comparison_request = relationship == "comparison"
-        if is_comparison_request and comparison_names is None:
-            raise ContextBuildError(
-                ContextBuildErrorCode.INVALID_METADATA,
-                "선택된 자산들이 거버넌스 비교 윈도우를 지원하지 않습니다.",
-            )
-        comparison_start, comparison_end = comparison_names or ("", "")
-        window_names = (start_parameter, end_parameter, comparison_start, comparison_end)
-        period_values = {
-            name: payload.parameters[name]
-            for name in window_names
-            if name and name in payload.parameters
-        }
-        if not period_values and structured_request is not None:
-            candidates = structured_request.get("period_candidates")
-            expected_count = 2 if is_comparison_request else 1
-            if not isinstance(candidates, list) or len(candidates) != expected_count:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.PERIOD_REQUIRED,
-                    "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다."
-                    if is_comparison_request
-                    else "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
-                    _period_suggestions(candidates),
-                )
-            windows = [(start_parameter, end_parameter, candidates[0])]
-            if is_comparison_request:
-                windows.append((comparison_start, comparison_end, candidates[1]))
-            period_values = {}
-            for window_start, window_end, candidate in windows:
-                if not isinstance(candidate, dict):
-                    raise ContextBuildError(
-                        ContextBuildErrorCode.INVALID_METADATA,
-                        "Node1 기간 후보 항목은 객체여야 합니다.",
-                    )
-                try:
-                    period_values[window_start] = datetime.fromisoformat(
-                        str(candidate["start"])
-                    ).date().isoformat()
-                    period_values[window_end] = datetime.fromisoformat(
-                        str(candidate["end_exclusive"])
-                    ).date().isoformat()
-                except (KeyError, ValueError) as error:
-                    raise ContextBuildError(
-                        ContextBuildErrorCode.INVALID_METADATA,
-                        "Node1 기간 후보가 올바른 ISO 날짜-시간 형식이 아닙니다.",
-                    ) from error
-        expected_names = {start_parameter, end_parameter}
-        if is_comparison_request:
-            expected_names |= {comparison_start, comparison_end}
-        if period_values and set(period_values) != expected_names:
-            raise ContextBuildError(
-                ContextBuildErrorCode.INVALID_METADATA,
-                "분석 기간은 시작과 종료 경계값을 모두 포함해야 합니다.",
-            )
-        window_pairs = [(start_parameter, end_parameter)]
-        if is_comparison_request:
-            window_pairs.append((comparison_start, comparison_end))
-        for window_start, window_end in window_pairs:
-            if not period_values:
-                continue
-            start_date = date.fromisoformat(period_values[window_start])
-            end_date = date.fromisoformat(period_values[window_end])
-            if start_date >= context.as_of:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.OUT_OF_DATA_RANGE,
-                    "요청 기간은 오늘 이전의 완료된 영업일을 포함해야 합니다.",
-                )
-            if end_date > context.as_of:
-                period_values[window_end] = context.as_of.isoformat()
-                end_date = context.as_of
-            if start_date >= end_date:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.INVALID_METADATA,
-                    "분석 기간은 비어있지 않은 반개구간 [start, end) 이어야 합니다.",
-                )
-        period_bindings = tuple(
-            ContextParameterBinding(name, "date", period_values[name])
-            for name in window_names
-            if name and name in period_values
+        # 4. governed 기간 또는 최신 스냅샷 기준일 binding 계산
+        time_bindings, period_values, window_pairs = _time_bindings(
+            payload, structured_request, context, assets
         )
         governed_filters = filter_parameter_bindings(assets)
         parameter_bindings = (
-            *period_bindings,
+            *time_bindings,
             *governed_filters,
         )
 
@@ -342,14 +462,31 @@ class PipelineContextService:
             for asset in assets
             if asset.get("evidence_cutoff")
         }
+        product_receipt_presence = [
+            bool(asset.get("product_release_id")) for asset in assets
+        ]
+        evidence_cutoff_presence = [
+            bool(asset.get("evidence_cutoff")) for asset in assets
+        ]
         if (
             len(releases) != 1
             or not next(iter(releases), "")
+            or releases != {context.semantic_release_id}
             or len(policies) != 1
             or not next(iter(policies), "")
+            or context.product_release_id is None
             or len(product_releases) > 1
+            or (
+                bool(product_releases)
+                and product_releases != {context.product_release_id}
+            )
             or len(evidence_cutoffs) > 1
-            or bool(product_releases) != bool(evidence_cutoffs)
+            or (any(product_receipt_presence) and not all(product_receipt_presence))
+            or (any(evidence_cutoff_presence) and not all(evidence_cutoff_presence))
+            # evidence_cutoff은 data watermark가 release manifest에 있을 때만
+            # 선택적으로 제공한다. 반대로 cutoff가 release receipt 없이 단독으로
+            # 전달되는 것은 출처를 증명할 수 없으므로 거부한다.
+            or (bool(evidence_cutoffs) and context.product_release_id is None)
         ):
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METADATA,
@@ -406,7 +543,10 @@ class PipelineContextService:
         if isinstance(single_term, dict) and len(business_metric_ids) == 1:
             term_payloads = {business_metric_ids[0]: single_term}
         if not isinstance(term_payloads, dict):
-            term_payloads = await self._adapter.get_metric_terms(business_metric_ids)
+            term_payloads = await self._adapter.get_metric_terms(
+                business_metric_ids,
+                context.model_dump(mode="json"),
+            )
         if set(term_payloads) != set(business_metric_ids) or any(
             not isinstance(term_payloads.get(metric_id), dict)
             for metric_id in business_metric_ids
@@ -426,7 +566,7 @@ class PipelineContextService:
             assets=items,
             token_count=max(1, estimate_token_count(payload.question)),
             model_context_tokens=24_000,
-            product_release_id=(next(iter(product_releases)) if product_releases else None),
+            product_release_id=context.product_release_id,
             evidence_cutoff=evidence_cutoff,
             parameter_bindings=parameter_bindings,
             metric_terms=tuple(
@@ -442,6 +582,7 @@ class PipelineContextService:
                 )
                 for metric_id in business_metric_ids
             ),
+            dimension_member_receipts=member_receipts,
         )
         package = self._context_builder.build(
             request,

@@ -19,6 +19,8 @@ from typing import Any, Sequence
 
 from app.services.conversation.change_set import (
     AnalysisChangeSet,
+    ChangeOperation,
+    SlotChange,
     apply_dimension_changes,
     apply_metric_change,
     derive_dimension_changes,
@@ -67,6 +69,7 @@ class ResolvedTurnSlots:
     analysis_operation: str | None = None
     result_limit: int | None = None
     comparison_time_range: ResolvedTimeRange | None = None
+    analysis_time_bucket: str | None = None
 
 
 class ConversationSlotResolver:
@@ -177,9 +180,27 @@ class ConversationSlotResolver:
         last_slots = last_turn.get("resolved_slots", {}) if last_turn else {}
         last_chart_type = (last_slots.get("target_chart_type") or "SUMMARY").upper()
 
-        # 이전 ANALYSIS 턴 역추적 (중간에 PRESENTATION/CLARIFICATION 턴이 끼어 있어도 원천 분석 지표/차원 보존)
-        last_analysis = next((t for t in reversed(previous_turns) if t.get("route") == "ANALYSIS"), None)
+        # 이전 확정 ANALYSIS 턴 역추적. route만 ANALYSIS인 실패·명확화 턴은 실행된
+        # 분석 상태가 아니므로 상속 원본이 될 수 없다.
+        eligible_analyses = [
+            turn for turn in previous_turns if cls.is_resolved_analysis_turn(turn)
+        ]
+        last_analysis = eligible_analyses[-1] if eligible_analyses else None
         last_analysis_slots = last_analysis.get("resolved_slots", {}) if last_analysis else {}
+        # OUT_OF_DATA_RANGE는 실행된 Analysis가 아니므로 source Turn이나 focus가 될 수
+        # 없다. 다만 사용자가 바로 다음 Turn에서 가용 절대 기간만 고치면, 차단된 요청의
+        # 확정 Metric·filter·dimension intent는 한 번만 재사용할 수 있어야 한다. 이
+        # pending intent는 성공 Artifact 상속과 분리하고 즉시 직전 Turn에만 한정한다.
+        pending_range_slots = (
+            last_slots
+            if last_turn is not None
+            and last_turn.get("route") == "ANALYSIS"
+            and last_turn.get("terminal_status") == "BLOCKED"
+            and last_turn.get("reason_code") == "OUT_OF_DATA_RANGE"
+            and bool(last_slots.get("metric_id") or last_slots.get("metric_ids"))
+            else {}
+        )
+        analysis_inheritance_slots = last_analysis_slots or pending_range_slots
 
         # -------------------------------------------------------------
         # 0. Disambiguation 후속 선택 처리
@@ -216,11 +237,16 @@ class ConversationSlotResolver:
                         user_filters=pending_filters,
                         time_range=time_range,
                         target_chart_type=target_chart_type,
-                        source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),
+                        source_turn_ids=(
+                            (str(last_analysis["turn_id"]),)
+                            if last_analysis is not None
+                            else ()
+                        ),
                         is_inherited_metric=False,
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=is_inherited_period,
                         analysis_operation=last_slots.get("analysis_operation"),
+                        analysis_time_bucket=last_slots.get("analysis_time_bucket"),
                         result_limit=last_slots.get("result_limit"),
                         comparison_time_range=cls._parse_stored_time_range(
                             last_slots.get("comparison_time_range")
@@ -243,11 +269,16 @@ class ConversationSlotResolver:
                         user_filters=pending_filters,
                         time_range=time_range,
                         target_chart_type=target_chart_type,
-                        source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),
+                        source_turn_ids=(
+                            (str(last_analysis["turn_id"]),)
+                            if last_analysis is not None
+                            else ()
+                        ),
                         is_inherited_metric=True if not node1_output.get("selected_metric_id") and resolved_metric else False,
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=False,
                         analysis_operation=last_slots.get("analysis_operation"),
+                        analysis_time_bucket=last_slots.get("analysis_time_bucket"),
                         result_limit=last_slots.get("result_limit"),
                         comparison_time_range=cls._parse_stored_time_range(
                             last_slots.get("comparison_time_range")
@@ -264,13 +295,16 @@ class ConversationSlotResolver:
             requested_route = None
 
         if requested_route == "REPORT_ACTION":
-            source_turn_ids = []
-            for t in reversed(previous_turns):
-                if t.get("artifact_id") and str(t["turn_id"]) not in source_turn_ids:
-                    source_turn_ids.insert(0, str(t["turn_id"]))
-                    if len(source_turn_ids) >= 2:
-                        break
-            fallback_turn_ids = [str(t["turn_id"]) for t in previous_turns[-2:]] if previous_turns else []
+            source_turn_ids: list[str] = []
+            seen_artifacts: set[str] = set()
+            for turn in reversed(eligible_analyses):
+                artifact = str(turn["artifact_id"])
+                if artifact in seen_artifacts:
+                    continue
+                seen_artifacts.add(artifact)
+                source_turn_ids.insert(0, str(turn["turn_id"]))
+                if len(source_turn_ids) >= 2:
+                    break
             return ResolvedTurnSlots(
                 route="REPORT_ACTION",
                 metric_id=None,
@@ -278,7 +312,7 @@ class ConversationSlotResolver:
                 user_filters=(),
                 time_range=None,
                 target_chart_type=None,
-                source_turn_ids=tuple(source_turn_ids or fallback_turn_ids),
+                source_turn_ids=tuple(source_turn_ids),
                 is_inherited_metric=False,
                 is_inherited_dimension=False,
                 is_inherited_period=False,
@@ -309,10 +343,10 @@ class ConversationSlotResolver:
         stored_analysis_metric_ids = tuple(
             item
             for item in (
-                last_analysis_slots.get("metric_ids")
+                analysis_inheritance_slots.get("metric_ids")
                 or (
-                    [last_analysis_slots.get("metric_id")]
-                    if last_analysis_slots.get("metric_id")
+                    [analysis_inheritance_slots.get("metric_id")]
+                    if analysis_inheritance_slots.get("metric_id")
                     else []
                 )
             )
@@ -340,12 +374,24 @@ class ConversationSlotResolver:
                 user_filters=tuple(last_analysis_slots.get("user_filters", ())) if last_analysis_slots else tuple(last_slots.get("user_filters", ())),
                 time_range=cls._parse_stored_time_range(last_analysis_slots.get("time_range")) or cls._parse_stored_time_range(last_slots.get("time_range")),
                 target_chart_type=target_view,
-                source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),
-                is_inherited_metric=True if last_turn else False,
-                is_inherited_dimension=True if last_turn else False,
-                is_inherited_period=True if last_turn else False,
+                source_turn_ids=(
+                    (str(last_analysis["turn_id"]),)
+                    if last_analysis is not None
+                    else ()
+                ),
+                is_inherited_metric=last_analysis is not None,
+                is_inherited_dimension=last_analysis is not None,
+                is_inherited_period=last_analysis is not None,
+                change_set=(
+                    SlotChange(
+                        "target_chart_type",
+                        ChangeOperation.SET,
+                        target_view,
+                    ),
+                ),
                 metric_ids=stored_analysis_metric_ids,
                 analysis_operation=last_analysis_slots.get("analysis_operation"),
+                analysis_time_bucket=last_analysis_slots.get("analysis_time_bucket"),
                 result_limit=last_analysis_slots.get("result_limit"),
                 comparison_time_range=cls._parse_stored_time_range(
                     last_analysis_slots.get("comparison_time_range")
@@ -355,8 +401,11 @@ class ConversationSlotResolver:
         # -------------------------------------------------------------
         # 3. ANALYSIS 라우트: 슬롯 상속 & Delta 병합
         # -------------------------------------------------------------
-        is_followup = cls._is_followup_question(
-            node1_output,
+        is_followup = (
+            cls._is_followup_question(node1_output)
+            or bool(pending_range_slots)
+            and not candidate_metric_ids
+            and bool(node1_output.get("period_candidates"))
         )
 
         # 3-1. 단일 지표 ChangeSet 호환성을 유지하면서 복수 지표 묶음을 원자적으로 적용한다.
@@ -396,7 +445,19 @@ class ConversationSlotResolver:
         if candidate_operation not in operations:
             candidate_operation = None
         analysis_operation = candidate_operation or (
-            last_analysis_slots.get("analysis_operation") if is_followup else None
+            analysis_inheritance_slots.get("analysis_operation")
+            if is_followup
+            else None
+        )
+        candidate_time_bucket = node1_output.get("analysis_time_bucket")
+        if candidate_time_bucket not in {"day", "week", "month", "quarter", "year"}:
+            candidate_time_bucket = None
+        analysis_time_bucket = (
+            candidate_time_bucket
+            if candidate_operation == "time_trend"
+            else analysis_inheritance_slots.get("analysis_time_bucket")
+            if is_followup and analysis_operation == "time_trend"
+            else None
         )
         candidate_result_limit = node1_output.get("result_limit")
         result_limit = (
@@ -404,21 +465,32 @@ class ConversationSlotResolver:
             if candidate_operation in {"top_n", "bottom_n"}
             and isinstance(candidate_result_limit, int)
             and not isinstance(candidate_result_limit, bool)
-            else last_analysis_slots.get("result_limit")
+            else analysis_inheritance_slots.get("result_limit")
             if is_followup and analysis_operation in {"top_n", "bottom_n"}
             else None
         )
-
         # 3-2. dimension_fields 변경분 계산 및 적용
         candidate_dims = tuple(
             dict(d) for d in (node1_output.get("dimension_fields") or ()) if isinstance(d, dict)
         )
         inherited_dims = (
-            tuple(dict(d) for d in last_analysis_slots["dimension_fields"])
-            if last_analysis_slots.get("dimension_fields")
+            tuple(dict(d) for d in analysis_inheritance_slots["dimension_fields"])
+            if analysis_inheritance_slots.get("dimension_fields")
             else tuple(dict(d) for d in last_slots.get("dimension_fields", ()))
         )
-        dimension_changes = derive_dimension_changes(candidate_dims, inherited_dims, is_followup)
+        # Node 1은 결과 형태를 생략한 후속 질문에서 operation을 null로 보내므로 기존
+        # 차원을 보존한다. 반대로 명시적인 aggregate와 빈 차원 목록은 전체값으로의
+        # 전환이며, 이전 GROUP BY를 CLEAR해야 한다. 질문 문자열은 다시 파싱하지 않는다.
+        preserve_dimensions = not (
+            is_followup
+            and candidate_operation == "aggregate"
+            and not candidate_dims
+        )
+        dimension_changes = derive_dimension_changes(
+            candidate_dims,
+            inherited_dims,
+            is_followup and preserve_dimensions,
+        )
         dimension_fields, is_inherited_dimension = apply_dimension_changes(
             dimension_changes, inherited_dims
         )
@@ -428,8 +500,8 @@ class ConversationSlotResolver:
             dict(f) for f in (node1_output.get("filter_fields") or ()) if isinstance(f, dict)
         )
         inherited_filters = (
-            tuple(dict(f) for f in last_analysis_slots["user_filters"])
-            if last_analysis_slots.get("user_filters")
+            tuple(dict(f) for f in analysis_inheritance_slots["user_filters"])
+            if analysis_inheritance_slots.get("user_filters")
             else tuple(dict(f) for f in last_slots.get("user_filters", ()))
         )
         filter_changes = derive_dimension_changes(
@@ -443,29 +515,112 @@ class ConversationSlotResolver:
         # 3-4. 시간 범위 해석 (TimeAlgebraEngine 적용)
         last_time_range = (
             cls._parse_stored_time_range(last_analysis_slots.get("time_range"))
-            or cls._parse_stored_time_range(last_slots.get("time_range"))
+            or (
+                cls._parse_stored_time_range(last_slots.get("time_range"))
+                if not pending_range_slots
+                else None
+            )
         ) if previous_turns else None
 
-        time_range, is_inherited_period = TimeAlgebraEngine.resolve_time(
-            user_message=msg,
-            node1_output=node1_output,
-            last_time_range=last_time_range,
-            as_of=as_of_date,
-        )
-        comparison_time_range = TimeAlgebraEngine.resolve_comparison_time(
-            node1_output,
-            as_of_date,
-        )
+        # latest_snapshot은 source time의 서버 기준일 전 MAX를 선택하므로 질문이나
+        # 직전 턴의 range를 물려받지 않는다. 이 mode는 DataHub 후보를 고른 뒤
+        # MetricResolver가 확정한 typed 신호이며, 문장 패턴으로 추측하지 않는다.
+        if node1_output.get("time_mode") == "latest_snapshot":
+            time_range = None
+            is_inherited_period = False
+            comparison_time_range = None
+        else:
+            time_range, is_inherited_period = TimeAlgebraEngine.resolve_time(
+                user_message=msg,
+                node1_output=node1_output,
+                last_time_range=last_time_range,
+                as_of=as_of_date,
+            )
+            comparison_time_range = TimeAlgebraEngine.resolve_comparison_time(
+                node1_output,
+                as_of_date,
+            )
         if (
             comparison_time_range is None
             and is_followup
             and analysis_operation == "period_comparison"
+            and node1_output.get("time_mode") != "latest_snapshot"
         ):
-            comparison_time_range = cls._parse_stored_time_range(
-                last_analysis_slots.get("comparison_time_range")
-            )
+            prior_ranges = [
+                (turn, cls._parse_stored_time_range(
+                    turn.get("resolved_slots", {}).get("time_range")
+                ))
+                for turn in eligible_analyses[-2:]
+            ]
+            prior_ranges = [item for item in prior_ranges if item[1] is not None]
+            if len(prior_ranges) == 2:
+                time_range = prior_ranges[-1][1]
+                comparison_time_range = prior_ranges[-2][1]
+                is_inherited_period = True
+            else:
+                comparison_time_range = cls._parse_stored_time_range(
+                    last_analysis_slots.get("comparison_time_range")
+                )
         if analysis_operation != "period_comparison":
             comparison_time_range = None
+
+        # Metric·dimension과 동일하게 기간 변경도 durable ChangeSet에 남긴다. Node 1의
+        # typed period candidate가 있으면 SET, 직전 범위를 그대로 썼으면 PRESERVE이며,
+        # 비교 범위를 새로 붙이는 전이는 ADD_VALUE다. 질문 문구를 다시 해석하지 않는다.
+        period_changes: list[SlotChange] = []
+        if time_range is not None:
+            period_changes.append(
+                SlotChange(
+                    "time_range",
+                    (
+                        ChangeOperation.PRESERVE
+                        if is_inherited_period
+                        else ChangeOperation.SET
+                    ),
+                    {
+                        "start": time_range.start.isoformat(),
+                        "end_exclusive": time_range.end_exclusive.isoformat(),
+                        "source_text": time_range.source_text,
+                    },
+                )
+            )
+        elif last_time_range is not None:
+            period_changes.append(
+                SlotChange("time_range", ChangeOperation.CLEAR, None)
+            )
+
+        last_comparison_time_range = cls._parse_stored_time_range(
+            last_analysis_slots.get("comparison_time_range")
+        )
+        if comparison_time_range is not None:
+            comparison_is_preserved = (
+                last_comparison_time_range is not None
+                and comparison_time_range.start == last_comparison_time_range.start
+                and comparison_time_range.end_exclusive
+                == last_comparison_time_range.end_exclusive
+            )
+            period_changes.append(
+                SlotChange(
+                    "comparison_time_range",
+                    (
+                        ChangeOperation.PRESERVE
+                        if comparison_is_preserved
+                        else ChangeOperation.ADD_VALUE
+                        if last_comparison_time_range is None
+                        else ChangeOperation.SET
+                    ),
+                    {
+                        "start": comparison_time_range.start.isoformat(),
+                        "end_exclusive": comparison_time_range.end_exclusive.isoformat(),
+                        "source_text": comparison_time_range.source_text,
+                    },
+                )
+            )
+        elif last_comparison_time_range is not None:
+            period_changes.append(
+                SlotChange("comparison_time_range", ChangeOperation.CLEAR, None)
+            )
+        change_set = (*change_set, *period_changes)
 
         # 3-5. 초기 시각화 선호도 판별
         target_chart_type = cls._resolve_initial_chart_type(msg, node1_output)
@@ -477,7 +632,19 @@ class ConversationSlotResolver:
             user_filters=user_filters,
             time_range=time_range,
             target_chart_type=target_chart_type,
-            source_turn_ids=(str(last_turn["turn_id"]),) if last_turn and (is_inherited_metric or is_inherited_period or is_inherited_dimension) else (),
+            source_turn_ids=(
+                tuple(str(turn["turn_id"]) for turn in eligible_analyses[-2:])
+                if analysis_operation == "period_comparison"
+                and len(eligible_analyses) >= 2
+                else (str(last_analysis["turn_id"]),)
+                if last_analysis is not None
+                and (
+                    is_inherited_metric
+                    or is_inherited_period
+                    or is_inherited_dimension
+                )
+                else ()
+            ),
             is_inherited_metric=is_inherited_metric,
             is_inherited_dimension=is_inherited_dimension,
             is_inherited_period=is_inherited_period,
@@ -486,6 +653,7 @@ class ConversationSlotResolver:
             analysis_operation=analysis_operation,
             result_limit=result_limit,
             comparison_time_range=comparison_time_range,
+            analysis_time_bucket=analysis_time_bucket,
         )
 
     @classmethod
@@ -495,10 +663,10 @@ class ConversationSlotResolver:
     ) -> bool:
         """이번 발화가 직전 턴의 슬롯을 상속할 생략문인지 판정합니다.
 
-        생략 여부는 질문 자체의 문법 판단이므로 Node1이 `is_elliptical`로 해석한다.
-        신호가 없으면 상속을 추측하지 않고 False로 닫는다. 새 지표 후보가 있더라도 지표
-        자체는 아래 ChangeSet이 교체하고, 생략된 기간·차원·필터만 호환 범위에서 이어갈 수
-        있어야 하므로 여기서 전체 후속 문맥을 끊지 않는다.
+        생략 여부는 우선 Node1의 `is_elliptical`로 해석한다. 모델이 이 신호를 놓쳐도
+        측정 대상 없이 분석 연산만 확정된 typed 구조는 그 자체로 이전 Metric이 필요한
+        요청이므로 같은 문맥 의존 상태로 취급한다. 새 지표 후보가 있으면 아래 ChangeSet이
+        교체하고, 생략된 기간·차원·필터만 호환 범위에서 이어간다.
 
         Args:
             node1_output: Node 1 정규화 결과
@@ -506,10 +674,54 @@ class ConversationSlotResolver:
         Returns:
             직전 턴 슬롯을 상속할 후속 질의인지 여부
         """
-        if node1_output.get("is_elliptical") is not True:
-            return False
+        return cls.is_context_dependent_followup(node1_output)
 
-        return True
+    @classmethod
+    def is_context_dependent_followup(
+        cls,
+        node1_output: dict[str, Any],
+    ) -> bool:
+        """typed Node 1 구조만으로 이전 분석 상태가 필요한 요청인지 판정한다.
+
+        모델의 명시적 ``is_elliptical`` 신호가 우선이다. 다만 측정 대상은 없고
+        결과 연산만 명시된 요청은 그 연산을 적용할 Metric이 현재 발화에 없으므로
+        구조적으로도 문맥 의존적이다. 이는 질문 문구나 업무 값 목록을 해석하지 않는다.
+        실제 상속 가능 여부는 이전 확정 분석 슬롯 존재 여부가 별도로 결정한다.
+        """
+
+        if node1_output.get("is_elliptical") is True:
+            return True
+        operations = {
+            "aggregate",
+            "breakdown",
+            "time_trend",
+            "top_n",
+            "bottom_n",
+            "period_comparison",
+        }
+        return (
+            node1_output.get("metric_resolution") == "missing"
+            and not node1_output.get("measurement_source_texts")
+            and node1_output.get("analysis_operation") in operations
+        )
+
+    @staticmethod
+    def is_resolved_analysis_turn(turn: dict[str, Any]) -> bool:
+        """실패·명확화 상태가 아닌 확정 Metric 분석 턴만 상속 원본으로 허용한다."""
+
+        if turn.get("route") != "ANALYSIS":
+            return False
+        terminal_status = turn.get("terminal_status")
+        if terminal_status is not None and terminal_status != "SUCCEEDED":
+            return False
+        if terminal_status is not None and not turn.get("artifact_id"):
+            return False
+        slots = turn.get("resolved_slots")
+        if not isinstance(slots, dict):
+            return False
+        if slots.get("ambiguity_status") == "NEEDS_CLARIFICATION":
+            return False
+        return bool(slots.get("metric_id") or slots.get("metric_ids"))
 
     @classmethod
     def _resolve_presentation_chart_type(
@@ -550,7 +762,7 @@ class ConversationSlotResolver:
     ) -> str:
         """ANALYSIS 라우트에서 질문이 명시한 초기 시각화 타입을 확정합니다.
 
-        표현을 지목하지 않은 질문은 표/차트를 강제하지 않고 요약(``SUMMARY``)으로 연다.
+        표현을 지목하지 않은 질문은 확정된 연산과 출력 지표 unit으로 기본 표현을 정한다.
 
         Args:
             msg: 사용자 발화(현재 분기 판단에는 쓰지 않으며 추적용으로 유지)
@@ -559,7 +771,39 @@ class ConversationSlotResolver:
         Returns:
             허용 목록에 속하는 뷰 타입
         """
-        return cls._presentation_signal(node1_output) or "SUMMARY"
+        signal = cls._presentation_signal(node1_output)
+        if signal is not None:
+            return signal
+        if not node1_output:
+            return "SUMMARY"
+        operation = node1_output.get("analysis_operation")
+        if operation == "time_trend":
+            return "LINE"
+        if operation in {"period_comparison", "top_n", "bottom_n"}:
+            return "BAR"
+        if operation != "breakdown":
+            return "SUMMARY"
+
+        raw_ids = node1_output.get("selected_metric_ids")
+        metric_ids = (
+            [item for item in raw_ids if isinstance(item, str) and item]
+            if isinstance(raw_ids, (list, tuple))
+            else []
+        )
+        raw_terms = node1_output.get("metric_terms")
+        units = []
+        if metric_ids and isinstance(raw_terms, dict):
+            for metric_id in metric_ids:
+                term = raw_terms.get(metric_id)
+                unit = term.get("unit") if isinstance(term, dict) else None
+                if not isinstance(unit, str) or not unit.strip():
+                    units = []
+                    break
+                units.append(unit.strip().casefold())
+        rate_or_per_unit = bool(units) and all(
+            unit == "ratio" or "_per_" in unit for unit in units
+        )
+        return "SUMMARY" if rate_or_per_unit else "BAR"
 
     @classmethod
     def _presentation_signal(cls, node1_output: dict[str, Any] | None) -> str | None:

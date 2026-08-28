@@ -1,0 +1,1022 @@
+{
+  "allowed_roles": [
+    "analyst"
+  ],
+  "business_metric_target_count": 13,
+  "contract_version": "answervice.metric_review.v2",
+  "metrics": [
+    {
+      "aliases": [
+        "available rooms",
+        "판매 가능 객실박"
+      ],
+      "definition": "요청 기간에 PMS 객실 재고가 판매 가능으로 기록한 객실박 합계이며 객실 점유율과 RevPAR의 분모로 사용한다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "available_room_nights",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Available Room Nights",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "available_room_nights",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "available_room_nights",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "room_night",
+      "visibility": "SUPPORT"
+    },
+    {
+      "aliases": [
+        "occupied rooms",
+        "점유 객실박"
+      ],
+      "definition": "요청 기간에 실제 투숙으로 점유된 객실박 합계이며 객실 점유율과 ADR 계산에 사용한다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "occupied_room_nights",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Occupied Room Nights",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "occupied_room_nights",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "occupied_room_nights",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "room_night",
+      "visibility": "SUPPORT"
+    },
+    {
+      "aliases": [
+        "객실 매출",
+        "룸 매출"
+      ],
+      "definition": "요청 기간의 객실 운영에서 인식된 합성 객실매출 합계이며 ADR과 RevPAR의 분자로 사용한다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "room_revenue",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Room Revenue",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "room_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "room_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "객실 점유율",
+        "점유율",
+        "투숙률",
+        "occupancy"
+      ],
+      "definition": "요청 기간의 점유 객실박 합계를 판매 가능 객실박 합계로 나눈 값이며 일별 비율을 단순 평균하지 않는다.",
+      "formula": {
+        "denominator_metric_id": "available_room_nights",
+        "kind": "RATIO",
+        "numerator_metric_id": "occupied_room_nights",
+        "zero_policy": "null_on_zero_denominator"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "occupancy_rate",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Occupancy Rate",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "occupancy_rate",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "kind": "METRIC_OPERANDS",
+        "metric_ids": [
+          "occupied_room_nights",
+          "available_room_nights"
+        ]
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "ratio",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "평균객실단가",
+        "평균 객실 단가",
+        "average daily rate"
+      ],
+      "definition": "요청 기간의 객실매출 합계를 점유 객실박 합계로 나눈 평균객실단가이며 일별 ADR을 단순 평균하지 않는다.",
+      "formula": {
+        "denominator_metric_id": "occupied_room_nights",
+        "kind": "RATIO",
+        "numerator_metric_id": "room_revenue",
+        "zero_policy": "null_on_zero_denominator"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "adr",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "ADR",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "adr_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "kind": "METRIC_OPERANDS",
+        "metric_ids": [
+          "room_revenue",
+          "occupied_room_nights"
+        ]
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW_per_occupied_room_night",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "판매가능객실당매출",
+        "판매 가능 객실당 매출",
+        "revenue per available room"
+      ],
+      "definition": "요청 기간의 객실매출 합계를 판매 가능 객실박 합계로 나눈 판매가능객실당매출이며 일별 RevPAR를 단순 평균하지 않는다.",
+      "formula": {
+        "denominator_metric_id": "available_room_nights",
+        "kind": "RATIO",
+        "numerator_metric_id": "room_revenue",
+        "zero_policy": "null_on_zero_denominator"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "revpar",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "RevPAR",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "revpar_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "kind": "METRIC_OPERANDS",
+        "metric_ids": [
+          "room_revenue",
+          "available_room_nights"
+        ]
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW_per_available_room_night",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "식음 매출",
+        "식음료 매출",
+        "FNB revenue"
+      ],
+      "definition": "요청 기간의 완료 POS 주문에서 환불과 할인을 반영한 합성 식음 순매출 합계다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "fnb_revenue",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "F&B Revenue",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "fnb_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "fnb_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "연회 매출",
+        "banquet sales"
+      ],
+      "definition": "요청 기간의 확정·완료 연회 운영에서 영업일별로 인식된 합성 연회매출 합계다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "banquet_revenue",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Banquet Revenue",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "banquet_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "banquet_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "시설 매출",
+        "유료 시설 매출"
+      ],
+      "definition": "요청 기간의 유료 시설 이용 이벤트에서 발생한 합성 시설매출 합계다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "facility_revenue",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Facility Revenue",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "facility_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "facility_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "총 운영 매출",
+        "총 운영매출",
+        "총영업매출",
+        "운영 총매출",
+        "호텔 매출",
+        "호텔 전체 매출",
+        "호텔 총매출"
+      ],
+      "definition": "요청 기간의 객실·식음·연회·시설 합성 매출을 같은 호텔·영업일 범위에서 합산한 총 운영매출이다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "total_operating_revenue_krw",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Total Operating Revenue",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "total_operating_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "total_operating_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "초과근로시간",
+        "초과 근무 시간",
+        "연장 근로시간"
+      ],
+      "definition": "요청 기간의 실제 근로시간 중 계획 근로시간을 초과한 합성 근로시간 합계다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "overtime_hours",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "Overtime Hours",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "overtime_hours",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+        "column": "overtime_hours",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "hour",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "rating point sum",
+        "평점 점수 합계"
+      ],
+      "definition": "선택 범위의 VOC 종합 평점을 리뷰 단위에서 합산한 계산용 분자다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code",
+          "source_channel",
+          "touchpoint",
+          "selected_category"
+        ],
+        "keys": [
+          "voc_review_id"
+        ],
+        "kind": "row"
+      },
+      "id": "voc_rating_points",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "VOC Rating Points",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "RAW_APPROVED_DETAIL"
+      ],
+      "result_field": "voc_rating_points",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.voc_review_detail",
+        "column": "rating_overall",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "SOURCE_BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "rating_point",
+      "visibility": "SUPPORT"
+    },
+    {
+      "aliases": [
+        "review count",
+        "VOC 리뷰 수"
+      ],
+      "definition": "선택 범위에서 중복되지 않는 VOC 리뷰 수로 평균 평점 계산용 분모다.",
+      "formula": {
+        "aggregation": "count_distinct",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code",
+          "source_channel",
+          "touchpoint",
+          "selected_category"
+        ],
+        "keys": [
+          "voc_review_id"
+        ],
+        "kind": "row"
+      },
+      "id": "voc_average_rating_review_count",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "VOC Average Rating Review Count",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "RAW_APPROVED_DETAIL"
+      ],
+      "result_field": "voc_average_rating_review_count",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.voc_review_detail",
+        "column": "voc_review_id",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "SOURCE_BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "review",
+      "visibility": "SUPPORT"
+    },
+    {
+      "aliases": [
+        "VOC 평균 평점",
+        "고객 평균 평점",
+        "average rating"
+      ],
+      "definition": "선택 범위의 VOC 종합 평점 합계를 중복되지 않는 리뷰 수로 나눈 1~5 평균 평점이며 일별 평균을 단순 평균하지 않는다.",
+      "formula": {
+        "denominator_metric_id": "voc_average_rating_review_count",
+        "kind": "RATIO",
+        "numerator_metric_id": "voc_rating_points",
+        "zero_policy": "null_on_zero_denominator"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code",
+          "source_channel",
+          "touchpoint",
+          "selected_category"
+        ],
+        "keys": [
+          "voc_review_id"
+        ],
+        "kind": "row"
+      },
+      "id": "voc_average_rating",
+      "join": {
+        "allowed_edge_ids": [],
+        "required": false
+      },
+      "name": "VOC Average Rating",
+      "permission": {
+        "contains_pii": false,
+        "roles": [
+          "analyst"
+        ],
+        "synthetic": true
+      },
+      "query_strategies": [
+        "RAW_APPROVED_DETAIL"
+      ],
+      "result_field": "voc_average_rating",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "kind": "METRIC_OPERANDS",
+        "metric_ids": [
+          "voc_rating_points",
+          "voc_average_rating_review_count"
+        ]
+      },
+      "time": {
+        "bucket": "day",
+        "field": "business_date",
+        "interval": "[start,end)",
+        "semantics": "SOURCE_BUSINESS_DATE",
+        "timezone": "Asia/Seoul",
+        "timezone_mode": "preserve"
+      },
+      "unit": "rating_1_to_5",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "회원 객실 매출",
+        "회원등급별 객실 매출",
+        "멤버십 객실 매출"
+      ],
+      "definition": "요청 기간의 객실박 매출을 발생 시점의 유효한 CRM 회원등급에 귀속한 원화 합성 객실매출 합계다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code",
+          "tier_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code",
+          "tier_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "member_room_revenue",
+      "join": {
+        "required": false,
+        "allowed_edge_ids": []
+      },
+      "name": "Member Room Revenue",
+      "permission": {
+        "roles": [
+          "analyst"
+        ],
+        "contains_pii": false,
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "member_room_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.member_revenue_daily",
+        "column": "room_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "field": "business_date",
+        "semantics": "EVENT_TIME_MEMBERSHIP_REVENUE",
+        "timezone": "Asia/Seoul",
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "회원 식음 매출",
+        "회원등급별 식음 매출",
+        "멤버십 F&B 매출"
+      ],
+      "definition": "요청 기간의 POS 순매출을 주문 시점의 유효한 CRM 회원등급에 귀속한 원화 합성 식음매출 합계다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code",
+          "tier_code"
+        ],
+        "keys": [
+          "business_date",
+          "hotel_code",
+          "tier_code"
+        ],
+        "kind": "periodic"
+      },
+      "id": "member_fnb_revenue",
+      "join": {
+        "required": false,
+        "allowed_edge_ids": []
+      },
+      "name": "Member F&B Revenue",
+      "permission": {
+        "roles": [
+          "analyst"
+        ],
+        "contains_pii": false,
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "member_fnb_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.member_revenue_daily",
+        "column": "fnb_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "field": "business_date",
+        "semantics": "EVENT_TIME_MEMBERSHIP_REVENUE",
+        "timezone": "Asia/Seoul",
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    },
+    {
+      "aliases": [
+        "체크아웃 기준 객실 매출",
+        "퇴실일 기준 객실 매출",
+        "체크아웃일 객실 매출"
+      ],
+      "definition": "요청 기간에 실제 체크아웃한 완료 투숙의 무료·하우스유즈 제외 원화 합성 객실매출 합계다.",
+      "formula": {
+        "aggregation": "sum",
+        "kind": "COLUMN",
+        "reduction": "sum"
+      },
+      "grain": {
+        "dimensions": [
+          "hotel_code"
+        ],
+        "keys": [
+          "stay_id"
+        ],
+        "kind": "event"
+      },
+      "id": "checkout_room_revenue",
+      "join": {
+        "required": false,
+        "allowed_edge_ids": []
+      },
+      "name": "Checkout Room Revenue",
+      "permission": {
+        "roles": [
+          "analyst"
+        ],
+        "contains_pii": false,
+        "synthetic": true
+      },
+      "query_strategies": [
+        "VIEW_REUSE"
+      ],
+      "result_field": "checkout_room_revenue_krw",
+      "review_status": "REVIEW_REQUIRED",
+      "source": {
+        "asset_fqn": "serving.analytics_v4_3.room_stay_fact",
+        "column": "room_revenue_krw",
+        "kind": "COLUMN"
+      },
+      "time": {
+        "field": "checkout_date",
+        "semantics": "ACTUAL_CHECKOUT_DATE",
+        "timezone": "Asia/Seoul",
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
+      },
+      "unit": "KRW",
+      "visibility": "BUSINESS"
+    }
+  ],
+  "release_id": "walkerhill-analysis-semantics-v1.20260826.1",
+  "review_owner_candidate_urn": "urn:li:corpGroup:answervice_runtime_stewards",
+  "review_status": "REVIEW_REQUIRED",
+  "serving_schema": "serving.analytics_v4_3",
+  "source_sql_sha256": "d93f2b27ad1cfcfc85dc3c7b4d6c9bd6f30cc87a6871698c97fc9e4c569ce652",
+  "asset_additions": [
+    {
+      "fqn": "serving.analytics_v4_3.member_revenue_daily",
+      "domain_urn": "urn:li:domain:answervice_serving",
+      "grain": {
+        "kind": "periodic",
+        "keys": [
+          "business_date",
+          "hotel_code",
+          "tier_code"
+        ]
+      }
+    },
+    {
+      "fqn": "serving.analytics_v4_3.room_stay_fact",
+      "domain_urn": "urn:li:domain:answervice_serving",
+      "grain": {
+        "kind": "event",
+        "keys": [
+          "stay_id"
+        ]
+      }
+    }
+  ],
+  "dimension_additions": [
+    {
+      "id": "membership_tier",
+      "aliases": [
+        "회원 등급",
+        "멤버십 등급",
+        "membership tier"
+      ],
+      "definition": "매출 이벤트 시점의 CRM 유효기간 이력으로 확정한 멤버십 등급이다.",
+      "asset_fqn": "serving.analytics_v4_3.member_revenue_daily",
+      "column": "tier_code"
+    }
+  ]
+}

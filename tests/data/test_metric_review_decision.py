@@ -173,6 +173,114 @@ def test_review_approval_compiles_business_terms_and_hidden_support_rules() -> N
     assert "nullif" in policy["query_policy"]["allowed_functions"]
 
 
+def test_review_v2_adds_sql_reviewed_asset_grain_and_dimension() -> None:
+    """신규 asset/dimension은 기존 catalog를 복제하지 않고 compact decision에 합쳐진다."""
+
+    baseline = _v2_bundle()
+    review = _review(baseline)
+    review.update(
+        {
+            "contract_version": "answervice.metric_review.v2",
+            "asset_additions": [
+                {
+                    "fqn": "quartz.core.segment_daily",
+                    "domain_urn": "urn:li:domain:quartz",
+                    "grain": {
+                        "kind": "periodic",
+                        "keys": ["observed_on", "segment"],
+                    },
+                }
+            ],
+            "dimension_additions": [
+                {
+                    "id": "sample_segment",
+                    "aliases": ["sample segment"],
+                    "definition": "Segment observed at the event date.",
+                    "asset_fqn": "quartz.core.segment_daily",
+                    "column": "segment",
+                }
+            ],
+        }
+    )
+    review["metrics"].append(
+        {
+            "id": "segment_amount",
+            "name": "Segment Amount",
+            "visibility": "BUSINESS",
+            "review_status": "REVIEW_REQUIRED",
+            "definition": "Additive amount attributed to the observed segment.",
+            "formula": {
+                "kind": "COLUMN",
+                "aggregation": "sum",
+                "reduction": "sum",
+            },
+            "source": {
+                "kind": "COLUMN",
+                "asset_fqn": "quartz.core.segment_daily",
+                "column": "amount",
+            },
+            "grain": {
+                "kind": "periodic",
+                "keys": ["observed_on", "segment"],
+                "dimensions": ["segment"],
+            },
+            "time": {
+                "field": "observed_on",
+                "semantics": "OBSERVATION_DATE",
+                "timezone": baseline["time_rules"]["timezone"],
+                "interval": "[start,end)",
+                "bucket": "day",
+                "timezone_mode": "preserve",
+            },
+            "join": {"required": False, "allowed_edge_ids": []},
+            "aliases": ["segment amount"],
+            "permission": {
+                "roles": ["analyst"],
+                "contains_pii": False,
+                "synthetic": True,
+            },
+            "unit": "unit",
+            "result_field": "segment_amount",
+            "query_strategies": ["VIEW_REUSE"],
+        }
+    )
+
+    approval = build_metric_review_approval(
+        review,
+        _validation(review),
+        baseline,
+        catalog_version="catalog-r10-semantic-addition",
+        policy_version="policy-r6-semantic-addition",
+        schema_context_version="context-r10-semantic-addition",
+        schema_version="schema-r10-semantic-addition",
+        seed_version="seed-r3-semantic-addition",
+        glossary_version="glossary-r4-semantic-addition",
+    )
+    decision = unwrap_metric_review_approval(approval)
+
+    assert {
+        item["fqn"] for item in decision["asset_grains"]
+    } >= {"quartz.core.segment_daily"}
+    added_asset = next(
+        item
+        for item in decision["asset_grains"]
+        if item["fqn"] == "quartz.core.segment_daily"
+    )
+    assert added_asset["domain_urn"] == "urn:li:domain:quartz"
+    assert any(
+        item["id"] == "sample_segment"
+        and item["asset_fqn"] == "quartz.core.segment_daily"
+        for item in decision["dimensions"]
+    )
+    added = next(
+        item for item in decision["metric_rules"] if item["id"] == "segment_amount"
+    )
+    assert added["source"]["field"] == {
+        "asset_fqn": "quartz.core.segment_daily",
+        "column": "amount",
+    }
+
+
 def test_review_approval_blocks_implicit_removal_and_live_scope_drift() -> None:
     """기존 공개 기능 제거와 live baseline 밖 물리 참조는 승격 전에 실패한다."""
 

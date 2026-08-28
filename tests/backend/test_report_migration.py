@@ -105,6 +105,103 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("status IN ('running', 'success', 'failed')", source)
         self.assertNotIn("instruction text", source)
 
+    def test_report_assistant_session_extension_preserves_legacy_status(self):
+        """새 migration은 기존 표를 재생성하지 않고 phase·승인 계획·owner index만 추가한다."""
+
+        source = (MIGRATIONS / "20260826_37_report_assistant_sessions.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('down_revision = "20260825_36"', source)
+        self.assertIn("ADD COLUMN phase varchar(24)", source)
+        self.assertIn("ADD COLUMN analysis_plan_json jsonb", source)
+        self.assertIn("report_assistant_owner_phase_idx", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
+    def test_report_assistant_result_lineage_is_additive(self):
+        """3단계 migration은 query·checksum lineage를 새 revision으로만 추가한다."""
+
+        source = (MIGRATIONS / "20260826_38_report_assistant_result_lineage.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('down_revision = "20260826_37"', source)
+        self.assertIn("ADD COLUMN result_query_id", source)
+        self.assertIn("ADD COLUMN result_artifact_checksum", source)
+        self.assertIn("report_assistant_result_lineage_check", source)
+
+    def test_report_assistant_revision_cas_is_additive(self):
+        """4단계 migration은 기존 version을 바꾸지 않고 revision token만 추가한다."""
+
+        source = (MIGRATIONS / "20260826_39_report_assistant_revision_cas.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('down_revision = "20260826_38"', source)
+        self.assertIn("ADD COLUMN revision bigint NOT NULL DEFAULT 1", source)
+        self.assertNotIn("DROP TABLE report_v1.report_definition_versions", source)
+
+    def test_report_assistant_patch_audit_is_additive(self):
+        """실구현 2단계 migration은 기존 요청을 보존하고 검증 patch 감사값만 추가한다."""
+
+        source = (MIGRATIONS / "20260826_40_report_assistant_patch.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260826_39"', source)
+        self.assertIn("ADD COLUMN report_patch_json jsonb", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
+    def test_report_assistant_turn_history_is_owner_session_bound(self):
+        """실구현 4단계 migration은 세션별 순번과 bounded 대화 원문을 별도 표에 둔다."""
+
+        source = (MIGRATIONS / "20260826_41_report_assistant_turns.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260826_40"', source)
+        self.assertIn("CREATE TABLE report_v1.report_assistant_turns", source)
+        self.assertIn("PRIMARY KEY (assistant_request_id, turn_number)", source)
+        self.assertIn("REFERENCES report_v1.report_assistant_requests", source)
+        self.assertIn("change_kind IN ('clarification', 'existing_artifact', 'new_data')", source)
+
+    def test_report_assistant_patch_approval_adds_phase_without_rewriting_history(self):
+        """새 migration은 patch 요청 ID를 추가하고 완료 phase의 잘못된 계획 제약을 수정한다."""
+
+        source = (MIGRATIONS / "20260826_42_report_assistant_patch_approval.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260826_41"', source)
+        self.assertIn("ADD COLUMN patch_request_id uuid", source)
+        self.assertIn("'waiting_patch_approval'", source)
+        self.assertIn("phase IN ('ready', 'completed', 'failed', 'cancelled')", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
+    def test_report_assistant_evaluation_is_additive_and_excludes_sensitive_payloads(self):
+        """품질 migration은 요청별 한 건만 저장하고 raw prompt·SQL column을 만들지 않는다."""
+
+        source = (MIGRATIONS / "20260826_43_report_assistant_evaluations.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260826_42"', source)
+        self.assertIn("CREATE TABLE report_v1.report_assistant_evaluations", source)
+        self.assertIn("assistant_request_id uuid NOT NULL UNIQUE", source)
+        self.assertIn("input_tokens integer", source)
+        self.assertIn("estimated_cost numeric", source)
+        self.assertNotIn("raw_prompt", source)
+        self.assertNotIn("raw_model_response", source)
+        self.assertNotIn("sql_text", source)
+
+    def test_report_assistant_retry_lineage_is_additive_and_idempotent(self):
+        """재시도 migration은 원본을 보존하고 실패 요청별 자식 하나만 허용한다."""
+
+        source = (MIGRATIONS / "20260826_44_report_assistant_retry_lineage.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260826_43"', source)
+        self.assertIn("ADD COLUMN retry_of_assistant_request_id uuid", source)
+        self.assertIn("ADD COLUMN retry_created_at timestamptz", source)
+        self.assertIn("CREATE UNIQUE INDEX report_assistant_retry_source_idx", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"
@@ -156,6 +253,27 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("ALTER TABLE report_v1.report_documents", source)
         for value in ("auto", "one", "thousand", "million", "hundredMillion", "billion"):
             self.assertIn(f"'{value}'", source)
+
+    def test_phase4_report_receipts_are_additive_complete_and_immutable(self):
+        source = (MIGRATIONS / "20260822_32_report_release_receipts.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('revision = "20260822_32"', source)
+        self.assertIn('down_revision = "20260822_31"', source)
+        for table in ("report_definition_versions", "report_runs"):
+            self.assertIn(f"ALTER TABLE report_v1.{table}", source)
+        for column in (
+            "product_release_id",
+            "permission_snapshot_id",
+            "semantic_release_id",
+        ):
+            self.assertGreaterEqual(source.count(column), 4)
+        self.assertIn("report_definition_release_receipt_complete", source)
+        self.assertIn("report_run_release_receipt_complete", source)
+        self.assertIn("REFERENCES governance.product_release_manifests", source)
+        self.assertIn("Report release receipt is immutable", source)
+        self.assertIn("report_definition_release_receipt_immutable", source)
+        self.assertIn("report_run_release_receipt_immutable", source)
 
 
 if __name__ == "__main__":

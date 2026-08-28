@@ -9,6 +9,7 @@ from metadata_aspects import iter_aspects
 from metadata_contract import PROPERTY_PREFIX
 from src.data.governance_contract import (
     datahub_schema_readback_sha1,
+    dimension_members,
     metric_asset_fqns,
 )
 
@@ -75,6 +76,8 @@ async def verify_graphql(client: Any, bundle: Mapping[str, Any]) -> None:
 
     expected = _expected_aspects(bundle)
     terms = {term["id"]: term for term in bundle["metric_terms"]}
+    members = dimension_members(bundle)
+    all_terms = [*bundle["metric_terms"], *members]
     metrics = list(bundle["metric_rules"])
     first_asset = bundle["schema_context"]["assets"][0]
     catalog_digest = expected[first_asset["urn"]]["datasetProperties"][
@@ -93,14 +96,21 @@ async def verify_graphql(client: Any, bundle: Mapping[str, Any]) -> None:
     )
     _assert_release_membership(
         glossary_terms,
-        {term["urn"] for term in bundle["metric_terms"]},
+        {term["urn"] for term in all_terms},
         "glossary term",
     )
     for asset in bundle["schema_context"]["assets"]:
         value = datasets[asset["urn"]]
         _assert_native(value, asset)
-        _assert_dataset(value, asset, metrics, terms, expected[asset["urn"]])
-    for term in bundle["metric_terms"]:
+        _assert_dataset(
+            value,
+            asset,
+            metrics,
+            terms,
+            expected[asset["urn"]],
+            members,
+        )
+    for term in all_terms:
         value = glossary_terms[term["urn"]]
         # WHY: pinned DataHub v1.7 GraphQL은 GlossaryTerm.status를 null로 반환한다.
         # status/lifecycle은 직전 Rest.li 전체 aspect 검증이 권위 있게 대조한다.
@@ -239,6 +249,7 @@ def _assert_dataset(
     metrics: list[Mapping[str, Any]],
     terms: Mapping[str, Mapping[str, Any]],
     aspects: Mapping[str, Any],
+    members: list[Mapping[str, Any]] | None = None,
 ) -> None:
     fqn = asset["fqn"]
     properties = value.get("properties")
@@ -266,7 +277,7 @@ def _assert_dataset(
         raise ValueError("DataHub base schema fingerprint readback mismatch")
     _assert_editable_descriptions(value.get("editableSchemaMetadata"), asset["columns"])
     if _term_urns(value.get("glossaryTerms")) != _dataset_terms(
-        asset, metrics, terms
+        asset, metrics, terms, members or []
     ):
         raise ValueError("DataHub dataset glossary association readback mismatch")
 
@@ -354,14 +365,23 @@ def _dataset_terms(
     asset: Mapping[str, Any],
     metrics: list[Mapping[str, Any]],
     terms: Mapping[str, Mapping[str, Any]],
+    members: list[Mapping[str, Any]] | None = None,
 ) -> set[str]:
     """직접 column metric과 operand로 연결된 derived ratio term의 dataset association을 계산한다."""
 
     metrics_by_id = {str(metric["id"]): metric for metric in metrics}
-    return {
+    metric_urns = {
         str(terms[str(metric["id"])]["urn"])
         for metric in metrics
+        # SUPPORT operands are execution facts and intentionally have no searchable
+        # GlossaryTerm. This must match metadata_aspects._asset_aspects exactly.
+        if str(metric["id"]) in terms
         if asset["fqn"] in metric_asset_fqns(metric, metrics_by_id)
+    }
+    return metric_urns | {
+        str(member["urn"])
+        for member in members or []
+        if member["asset_fqn"] == asset["fqn"]
     }
 
 

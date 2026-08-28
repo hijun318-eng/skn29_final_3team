@@ -75,16 +75,31 @@ class IsolatedExecutionCache:
             store[key] = copy.deepcopy(value)
 
 
+class ModelCallBudgetExceeded(ValueError):
+    """요청 단위 logical model 호출 상한을 넘기기 전에 발생하는 typed 실패다."""
+
+    code = "MODEL_CONTRACT_INVALID"
+    retryable = False
+
+
 class ModelCallBudget:
     """한 분석 파이프라인에서 허용하는 model 호출 횟수를 강제한다.
 
     요청별 인스턴스가 node1·node2·repair·node3 호출을 함께 계산해 비정상 repair 반복과
     비용 폭증을 막으며, adapter 응답의 타입 검증은 각 stage에 맡긴다.
     """
-    MAX_CALLS = 4
+    # Node1 최초 해석 + bounded 재해석 2회 + Node2 + repair 1회 + Node3.
+    MAX_CALLS = 6
 
     def __init__(self) -> None:
         self.count = 0
+
+    def consume(self) -> None:
+        """외부에서 소유한 node 전용 호출 경계를 바꾸지 않고 예산 한 건을 소비한다."""
+
+        if self.count >= self.MAX_CALLS:
+            raise ModelCallBudgetExceeded("model call budget exceeded")
+        self.count += 1
 
     async def call(
         self,
@@ -97,9 +112,7 @@ class ModelCallBudget:
         최대 횟수를 넘으면 호출 전에 ``RuntimeError``를 발생시키고, timeout·transport·계약
         예외는 stage가 typed 응답으로 변환할 수 있도록 그대로 전파한다.
         """
-        if self.count >= self.MAX_CALLS:
-            raise RuntimeError("model call budget exceeded")
-        self.count += 1
+        self.consume()
         return await model.generate(node, payload)
 
 

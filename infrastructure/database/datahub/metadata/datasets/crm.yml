@@ -1,0 +1,987 @@
+# 책임: CRM Dataset·Column 승인 상태를 소유하며 schema 불일치 시 게시를 차단한다.
+datasets:
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_crm
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 고객·회원 연결 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: customer_map_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 고객 매핑 행의 결정적 합성 식별자.
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: identifier
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: member_no
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 매핑 기준이 되는 CRM 합성 회원 식별자.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: pms_guest_id
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: PMS의 합성 투숙객 식별자. 미연결 회원은 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: pos_customer_ref
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: POS 주문의 비식별 합성 고객 참조값. 미연결 회원은 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: facility_user_ref
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 시설 이용 이벤트의 비식별 합성 사용자 참조값. 미연결 회원은 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: banquet_customer_id
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 연회 예약의 합성 고객 식별자. 미연결 회원은 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: valid_from
+    data_type: DATETIMEOFFSET
+    description: 교차 시스템 매핑이 유효해진 한국 표준시 시각.
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: valid_to
+    data_type: DATETIMEOFFSET
+    description: 매핑 유효 종료 시각. 현재 매핑은 NULL.
+    key_role: NONE
+    logical_type: time
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: mapping_status
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: ACTIVE 또는 EXPIRED인 합성 매핑 상태.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: mapping_confidence
+    data_type: DECIMAL(5, 4)
+    description: 0~1 범위의 합성 키 연결 신뢰도. 실제 매칭 정확도를 뜻하지 않음.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BIT
+    description: 실제 개인 식별 연결이 아닌 합성 매핑임을 나타내며 항상 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: crm.crm_customer_map
+  description: 서로 다른 운영 시스템의 비식별 합성 고객 키를 회원 키에 연결하는 교차 도메인 매핑.
+  domain_urn: urn:li:domain:answervice_crm
+  event_time:
+  - valid_from
+  - valid_to
+  fqn: crm.walkerhill_v4_3.crm_customer_map
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - customer_map_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.walkerhill_v4_3.crm_customer_map,PROD)
+  primary_key:
+  - customer_map_id
+  sensitivity: RESTRICTED
+  source_system: CRM
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_crm
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 회원 등급 변경 이력
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: grade_history_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 등급 이력 행의 결정적 합성 식별자.
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: member_no
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 등급 변화를 겪은 합성 회원 식별자.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: tier_code
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 해당 유효기간에 적용되는 멤버십 등급 코드.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: valid_from
+    data_type: DATETIMEOFFSET
+    description: 등급 적용이 시작된 한국 표준시 시각.
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: valid_to
+    data_type: DATETIMEOFFSET
+    description: 등급 적용 종료 시각. 현재 유효한 최종 이력은 NULL.
+    key_role: NONE
+    logical_type: time
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: change_reason
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: JOIN 또는 ANNUAL_SPEND 등 합성 등급 변경 사유.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BIT
+    description: 실제 고객 이력이 아닌 합성 행임을 나타내며 항상 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: crm.crm_member_grade_history
+  description: 회원 가입과 승급에 따른 유효기간형 등급 변화를 보존하는 이력 테이블.
+  domain_urn: urn:li:domain:answervice_crm
+  event_time:
+  - valid_from
+  - valid_to
+  fqn: crm.walkerhill_v4_3.crm_member_grade_history
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - grade_history_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.walkerhill_v4_3.crm_member_grade_history,PROD)
+  primary_key:
+  - grade_history_id
+  sensitivity: RESTRICTED
+  source_system: CRM
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_crm
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 회원 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: member_no
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 실제 회원번호와 무관한 결정적 합성 회원 식별자.
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: identifier
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: joined_at
+    data_type: DATETIMEOFFSET
+    description: 한국 표준시 오프셋을 포함한 합성 가입 시각.
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: current_tier_code
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 2026-08-31 종료 시점의 현재 멤버십 등급 코드.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: member_status
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: ACTIVE·DORMANT·WITHDRAWN 중 합성 회원 생애주기 상태.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: points_balance
+    data_type: BIGINT
+    description: 시간순 포인트 원장을 합산한 종료 잔액. 생성 규칙상 중간·최종 잔액 모두 0 이상.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BIT
+    description: 실제 고객 자료가 아닌 합성 레코드임을 나타내며 항상 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: crm.crm_members
+  description: 개인 식별정보 없이 멤버십 상태와 현재 포인트 잔액을 재현한 합성 회원 마스터.
+  domain_urn: urn:li:domain:answervice_crm
+  event_time:
+  - joined_at
+  fqn: crm.walkerhill_v4_3.crm_members
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - member_no
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.walkerhill_v4_3.crm_members,PROD)
+  primary_key:
+  - member_no
+  sensitivity: RESTRICTED
+  source_system: CRM
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_crm
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 회원 등급 정보
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: tier_code
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 등급을 식별하는 영문 코드. 회원·등급 이력의 논리적 참조 키.
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: public_name
+    data_type: NVARCHAR(100) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 공개 웹사이트에서 확인 가능한 고객 노출용 등급명.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: synthetic_rank
+    data_type: INTEGER
+    description: 합성 데이터 생성 시 등급 간 서열을 비교하기 위한 정수 순위.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_url
+    data_type: NVARCHAR(500) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 등급명 근거를 확인한 공개 페이지 URL.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: provenance_class
+    data_type: VARCHAR(48) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: OFFICIAL_FACT 또는 SYNTHETIC_ASSUMPTION 등 값의 출처 분류.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_active
+    data_type: BIT
+    description: 생성 기준일 현재 사용 가능한 등급인지 나타내는 비트 값.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: crm.crm_membership_tiers
+  description: 멤버십 등급의 공개 명칭과 합성 모델용 순위를 관리하는 기준 테이블.
+  domain_urn: urn:li:domain:answervice_crm
+  event_time: NOT_APPLICABLE
+  fqn: crm.walkerhill_v4_3.crm_membership_tiers
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - tier_code
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.walkerhill_v4_3.crm_membership_tiers,PROD)
+  primary_key:
+  - tier_code
+  sensitivity: INTERNAL
+  source_system: CRM
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_crm
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 포인트 적립·사용·만료 내역
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: point_txn_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 포인트 원장 행의 결정적 합성 식별자.
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: member_no
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 포인트 변동 대상 합성 회원 식별자.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: event_at
+    data_type: DATETIMEOFFSET
+    description: 포인트가 적립·사용·만료된 한국 표준시 시각.
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: txn_type
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: EARN·REDEEM·EXPIRE 중 원장 거래 유형.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: points_delta
+    data_type: BIGINT
+    description: 적립은 양수, 사용·만료는 음수로 기록한 포인트 변동량.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: related_source
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: PMS_GUEST·POS_ORDER·CRM_EXPIRY·CRM_CAMPAIGN 중 포인트 근거 객체 유형.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: related_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: PMS guest_id·POS order_id 또는 자체 만료 이벤트의 결정적 합성 식별자.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BIT
+    description: 실제 포인트 거래가 아닌 합성 행임을 나타내며 항상 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: crm.crm_point_transactions
+  description: 적립·사용·만료를 부호 있는 증감값으로 기록한 멤버십 포인트 원장.
+  domain_urn: urn:li:domain:answervice_crm
+  event_time:
+  - event_at
+  fqn: crm.walkerhill_v4_3.crm_point_transactions
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - point_txn_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.walkerhill_v4_3.crm_point_transactions,PROD)
+  primary_key:
+  - point_txn_id
+  sensitivity: RESTRICTED
+  source_system: CRM
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_crm
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 고객 의견 분석 결과
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: voc_analysis_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: VOC 분석 결과의 결정적 합성 식별자.
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: voc_review_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 분석 대상 crm_voc_reviews의 리뷰 식별자.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: analyzed_at
+    data_type: DATETIMEOFFSET
+    description: 리뷰 제출 후 결정적 지연을 더한 한국 표준시 분석 완료 시각.
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: model_version
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 분석 규칙 또는 모델 버전. 현재 RULE_SENTIMENT_V1.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: sentiment_label
+    data_type: VARCHAR(16) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 평점과 리뷰 방향으로 생성한 POSITIVE·NEUTRAL·NEGATIVE 감성 라벨.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: sentiment_score
+    data_type: DECIMAL(6, 5)
+    description: -1 부정부터 +1 긍정 범위의 합성 감성 점수.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: primary_topic
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 분석기가 분류한 주요 운영 주제 코드. 원본 선택 범주와 독립 보존.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: urgency_level
+    data_type: VARCHAR(16) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: LOW·MEDIUM·HIGH 중 운영 확인 긴급도.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: requires_followup
+    data_type: BIT
+    description: 1~2점 또는 안전·정비 관련 저평점으로 후속 확인이 필요하면 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: analysis_confidence
+    data_type: DECIMAL(5, 4)
+    description: 0~1 범위의 합성 분류 신뢰도. 실제 ML 성능 지표가 아님.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BIT
+    description: 실제 모델 추론이 아닌 합성 분석 행임을 나타내며 항상 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: crm.crm_voc_analysis
+  description: VOC 원문을 변경하지 않고 규칙 기반 감성·주제·긴급도를 별도로 저장한 합성 분석 결과.
+  domain_urn: urn:li:domain:answervice_crm
+  event_time:
+  - analyzed_at
+  fqn: crm.walkerhill_v4_3.crm_voc_analysis
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - voc_analysis_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.walkerhill_v4_3.crm_voc_analysis,PROD)
+  primary_key:
+  - voc_analysis_id
+  sensitivity: INTERNAL
+  source_system: CRM
+  update_frequency: ON_DATA_RELEASE
+- authoring:
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    entitlements:
+      domains:
+      - urn:li:domain:answervice_crm
+      roles:
+      - analyst
+    schema_version: walkerhill-v4.3-analysis-semantics-v1
+    seed_version: walkerhill-v4.3-synthetic-analysis-semantics-v1
+    synthetic: true
+  business_name: 고객 평점·리뷰 원문
+  columns:
+  - authoring_is_part_of_key: true
+    column_name: voc_review_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: VOC 리뷰 행의 결정적 합성 식별자.
+    key_role: PRIMARY_KEY
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: identifier
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: submitted_at
+    data_type: DATETIMEOFFSET
+    description: 한국 표준시 오프셋을 포함한 리뷰 제출 시각.
+    key_role: NONE
+    logical_type: time
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_business_date
+    data_type: DATE
+    description: 리뷰가 평가하는 PMS·POS·시설·연회 이용의 원 영업일. 제출일과 분리해 운영 지표에 귀속.
+    key_role: NONE
+    logical_type: date
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: hotel_code
+    data_type: VARCHAR(32) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: GRAND·VISTA·DOUGLAS 중 리뷰 분석 대상 합성 호텔 코드. Trino에서 PMS 호텔 마스터와 논리 검증.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: source_channel
+    data_type: VARCHAR(32) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: POST_STAY_SURVEY·IN_STAY_QR·FNB_QR·FACILITY_QR·BANQUET_SURVEY·PUBLIC_REVIEW_SYNTHETIC 중 수집 채널.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: touchpoint
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: CHECKOUT·ROOM·FNB·FACILITY·BANQUET·OVERALL 중 고객 여정 접점.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: selected_category
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 고객이 선택한 합성 의견 범주. NLP 분석의 primary_topic과 구분되는 원본 응답 필드.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: related_source
+    data_type: VARCHAR(24) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: PMS_STAY·POS_ORDER·FACILITY_USAGE·BANQUET_BOOKING·NONE 중 관련 운영 객체 유형.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: related_id
+    data_type: VARCHAR(72) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 관련 원천의 합성 stay_id·order_id·usage_event_id·banquet_event_id. 외부 합성 리뷰는 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: member_no
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 동의 기반 고객 여정 연결을 재현한 합성 회원 식별자. 비회원·외부 리뷰는 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: CUSTOMER_ID
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: outlet_id
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: FNB 접점의 POS 업장 식별자. 다른 접점은 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: facility_id
+    data_type: VARCHAR(40) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 시설 접점의 합성 시설 식별자. 다른 접점은 NULL.
+    key_role: NONE
+    logical_type: string
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: visit_cohort
+    data_type: VARCHAR(16) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 원천 키에서 재생성한 NEW·RETURNING 합성 방문 코호트.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: prior_visit_count
+    data_type: SMALLINT
+    description: 이번 이용 전의 합성 방문 횟수. NEW는 0, RETURNING은 1 이상.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: rating_overall
+    data_type: TINYINT
+    description: 1점 매우 불만족부터 5점 매우 만족까지의 합성 종합 평점.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: rating_service
+    data_type: TINYINT
+    description: 1~5 범위의 직원 응대·서비스 합성 평점.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: rating_cleanliness
+    data_type: TINYINT
+    description: 객실 접점 리뷰에만 기록하는 1~5 범위의 합성 청결 평점.
+    key_role: NONE
+    logical_type: number
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: rating_food
+    data_type: TINYINT
+    description: 식음·연회 접점 리뷰에만 기록하는 1~5 범위의 합성 음식 평점.
+    key_role: NONE
+    logical_type: number
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: rating_facility
+    data_type: TINYINT
+    description: 시설 접점 리뷰에만 기록하는 1~5 범위의 합성 시설 평점.
+    key_role: NONE
+    logical_type: number
+    nullable: true
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: rating_value
+    data_type: TINYINT
+    description: 1~5 범위의 가격 대비 가치 합성 평점.
+    key_role: NONE
+    logical_type: number
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: review_title
+    data_type: NVARCHAR(200) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 선택 범주와 평점 방향을 반영해 조합한 합성 리뷰 제목.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: FREE_TEXT
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: review_text_original
+    data_type: NVARCHAR(2000) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 실제 고객·외부 플랫폼 문장을 복제하지 않은 조합형 합성 리뷰 원문.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: FREE_TEXT
+    semantic_role: attribute
+    sensitivity: RESTRICTED
+  - authoring_is_part_of_key: false
+    column_name: language_code
+    data_type: CHAR(2) COLLATE Korean_100_CI_AS_SC_UTF8
+    description: 원문 ISO 639-1 언어 코드. 현재 합성 버전은 ko.
+    key_role: NONE
+    logical_type: string
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_external
+    data_type: BIT
+    description: 외부 리뷰 형식이면 1. 실제 외부 사이트에서 수집했다는 뜻은 아님.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: consent_for_analysis
+    data_type: BIT
+    description: 분석 이용 동의가 있는 합성 응답인지 나타내며 현재 항상 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  - authoring_is_part_of_key: false
+    column_name: is_synthetic
+    data_type: BIT
+    description: 실제 VOC가 아닌 합성 행임을 나타내며 항상 1.
+    key_role: NONE
+    logical_type: boolean
+    nullable: false
+    pii_type: NONE
+    semantic_role: attribute
+    sensitivity: INTERNAL
+  data_origin: SYNTHETIC
+  dataset_id: crm.crm_voc_reviews
+  description: 내부 설문·QR과 외부 리뷰 형식의 평점·원문을 개인정보 없이 재현한 합성 VOC 원본 테이블.
+  domain_urn: urn:li:domain:answervice_crm
+  event_time:
+  - source_business_date
+  - submitted_at
+  fqn: crm.walkerhill_v4_3.crm_voc_reviews
+  freshness_slo: ACTIVE_DATA_RELEASE_SEED_VERSION_MATCH
+  grain:
+    keys:
+    - voc_review_id
+    kind: row
+  lifecycle: DRAFT
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  physical_urn: urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.walkerhill_v4_3.crm_voc_reviews,PROD)
+  primary_key:
+  - voc_review_id
+  sensitivity: RESTRICTED
+  source_system: CRM
+  update_frequency: ON_DATA_RELEASE
+schema_version: answervice.canonical-metadata.v1
+source_scope: crm

@@ -24,6 +24,7 @@ BACKEND = ROOT / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.api import report_router as report_api  # noqa: E402
+from app.authorization import permission_snapshot_id  # noqa: E402
 from app.contracts import RequestContext, Role  # noqa: E402
 from app.main import app  # noqa: E402
 from app.report_contracts import (  # noqa: E402
@@ -34,6 +35,7 @@ from app.report_contracts import (  # noqa: E402
     CreateReportScheduleRequest,
     ReplaceReportBlocksRequest,
     ReportArtifactResponse,
+    ReportDefinitionListResponse,
     UpdateReportScheduleRequest,
 )
 from tests.support.report_repository import InMemoryReportRepository  # noqa: E402
@@ -156,6 +158,69 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         write_sql = str(write_session.execute.await_args.args[0])
         self.assertIn("r.user_id = :owner_id", write_sql)
         self.assertIn("q.trino_query_id = :query_id", write_sql)
+
+        view_spec_id = UUID("00000000-0000-0000-0000-000000000098")
+        matching_view = MagicMock()
+        matching_view.one_or_none.return_value = (1,)
+        session.execute.return_value = matching_view
+        await repository._require_artifact_view_spec(
+            session,
+            view_spec_id,
+            UUID(artifact_id),
+        )
+        view_sql = str(session.execute.await_args.args[0])
+        view_parameters = session.execute.await_args.args[1]
+        self.assertIn("FROM artifact.view_specs", view_sql)
+        self.assertEqual(view_spec_id, view_parameters["view_spec_id"])
+        self.assertEqual(UUID(artifact_id), view_parameters["artifact_id"])
+
+        matching_view.one_or_none.return_value = None
+        with self.assertRaises(KeyError):
+            await repository._require_artifact_view_spec(
+                session,
+                view_spec_id,
+                UUID(artifact_id),
+            )
+
+    async def test_report_view_spec_survives_definition_and_replace_roundtrip(self):
+        router = create_report_router(InMemoryReportRepository())
+        definition_id = str(uuid4())
+        block_id = str(uuid4())
+        view_spec_id = str(uuid4())
+        block = {
+            "block_id": block_id,
+            "title": "승인 표현",
+            "artifact_id": str(uuid4()),
+            "query_id": "query-view-spec",
+            "view_spec_id": view_spec_id,
+            "columns": 12,
+            "type": "artifact",
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 12,
+            "content": "{}",
+        }
+        report_context = context(Role.ANALYST)
+
+        with patch.object(report_api, "_router", return_value=router):
+            created = await report_api.create_definition(
+                CreateReportDefinitionRequest.model_validate({
+                    "definition_id": definition_id,
+                    "title": "표현 계보 보고서",
+                    "blocks": [block],
+                }),
+                report_context,
+            )
+            replaced = await report_api.replace_draft_blocks(
+                definition_id,
+                1,
+                ReplaceReportBlocksRequest.model_validate({"blocks": [block]}),
+                report_context,
+            )
+
+        self.assertEqual(view_spec_id, created["blocks"][0]["view_spec_id"])
+        self.assertEqual(view_spec_id, replaced["blocks"][0]["view_spec_id"])
 
     async def test_analysis_artifact_transfer_builds_server_owned_blocks(self):
         class TransferRepository(InMemoryReportRepository):
@@ -334,6 +399,11 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                     "postgresql://report-db",
                     context(role).user_id,
                     manage_all=manage_all,
+                    product_release_id=None,
+                    permission_snapshot_id=permission_snapshot_id(
+                        context(role).user_id, role
+                    ),
+                    semantic_release_id=None,
                 )
 
     async def test_report_v11_routes_replace_draft_and_keep_result_ingestion_internal(self):
@@ -385,9 +455,10 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 report_context,
             )
             self.assertEqual("text", replaced["blocks"][0]["type"])
-            self.assertEqual(
-                1, len((await report_api.list_definitions(report_context))["items"])
-            )
+            listed = await report_api.list_definitions(report_context)
+            validated_list = ReportDefinitionListResponse.model_validate(listed)
+            self.assertEqual(1, len(validated_list.items))
+            self.assertIsNone(validated_list.items[0].blocks[0].view_spec_id)
             fake_html = type(
                 "FakeHTML",
                 (),

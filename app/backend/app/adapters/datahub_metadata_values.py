@@ -52,9 +52,27 @@ def term_has_runtime_governance(value: object) -> bool:
         )
     except GovernedMetadataError:
         return False
-    return "answervice.metric_rule" in properties or (
-        "answervice.metric_id" in properties
+    return (
+        "answervice.metric_rule" in properties
+        or "answervice.metric_id" in properties
+        or "answervice.term_kind" in properties
     )
+
+
+def dimension_member_term_record(value: object) -> bool:
+    """runtime 관리 Term이 Dimension Member로 명시됐는지 판별한다."""
+
+    if not isinstance(value, dict) or not isinstance(
+        value.get("glossaryTermInfo"), dict
+    ):
+        return False
+    try:
+        properties = custom_properties(
+            value["glossaryTermInfo"].get("customProperties")
+        )
+    except GovernedMetadataError:
+        return False
+    return properties.get("answervice.term_kind") == "DIMENSION_MEMBER"
 
 
 def term_urns(value: object) -> frozenset[str]:

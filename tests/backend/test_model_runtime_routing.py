@@ -25,7 +25,7 @@ NODE2 = {
     "NODE2_MODEL_PROVIDER": "qwen",
     "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
     "NODE2_MODEL_API_TOKEN": "node2-token",
-    "NODE2_MODEL": "answervice-sql",
+    "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
 }
 
 
@@ -61,7 +61,7 @@ def test_dedicated_node2_route_never_substitutes_primary_credentials() -> None:
         openai_model="gpt-5.4-mini",
         node2_endpoint="https://node2.model.invalid/openai",
         node2_token="node2-token",
-        node2_model="answervice-sql",
+        node2_model="node2-qwen35-2b-full3000-20260825",
         node2_provider="qwen",
         timeout_seconds=30.0,
     )
@@ -70,7 +70,7 @@ def test_dedicated_node2_route_never_substitutes_primary_credentials() -> None:
 def test_partial_node2_route_is_rejected_before_adapter_construction() -> None:
     with patch.dict(
         "os.environ",
-        PRIMARY | {"NODE2_MODEL": "answervice-sql"},
+        PRIMARY | {"NODE2_MODEL": "node2-qwen35-2b-full3000-20260825"},
         clear=True,
     ), patch(
         "app.adapters.contract_model.ContractModelAdapter.from_openai"

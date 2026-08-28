@@ -10,6 +10,11 @@
 6. 실제 구현 여부는 현재 코드·설정·마이그레이션·실행 증거
 7. `docs/e2e_mvp/source/` 원문과 그 밖의 과거 기획·파생·제출 문서는 참고 근거
 
+과거 `docs/reference/`의 Phase별 전략·Gate 기록은 현재 작업 트리에서 제거됐으므로 제품
+권위나 현재 완료 증거로 사용하지 않는다. DataHub-first 책임 경계와 전환 순서는 위 네 제품
+문서에 반영된 계약을 따르고, 실제 구현 여부는 현재 코드·설정·마이그레이션·실행 증거로
+다시 판정한다.
+
 문서와 코드가 다르면 어느 한쪽을 자동으로 정답 처리하지 않는다. 차이를 결함 또는 미검증 상태로 기록하고, 같은 릴리스 후보에서 다시 검증한다.
 
 ## 기준 문서
@@ -23,23 +28,16 @@
 
 ## 보조 자료
 
+- 저장소 상위 폴더의 `01_Answervice_PRD_v3.4.md`부터
+  `04_Answervice_최종프로젝트_요구사항_대응_5단계검토_v1.1.md`까지는 사용자가 지정한
+  v3.4 제품 baseline이다. 현재 진행률 증거는 아니며, DataHub 관련 목표 결정이 충돌하면
+  현재 제품 기준 문서와 사용자의 최신 결정을 우선한다.
 - `e2e_mvp/source/`: 사용자가 지정한 원문. 이번 재정의의 근거이지만 최신 제품 계약은 아니다.
 - `e2e_mvp/derived/`: 과거 시점의 작업 문서와 실행 기록. 현재 성공을 자동 증명하지 않는다.
-- `reference/Walkerhill_V4.1_SQL_검토.md`: 실행 금지 판정을 포함한 과거 SQL 후보의 읽기 전용 감사 기록이다.
-- `reference/P0_실행목표_프롬프트.md`: 이전 기준선에서 파생된 실행 금지 archive다. 새 작업은 저장소 루트 `AGENTS.md`와 제품 기준 문서를 직접 따른다.
-- `reference/멀티턴_발화이해_BP_벤치마크.md`: Dialogflow CX, KLUE-DST, CheckList, BFCL, Structured Outputs와 eval BP를 우리 Turn·slot·상태/경로 회귀 계약으로 번역한 참고 자료다. 공개 점수 자체는 제품 Gate가 아니다.
-- `reference/datahub_search_flow.md`: DataHub의 일반 검색 개념과 Answervice의 실제 `lexical`/`hybrid` 검색, release·권한·Glossary·Trino 검증 경계를 대조한 참고 자료다. 구현 설명이며 live E2E 완료 증거는 아니다.
-- `reference/DataHub_검색_구조_및_Answervice_적용.md`: DataHub 검색·색인 핵심 개념을 서론·본론·결론 순서로 설명하고, 호텔 업무 예시와 Answervice의 ingestion·governance·Context·Trino 실행 경계를 함께 정리한 학습용 참고 자료다.
-- `reference/DataHub_검색_흐름_효율성_및_일반성_비교.md`: 현재 검색 흐름의 효율성과 일반성을 코드 기반 LLM 판단과 DataHub 공식 문서 조사로 각각 평가하고, 두 결론과 control/request plane 개선 방향을 비교한 참고 자료다.
-- `reference/DataHub_사용_방식_객관적_재평가_및_실사용_사례_2026-08-20.md`: 최신 `dev`의 DataHub 검색·권한·Metric governance를 LLM 코드 평가와 Pinterest·Deutsche Telekom·Trustpilot 등 실제 사례 조사로 재평가하고 두 결론을 비교한 참고 자료다.
-- `reference/DataHub_Core_UI_설정_상태_점검_2026-08-19.md`: Docker Compose 포트와 실제 호스팅 IP의 DataHub UI 접근을 점검한 기록이다. 현재 UI 접근 차단으로 Glossary·Domain·Owner는 `NOT_OBSERVED`이며, live 완료 증거가 아니다.
-- `reference/Runtime_governance_V4.3_승인검토안.md`: V4.3 serving SQL AST와 컬럼 설명에서 생성한 비권위 DRAFT다. 업무 승인 전에는 DataHub runtime governance로 발행하지 않는다.
-- `reference/Runtime_governance_V4.3_업무승인.md`: V4.3 생성식과 동일하게 제한한 통합매출·이벤트·VOC·연회 취소의 업무 승인 기록이다. 실제 발행은 별도의 live check에서 확인한 target·predecessor checksum과 전체 read-back을 요구한다.
-- `reference/BI_범용질문_시맨틱_확장설계.md`: 특정 예시 문장이 아닌 범용 BI 질문을 위한 재사용 fact·시맨틱·AnalysisPlan 계약, 현재 검증 증거, 승인·배포 Gate를 정의한다.
-- `reference/dev_Canonical_Semantic_구조_변경_비교_2026-08-21.md`: 이전 검토 기준과 현재 `dev`를 비교해 Canonical Semantic Release, grain-safe AnalysisPlan, typed SQL compiler와 SQL Guard의 적용 범위 및 아직 남은 Native 전환 경계를 정리한 구현 점검 보고서다.
+- `Answervice_기획서.md`: 삭제하지 않고 보존하는 과거 종합 기획서다.
+- `reference/`: 현재 보존하는 자료는 DataHub 검색 구조·흐름, native semantic 전환과 실사용 사례의 비교 평가 및 목업·하드코딩 감사다. 학습·검토용 참고 자료이며 제품 계약이나 현재 live 완료 증거가 아니다.
 - `architecture/`: 최신 Archify 원본 JSON 4개와 HTML 4개만 유지한다. 모두 showcase 9/9와 1440·1600·1920·2048 containment를 통과했고 1440 light/dark를 수동 확인했다. 이는 그림 품질 `GO`이며 제품 구현 완료 증거는 아니다.
-- `reference/Walkerhill_V4.1_SQL_검토.md`와 V4.3 교체 보고서는 삭제된 생성·적재 구현의 역사적 감사 기록이다. 현재 runtime 입력이나 rollback 절차로 실행하지 않는다.
-- `daily_reports/`, `deliverables/`, `templates/`: 일지·제출물·양식이다. 제품 요구의 권위 원본이 아니다.
+- `daily_reports/`, `deliverables/`, `templates/`: 팀원별 일지, 6주차 일일·주간 요약, 제출물·양식이다. 제품 요구의 권위 원본이 아니다.
 
 ## 상태와 증거 규칙
 

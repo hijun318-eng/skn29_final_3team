@@ -279,6 +279,9 @@ class PostgresContextRegistryRepository:
         반환한다. 성공하면 새 항목 또는 동일 checksum의 기존 :class:`ContextPackage`를 반환한다.
         """
         payload = {
+            "product_release_id": command.product_release_id,
+            "permission_snapshot_id": command.permission_snapshot_id,
+            "semantic_release_id": command.semantic_release_id,
             "user_scope": command.user_scope,
             "assets": command.assets,
             "metrics": command.metrics,
@@ -289,6 +292,7 @@ class PostgresContextRegistryRepository:
             "token_count": command.token_count,
         }
         checksum = canonical_checksum(payload)
+        package_id = uuid4()
         try:
             async with self._sessionmaker.begin() as session:
                 release_status = (await session.execute(
@@ -307,17 +311,20 @@ class PostgresContextRegistryRepository:
                             (context_package_id, request_id, context_release_id,
                              user_scope_json, assets_json, metrics_json, joins_json,
                              policies_json, dataset_count, column_count, token_count,
-                             package_hash, idempotency_key)
+                             package_hash, idempotency_key, product_release_id,
+                             permission_snapshot_id, semantic_release_id)
                         VALUES (:id, :request_id, :release_id, CAST(:scope AS jsonb),
                                 CAST(:assets AS jsonb), CAST(:metrics AS jsonb),
                                 CAST(:joins AS jsonb), CAST(:policies AS jsonb),
-                                :datasets, :columns, :tokens, :checksum, :idempotency_key)
+                                :datasets, :columns, :tokens, :checksum, :idempotency_key,
+                                :product_release_id, :permission_snapshot_id,
+                                :semantic_release_id)
                         ON CONFLICT (idempotency_key) DO NOTHING
                         RETURNING *
                         """
                     ),
                     {
-                        "id": uuid4(),
+                        "id": package_id,
                         "request_id": command.request_id,
                         "release_id": command.context_release_id,
                         "scope": _json(command.user_scope),
@@ -330,6 +337,9 @@ class PostgresContextRegistryRepository:
                         "tokens": command.token_count,
                         "checksum": checksum,
                         "idempotency_key": command.idempotency_key,
+                        "product_release_id": command.product_release_id,
+                        "permission_snapshot_id": command.permission_snapshot_id,
+                        "semantic_release_id": command.semantic_release_id,
                     },
                 )).mappings().one_or_none()
                 if row is None:
@@ -338,6 +348,48 @@ class PostgresContextRegistryRepository:
                         {"key": command.idempotency_key},
                     )).mappings().one()
                     row = self._same_or_conflict(row, "package_hash", checksum, "package")
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO governance.product_release_bindings (
+                            object_kind, object_id, product_release_id,
+                            permission_snapshot_id, semantic_release_id,
+                            capability_release_vector_json, evidence_refs_json
+                        ) VALUES (
+                            'CONTEXT', :object_id, :product_release_id,
+                            :permission_snapshot_id, :semantic_release_id,
+                            '{"context.package":"1.0.0"}'::jsonb, '[]'::jsonb
+                        ) ON CONFLICT (object_kind, object_id) DO NOTHING
+                        """
+                    ),
+                    {
+                        "object_id": str(row["context_package_id"]),
+                        "product_release_id": command.product_release_id,
+                        "permission_snapshot_id": command.permission_snapshot_id,
+                        "semantic_release_id": command.semantic_release_id,
+                    },
+                )
+                binding = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT product_release_id, permission_snapshot_id,
+                                   semantic_release_id
+                            FROM governance.product_release_bindings
+                            WHERE object_kind = 'CONTEXT' AND object_id = :object_id
+                            """
+                        ),
+                        {"object_id": str(row["context_package_id"])},
+                    )
+                ).mappings().one()
+                if dict(binding) != {
+                    "product_release_id": command.product_release_id,
+                    "permission_snapshot_id": command.permission_snapshot_id,
+                    "semantic_release_id": command.semantic_release_id,
+                }:
+                    raise ContextRegistryConflict(
+                        "Context package product release binding이 다릅니다."
+                    )
                 return ContextPackage.from_row(row)
         except ContextRegistryConflict:
             raise

@@ -29,7 +29,8 @@ $deploymentEnvironment = Read-DeploymentEnvironment $resolvedEnvFile
 # DataHub UI/OIDC를 통해 발급하고 외부 secret store에 주입한 두 token을 요구한다.
 $requiredKeys = @(
     'APP_ADMIN_USER', 'APP_ADMIN_PASSWORD', 'APP_MIGRATION_USER',
-    'APP_MIGRATION_PASSWORD', 'APP_DB_USER', 'APP_DB_PASSWORD',
+    'APP_MIGRATION_PASSWORD', 'APP_CATALOG_PUBLISHER_USER',
+    'APP_CATALOG_PUBLISHER_PASSWORD', 'APP_DB_USER', 'APP_DB_PASSWORD',
     'PMS_ADMIN_USER', 'PMS_ADMIN_PASSWORD', 'PMS_READONLY_USER',
     'PMS_READONLY_PASSWORD', 'BANQUET_ADMIN_USER', 'BANQUET_ADMIN_PASSWORD',
     'BANQUET_READONLY_USER', 'BANQUET_READONLY_PASSWORD', 'POS_ROOT_PASSWORD',
@@ -62,6 +63,15 @@ if ($Stage -eq 'Catalog') {
 Assert-DeploymentEnvironmentValues `
     -Values $deploymentEnvironment -RequiredKeys $requiredKeys
 
+$appDatabaseRoles = @(
+    [string]$deploymentEnvironment['APP_DB_USER'],
+    [string]$deploymentEnvironment['APP_MIGRATION_USER'],
+    [string]$deploymentEnvironment['APP_CATALOG_PUBLISHER_USER']
+)
+if (@($appDatabaseRoles | Sort-Object -Unique).Count -ne $appDatabaseRoles.Count) {
+    throw 'App PostgreSQL runtime, migration, and catalog publisher roles must differ.'
+}
+
 foreach ($fileKey in @(
     'TRINO_PASSWORD_DB_HOST_FILE', 'TRINO_TLS_KEYSTORE_HOST_FILE',
     'TRINO_TLS_CA_HOST_FILE', 'DATAHUB_TLS_KEYSTORE_HOST_FILE',
@@ -87,6 +97,7 @@ foreach ($entry in $trinoIdentities.GetEnumerator()) {
 }
 
 $boundedSecrets = @(
+    'APP_CATALOG_PUBLISHER_PASSWORD',
     'TRINO_ADMIN_PASSWORD', 'TRINO_RUNTIME_PASSWORD', 'TRINO_DATAHUB_PASSWORD',
     'TRINO_TLS_KEYSTORE_PASSWORD', 'DATAHUB_SYSTEM_CLIENT_SECRET',
     'DATAHUB_TLS_KEYSTORE_PASSWORD', 'DATAHUB_TLS_TRUSTSTORE_PASSWORD',

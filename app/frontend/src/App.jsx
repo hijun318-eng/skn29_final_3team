@@ -2,6 +2,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { AppHeader } from "./components/layout/AppHeader";
 import { SessionLogin } from "./components/auth/SessionLogin";
+import { createAdminClient } from "./api/adminClient.ts";
 import { createAnalysisClient } from "./api/analysisClient.ts";
 import { clearAuthenticatedBrowserState } from "./authenticatedBrowserState.js";
 import { CAPABILITY, hasCapability } from "./authorization.ts";
@@ -47,6 +48,7 @@ export function App() {
   const canManageSystem = hasCapability(capabilities, CAPABILITY.manageSystem);
   const canUseReports = canDraftReport || canManageReports;
   const canUseAdmin = canManageSystem;
+  const adminClient = useMemo(() => canUseAdmin ? createAdminClient(undefined, fetch) : null, [canUseAdmin]);
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
   const [isPending, startTransition] = useTransition();
   const themeClass = theme === "dark" ? "ppt-theme theme-dark" : "theme-light";
@@ -135,11 +137,11 @@ export function App() {
     }
     if (route.page === "admin") {
       if (!canUseAdmin) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={false} onNavigate={navigate} />;
-      return <AdminPage role={role} />;
+      return <AdminPage role={role} client={adminClient} />;
     }
     if (!canRunAnalysis) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={canUseAdmin} onNavigate={navigate} />;
     return <AgentPage canDraftReport={canDraftReport} onNavigate={navigate} />;
-  }, [canDraftReport, canManageReports, canRunAnalysis, canUseAdmin, canUseReports, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
+  }, [adminClient, canDraftReport, canManageReports, canRunAnalysis, canUseAdmin, canUseReports, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
 
   if (session === undefined) return <main className={`session-login ${themeClass}`}><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
   if (!session) return <SessionLogin theme={theme} onToggleTheme={toggleTheme} notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;

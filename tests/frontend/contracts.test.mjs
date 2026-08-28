@@ -179,6 +179,10 @@ assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(\)/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
 assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\}/);
+assert.match(source("App.jsx"), /const adminClient = useMemo\(\(\) => canUseAdmin \? createAdminClient\(undefined, fetch\) : null, \[canUseAdmin\]\)/);
+assert.match(source("App.jsx"), /<AdminPage role=\{role\} client=\{adminClient\} \/>/);
+assert.doesNotMatch(source("pages/AdminPage.jsx"), /createAdminClient|VITE_BACKEND_BASE_URL|https?:\/\/|localhost|127\.0\.0\.1|\bfetch\b/);
+assert.doesNotMatch(source("api/adminClient.ts"), /https?:\/\/|localhost|127\.0\.0\.1|:[0-9]{2,5}/);
 assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.listAuditTrails\(filters, cursor\)/);
 assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.getAuditTrail\(selectedTrailId\)/);
 assert.match(source("pages/AdminPage.jsx"), /client\.resetPassword/);
@@ -803,6 +807,13 @@ assert.throws(
   /VITE_BACKEND_BASE_URL is required/,
 );
 assert.equal(defaultRequests, 0);
+
+let defaultAdminRequests = 0;
+assert.throws(
+  () => createAdminClient(undefined, async () => { defaultAdminRequests += 1; return new Response(); }),
+  /VITE_BACKEND_BASE_URL is required/,
+);
+assert.equal(defaultAdminRequests, 0);
 
 const unauthorizedReport = createReportClient("http://backend.test", async () => new Response(JSON.stringify({ error: { code: "ACCESS_DENIED", message: "denied" } }), { status: 403 }), "runtime-token");
 await assert.rejects(() => unauthorizedReport.listDefinitions(), (error) => error instanceof ReportApiError && error.status === 403 && error.code === "ACCESS_DENIED");

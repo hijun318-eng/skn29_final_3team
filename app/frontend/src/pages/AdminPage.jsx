@@ -16,8 +16,8 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AdminApiError, createAdminClient } from "../api/adminClient.ts";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AdminApiError } from "../api/adminClient.ts";
 import { roleLabel } from "../authorization.ts";
 import { AuditTrailPanel } from "../features/admin/audit/AuditTrailPanel.tsx";
 
@@ -78,9 +78,8 @@ function AccountDialog({ account, form, mode, pending, error, onChange, onClose,
   </dialog>;
 }
 
-/** `system.manage`로 보호된 관리자 기능을 실제 계정·상태·감사 API에 배선한다. */
-export function AdminPage({ role, client: suppliedClient }) {
-  const client = useMemo(() => suppliedClient ?? createAdminClient(undefined, fetch), [suppliedClient]);
+/** `system.manage`로 보호된 관리자 기능을 조립 지점에서 주입한 단일 API 포트에만 배선한다. */
+export function AdminPage({ role, client }) {
   const requestIds = useRef({ connections: 0, accounts: 0 });
   const [section, setSection] = useState("connections");
   const activeSectionRef = useRef(section);

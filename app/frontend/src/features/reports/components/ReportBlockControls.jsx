@@ -1,6 +1,6 @@
 /** 보고서 block의 통화·표현·크기·복제·삭제 제어기를 제공하는 모듈이다. */
 import { memo, useRef } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, GripVertical, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { artifactViewBlockSettings } from "../reportDraftV2";
@@ -184,26 +184,17 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
       aria-disabled={disabled || undefined}
     >
       <button
+        ref={setActivatorNodeRef}
         type="button"
         className="report-template-add"
         disabled={disabled}
         onClick={() => onAdd(template.id)}
-        title={`${template.title} 블록 바로 추가`}
-      >
-        <Icon size={15} />
-        <span><b>{template.title}</b><small>{template.description}</small></span>
-      </button>
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        className="report-template-drag"
-        disabled={disabled}
-        aria-label={`${template.title} 블록 끌어서 추가`}
-        title="Space 또는 Enter로 들어 캔버스 위치를 선택하세요"
+        title={`${template.title} 블록 바로 추가 또는 끌어서 배치`}
         {...listeners}
         {...attributes}
       >
-        <GripVertical className="report-template-grip" size={14} aria-hidden="true" />
+        <Icon size={15} />
+        <span className="report-template-copy"><b>{template.title}</b><small>{template.description}</small></span>
       </button>
     </div>
   );

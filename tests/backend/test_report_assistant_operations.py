@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
+import json
 import os
 from pathlib import Path
 import sys
@@ -84,6 +85,79 @@ class ReportAssistantOperationsTest(unittest.TestCase):
         self.assertEqual(1, result["failed"])
         self.assertEqual("deterministic_fake", result["mode"])
 
+    def test_report_assistant_quality_dataset_covers_safe_gpt_workflows(self):
+        cases = json.loads(
+            Path("evals/report_assistant_quality_cases.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(28, len(cases))
+        self.assertEqual(28, len({case["id"] for case in cases}))
+        self.assertTrue(all(case.get("instruction") for case in cases))
+        case_ids = {case["id"] for case in cases}
+        self.assertTrue({
+            "prompt-injection", "refinement-removes-old-operation",
+            "add-grounded-text", "add-table-view", "add-chart-view",
+            "add-artifact-bundle", "reposition-known-block", "resize-known-block",
+            "duplicate-known-block", "remove-known-block", "restore-previous-revision",
+            "composite-safe-edit", "selected-block-edit", "new-data-missing-period",
+            "new-data-missing-metric", "unsupported-style-request",
+            "unsupported-external-share", "invented-data-request",
+            "conflicting-preserve-remove",
+            "conflicting-move-unchanged",
+        }.issubset(case_ids))
+
+        outputs = {}
+        for case in cases:
+            refs = case.get("allowed_evidence_refs", []) if case.get("evidence_required") else []
+            outputs[case["id"]] = {
+                "route": case["route"],
+                "contract_valid": True,
+                "operations": [
+                    {"op": operation, "evidence_refs": refs}
+                    for operation in case.get("required", [])
+                ],
+                "dry_run_valid": case.get("dry_run_expected"),
+                "approval": case.get("approval"),
+                "error_code": case.get("error_code"),
+                "attempts": 1,
+                "latency_ms": 25,
+                "input_tokens": None,
+                "output_tokens": None,
+                "estimated_cost": None,
+                "prompt_version": "PROMPT-test",
+                "model_version": "fake-model",
+            }
+        result = evaluate_report_assistant_quality(cases, outputs)
+        self.assertEqual(len(cases), result["passed"])
+        self.assertEqual(1.0, result["metrics"]["strict_contract_success_rate"])
+        self.assertEqual(1.0, result["metrics"]["route_accuracy"])
+        self.assertEqual(0.0, result["metrics"]["unnecessary_operation_rate"])
+        self.assertIsNone(result["metrics"]["total_input_tokens"])
+        self.assertIsNone(result["metrics"]["estimated_cost_total"])
+        self.assertEqual(["PROMPT-test"], result["prompt_versions"])
+        self.assertEqual(["fake-model"], result["model_versions"])
+
+    def test_report_assistant_quality_reports_invalid_evidence_and_observations(self):
+        result = evaluate_report_assistant_quality(
+            [{
+                "id": "summary", "route": "existing_artifact",
+                "allowed": ["update_text"], "required": ["update_text"],
+                "allowed_evidence_refs": ["artifact_narrative"],
+                "evidence_required": True,
+            }],
+            {"summary": {
+                "route": "existing_artifact", "contract_valid": True,
+                "operations": [{"op": "update_text", "evidence_refs": ["unknown_ref"]}],
+                "attempts": 2, "latency_ms": 40,
+                "input_tokens": 100, "output_tokens": 20,
+                "estimated_cost": "0.001",
+            }},
+        )
+        self.assertEqual(1, result["failed"])
+        self.assertEqual(0.0, result["metrics"]["evidence_ref_validity_rate"])
+        self.assertEqual(2.0, result["metrics"]["average_model_attempts"])
+        self.assertEqual(120, result["metrics"]["total_input_tokens"] + result["metrics"]["total_output_tokens"])
+        self.assertEqual("0.001", result["metrics"]["estimated_cost_total"])
+
     def test_operations_period_rejects_naive_or_more_than_31_days(self):
         end = datetime.now(timezone.utc)
         with self.assertRaises(HTTPException):
@@ -102,6 +176,15 @@ class ReportAssistantOperationsTest(unittest.TestCase):
             "                            report_assistant_evaluations.error_code)",
             source,
         )
+
+    def test_nullable_estimated_cost_has_explicit_postgres_type(self):
+        """비용 미측정값도 실제 PostgreSQL에서 모호한 bind parameter가 되지 않아야 한다."""
+
+        source = Path(
+            "app/backend/app/adapters/report_assistant_operations_repository.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("CAST(:estimated_cost AS numeric(18,8))", source)
+        self.assertNotIn("(:estimated_cost IS NOT NULL)", source)
 
     def test_e2e_migration_receipt_uses_current_alembic_head(self):
         source = Path("tests/e2e/prepare_report_assistant_e2e.py").read_text(

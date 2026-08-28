@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
+import re
 
 REPORT_CONTRACT_VERSION = "REPORT-v1.0.0"
 REPORT_PROPOSAL_VERSION = "REPORT-v1.1.0-DRAFT"
@@ -68,11 +69,12 @@ class BlockFailureCode(StrEnum):
 
 
 class BlockType(StrEnum):
-    """보고서 격자 블록이 표, 차트, 일반 산출물, 사용자 텍스트 중 무엇을 렌더링할지 지정한다."""
+    """보고서 격자 블록이 데이터·텍스트·명시적 페이지 경계 중 무엇인지 지정한다."""
     TABLE = "table"
     CHART = "chart"
     ARTIFACT = "artifact"
     TEXT = "text"
+    PAGE_BREAK = "page_break"
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +91,7 @@ class ReportBlock:
     w: int | None = None
     h: int = 1
     content: str = ""
+    evidence_refs: tuple[str, ...] = ()
     view_spec_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -96,6 +99,9 @@ class ReportBlock:
             raise ValueError("Report block은 block_id와 title이 필요합니다.")
         object.__setattr__(self, "type", BlockType(self.type))
         object.__setattr__(self, "w", self.columns if self.w is None else self.w)
+        # Evidence aliases are a set-like lineage binding; canonical order prevents
+        # the model from creating a no-op Revision by merely reordering aliases.
+        object.__setattr__(self, "evidence_refs", tuple(sorted(self.evidence_refs)))
         if not 1 <= self.columns <= 12:
             raise ValueError("Report block columns는 1~12 범위여야 합니다.")
         if self.columns != self.w:
@@ -106,6 +112,23 @@ class ReportBlock:
             raise ValueError("table·chart·artifact block은 artifact_id가 필요합니다.")
         if self.type is BlockType.TEXT and not self.content.strip():
             raise ValueError("text block은 빈 content를 허용하지 않습니다.")
+        if self.type is BlockType.PAGE_BREAK and (
+            self.artifact_id is not None
+            or self.query_id is not None
+            or self.content
+            or self.x != 0
+            or self.w != 12
+            or self.h != 1
+        ):
+            raise ValueError("page break block은 내용·Artifact 없이 12열 한 행이어야 합니다.")
+        if (
+            len(self.evidence_refs) > 16
+            or len(set(self.evidence_refs)) != len(self.evidence_refs)
+            or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", ref) for ref in self.evidence_refs)
+        ):
+            raise ValueError("Report block 근거 별칭 계약이 올바르지 않습니다.")
+        if self.type is not BlockType.TEXT and self.evidence_refs:
+            raise ValueError("근거 별칭은 text block에만 저장할 수 있습니다.")
 
 
 @dataclass(frozen=True, slots=True)

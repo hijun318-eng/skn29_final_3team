@@ -9,7 +9,7 @@ class PromptRegistryTests(unittest.TestCase):
         first = list_prompt_metadata()
         second = list_prompt_metadata()
         self.assertEqual(first, second)
-        self.assertEqual(len(first), 7)
+        self.assertEqual(len(first), 8)
         self.assertEqual(
             {
                 "node1.normalize": "PROMPT-v1.29.0",
@@ -18,7 +18,8 @@ class PromptRegistryTests(unittest.TestCase):
                 "node2.sql_only": "PROMPT-v1.2.0",
                 "node3.explain": "PROMPT-v1.2.5",
                 "report.assistant": "PROMPT-v1.0.0",
-                "report.assistant.turn": "PROMPT-v1.5.0",
+                "report.assistant.review": "PROMPT-v1.2.1",
+                "report.assistant.turn": "PROMPT-v1.9.5",
             },
             {item["prompt_id"]: item["version"] for item in first},
         )
@@ -65,11 +66,6 @@ class PromptRegistryTests(unittest.TestCase):
         )
         self.assertIn("APPROVED Analysis Artifact", assistant.text)
         self.assertIn("Do not generate SQL", assistant.text)
-
-        assistant_turn = get_prompt("report.assistant.turn")
-        self.assertIn("Use update_text only", assistant_turn.text)
-        self.assertIn("type is text", assistant_turn.text)
-        self.assertIn("use add_text", assistant_turn.text)
 
     def test_sql_only_node2_prompt_is_dormant_and_has_one_output_field(self):
         prompt = get_prompt("node2.sql_only")

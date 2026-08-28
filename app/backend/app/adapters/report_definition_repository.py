@@ -34,13 +34,11 @@ class ReportDefinitionRepositoryMixin:
         session: AsyncSession,
         artifact_id: UUID,
         query_id: str | None,
-    ) -> tuple[UUID, int, str | None, str | None, str | None]:
-        if not query_id:
-            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+    ) -> tuple[UUID, int, str, str | None, str | None, str | None]:
         owned = (await session.execute(
             text(
                 """
-                SELECT l.definition_id, l.definition_version,
+                SELECT l.definition_id, l.definition_version, q.trino_query_id,
                        a.product_release_id, a.permission_snapshot_id,
                        a.semantic_release_id
                 FROM artifact.analysis_artifacts a
@@ -52,7 +50,8 @@ class ReportDefinitionRepositoryMixin:
                   AND a.status = 'APPROVED'
                   AND r.status IN ('SUCCEEDED', 'PARTIAL')
                   AND r.user_id = :owner_id
-                  AND q.trino_query_id = :query_id
+                  AND (CAST(:query_id AS text) IS NULL
+                       OR q.trino_query_id = CAST(:query_id AS text))
                 """
             ),
             {
@@ -67,9 +66,10 @@ class ReportDefinitionRepositoryMixin:
         return (
             UUID(str(owned[0])),
             int(owned[1]),
-            str(owned[2]) if owned[2] else None,
+            str(owned[2]),
             str(owned[3]) if owned[3] else None,
             str(owned[4]) if owned[4] else None,
+            str(owned[5]) if owned[5] else None,
         )
 
     async def _require_artifact_view_spec(
@@ -168,7 +168,7 @@ class ReportDefinitionRepositoryMixin:
                         analysis_lineage = await self._require_owned_artifact(
                             session, block_artifact_id, block.query_id
                         )
-                        artifact_receipt = analysis_lineage[2:]
+                        artifact_receipt = analysis_lineage[3:]
                         if receipt is not None and artifact_receipt != receipt:
                             raise ValueError(
                                 "Report block Artifact release receipt does not match"
@@ -189,11 +189,13 @@ class ReportDefinitionRepositoryMixin:
                                 (definition_id, definition_version, block_id, title,
                                  artifact_id, query_id, view_spec_id, columns,
                                  block_type, x, y, w, h, content,
+                                 evidence_refs,
                                  analysis_definition_id, analysis_definition_version)
                             VALUES (:definition_id, :version, :block_id, :title,
                                     :artifact_id, :query_id, :view_spec_id,
                                     :columns, :block_type,
                                     :x, :y, :w, :h, :content,
+                                    :evidence_refs,
                                     :analysis_definition_id, :analysis_definition_version)
                             """
                         ),
@@ -203,7 +205,7 @@ class ReportDefinitionRepositoryMixin:
                             "block_id": _uuid(block.block_id, "block_id"),
                             "title": block.title,
                             "artifact_id": block_artifact_id,
-                            "query_id": block.query_id,
+                            "query_id": analysis_lineage[2] if analysis_lineage else None,
                             "view_spec_id": view_spec_id,
                             "columns": block.columns,
                             "block_type": block.type.value,
@@ -212,6 +214,7 @@ class ReportDefinitionRepositoryMixin:
                             "w": block.w,
                             "h": block.h,
                             "content": block.content,
+                            "evidence_refs": list(block.evidence_refs),
                             "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
                             "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
                         },
@@ -404,7 +407,7 @@ class ReportDefinitionRepositoryMixin:
                 text(
                     """
                     SELECT block_id, title, artifact_id, query_id, view_spec_id, columns,
-                           block_type, x, y, w, h, content
+                           block_type, x, y, w, h, content, evidence_refs
                     FROM report_v1.report_blocks
                     WHERE definition_id = :definition_id
                       AND definition_version = :version
@@ -436,6 +439,7 @@ class ReportDefinitionRepositoryMixin:
                             if block["view_spec_id"]
                             else None
                         ),
+                        evidence_refs=tuple(block["evidence_refs"] or ()),
                     )
                     for block in blocks
                 ),
@@ -808,7 +812,7 @@ class ReportDefinitionRepositoryMixin:
                     analysis_lineage = await self._require_owned_artifact(
                         session, block_artifact_id, block.query_id
                     )
-                    artifact_receipt = analysis_lineage[2:]
+                    artifact_receipt = analysis_lineage[3:]
                     if receipt is not None and artifact_receipt != receipt:
                         raise ValueError(
                             "Report block Artifact release receipt does not match"
@@ -829,11 +833,13 @@ class ReportDefinitionRepositoryMixin:
                             (definition_id, definition_version, block_id, title,
                              artifact_id, query_id, view_spec_id, columns,
                              block_type, x, y, w, h, content,
+                             evidence_refs,
                              analysis_definition_id, analysis_definition_version)
                         VALUES (:definition_id, :version, :block_id, :title,
                                 :artifact_id, :query_id, :view_spec_id,
                                 :columns, :block_type,
                                 :x, :y, :w, :h, :content,
+                                :evidence_refs,
                                 :analysis_definition_id, :analysis_definition_version)
                         """
                     ),
@@ -843,7 +849,7 @@ class ReportDefinitionRepositoryMixin:
                         "block_id": _uuid(block.block_id, "block_id"),
                         "title": block.title,
                         "artifact_id": block_artifact_id,
-                        "query_id": block.query_id,
+                        "query_id": analysis_lineage[2] if analysis_lineage else None,
                         "view_spec_id": view_spec_id,
                         "columns": block.columns,
                         "block_type": block.type.value,
@@ -852,6 +858,7 @@ class ReportDefinitionRepositoryMixin:
                         "w": block.w,
                         "h": block.h,
                         "content": block.content,
+                        "evidence_refs": list(block.evidence_refs),
                         "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
                         "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
                     },

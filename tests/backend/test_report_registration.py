@@ -73,6 +73,41 @@ def report_assistant_request() -> dict[str, object]:
 
 
 class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_manual_report_routes_cannot_forge_or_retain_changed_ai_evidence(self):
+        """일반 생성은 AI 근거를 만들 수 없고 근거가 붙은 본문 변경은 명시적 해제를 요구한다."""
+
+        repository = InMemoryReportRepository()
+        router = create_report_router(repository)
+        forged = {
+            "definition_id": "report-evidence",
+            "title": "근거 보고서",
+            "blocks": [{
+                "block_id": "summary", "title": "요약", "type": "text",
+                "columns": 12, "content": "요약", "evidence_refs": ["metric_1"],
+            }],
+        }
+        with self.assertRaises(ValueError):
+            await router.create_definition(forged)
+
+        grounded = ReportDefinitionVersion(
+            "report-evidence", 1, DefinitionStatus.DRAFT, "근거 보고서",
+            (ReportBlock(
+                "summary", "요약", None, 12, None, BlockType.TEXT,
+                0, 0, 12, 2, "검증된 요약", ("metric_1",),
+            ),),
+        )
+        repository.add_draft(grounded)
+        with self.assertRaises(ValueError):
+            await router.replace_draft_blocks("report-evidence", 1, {"blocks": [{
+                "block_id": "summary", "title": "요약", "type": "text",
+                "columns": 12, "content": "직접 바꾼 요약", "evidence_refs": ["metric_1"],
+            }]})
+        cleared = await router.replace_draft_blocks("report-evidence", 1, {"blocks": [{
+            "block_id": "summary", "title": "요약", "type": "text",
+            "columns": 12, "content": "직접 바꾼 요약", "evidence_refs": [],
+        }]})
+        self.assertEqual((), cleared["blocks"][0]["evidence_refs"])
+
     async def test_report_artifact_exposes_exact_persisted_metric_values(self):
         fixture = json.loads(
             (ROOT / "tests" / "backend" / "fixtures" / "api" / "v0.1" / "success.json")
@@ -110,6 +145,9 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("occupied_rooms", validated.metrics[0].result_field)
         self.assertEqual(120, validated.metrics[0].value)
         self.assertEqual(validated.metrics, validated.evidence.metric_values)
+        self.assertNotIn("query_id", response)
+        self.assertNotIn("artifact_checksum", response)
+        self.assertNotIn("query_id", response["evidence"])
 
     async def test_postgres_artifact_reads_and_writes_are_owner_scoped(self):
         from app.adapters.report_repository import PostgresReportRepository
@@ -157,7 +195,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             )
         write_sql = str(write_session.execute.await_args.args[0])
         self.assertIn("r.user_id = :owner_id", write_sql)
-        self.assertIn("q.trino_query_id = :query_id", write_sql)
+        self.assertIn("CAST(:query_id AS text) IS NULL", write_sql)
+        self.assertIn("q.trino_query_id = CAST(:query_id AS text)", write_sql)
 
         view_spec_id = UUID("00000000-0000-0000-0000-000000000098")
         matching_view = MagicMock()
@@ -296,7 +335,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("artifact", block["type"])
         self.assertEqual("실제 Artifact 보고서", block["title"])
         self.assertEqual(str(payload.artifact_id), block["artifact_id"])
-        self.assertEqual("query-real", block["query_id"])
+        self.assertNotIn("query_id", block)
         self.assertEqual((0, 0, 12, 12), (block["x"], block["y"], block["w"], block["h"]))
         self.assertEqual({
             "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",

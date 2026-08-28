@@ -57,13 +57,18 @@ class ReportRouter:
 
     @staticmethod
     def _response(version: ReportDefinitionVersion) -> dict[str, Any]:
+        blocks = []
+        for block in version.blocks:
+            public_block = asdict(block)
+            public_block.pop("query_id", None)
+            blocks.append(public_block)
         return {
             "contract_version": REPORT_CONTRACT_VERSION,
             "definition_id": version.definition_id,
             "version": version.version,
             "status": version.status.value,
             "title": version.title,
-            "blocks": [asdict(block) for block in version.blocks],
+            "blocks": blocks,
             "approved_at": version.approved_at.isoformat() if version.approved_at else None,
             "orientation": version.orientation,
             "currency_display_unit": version.currency_display_unit,
@@ -89,6 +94,7 @@ class ReportRouter:
                 h=block.get("h", 1),
                 content=block.get("content", ""),
                 view_spec_id=block.get("view_spec_id"),
+                evidence_refs=tuple(block.get("evidence_refs", ())),
             ))
         return tuple(blocks)
 
@@ -129,6 +135,8 @@ class ReportRouter:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
             blocks = self._blocks(payload.get("blocks", []))
+            if any(block.evidence_refs for block in blocks):
+                raise ValueError("새 Report block에는 검증되지 않은 근거 별칭을 추가할 수 없습니다.")
             draft = ReportDefinitionVersion(
                 definition_id=payload["definition_id"],
                 version=1,
@@ -195,11 +203,25 @@ class ReportRouter:
         if extra:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
+            current = await _repository_result(self.repository.get_version(definition_id, version))
+            current_blocks = {block.block_id: block for block in current.blocks}
+            blocks = self._blocks(payload["blocks"])
+            for block in blocks:
+                if not block.evidence_refs:
+                    continue
+                previous = current_blocks.get(block.block_id)
+                if previous is None or (
+                    previous.content != block.content
+                    or previous.evidence_refs != block.evidence_refs
+                ):
+                    raise ValueError(
+                        "수동 편집은 검증된 text 근거를 추가하거나 변경할 수 없습니다."
+                    )
             return self._response(
                 await _repository_result(self.repository.replace_draft_blocks(
                     definition_id,
                     version,
-                    self._blocks(payload["blocks"]),
+                    blocks,
                     title=payload.get("title"),
                     orientation=payload.get("orientation"),
                     currency_display_unit=payload.get("currency_display_unit"),

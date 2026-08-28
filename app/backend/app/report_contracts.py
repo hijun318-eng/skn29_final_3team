@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+import re
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -18,6 +19,10 @@ ReportOrientation = Literal["portrait", "landscape"]
 CurrencyDisplayUnit = Literal[
     "auto", "one", "thousand", "million", "hundredMillion", "billion"
 ]
+ReportChartType = Literal[
+    "bar", "horizontal-bar", "line", "area", "stacked-bar", "donut", "pie"
+]
+ReportBlockSizeMode = Literal["auto", "manual"]
 
 
 class ReportContractModel(BaseModel):
@@ -33,12 +38,24 @@ class ReportBlockRequest(ReportContractModel):
     query_id: str | None = None
     view_spec_id: str | None = None
     columns: int | None = Field(default=None, ge=1, le=12)
-    type: Literal["table", "chart", "artifact", "text"] = "table"
+    type: Literal["table", "chart", "artifact", "text", "page_break"] = "table"
     x: int = Field(default=0, ge=0, le=11)
     y: int = Field(default=0, ge=0)
     w: int | None = Field(default=None, ge=1, le=12)
     h: int = Field(default=1, ge=1)
     content: str = ""
+    evidence_refs: tuple[str, ...] = Field(default=(), max_length=16)
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def validate_evidence_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """저장 요청의 근거 별칭을 bounded 고유 식별자로 제한한다."""
+
+        if len(set(value)) != len(value) or any(
+            not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", ref) for ref in value
+        ):
+            raise ValueError("Report block 근거 별칭 계약이 올바르지 않습니다.")
+        return value
 
 
 class CreateReportDefinitionRequest(ReportContractModel):
@@ -91,14 +108,14 @@ class ReportBlockResponse(ReportContractModel):
     title: str
     artifact_id: str | None
     columns: int
-    query_id: str | None
     view_spec_id: str | None
-    type: Literal["table", "chart", "artifact", "text"]
+    type: Literal["table", "chart", "artifact", "text", "page_break"]
     x: int
     y: int
     w: int
     h: int
     content: str
+    evidence_refs: tuple[str, ...] = ()
 
 
 class ReportDefinitionResponse(ReportContractModel):
@@ -142,17 +159,18 @@ class ReportDocumentResponse(ReportContractModel):
 
 
 class ReportArtifactResponse(ReportContractModel):
-    """보고서가 참조할 분석 요약·지표·표·차트·증거를 산출물 ID 및 checksum과 반환한다."""
+    """보고서가 렌더링할 분석 내용과 공개 가능한 증거만 반환한다.
+
+    query ID와 checksum은 저장소 내부 lineage 검증에만 사용하며 브라우저 계약에는 넣지 않는다.
+    """
     contract_version: str
     artifact_id: UUID
-    query_id: str
     title: str
     summary: str
     metrics: tuple[MetricValue, ...] = ()
     table: TableResult
     chart: ChartSpec | None = None
     evidence: Evidence
-    artifact_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class ReportBlockRunResponse(ReportContractModel):
@@ -258,6 +276,37 @@ class ReportAssistantTraceResponse(ReportContractModel):
     duration_ms: float
 
 
+ReportAssistantReviewCategory = Literal[
+    "duplicate_text",
+    "verbose_summary",
+    "title_mismatch",
+    "inconsistent_metric_expression",
+    "unsupported_claim",
+]
+
+
+class ReportAssistantReviewFinding(ReportContractModel):
+    """현재 보고서를 저장하지 않고 발견한 품질 문제와 사용자가 선택할 수정 지시다."""
+
+    category: ReportAssistantReviewCategory
+    severity: Literal["info", "warning"]
+    block_id: str | None = None
+    title: str = Field(min_length=1, max_length=255)
+    detail: str = Field(min_length=1, max_length=1000)
+    suggested_instruction: str = Field(min_length=1, max_length=500)
+    evidence_refs: tuple[str, ...] = Field(default=(), max_length=16)
+
+
+class ReportAssistantReviewResponse(ReportContractModel):
+    """세션 상태나 Report revision을 바꾸지 않는 bounded 품질 검토 결과다."""
+
+    assistant_request_id: UUID
+    summary: str = Field(min_length=1, max_length=1000)
+    findings: tuple[ReportAssistantReviewFinding, ...] = Field(max_length=10)
+    suggestions: tuple[str, ...] = Field(default=(), max_length=3)
+    trace: ReportAssistantTraceResponse
+
+
 class ReportAssistantDraftResponse(ReportContractModel):
     """AI 요청 ID, 성공 상태, 생성된 보고서 정의와 모델 호출 추적을 한 응답으로 반환한다."""
     assistant_request_id: UUID
@@ -308,6 +357,9 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
         "ASSISTANT_RATE_LIMITED",
         "REPORT_ASSISTANT_COMPOSE_FAILED",
         "REPORT_ASSISTANT_PATCH_INVALID",
+        "REPORT_ASSISTANT_MODEL_RATE_LIMITED",
+        "REPORT_ASSISTANT_MODEL_TIMEOUT",
+        "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED",
         "REPORT_ASSISTANT_TURN_MODEL_FAILED",
         "REPORT_ASSISTANT_TURN_MODEL_INVALID",
     }
@@ -321,6 +373,10 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
         "ASSISTANT_STATE_CONFLICT": ReportAssistantRequiredAction.REFRESH,
         "ASSISTANT_TOKEN_BUDGET_EXCEEDED": ReportAssistantRequiredAction.CONTACT_ADMIN,
         "REPORT_REVISION_CONFLICT": ReportAssistantRequiredAction.REOPEN_LATEST_REPORT,
+        "REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "REPORT_ASSISTANT_MODEL_REQUEST_REJECTED": ReportAssistantRequiredAction.CONTACT_ADMIN,
     }
     if error_code in retryable:
         return ReportAssistantRetryPolicy(
@@ -334,17 +390,29 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
 
 
 class CreateReportAssistantSessionRequest(ReportContractModel):
-    """보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다."""
+    """보고서 초안과 대표·추가 승인 Artifact 최대 다섯 개를 Assistant 세션에 결속한다."""
 
     definition_id: UUID
     definition_version: int = Field(ge=1)
     artifact_id: UUID
+    additional_artifact_ids: tuple[UUID, ...] = Field(default=(), max_length=4)
+
+    @model_validator(mode="after")
+    def require_unique_artifacts(self) -> "CreateReportAssistantSessionRequest":
+        """대표 Artifact 중복과 추가 Artifact 간 중복을 모델 호출 전에 거부한다."""
+
+        artifact_ids = (self.artifact_id, *self.additional_artifact_ids)
+        if len(set(artifact_ids)) != len(artifact_ids):
+            raise ValueError("Assistant Artifact는 중복될 수 없습니다.")
+        return self
 
 
 class ReportAssistantMessageRequest(ReportContractModel):
-    """ready 세션에 500자 이하의 보고서 변경 지시를 제출한다."""
+    """새 요청 또는 현재 patch를 교체할 500자 이하의 보고서 변경 지시를 제출한다."""
 
     instruction: str = Field(min_length=1, max_length=500)
+    expected_patch_request_id: UUID | None = None
+    selected_block_id: str | None = Field(default=None, min_length=1, max_length=255)
 
     @field_validator("instruction")
     @classmethod
@@ -354,6 +422,12 @@ class ReportAssistantMessageRequest(ReportContractModel):
         if not value.strip():
             raise ValueError("instruction은 비어 있을 수 없습니다.")
         return value.strip()
+
+
+class ReportAssistantReviewRequest(ReportContractModel):
+    """비저장 품질 검토가 참고할 현재 편집기 선택 블록을 선택적으로 지정한다."""
+
+    selected_block_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class ReportAssistantAnalysisScope(ReportContractModel):
@@ -403,6 +477,34 @@ class ReportAssistantAnalysisPlan(ReportContractModel):
         return value.strip()
 
 
+class ReportAssistantPatchPreviewItem(ReportContractModel):
+    """식별자·SQL 없이 사용자가 승인 전에 확인할 operation별 변경 전후를 반환한다."""
+
+    index: int = Field(ge=0, le=11)
+    operation: Literal[
+        "set_report_title", "set_report_orientation", "set_currency_display_unit",
+        "compact_report_layout", "add_report_page", "update_block_title", "resize_block",
+        "update_chart_settings", "update_table_settings", "set_block_size_mode",
+        "add_text", "update_text", "add_artifact_view",
+        "reposition_block", "remove_block", "duplicate_block",
+        "restore_previous_revision",
+    ]
+    target: str = Field(min_length=1, max_length=255)
+    before: str | None = Field(default=None, max_length=4000)
+    after: str | None = Field(default=None, max_length=4000)
+    impact_category: Literal["CONTENT", "LAYOUT", "DESTRUCTIVE"]
+    evidence_required: bool
+    evidence_count: int = Field(ge=0, le=16)
+
+    @model_validator(mode="after")
+    def bind_evidence_requirement(self) -> "ReportAssistantPatchPreviewItem":
+        """근거 필요 operation은 하나 이상, 구조 operation은 0개의 공개 근거 개수만 허용한다."""
+
+        if self.evidence_required != (self.evidence_count > 0):
+            raise ValueError("patch 영향의 근거 필요 여부와 근거 개수가 일치하지 않습니다.")
+        return self
+
+
 class ReportAssistantSessionResponse(ReportContractModel):
     """서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다."""
 
@@ -412,16 +514,23 @@ class ReportAssistantSessionResponse(ReportContractModel):
     definition_version: int
     base_revision: int
     artifact_id: UUID
+    artifact_ids: tuple[UUID, ...] = ()
     analysis_plan: ReportAssistantAnalysisPlan | None = None
     patch_request_id: UUID | None = None
     patch_summary: str | None = Field(default=None, min_length=1, max_length=1000)
     patch_operations: tuple[
         Literal[
-            "set_report_title", "add_text", "update_text", "add_artifact_view",
+            "set_report_title", "set_report_orientation", "set_currency_display_unit",
+            "compact_report_layout", "add_report_page", "update_block_title", "resize_block",
+            "update_chart_settings", "update_table_settings", "set_block_size_mode",
+            "add_text", "update_text", "add_artifact_view",
             "reposition_block", "remove_block", "duplicate_block",
             "restore_previous_revision",
         ], ...
     ] = ()
+    patch_evidence_refs: tuple[str, ...] = ()
+    patch_preview: tuple[ReportAssistantPatchPreviewItem, ...] = ()
+    approved_operation_indexes: tuple[int, ...] = ()
     result_artifact_id: UUID | None = None
     result_revision: int | None = None
     error_code: str | None = None
@@ -442,8 +551,19 @@ class ReportAssistantSessionResponse(ReportContractModel):
         has_patch = bool(self.patch_request_id and self.patch_summary and self.patch_operations)
         if self.phase == "waiting_patch_approval" and not has_patch:
             raise ValueError("patch 승인 대기 phase에는 변경 미리보기가 필요합니다.")
+        if self.phase == "waiting_patch_approval" and len(self.patch_preview) != len(
+            self.patch_operations
+        ):
+            raise ValueError("patch 승인 대기 phase에는 operation별 미리보기가 필요합니다.")
         if self.phase == "saving_revision" and self.analysis_plan is None and not has_patch:
             raise ValueError("revision 저장 phase에는 분석 계획 또는 patch 미리보기가 필요합니다.")
+        if self.approved_operation_indexes and (
+            tuple(sorted(set(self.approved_operation_indexes)))
+            != self.approved_operation_indexes
+            or not self.patch_operations
+            or self.approved_operation_indexes[-1] >= len(self.patch_operations)
+        ):
+            raise ValueError("승인 operation 선택이 저장 patch 범위를 벗어났습니다.")
         return self
 
 
@@ -454,11 +574,31 @@ class ReportAssistantApprovalRequest(ReportContractModel):
     approved: bool
 
 
+class ReportAssistantPatchApprovalRequest(ReportAssistantApprovalRequest):
+    """patch 승인 시 선택할 0-based operation 인덱스를 정렬된 고유 목록으로 받는다."""
+
+    operation_indexes: tuple[int, ...] | None = Field(default=None, min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def validate_operation_selection(self) -> "ReportAssistantPatchApprovalRequest":
+        """기존 전체 승인 호환을 유지하며 명시 선택은 승인 요청에서만 허용한다."""
+
+        if self.operation_indexes is not None:
+            if not self.approved:
+                raise ValueError("거절 요청에는 operation 선택을 포함할 수 없습니다.")
+            if tuple(sorted(set(self.operation_indexes))) != self.operation_indexes:
+                raise ValueError("operation 인덱스는 중복 없이 오름차순이어야 합니다.")
+            if self.operation_indexes[0] < 0:
+                raise ValueError("operation 인덱스는 0 이상이어야 합니다.")
+        return self
+
+
 class ReportAssistantProposalResponse(ReportContractModel):
     """검증된 변경 종류·사용자 메시지와 저장된 서버 세션 상태를 함께 반환한다."""
 
     change_kind: Literal["clarification", "existing_artifact", "new_data"]
     message: str = Field(min_length=1, max_length=1000)
+    suggestions: tuple[str, ...] = Field(default=(), max_length=3)
     session: ReportAssistantSessionResponse
 
 
@@ -545,12 +685,111 @@ class ReportAssistantSetTitleOperation(ReportContractModel):
         return value.strip()
 
 
+class ReportAssistantSetOrientationOperation(ReportContractModel):
+    """현재 draft의 A4 용지 방향만 가로 또는 세로로 교체한다."""
+
+    op: Literal["set_report_orientation"]
+    orientation: ReportOrientation
+
+
+class ReportAssistantSetCurrencyDisplayUnitOperation(ReportContractModel):
+    """현재 draft의 통화 표시 배율만 서버 허용 단위로 교체한다."""
+
+    op: Literal["set_currency_display_unit"]
+    currency_display_unit: CurrencyDisplayUnit
+
+
+class ReportAssistantCompactLayoutOperation(ReportContractModel):
+    """현재 block의 시각 순서와 폭을 유지하며 12열 격자의 빈 행을 제거한다."""
+
+    op: Literal["compact_report_layout"]
+
+
+class ReportAssistantAddPageOperation(ReportContractModel):
+    """현재 draft 끝에 내용 없는 A4 페이지 경계를 하나 추가한다."""
+
+    op: Literal["add_report_page"]
+
+
+class ReportAssistantUpdateBlockTitleOperation(ReportContractModel):
+    """현재 draft의 모든 block 유형에 공통인 사용자 표시 제목을 교체한다."""
+
+    op: Literal["update_block_title"]
+    block_id: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=255)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        """공백 block 제목을 거부하고 바깥 공백을 제거한다."""
+
+        if not value.strip():
+            raise ValueError("block 제목은 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantResizeBlockOperation(ReportContractModel):
+    """현재 block 하나를 12열 grid와 유형별 높이 범위 안에서 조절한다."""
+
+    op: Literal["resize_block"]
+    block_id: str = Field(min_length=1)
+    block_width: int = Field(ge=4, le=12)
+    block_height: int = Field(ge=1, le=18)
+
+
+class ReportAssistantUpdateChartSettingsOperation(ReportContractModel):
+    """chart block의 renderer 허용 유형·범례·크기 모드만 변경한다."""
+
+    op: Literal["update_chart_settings"]
+    block_id: str = Field(min_length=1)
+    chart_type: ReportChartType | None = None
+    show_legend: bool | None = None
+    size_mode: ReportBlockSizeMode | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ReportAssistantUpdateChartSettingsOperation":
+        """변경할 chart 설정이 하나도 없는 operation을 거부한다."""
+
+        if self.chart_type is None and self.show_legend is None and self.size_mode is None:
+            raise ValueError("chart 설정 변경값이 필요합니다.")
+        return self
+
+
+class ReportAssistantUpdateTableSettingsOperation(ReportContractModel):
+    """table block의 밀도·행 번호·크기 모드만 변경한다."""
+
+    op: Literal["update_table_settings"]
+    block_id: str = Field(min_length=1)
+    density: Literal["comfortable", "compact"] | None = None
+    show_row_numbers: bool | None = None
+    size_mode: ReportBlockSizeMode | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ReportAssistantUpdateTableSettingsOperation":
+        """변경할 table 설정이 하나도 없는 operation을 거부한다."""
+
+        if self.density is None and self.show_row_numbers is None and self.size_mode is None:
+            raise ValueError("table 설정 변경값이 필요합니다.")
+        return self
+
+
+class ReportAssistantSetBlockSizeModeOperation(ReportContractModel):
+    """chart·table·Artifact block의 자동 또는 수동 크기 모드를 교체한다."""
+
+    op: Literal["set_block_size_mode"]
+    block_id: str = Field(min_length=1)
+    size_mode: ReportBlockSizeMode
+
+
 class ReportAssistantAddTextOperation(ReportContractModel):
     """모델이 제안한 근거 기반 문구를 새 text block으로 추가한다."""
 
     op: Literal["add_text"]
     title: str = Field(min_length=1, max_length=255)
     content: str = Field(min_length=1, max_length=4000)
+    evidence_refs: tuple[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")], ...
+    ] = Field(default=(), max_length=16)
     placement: ReportAssistantPatchPlacement = Field(
         default_factory=ReportAssistantPatchPlacement
     )
@@ -564,6 +803,15 @@ class ReportAssistantAddTextOperation(ReportContractModel):
             raise ValueError("text block 제목과 내용은 비어 있을 수 없습니다.")
         return value.strip()
 
+    @field_validator("evidence_refs")
+    @classmethod
+    def require_unique_evidence_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """같은 근거 별칭의 중복을 거부해 승인 카드와 감사 patch를 결정적으로 유지한다."""
+
+        if len(set(value)) != len(value):
+            raise ValueError("text block 근거 별칭은 중복될 수 없습니다.")
+        return value
+
 
 class ReportAssistantUpdateTextOperation(ReportContractModel):
     """현재 보고서에 존재하는 text block 하나의 제목 또는 내용을 수정한다."""
@@ -572,6 +820,9 @@ class ReportAssistantUpdateTextOperation(ReportContractModel):
     block_id: str = Field(min_length=1)
     title: str | None = Field(default=None, min_length=1, max_length=255)
     content: str | None = Field(default=None, min_length=1, max_length=4000)
+    evidence_refs: tuple[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")], ...
+    ] = Field(default=(), max_length=16)
 
     @model_validator(mode="after")
     def require_change(self) -> "ReportAssistantUpdateTextOperation":
@@ -583,6 +834,10 @@ class ReportAssistantUpdateTextOperation(ReportContractModel):
             raise ValueError("text block 제목은 비어 있을 수 없습니다.")
         if self.content is not None and not self.content.strip():
             raise ValueError("text block 내용은 비어 있을 수 없습니다.")
+        if self.content is None and self.evidence_refs:
+            raise ValueError("본문을 변경하지 않는 update_text에는 근거 별칭을 추가할 수 없습니다.")
+        if len(set(self.evidence_refs)) != len(self.evidence_refs):
+            raise ValueError("text block 근거 별칭은 중복될 수 없습니다.")
         self.title = self.title.strip() if self.title is not None else None
         self.content = self.content.strip() if self.content is not None else None
         return self
@@ -595,6 +850,11 @@ class ReportAssistantAddArtifactViewOperation(ReportContractModel):
     artifact_ref: str = Field(min_length=1, max_length=128)
     view: Literal["chart", "table", "artifact"]
     title: str = Field(min_length=1, max_length=255)
+    chart_type: ReportChartType | None = None
+    show_legend: bool | None = None
+    density: Literal["comfortable", "compact"] | None = None
+    show_row_numbers: bool | None = None
+    size_mode: ReportBlockSizeMode = "auto"
     placement: ReportAssistantPatchPlacement = Field(
         default_factory=ReportAssistantPatchPlacement
     )
@@ -607,6 +867,16 @@ class ReportAssistantAddArtifactViewOperation(ReportContractModel):
         if not value.strip():
             raise ValueError("Artifact 별칭과 block 제목은 비어 있을 수 없습니다.")
         return value.strip()
+
+    @model_validator(mode="after")
+    def validate_view_settings(self) -> "ReportAssistantAddArtifactViewOperation":
+        """추가할 view 유형과 무관한 표현 설정을 patch 저장 전에 거부한다."""
+
+        if self.view != "chart" and (self.chart_type is not None or self.show_legend is not None):
+            raise ValueError("chart 설정은 chart view에만 사용할 수 있습니다.")
+        if self.view != "table" and (self.density is not None or self.show_row_numbers is not None):
+            raise ValueError("table 설정은 table view에만 사용할 수 있습니다.")
+        return self
 
 
 class ReportAssistantRepositionBlockOperation(ReportContractModel):
@@ -648,6 +918,15 @@ class ReportAssistantRestorePreviousRevisionOperation(ReportContractModel):
 
 ReportAssistantPatchOperation = Annotated[
     ReportAssistantSetTitleOperation
+    | ReportAssistantSetOrientationOperation
+    | ReportAssistantSetCurrencyDisplayUnitOperation
+    | ReportAssistantCompactLayoutOperation
+    | ReportAssistantAddPageOperation
+    | ReportAssistantUpdateBlockTitleOperation
+    | ReportAssistantResizeBlockOperation
+    | ReportAssistantUpdateChartSettingsOperation
+    | ReportAssistantUpdateTableSettingsOperation
+    | ReportAssistantSetBlockSizeModeOperation
     | ReportAssistantAddTextOperation
     | ReportAssistantUpdateTextOperation
     | ReportAssistantAddArtifactViewOperation

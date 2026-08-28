@@ -40,7 +40,8 @@
         "node1",
         "node3",
         "report_assistant",
-        "report_assistant_turn"
+        "report_assistant_turn",
+        "report_assistant_review"
       ],
       "provider_env": null,
       "default_provider": "openai",

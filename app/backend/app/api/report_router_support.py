@@ -149,20 +149,20 @@ async def create_artifact_draft(
 
 
 def report_artifact_response(artifact: Mapping[str, Any]) -> dict[str, Any]:
-    """영속된 분석 artifact를 보고서 전송 계약으로 투영하고 lineage checksum을 보존한다."""
+    """영속 artifact를 query ID·checksum 없는 보고서 공개 계약으로 투영한다."""
     from src.report.domain import REPORT_CONTRACT_VERSION
 
+    evidence = dict(artifact["evidence_json"] or {})
+    evidence.pop("query_id", None)
     return {
         "contract_version": REPORT_CONTRACT_VERSION,
         "artifact_id": artifact["artifact_id"],
-        "query_id": artifact["trino_query_id"],
         "title": artifact["title"],
         "summary": artifact["narrative_markdown"],
-        "metrics": (artifact["evidence_json"] or {}).get("metric_values", []),
+        "metrics": evidence.get("metric_values", []),
         "table": artifact["data_snapshot_json"],
         "chart": artifact["chart_spec_json"] or None,
-        "evidence": artifact["evidence_json"],
-        "artifact_checksum": artifact["artifact_checksum"],
+        "evidence": evidence,
     }
 
 

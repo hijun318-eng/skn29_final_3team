@@ -37,7 +37,7 @@ export function seoulWallClockToIso(value: string): string {
   return new Date(wallClock.getTime() - 9 * 60 * 60 * 1000).toISOString();
 }
 
-/** 보고서 API가 영속화하는 블록 타입 집합이다. */ export const REPORT_BLOCK_TYPES = ["table", "chart", "text", "artifact"] as const;
+/** 보고서 API가 영속화하는 블록 타입 집합이다. */ export const REPORT_BLOCK_TYPES = ["table", "chart", "text", "artifact", "page_break"] as const;
 /** 영속 블록 타입의 리터럴 타입이다. */ export type ReportBlockType = typeof REPORT_BLOCK_TYPES[number];
 
 /** 보고서 정의에 저장되는 블록과 선택적 grid 좌표 계약이다. */ export interface ReportBlock {
@@ -55,6 +55,7 @@ export function seoulWallClockToIso(value: string): string {
   readonly y?: number;
   readonly w?: number;
   readonly h?: number;
+  readonly evidenceRefs?: readonly string[];
 }
 
 /** 편집기에서 모든 grid 좌표가 확정된 블록이다. */ export type DraftLayoutBlock = ReportBlock & Required<Pick<ReportBlock, "x" | "y" | "w" | "h">>;
@@ -171,7 +172,6 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly block_id: string;
   readonly title: string;
   readonly artifact_id: string | null;
-  readonly query_id: string | null;
   readonly view_spec_id: string | null;
   readonly columns: number;
   readonly type: ReportBlockType;
@@ -180,6 +180,7 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly w: number;
   readonly h: number;
   readonly content: string;
+  readonly evidence_refs: readonly string[];
 }
 
 /** 실행 목록 API의 versioned wire envelope다. */ export interface ReportRunListResponse {
@@ -290,6 +291,24 @@ export interface ReportAssistantAnalysisPlan {
   };
 }
 
+/** 내부 식별자 없이 공개하는 patch operation 한 건의 변경 전후다. */
+export interface ReportAssistantPatchPreviewItem {
+  readonly index: number;
+  readonly operation:
+    | "set_report_title" | "set_report_orientation" | "set_currency_display_unit"
+    | "compact_report_layout" | "add_report_page" | "update_block_title" | "resize_block"
+    | "update_chart_settings" | "update_table_settings" | "set_block_size_mode"
+    | "add_text" | "update_text" | "add_artifact_view"
+    | "reposition_block" | "remove_block" | "duplicate_block"
+    | "restore_previous_revision";
+  readonly target: string;
+  readonly before: string | null;
+  readonly after: string | null;
+  readonly impact_category: "CONTENT" | "LAYOUT" | "DESTRUCTIVE";
+  readonly evidence_required: boolean;
+  readonly evidence_count: number;
+}
+
 /** 대화형 Assistant 세션의 서버 권위 상태 계약이다. */
 export interface ReportAssistantSessionResponse {
   readonly assistant_request_id: string;
@@ -298,14 +317,21 @@ export interface ReportAssistantSessionResponse {
   readonly definition_version: number;
   readonly base_revision: number;
   readonly artifact_id: string;
+  readonly artifact_ids: readonly string[];
   readonly analysis_plan: ReportAssistantAnalysisPlan | null;
   readonly patch_request_id: string | null;
   readonly patch_summary: string | null;
   readonly patch_operations: readonly (
-    | "set_report_title" | "add_text" | "update_text" | "add_artifact_view"
+    | "set_report_title" | "set_report_orientation" | "set_currency_display_unit"
+    | "compact_report_layout" | "add_report_page" | "update_block_title" | "resize_block"
+    | "update_chart_settings" | "update_table_settings" | "set_block_size_mode"
+    | "add_text" | "update_text" | "add_artifact_view"
     | "reposition_block" | "remove_block" | "duplicate_block"
     | "restore_previous_revision"
   )[];
+  readonly patch_evidence_refs: readonly string[];
+  readonly patch_preview: readonly ReportAssistantPatchPreviewItem[];
+  readonly approved_operation_indexes: readonly number[];
   readonly result_artifact_id: string | null;
   readonly result_revision: number | null;
   readonly error_code: string | null;
@@ -318,7 +344,40 @@ export interface ReportAssistantSessionResponse {
 export interface ReportAssistantProposalResponse {
   readonly change_kind: "clarification" | "existing_artifact" | "new_data";
   readonly message: string;
+  readonly suggestions: readonly string[];
   readonly session: ReportAssistantSessionResponse;
+}
+
+/** 저장 없이 현재 보고서에서 발견한 품질 문제와 선택 가능한 수정 지시다. */
+export interface ReportAssistantReviewFinding {
+  readonly category:
+    | "duplicate_text"
+    | "verbose_summary"
+    | "title_mismatch"
+    | "inconsistent_metric_expression"
+    | "unsupported_claim";
+  readonly severity: "info" | "warning";
+  readonly block_id: string | null;
+  readonly title: string;
+  readonly detail: string;
+  readonly suggested_instruction: string;
+  readonly evidence_refs: readonly string[];
+}
+
+/** 세션 phase나 Report revision을 바꾸지 않는 품질 검토 응답이다. */
+export interface ReportAssistantReviewResponse {
+  readonly assistant_request_id: string;
+  readonly summary: string;
+  readonly findings: readonly ReportAssistantReviewFinding[];
+  readonly suggestions: readonly string[];
+  readonly trace: {
+    readonly model_version: string;
+    readonly prompt_id: string;
+    readonly prompt_version: string;
+    readonly prompt_hash: string;
+    readonly attempts: number;
+    readonly duration_ms: number;
+  };
 }
 
 /** 원문 prompt·SQL 없이 관리자와 세션 소유자에게 공개되는 요청별 평가다. */
@@ -391,6 +450,16 @@ export interface ReportAssistantFailureListResponse {
   readonly w: number;
   readonly h: number;
   readonly content: string;
+  readonly evidence_refs: readonly string[];
+}
+
+/** 서버가 검증한 근거 별칭을 실제 식별자 노출 없이 사람이 읽는 짧은 표기로 바꾼다. */
+export function reportEvidenceLabel(reference: string): string {
+  if (reference === "artifact_narrative") return "Artifact 요약";
+  const artifactMetric = /^artifact_(\d+)_metric_(\d+)$/.exec(reference);
+  if (artifactMetric) return `Artifact ${artifactMetric[1]} · 지표 ${artifactMetric[2]}`;
+  const metric = /^metric_(\d+)$/.exec(reference);
+  return metric ? `지표 근거 ${metric[1]}` : "검증된 Artifact 근거";
 }
 
 /** 서버 응답 계약 버전 불일치를 즉시 예외로 차단한다. */

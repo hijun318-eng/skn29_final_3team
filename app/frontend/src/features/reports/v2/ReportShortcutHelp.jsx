@@ -22,17 +22,15 @@ export function ReportShortcutHelp({ open, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
     const frame = window.requestAnimationFrame(() => closeRef.current?.focus());
-    const closeOnEscape = (event) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [onClose, open]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
 
   if (!open) return null;
   return <div className="report-shortcut-backdrop" onMouseDown={(event) => {
     if (event.target === event.currentTarget) onClose();
+  }} onKeyDown={(event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") onClose();
   }}>
     <section className="report-shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="report-shortcut-title">
       <header><div><Keyboard size={18} /><h2 id="report-shortcut-title">단축키 안내</h2></div><button ref={closeRef} type="button" onClick={onClose} aria-label="단축키 안내 닫기"><X size={17} /></button></header>

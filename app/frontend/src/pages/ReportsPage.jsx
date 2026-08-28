@@ -11,6 +11,7 @@ import {
   ReportListView,
   ReportOperationsPanel,
   ReportAssistantPanel,
+  ReportAssistantOperationsPanel,
   ReportPropertiesPanel,
   ReportTemplateTile,
   ReportToolPanel,
@@ -43,7 +44,12 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   );
 
   if (page.view === "list") {
-    return <ReportListView
+    return <>{page.isAdmin && <ReportAssistantOperationsPanel
+      failures={lifecycle.assistantFailures}
+      onRefresh={lifecycle.loadAssistantOperations}
+      pending={lifecycle.pending}
+      summary={lifecycle.assistantOperations}
+    />}<ReportListView
       createOpen={lifecycle.createOpen}
       definitionState={lifecycle.definitionState}
       error={lifecycle.error}
@@ -63,7 +69,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       setStatusFilter={lifecycle.setStatusFilter}
       statusFilter={lifecycle.statusFilter}
       visibleDefinitions={lifecycle.visibleDefinitions}
-    />;
+    /></>;
   }
 
   if (page.view === "document" && lifecycle.selectedDefinition) {
@@ -166,6 +172,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       dropPosition={dnd.dropPosition}
       onAddText={page.addTextBlock}
       onRegisterCanvas={dnd.registerPageCanvas}
+      onSelectBlocks={page.editorTools.selectBlocks}
       orientation={draft.reportOrientation}
       orderedBlocks={draft.orderedBlocks}
       pages={page.reportPages}
@@ -211,6 +218,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     pageCount={page.reportPages.length}
   />;
   const assistant = <ReportAssistantPanel
+    key={`${lifecycle.selectedDefinition?.definitionId || ""}:${lifecycle.selectedDefinition?.version || ""}:${page.assistantArtifactIds.join(":")}`}
     approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(lifecycle.assistantSession?.phase)
       ? lifecycle.assistantSession?.analysis_plan && {
           ...lifecycle.assistantSession.analysis_plan,
@@ -222,25 +230,38 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
         }
       : null}
     artifact={page.selectedArtifact}
+    artifactOptions={artifacts.artifactOptions}
+    assistantArtifactIds={page.assistantArtifactIds}
     artifactTitle={page.selectedArtifactSource?.title}
     canEdit={page.canEdit}
     instruction={lifecycle.assistantInstruction}
     onInstructionChange={lifecycle.setAssistantInstruction}
     onApproveDataRequest={page.approveAssistantDataRequest}
     onApprovePatch={page.approveAssistantPatch}
+    onCancel={lifecycle.cancelAssistantSession}
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
+    onReview={page.reviewAssistantReport}
+    onToggleArtifact={artifacts.toggleAssistantArtifact}
     onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}
     patchPreview={lifecycle.assistantSession?.patch_request_id
       && ["waiting_patch_approval", "saving_revision"].includes(lifecycle.assistantSession.phase)
       ? {
+          requestId: lifecycle.assistantSession.patch_request_id,
           summary: lifecycle.assistantSession.patch_summary,
           operations: lifecycle.assistantSession.patch_operations,
+          evidenceRefs: lifecycle.assistantSession.patch_evidence_refs,
+          items: lifecycle.assistantSession.patch_preview,
+          approvedIndexes: lifecycle.assistantSession.approved_operation_indexes,
         }
       : null}
+    review={lifecycle.assistantReview}
     pending={lifecycle.pending}
     selectedBlock={page.editorTools.primaryBlock}
+    suggestions={lifecycle.assistantSuggestionSet?.selectedBlockId === (page.editorTools.primaryBlock?.id || null)
+      ? lifecycle.assistantSuggestionSet.suggestions
+      : []}
     trace={lifecycle.assistantTrace}
     workflowStatus={lifecycle.assistantSession?.phase || ""}
     workflowError={lifecycle.assistantSession?.error_code || ""}

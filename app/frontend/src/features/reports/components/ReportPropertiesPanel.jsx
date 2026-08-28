@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 
 import { REPORT_CHART_OPTIONS, blockSettings } from "./reportPresentation";
+import { reportEvidenceLabel } from "../../../contracts/report";
 
 function sourceLabel(artifact) {
   const names = artifact?.evidence?.sources?.map((source) => source.name).filter(Boolean) ?? [];
@@ -33,8 +34,13 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
     <header><div><p>REPORT SETTINGS</p><h2>속성</h2></div><span>{selectedCount ? `${selectedCount}개 선택` : "선택 없음"}</span></header>
 
     {selectedCount > 1 && <section className="report-batch-actions">
-      <h3>일괄 작업</h3>
-      <div>
+      <h3>선택 블록 정렬</h3>
+      <div className="report-batch-sizing">
+        <button type="button" onClick={() => editorTools.unifySelectedSize("width")} disabled={!canEdit || lockedSelectedCount > 0}>너비 통일</button>
+        <button type="button" onClick={() => editorTools.unifySelectedSize("height")} disabled={!canEdit || lockedSelectedCount > 0}>높이 통일</button>
+      </div>
+      <small className="report-properties-help">기준 블록의 크기로 맞추며 한 번의 Undo 단계로 기록합니다.</small>
+      <div className="report-batch-locks">
         <button type="button" onClick={() => editorTools.setSelectedLocks(true)} disabled={!canEdit}><Lock size={14} />잠금</button>
         <button type="button" onClick={() => editorTools.setSelectedLocks(false)} disabled={!canEdit || !lockedSelectedCount}><Unlock size={14} />해제</button>
         <button type="button" className="danger" onClick={editorTools.deleteSelected} disabled={!canEdit || lockedSelectedCount > 0}><Trash2 size={14} />삭제</button>
@@ -58,7 +64,8 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
         <label><span>차트 유형</span><select value={settings.chartType || artifact?.chart?.chart_type || "bar"} disabled={!canEdit || blockLocked} onChange={(event) => onSetting(block.id, "chartType", event.target.value)}>{REPORT_CHART_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <label className="report-property-check"><input type="checkbox" checked={settings.showLegend !== false} disabled={!canEdit || blockLocked} onChange={(event) => onSetting(block.id, "showLegend", event.target.checked)} /><span>범례 표시</span></label>
       </>}
-      {block.type !== "text" && <div className="report-property-evidence"><span>Source / Evidence</span><b>{sourceLabel(artifact)}</b><small>Artifact {block.artifactId || "연결 없음"}</small>{block.queryId && <small>Query {block.queryId}</small>}{block.artifactChecksum && <code>{block.artifactChecksum}</code>}</div>}
+      {block.type !== "text" && <div className="report-property-evidence"><span>Source / Evidence</span><b>{sourceLabel(artifact)}</b><small>{block.artifactId ? "검증된 Artifact 연결" : "연결 없음"}</small></div>}
+      {block.type === "text" && block.evidenceRefs?.length ? <div className="report-property-evidence"><span>AI 검증 근거</span><b>{block.evidenceRefs.map(reportEvidenceLabel).join(" · ")}</b><small>본문을 직접 수정하면 이 근거 표시는 해제됩니다.</small></div> : null}
       <div className="report-property-actions"><button type="button" onClick={() => { editorTools.copySelected(); editorTools.pasteBlocks(); }} disabled={!canEdit}><Copy size={14} />복제</button><button type="button" className="danger" onClick={() => editorTools.deleteBlock(block.id)} disabled={!canEdit || blockLocked}><Trash2 size={14} />삭제</button></div>
     </section> : <section className="report-properties-empty"><dl><div><dt>용지 방향</dt><dd>{orientation === "landscape" ? "A4 가로" : "A4 세로"}</dd></div><div><dt>페이지</dt><dd>{pageCount}페이지</dd></div></dl><p>보고서 블록을 선택하면 크기와 표현 속성을 편집할 수 있습니다.</p></section>}
 
@@ -71,7 +78,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
     <section>
       <h3><Clipboard size={14} />클립보드</h3>
       <div className="report-clipboard-actions"><button type="button" onClick={editorTools.copySelected} disabled={!selectedCount}><Copy size={14} />복사</button><button type="button" onClick={editorTools.pasteBlocks} disabled={!canEdit}><Clipboard size={14} />붙여넣기</button></div>
-      <small className="report-properties-help">Shift+클릭으로 여러 블록을 선택할 수 있습니다.</small>
+      <small className="report-properties-help">Shift+클릭하거나 A4의 빈 영역을 드래그해 여러 블록을 선택할 수 있습니다.</small>
     </section>
   </aside>;
 });

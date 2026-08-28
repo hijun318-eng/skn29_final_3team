@@ -64,7 +64,6 @@ export function analysisRunArtifactSources(runs = [], definitions = []) {
         type: "artifact",
         sourceKind: "analysisRun",
         artifactId: run.artifact_id,
-        queryId: run.query_id || undefined,
         requestId: run.request_id,
         analysisDefinitionId: run.definition_id,
         analysisDefinitionVersion: run.definition_version,
@@ -94,20 +93,18 @@ function analysisMetricReferenceToReport(metric) {
   return reference;
 }
 
-/** 근거 gate와 artifact/query identity가 일치한 분석 실행만 보고서 wire artifact로 변환한다. */
+/** 근거 gate와 artifact identity가 일치한 분석 실행만 안전한 보고서 artifact로 변환한다. */
 export function adaptAnalysisRunArtifact(run) {
   if (!["success", "partial"].includes(run?.status) || run.evidenceReady !== true) return null;
   const artifactId = run.artifact?.artifactId;
-  const queryId = run.artifact?.queryId;
   const evidence = run.evidence;
-  if (!artifactId || !queryId || evidence?.artifactId !== artifactId || evidence?.queryId !== queryId) return null;
+  if (!artifactId || evidence?.artifactId !== artifactId) return null;
   return {
     contract_version: run.meta?.contractVersion,
     request_id: run.requestId,
     trace_id: run.traceId,
     status: run.status.toUpperCase(),
     artifact_id: artifactId,
-    query_id: queryId,
     summary: run.summary || "",
     metrics: (run.metrics || []).map(analysisMetricToReport),
     table: run.table
@@ -121,7 +118,6 @@ export function adaptAnalysisRunArtifact(run) {
     } : null,
     evidence: {
       artifact_id: evidence.artifactId,
-      query_id: evidence.queryId,
       as_of: evidence.asOf,
       timezone: evidence.timezone,
       period: evidence.period

@@ -217,6 +217,11 @@ export function paginateReportBlocks(blocks, orientation, documentId = "report")
     cursorY = 0;
   };
   for (const row of rows) {
+    if (row.blocks.some((block) => block.type === "page_break")) {
+      if (!page) startPage(row.sourceY);
+      startPage(row.sourceY + 1);
+      continue;
+    }
     const height = Math.min(
       rowLimit,
       Math.max(...row.blocks.map((block) => block.h ?? 1)),

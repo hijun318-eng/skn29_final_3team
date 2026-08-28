@@ -39,6 +39,7 @@ export function useReportArtifacts({
   const [artifactSources, setArtifactSources] = useState<any[]>([]);
   const [analysisLibraryState, setAnalysisLibraryState] = useState({ status: "idle", message: "" });
   const [artifactSelection, setArtifactSelection] = useState("");
+  const [assistantAdditionalArtifactIds, setAssistantAdditionalArtifactIds] = useState<readonly string[]>([]);
   const loadGenerationRef = useRef(0);
 
   const invalidateLoads = useCallback(() => {
@@ -61,10 +62,11 @@ export function useReportArtifacts({
     if (!artifact || !reportEvidenceReady(artifact)) {
       throw new Error("검증 근거가 완전하지 않아 보고서 결과를 표시하지 않습니다.");
     }
+    const publicSource = { ...source };
+    delete publicSource.queryId;
+    delete publicSource.artifactChecksum;
     const hydratedSource = {
-      ...source,
-      queryId: artifact.query_id,
-      artifactChecksum: source.artifactChecksum || artifact.artifact_checksum,
+      ...publicSource,
       sourceUrns: artifact.evidence.sources.map((item: any) => item.urn),
       ...(analysisSource ? {
         sourceKind: "analysisRun",
@@ -147,6 +149,7 @@ export function useReportArtifacts({
         : libraryState);
     const availableIds = loaded.filter(({ artifact }) => artifact).map(({ artifactId }) => artifactId);
     setArtifactSelection((current) => availableIds.includes(current) ? current : availableIds[0] || "");
+    setAssistantAdditionalArtifactIds((current) => current.filter((artifactId) => availableIds.includes(artifactId)));
     return true;
   }, [analysisClient, definitions, hydrateSource, onHydrated]);
 
@@ -184,8 +187,15 @@ export function useReportArtifacts({
     });
   }, [artifactSources, artifacts]);
 
+  const toggleAssistantArtifact = useCallback((artifactId: string) => {
+    setAssistantAdditionalArtifactIds((current) => current.includes(artifactId)
+      ? current.filter((item) => item !== artifactId)
+      : current.length < 4 ? [...current, artifactId] : current);
+  }, []);
+
   return {
     analysisLibraryState,
+    assistantAdditionalArtifactIds,
     artifactOptions,
     artifactSelection,
     artifactSources,
@@ -195,5 +205,6 @@ export function useReportArtifacts({
     loadArtifacts,
     retryArtifact,
     setArtifactSelection,
+    toggleAssistantArtifact,
   };
 }

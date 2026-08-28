@@ -312,6 +312,78 @@ def test_v2_decisions_compile_hidden_support_rules_without_publishing_terms():
     }
 
 
+def test_v2_decision_does_not_implicitly_approve_ungoverned_live_assets():
+    """같은 schema의 base-ingested 후보는 명시 membership 없이는 policy에 들어오지 않는다."""
+
+    expected = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    expanded, expanded_datasets, candidate = _with_ungoverned_candidate(
+        inventory,
+        datasets,
+        "unreviewed_candidate",
+    )
+    by_name = {item.name: item for item in expanded_datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, by_name[relation.fqn])
+        for relation in expanded.relations
+    )
+    decisions = _decisions(expected)
+    decisions["contract_version"] = DECISION_CONTRACT_VERSION_V2
+
+    policy = compile_authoring_policy(decisions, bindings)
+
+    assert candidate.name not in {item["fqn"] for item in policy["assets"]}
+    assert {item["fqn"] for item in policy["assets"]} == {
+        item["fqn"] for item in expected["schema_context"]["assets"]
+    }
+
+
+def test_v2_decision_onboards_new_asset_only_with_explicit_existing_domain():
+    """domain 없는 신규 asset은 승인된 기존 domain URN 없이는 승격되지 않는다."""
+
+    expected = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    expanded, expanded_datasets, candidate = _with_ungoverned_candidate(
+        inventory,
+        datasets,
+        "reviewed_candidate",
+    )
+    candidate = replace(candidate, owners=(), domain=None, lifecycle=None)
+    expanded_datasets = tuple(
+        candidate if item.name == candidate.name else item
+        for item in expanded_datasets
+    )
+    by_name = {item.name: item for item in expanded_datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, by_name[relation.fqn])
+        for relation in expanded.relations
+    )
+    decisions = _decisions(expected)
+    decisions["contract_version"] = DECISION_CONTRACT_VERSION_V2
+    physical_keys = [
+        field.name for field in candidate.fields if field.is_part_of_key is True
+    ]
+    decisions["asset_grains"].append(
+        {
+            "fqn": candidate.name,
+            "kind": "row",
+            "keys": physical_keys,
+            "domain_urn": datasets[0].domain.urn,
+        }
+    )
+
+    policy = compile_authoring_policy(decisions, bindings)
+    added = next(item for item in policy["assets"] if item["fqn"] == candidate.name)
+
+    assert added["domain_urn"] == datasets[0].domain.urn
+    assert added["entitlements"]["domains"] == [datasets[0].domain.urn]
+
+    missing = deepcopy(decisions)
+    missing["asset_grains"][-1].pop("domain_urn")
+    with pytest.raises(SemanticMetadataError, match="explicitly approved"):
+        compile_authoring_policy(missing, bindings)
+
+
 def test_authoring_boundaries_reject_cross_version_metric_contracts():
     """입력 envelope만 v2로 바꿔 governance 필드 누락을 우회할 수 없다."""
 

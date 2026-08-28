@@ -302,8 +302,27 @@ async def test_crash_point_rolls_back_run_turn_head_command_and_lease_together(
         assert state["command_status"] == "RUNNING"
         assert state["turn_count"] == 0
 
+        async def invalid_terminal(session) -> None:
+            await analysis.fail_run_in_session(
+                session,
+                context.request_id,
+                "CONVERSATION_COMMAND_FAILED",
+            )
+
+        with pytest.raises(ValueError, match="영속 실패 유형이 유효하지 않습니다"):
+            await repository.commit_failed_turn(
+                conversation["conversation_id"],
+                command_id,
+                uuid4(),
+                0,
+                "격리 Conversation 원자성 검증",
+                {"code": "CONVERSATION_COMMAND_FAILED", "retryable": True},
+                request_id=context.request_id,
+                terminal_writer=invalid_terminal,
+            )
+
         async def fail_terminal(session) -> None:
-            await analysis.fail_run_in_session(session, context.request_id, "UNSUPPORTED")
+            await analysis.fail_run_in_session(session, context.request_id, "RECOVERY")
 
         await repository.commit_failed_turn(
             conversation["conversation_id"],
@@ -311,10 +330,44 @@ async def test_crash_point_rolls_back_run_turn_head_command_and_lease_together(
             uuid4(),
             0,
             "격리 Conversation 원자성 검증",
-            {"code": "INJECTED_FAILURE", "retryable": True},
+            {"code": "CONVERSATION_COMMAND_FAILED", "retryable": True},
             request_id=context.request_id,
             terminal_writer=fail_terminal,
         )
+
+        async with factory() as session:
+            terminal = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT r.status AS run_status, r.error_type,
+                               command.status AS command_status,
+                               command.error_response->>'code' AS command_error_code,
+                               turn.terminal_status AS turn_status,
+                               turn.reason_code, c.active_command_id,
+                               c.lease_expires_at
+                        FROM chat.analysis_requests r
+                        JOIN chat.turn_commands command
+                          ON command.command_id = r.command_id
+                        JOIN chat.conversations c
+                          ON c.conversation_id = r.conversation_id
+                        JOIN chat.turns turn ON turn.turn_id = command.turn_id
+                        WHERE r.request_id = :request_id
+                        """
+                    ),
+                    {"request_id": context.request_id},
+                )
+            ).mappings().one()
+        assert terminal == {
+            "run_status": "FAILED",
+            "error_type": "RECOVERY",
+            "command_status": "FAILED",
+            "command_error_code": "CONVERSATION_COMMAND_FAILED",
+            "turn_status": "FAILED",
+            "reason_code": "CONVERSATION_COMMAND_FAILED",
+            "active_command_id": None,
+            "lease_expires_at": None,
+        }
     finally:
         await engine.dispose()
 

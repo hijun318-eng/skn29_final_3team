@@ -1,0 +1,1676 @@
+# 책임: Metric·Dimension·Join 의미 계약을 소유하며 미검증 정의의 runtime 유입을 차단한다.
+authoring:
+  catalog_version: walkerhill-analysis-semantics-v1.20260827.1
+  contract_version: answervice.semantic_authoring.v4
+  glossary_version: walkerhill-analysis-semantics-glossary-v1.20260826.1
+  policy_version: walkerhill-analysis-semantics-policy-v1.20260827.1
+  schema_context_version: walkerhill-analysis-semantics-context-v1.20260827.1
+dimensions:
+- aliases:
+  - hotel_code
+  - 호텔코드
+  asset_fqn: serving.analytics_v4_3.banquet_daily
+  column: hotel_code
+  definition: 연회 행사장 소속 호텔 코드
+  id: banquet_hotel_code
+- aliases:
+  - hotel_code
+  - 호텔코드
+  - 호텔
+  asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+  column: hotel_code
+  definition: 워커힐 호텔 코드 (GRAND, VISTA, DOUGLAS)
+  id: hotel_code
+- aliases:
+  - hotel_code
+  - 호텔코드
+  asset_fqn: serving.analytics_v4_3.voc_daily
+  column: hotel_code
+  definition: VOC 소속 호텔 코드
+  id: voc_hotel_code
+- aliases:
+  - VOC sentiment
+  - sentiment_label
+  - VOC 감성
+  asset_fqn: serving.analytics_v4_3.voc_review_detail
+  column: sentiment_label
+  definition: VOC 리뷰에 검증되어 저장된 감성 분류값
+  id: voc_sentiment_label
+- aliases:
+  - 회원 등급
+  - 멤버십 등급
+  - membership tier
+  asset_fqn: serving.analytics_v4_3.member_revenue_daily
+  column: tier_code
+  definition: 매출 이벤트 시점의 CRM 유효기간 이력으로 확정한 멤버십 등급이다.
+  id: membership_tier
+  members:
+  - aliases:
+    - CLASSIC
+    - 클래식
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    canonical_value: CLASSIC
+    definition: Active public membership tier code Classic from the CRM membership tier master.
+    domain_urn: urn:li:domain:answervice_serving
+    id: classic
+    name: CLASSIC
+    owner_urn: urn:li:corpGroup:answervice_runtime_stewards
+    urn: urn:li:glossaryTerm:membership_tier_classic
+    version: walkerhill-dimension-member-v1.20260826.2
+  - aliases:
+    - PLUS
+    - 플러스
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    canonical_value: PLUS
+    definition: Active public membership tier code Plus from the CRM membership tier master.
+    domain_urn: urn:li:domain:answervice_serving
+    id: plus
+    name: PLUS
+    owner_urn: urn:li:corpGroup:answervice_runtime_stewards
+    urn: urn:li:glossaryTerm:membership_tier_plus
+    version: walkerhill-dimension-member-v1.20260826.2
+  - aliases:
+    - PREMIER
+    - 프리미어
+    approval_status: APPROVED
+    approved_lifecycle_urn: urn:li:lifecycleStageType:APPROVED
+    canonical_value: PREMIER
+    definition: Active public membership tier code Premier from the CRM membership tier master.
+    domain_urn: urn:li:domain:answervice_serving
+    id: premier
+    name: PREMIER
+    owner_urn: urn:li:corpGroup:answervice_runtime_stewards
+    urn: urn:li:glossaryTerm:membership_tier_premier
+    version: walkerhill-dimension-member-v1.20260826.2
+join_graph:
+  edges:
+  - cardinality: many_to_one
+    equality_conditions:
+    - left_column: business_date
+      right_column: business_date
+    - left_column: hotel_code
+      right_column: hotel_code
+    id: voc_review_to_hotel_operations_daily
+    kind: inner
+    left: serving.analytics_v4_3.voc_review_detail
+    preaggregation:
+      grain:
+      - asset_fqn: serving.analytics_v4_3.voc_review_detail
+        column: business_date
+      keys:
+      - asset_fqn: serving.analytics_v4_3.voc_review_detail
+        column: hotel_code
+      required: false
+    right: serving.analytics_v4_3.hotel_operations_daily
+    temporal_conditions: []
+metrics:
+- aggregation: ratio
+  allowed_dimensions: []
+  business_name: ADR
+  definition: 요청 기간의 객실매출 합계를 점유 객실박 합계로 나눈 평균객실단가이며 일별 ADR을 단순 평균하지 않는다.
+  formula:
+    denominator_metric_id: occupied_room_nights
+    kind: ratio
+    numerator_metric_id: room_revenue
+    zero_policy: null_on_zero_denominator
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: adr
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: ratio
+    dimensions: []
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - ADR
+        - 평균객실단가
+        - 평균 객실 단가
+        - average daily rate
+        definition: 요청 기간의 객실매출 합계를 점유 객실박 합계로 나눈 평균객실단가이며 일별 ADR을 단순 평균하지 않는다.
+        name: ADR
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: adr
+    reduction: ratio
+    required_filters: []
+    result_field: adr_krw
+    source:
+      denominator_metric_id: occupied_room_nights
+      kind: ratio
+      numerator_metric_id: room_revenue
+      zero_policy: null_on_zero_denominator
+    time_field: null
+    unit: KRW_per_occupied_room_night
+  term_urn: urn:li:glossaryTerm:adr
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW_per_occupied_room_night
+  user_selectable: true
+  validation_query: WITH metric_inputs AS (SELECT SUM(room_revenue_krw) AS numerator_value, SUM(occupied_room_nights) AS denominator_value,
+    COUNT(*) AS row_count, COUNT_IF(business_date IS NULL) AS invalid_time_count FROM serving.analytics_v4_3.hotel_operations_daily)
+    SELECT 'adr' AS metric_id, CASE WHEN row_count = 0 OR invalid_time_count > 0 OR numerator_value IS NULL OR denominator_value
+    IS NULL THEN 1 ELSE 0 END AS violation_count FROM metric_inputs
+  visibility: BUSINESS
+  zero_division_policy: null_on_zero_denominator
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: Available Room Nights
+  definition: 요청 기간에 PMS 객실 재고가 판매 가능으로 기록한 객실박 합계이며 객실 점유율과 RevPAR의 분모로 사용한다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: available_room_nights
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: available_room_nights
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Available Room Nights
+        - available rooms
+        - 판매 가능 객실박
+        definition: 요청 기간에 PMS 객실 재고가 판매 가능으로 기록한 객실박 합계이며 객실 점유율과 RevPAR의 분모로 사용한다.
+        name: Available Room Nights
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: SUPPORT
+    id: available_room_nights
+    reduction: sum
+    required_filters: []
+    result_field: available_room_nights
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: available_room_nights
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: room_night
+  term_urn: null
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: room_night
+  user_selectable: false
+  validation_query: SELECT 'available_room_nights' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL)
+    > 0 OR SUM(available_room_nights) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: INTERNAL_SUPPORT
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: Banquet Revenue
+  definition: 요청 기간의 확정·완료 연회 운영에서 영업일별로 인식된 합성 연회매출 합계다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: banquet_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: banquet_revenue
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Banquet Revenue
+        - 연회 매출
+        - banquet sales
+        definition: 요청 기간의 확정·완료 연회 운영에서 영업일별로 인식된 합성 연회매출 합계다.
+        name: Banquet Revenue
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: banquet_revenue
+    reduction: sum
+    required_filters: []
+    result_field: banquet_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: banquet_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:banquet_revenue
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'banquet_revenue' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) > 0 OR
+    SUM(banquet_revenue_krw) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.room_stay_fact
+    column: hotel_code
+  business_name: Checkout Room Revenue
+  definition: 요청 기간에 실제 체크아웃한 완료 투숙의 무료·하우스유즈 제외 원화 합성 객실매출 합계다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.room_stay_fact
+      column: room_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - stay_id
+    kind: event
+  lifecycle: DRAFT
+  metric_id: checkout_room_revenue
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.room_stay_fact
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - stay_id
+        kind: event
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Checkout Room Revenue
+        - 체크아웃 기준 객실 매출
+        - 퇴실일 기준 객실 매출
+        - 체크아웃일 객실 매출
+        definition: 요청 기간에 실제 체크아웃한 완료 투숙의 무료·하우스유즈 제외 원화 합성 객실매출 합계다.
+        name: Checkout Room Revenue
+      time:
+        field: checkout_date
+        interval: '[start,end)'
+        semantics: ACTUAL_CHECKOUT_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: checkout_room_revenue
+    reduction: sum
+    required_filters: []
+    result_field: checkout_room_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.room_stay_fact
+        column: room_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.room_stay_fact
+      column: checkout_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:checkout_room_revenue
+  time_dimension:
+    field: checkout_date
+    interval: '[start,end)'
+    semantics: ACTUAL_CHECKOUT_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'checkout_room_revenue' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(checkout_date IS NULL)
+    > 0 OR SUM(room_revenue_krw) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.room_stay_fact
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: Facility Revenue
+  definition: 요청 기간의 유료 시설 이용 이벤트에서 발생한 합성 시설매출 합계다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: facility_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: facility_revenue
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Facility Revenue
+        - 시설 매출
+        - 유료 시설 매출
+        definition: 요청 기간의 유료 시설 이용 이벤트에서 발생한 합성 시설매출 합계다.
+        name: Facility Revenue
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: facility_revenue
+    reduction: sum
+    required_filters: []
+    result_field: facility_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: facility_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:facility_revenue
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'facility_revenue' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) > 0
+    OR SUM(facility_revenue_krw) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: F&B Revenue
+  definition: 요청 기간의 완료 POS 주문에서 환불과 할인을 반영한 합성 식음 순매출 합계다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: fnb_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: fnb_revenue
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - F&B Revenue
+        - 식음 매출
+        - 식음료 매출
+        - FNB revenue
+        definition: 요청 기간의 완료 POS 주문에서 환불과 할인을 반영한 합성 식음 순매출 합계다.
+        name: F&B Revenue
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: fnb_revenue
+    reduction: sum
+    required_filters: []
+    result_field: fnb_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: fnb_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:fnb_revenue
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'fnb_revenue' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) > 0 OR SUM(fnb_revenue_krw)
+    IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+    column: hotel_code
+  - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+    column: tier_code
+  business_name: Member F&B Revenue
+  definition: 요청 기간의 POS 순매출을 주문 시점의 유효한 CRM 회원등급에 귀속한 원화 합성 식음매출 합계다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: fnb_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    - tier_code
+    keys:
+    - business_date
+    - hotel_code
+    - tier_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: member_fnb_revenue
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: hotel_code
+    - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: tier_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        - tier_code
+        keys:
+        - business_date
+        - hotel_code
+        - tier_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Member F&B Revenue
+        - 회원 식음 매출
+        - 회원등급별 식음 매출
+        - 멤버십 F&B 매출
+        definition: 요청 기간의 POS 순매출을 주문 시점의 유효한 CRM 회원등급에 귀속한 원화 합성 식음매출 합계다.
+        name: Member F&B Revenue
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: EVENT_TIME_MEMBERSHIP_REVENUE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: member_fnb_revenue
+    reduction: sum
+    required_filters: []
+    result_field: member_fnb_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.member_revenue_daily
+        column: fnb_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: business_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:member_fnb_revenue
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: EVENT_TIME_MEMBERSHIP_REVENUE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'member_fnb_revenue' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) >
+    0 OR SUM(fnb_revenue_krw) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.member_revenue_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+    column: hotel_code
+  - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+    column: tier_code
+  business_name: Member Room Revenue
+  definition: 요청 기간의 객실박 매출을 발생 시점의 유효한 CRM 회원등급에 귀속한 원화 합성 객실매출 합계다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: room_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    - tier_code
+    keys:
+    - business_date
+    - hotel_code
+    - tier_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: member_room_revenue
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: hotel_code
+    - asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: tier_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        - tier_code
+        keys:
+        - business_date
+        - hotel_code
+        - tier_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Member Room Revenue
+        - 회원 객실 매출
+        - 회원등급별 객실 매출
+        - 멤버십 객실 매출
+        definition: 요청 기간의 객실박 매출을 발생 시점의 유효한 CRM 회원등급에 귀속한 원화 합성 객실매출 합계다.
+        name: Member Room Revenue
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: EVENT_TIME_MEMBERSHIP_REVENUE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: member_room_revenue
+    reduction: sum
+    required_filters: []
+    result_field: member_room_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.member_revenue_daily
+        column: room_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: business_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:member_room_revenue
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: EVENT_TIME_MEMBERSHIP_REVENUE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'member_room_revenue' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) >
+    0 OR SUM(room_revenue_krw) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.member_revenue_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: ratio
+  allowed_dimensions: []
+  business_name: Occupancy Rate
+  definition: 요청 기간의 점유 객실박 합계를 판매 가능 객실박 합계로 나눈 값이며 일별 비율을 단순 평균하지 않는다.
+  formula:
+    denominator_metric_id: available_room_nights
+    kind: ratio
+    numerator_metric_id: occupied_room_nights
+    zero_policy: null_on_zero_denominator
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: occupancy_rate
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: ratio
+    dimensions: []
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Occupancy Rate
+        - 객실 점유율
+        - 점유율
+        - 투숙률
+        - occupancy
+        definition: 요청 기간의 점유 객실박 합계를 판매 가능 객실박 합계로 나눈 값이며 일별 비율을 단순 평균하지 않는다.
+        name: Occupancy Rate
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: occupancy_rate
+    reduction: ratio
+    required_filters: []
+    result_field: occupancy_rate
+    source:
+      denominator_metric_id: available_room_nights
+      kind: ratio
+      numerator_metric_id: occupied_room_nights
+      zero_policy: null_on_zero_denominator
+    time_field: null
+    unit: ratio
+  term_urn: urn:li:glossaryTerm:occupancy_rate
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: ratio
+  user_selectable: true
+  validation_query: WITH metric_inputs AS (SELECT SUM(occupied_room_nights) AS numerator_value, SUM(available_room_nights)
+    AS denominator_value, COUNT(*) AS row_count, COUNT_IF(business_date IS NULL) AS invalid_time_count FROM serving.analytics_v4_3.hotel_operations_daily)
+    SELECT 'occupancy_rate' AS metric_id, CASE WHEN row_count = 0 OR invalid_time_count > 0 OR numerator_value IS NULL OR
+    denominator_value IS NULL THEN 1 ELSE 0 END AS violation_count FROM metric_inputs
+  visibility: BUSINESS
+  zero_division_policy: null_on_zero_denominator
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: Occupied Room Nights
+  definition: 요청 기간에 실제 투숙으로 점유된 객실박 합계이며 객실 점유율과 ADR 계산에 사용한다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: occupied_room_nights
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: occupied_room_nights
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Occupied Room Nights
+        - occupied rooms
+        - 점유 객실박
+        definition: 요청 기간에 실제 투숙으로 점유된 객실박 합계이며 객실 점유율과 ADR 계산에 사용한다.
+        name: Occupied Room Nights
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: SUPPORT
+    id: occupied_room_nights
+    reduction: sum
+    required_filters: []
+    result_field: occupied_room_nights
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: occupied_room_nights
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: room_night
+  term_urn: null
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: room_night
+  user_selectable: false
+  validation_query: SELECT 'occupied_room_nights' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL)
+    > 0 OR SUM(occupied_room_nights) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: INTERNAL_SUPPORT
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: Overtime Hours
+  definition: 요청 기간의 실제 근로시간 중 계획 근로시간을 초과한 합성 근로시간 합계다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: overtime_hours
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: overtime_hours
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Overtime Hours
+        - 초과근로시간
+        - 초과 근무 시간
+        - 연장 근로시간
+        definition: 요청 기간의 실제 근로시간 중 계획 근로시간을 초과한 합성 근로시간 합계다.
+        name: Overtime Hours
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: overtime_hours
+    reduction: sum
+    required_filters: []
+    result_field: overtime_hours
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: overtime_hours
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: hour
+  term_urn: urn:li:glossaryTerm:overtime_hours
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: hour
+  user_selectable: true
+  validation_query: SELECT 'overtime_hours' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) > 0 OR
+    SUM(overtime_hours) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: ratio
+  allowed_dimensions: []
+  business_name: RevPAR
+  definition: 요청 기간의 객실매출 합계를 판매 가능 객실박 합계로 나눈 판매가능객실당매출이며 일별 RevPAR를 단순 평균하지 않는다.
+  formula:
+    denominator_metric_id: available_room_nights
+    kind: ratio
+    numerator_metric_id: room_revenue
+    zero_policy: null_on_zero_denominator
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: revpar
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: ratio
+    dimensions: []
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - RevPAR
+        - 판매가능객실당매출
+        - 판매 가능 객실당 매출
+        - revenue per available room
+        definition: 요청 기간의 객실매출 합계를 판매 가능 객실박 합계로 나눈 판매가능객실당매출이며 일별 RevPAR를 단순 평균하지 않는다.
+        name: RevPAR
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: revpar
+    reduction: ratio
+    required_filters: []
+    result_field: revpar_krw
+    source:
+      denominator_metric_id: available_room_nights
+      kind: ratio
+      numerator_metric_id: room_revenue
+      zero_policy: null_on_zero_denominator
+    time_field: null
+    unit: KRW_per_available_room_night
+  term_urn: urn:li:glossaryTerm:revpar
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW_per_available_room_night
+  user_selectable: true
+  validation_query: WITH metric_inputs AS (SELECT SUM(room_revenue_krw) AS numerator_value, SUM(available_room_nights) AS
+    denominator_value, COUNT(*) AS row_count, COUNT_IF(business_date IS NULL) AS invalid_time_count FROM serving.analytics_v4_3.hotel_operations_daily)
+    SELECT 'revpar' AS metric_id, CASE WHEN row_count = 0 OR invalid_time_count > 0 OR numerator_value IS NULL OR denominator_value
+    IS NULL THEN 1 ELSE 0 END AS violation_count FROM metric_inputs
+  visibility: BUSINESS
+  zero_division_policy: null_on_zero_denominator
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: Room Revenue
+  definition: 요청 기간의 객실 운영에서 인식된 합성 객실매출 합계이며 ADR과 RevPAR의 분자로 사용한다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: room_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: room_revenue
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Room Revenue
+        - 객실 매출
+        - 룸 매출
+        definition: 요청 기간의 객실 운영에서 인식된 합성 객실매출 합계이며 ADR과 RevPAR의 분자로 사용한다.
+        name: Room Revenue
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: room_revenue
+    reduction: sum
+    required_filters: []
+    result_field: room_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: room_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:room_revenue
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'room_revenue' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) > 0 OR SUM(room_revenue_krw)
+    IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
+  business_name: Total Operating Revenue
+  definition: 요청 기간의 객실·식음·연회·시설 합성 매출을 같은 호텔·영업일 범위에서 합산한 총 운영매출이다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: total_operating_revenue_krw
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    keys:
+    - business_date
+    - hotel_code
+    kind: periodic
+  lifecycle: DRAFT
+  metric_id: total_operating_revenue_krw
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: hotel_code
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        keys:
+        - business_date
+        - hotel_code
+        kind: periodic
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - VIEW_REUSE
+      semantic:
+        aliases:
+        - Total Operating Revenue
+        - 총 운영 매출
+        - 총 운영매출
+        - 총영업매출
+        - 운영 총매출
+        - 호텔 매출
+        - 호텔 전체 매출
+        - 호텔 총매출
+        definition: 요청 기간의 객실·식음·연회·시설 합성 매출을 같은 호텔·영업일 범위에서 합산한 총 운영매출이다.
+        name: Total Operating Revenue
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: total_operating_revenue_krw
+    reduction: sum
+    required_filters: []
+    result_field: total_operating_revenue_krw
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+        column: total_operating_revenue_krw
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    unit: KRW
+  term_urn: urn:li:glossaryTerm:answervice_total_operating_revenue_krw
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: KRW
+  user_selectable: true
+  validation_query: SELECT 'total_operating_revenue_krw' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS
+    NULL) > 0 OR SUM(total_operating_revenue_krw) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.hotel_operations_daily
+  visibility: BUSINESS
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: ratio
+  allowed_dimensions: []
+  business_name: VOC Average Rating
+  definition: 선택 범위의 VOC 종합 평점 합계를 중복되지 않는 리뷰 수로 나눈 1~5 평균 평점이며 일별 평균을 단순 평균하지 않는다.
+  formula:
+    denominator_metric_id: voc_average_rating_review_count
+    kind: ratio
+    numerator_metric_id: voc_rating_points
+    zero_policy: null_on_zero_denominator
+  grain:
+    dimensions:
+    - hotel_code
+    - source_channel
+    - touchpoint
+    - selected_category
+    keys:
+    - voc_review_id
+    kind: row
+  lifecycle: DRAFT
+  metric_id: voc_average_rating
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: ratio
+    dimensions: []
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        - source_channel
+        - touchpoint
+        - selected_category
+        keys:
+        - voc_review_id
+        kind: row
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - RAW_APPROVED_DETAIL
+      semantic:
+        aliases:
+        - VOC Average Rating
+        - VOC 평균 평점
+        - 고객 평균 평점
+        - average rating
+        definition: 선택 범위의 VOC 종합 평점 합계를 중복되지 않는 리뷰 수로 나눈 1~5 평균 평점이며 일별 평균을 단순 평균하지 않는다.
+        name: VOC Average Rating
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: SOURCE_BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: BUSINESS
+    id: voc_average_rating
+    reduction: ratio
+    required_filters: []
+    result_field: voc_average_rating
+    source:
+      denominator_metric_id: voc_average_rating_review_count
+      kind: ratio
+      numerator_metric_id: voc_rating_points
+      zero_policy: null_on_zero_denominator
+    time_field: null
+    unit: rating_1_to_5
+  term_urn: urn:li:glossaryTerm:voc_average_rating
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: SOURCE_BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: rating_1_to_5
+  user_selectable: true
+  validation_query: WITH metric_inputs AS (SELECT SUM(rating_overall) AS numerator_value, COUNT(DISTINCT voc_review_id) AS
+    denominator_value, COUNT(*) AS row_count, COUNT_IF(business_date IS NULL) AS invalid_time_count FROM serving.analytics_v4_3.voc_review_detail)
+    SELECT 'voc_average_rating' AS metric_id, CASE WHEN row_count = 0 OR invalid_time_count > 0 OR numerator_value IS NULL
+    OR denominator_value IS NULL THEN 1 ELSE 0 END AS violation_count FROM metric_inputs
+  visibility: BUSINESS
+  zero_division_policy: null_on_zero_denominator
+- aggregation: count_distinct
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: hotel_code
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: source_channel
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: touchpoint
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: selected_category
+  business_name: VOC Average Rating Review Count
+  definition: 선택 범위에서 중복되지 않는 VOC 리뷰 수로 평균 평점 계산용 분모다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: voc_review_id
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    - source_channel
+    - touchpoint
+    - selected_category
+    keys:
+    - voc_review_id
+    kind: row
+  lifecycle: DRAFT
+  metric_id: voc_average_rating_review_count
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: count_distinct
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: hotel_code
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: source_channel
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: touchpoint
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: selected_category
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        - source_channel
+        - touchpoint
+        - selected_category
+        keys:
+        - voc_review_id
+        kind: row
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - RAW_APPROVED_DETAIL
+      semantic:
+        aliases:
+        - VOC Average Rating Review Count
+        - review count
+        - VOC 리뷰 수
+        definition: 선택 범위에서 중복되지 않는 VOC 리뷰 수로 평균 평점 계산용 분모다.
+        name: VOC Average Rating Review Count
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: SOURCE_BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: SUPPORT
+    id: voc_average_rating_review_count
+    reduction: sum
+    required_filters: []
+    result_field: voc_average_rating_review_count
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.voc_review_detail
+        column: voc_review_id
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: business_date
+    unit: review
+  term_urn: null
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: SOURCE_BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: review
+  user_selectable: false
+  validation_query: SELECT 'voc_average_rating_review_count' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date
+    IS NULL) > 0 OR COUNT(DISTINCT voc_review_id) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.voc_review_detail
+  visibility: INTERNAL_SUPPORT
+  zero_division_policy: NOT_APPLICABLE
+- aggregation: sum
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: hotel_code
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: source_channel
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: touchpoint
+  - asset_fqn: serving.analytics_v4_3.voc_review_detail
+    column: selected_category
+  business_name: VOC Rating Points
+  definition: 선택 범위의 VOC 종합 평점을 리뷰 단위에서 합산한 계산용 분자다.
+  formula:
+    field:
+      asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: rating_overall
+    kind: column
+  grain:
+    dimensions:
+    - hotel_code
+    - source_channel
+    - touchpoint
+    - selected_category
+    keys:
+    - voc_review_id
+    kind: row
+  lifecycle: DRAFT
+  metric_id: voc_rating_points
+  null_policy: SQL_AGGREGATE_IGNORE_NULLS
+  owner_group_urn: urn:li:corpGroup:answervice_runtime_stewards
+  required_filters: []
+  runtime_rule:
+    aggregation: sum
+    dimensions:
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: hotel_code
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: source_channel
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: touchpoint
+    - asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: selected_category
+    governance:
+      grain:
+        dimensions:
+        - hotel_code
+        - source_channel
+        - touchpoint
+        - selected_category
+        keys:
+        - voc_review_id
+        kind: row
+      join:
+        allowed_edge_ids: []
+        required: false
+      permission:
+        contains_pii: false
+        roles:
+        - analyst
+        synthetic: true
+      query_strategies:
+      - RAW_APPROVED_DETAIL
+      semantic:
+        aliases:
+        - VOC Rating Points
+        - rating point sum
+        - 평점 점수 합계
+        definition: 선택 범위의 VOC 종합 평점을 리뷰 단위에서 합산한 계산용 분자다.
+        name: VOC Rating Points
+      time:
+        field: business_date
+        interval: '[start,end)'
+        semantics: SOURCE_BUSINESS_DATE
+        timezone: Asia/Seoul
+      visibility: SUPPORT
+    id: voc_rating_points
+    reduction: sum
+    required_filters: []
+    result_field: voc_rating_points
+    source:
+      field:
+        asset_fqn: serving.analytics_v4_3.voc_review_detail
+        column: rating_overall
+      kind: column
+    time_field:
+      asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: business_date
+    unit: rating_point
+  term_urn: null
+  time_dimension:
+    field: business_date
+    interval: '[start,end)'
+    semantics: SOURCE_BUSINESS_DATE
+    timezone: Asia/Seoul
+  timezone: Asia/Seoul
+  unit: rating_point
+  user_selectable: false
+  validation_query: SELECT 'voc_rating_points' AS metric_id, CASE WHEN COUNT(*) = 0 OR COUNT_IF(business_date IS NULL) > 0
+    OR SUM(rating_overall) IS NULL THEN 1 ELSE 0 END AS violation_count FROM serving.analytics_v4_3.voc_review_detail
+  visibility: INTERNAL_SUPPORT
+  zero_division_policy: NOT_APPLICABLE
+parameter_contract:
+  parameters:
+  - name: start_date
+    scope: time
+    type: date
+  - name: end_date
+    scope: time
+    type: date
+  style: named
+query_policy:
+  allowed_catalogs:
+  - serving
+  - pms
+  - banquet
+  - pos
+  - crm
+  - facility
+  allowed_functions:
+  - sum
+  - count
+  - avg
+  - min
+  - max
+  - coalesce
+  - nullif
+  dialect: trino
+  max_limit: 500
+  read_only: true
+  require_limit: true
+  statement_type: select
+schema_version: answervice.canonical-metadata.v1
+time_rules:
+  calendar_id: iso8601
+  end_parameter: end_date
+  fields:
+  - bucket: day
+    field:
+      asset_fqn: serving.analytics_v4_3.banquet_daily
+      column: business_date
+    native_type: date
+    timezone_mode: preserve
+  - bucket: day
+    field:
+      asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+      column: business_date
+    native_type: date
+    timezone_mode: preserve
+  - bucket: day
+    field:
+      asset_fqn: serving.analytics_v4_3.member_revenue_daily
+      column: business_date
+    native_type: date
+    timezone_mode: preserve
+  - bucket: day
+    field:
+      asset_fqn: serving.analytics_v4_3.room_stay_fact
+      column: checkout_date
+    native_type: date
+    timezone_mode: preserve
+  - bucket: day
+    field:
+      asset_fqn: serving.analytics_v4_3.voc_daily
+      column: business_date
+    native_type: date
+    timezone_mode: preserve
+  - bucket: day
+    field:
+      asset_fqn: serving.analytics_v4_3.voc_review_detail
+      column: business_date
+    native_type: date
+    timezone_mode: preserve
+  interval: '[start,end)'
+  start_parameter: start_date
+  timezone: Asia/Seoul

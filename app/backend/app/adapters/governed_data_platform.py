@@ -132,6 +132,11 @@ class GovernedDataPlatformAdapter:
         """완전한 manifest 검증을 통과한 단일 active catalog release 식별자를 반환한다."""
         return await self._governance.active_context_release()
 
+    async def get_catalog_cache_identity(self) -> tuple[str, str, int] | None:
+        """readiness cache를 active pointer generation에 결속한다."""
+
+        return await self._governance.catalog_cache_identity()
+
     async def get_catalog_readiness(self) -> tuple[dict[str, str], str | None]:
         """semantic release·manifest·전체 Trino schema 단계와 checksum-bound receipt를 반환한다."""
 

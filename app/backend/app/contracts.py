@@ -140,6 +140,7 @@ class Evidence(ContractModel):
     as_of: date
     timezone: str | None = None
     period: PeriodEvidence | None = None
+    comparison_period: PeriodEvidence | None = None
     snapshot: SnapshotEvidence | None = None
     filters: dict[str, Scalar] = Field(default_factory=dict)
     sources: tuple[SourceReference, ...] = ()
@@ -164,8 +165,12 @@ class Evidence(ContractModel):
     def validate_time_evidence(self) -> "Evidence":
         """기간 범위와 최신 스냅샷 증거가 한 실행에 동시에 섞이는 것을 막는다."""
 
-        if self.period is not None and self.snapshot is not None:
+        if self.snapshot is not None and (
+            self.period is not None or self.comparison_period is not None
+        ):
             raise ValueError("period와 snapshot 실행 증거는 동시에 지정할 수 없습니다.")
+        if self.comparison_period is not None and self.period is None:
+            raise ValueError("comparison_period는 기준 period와 함께 기록해야 합니다.")
         return self
 
 

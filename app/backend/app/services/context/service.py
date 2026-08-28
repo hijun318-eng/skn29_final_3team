@@ -21,6 +21,7 @@ from app.services.context.builder import (
     ContextBuildError,
     ContextBuildErrorCode,
     ContextBuildRequest,
+    ContextDimensionMemberReceipt,
     ContextMetric,
     ContextMetricTerm,
     ContextPackage,
@@ -326,6 +327,7 @@ class PipelineContextService:
         }
 
         # 2. 필터 값 실데이터 확인 및 주입 (Filter Value Resolution)
+        resolved_turn_filters: list[ResolvedFilterValue] = []
         filter_fields = (
             structured_request.get("filter_fields")
             if isinstance(structured_request, dict)
@@ -333,7 +335,6 @@ class PipelineContextService:
         )
         if isinstance(filter_fields, list) and filter_fields:
             fqn_to_urn = {str(asset["fqn"]): str(asset["urn"]) for asset in assets}
-            resolved_turn_filters: list[ResolvedFilterValue] = []
             for item in filter_fields:
                 if not isinstance(item, dict):
                     continue
@@ -364,6 +365,50 @@ class PipelineContextService:
                         str(error),
                     ) from error
             assets = _inject_turn_filters(assets, resolved_turn_filters)
+        raw_member_receipts = (
+            structured_request.get("dimension_member_receipts", [])
+            if isinstance(structured_request, dict)
+            else []
+        )
+        if not isinstance(raw_member_receipts, list) or any(
+            not isinstance(item, dict) for item in raw_member_receipts
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt는 구조화된 배열이어야 합니다.",
+            )
+        try:
+            member_receipts = tuple(
+                ContextDimensionMemberReceipt(
+                    dimension_id=str(item["dimension_id"]),
+                    member_id=str(item["member_id"]),
+                    term_urn=str(item["term_urn"]),
+                    canonical_value=str(item["canonical_value"]),
+                    version=str(item["version"]),
+                    semantic_sha256=str(item["semantic_sha256"]),
+                    asset_fqn=str(item["asset_fqn"]),
+                    column=str(item["column"]),
+                )
+                for item in raw_member_receipts
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt가 불완전합니다.",
+            ) from error
+        if any(
+            not any(
+                resolved.asset_fqn == receipt.asset_fqn
+                and resolved.column == receipt.column
+                and resolved.value == receipt.canonical_value
+                for resolved in resolved_turn_filters
+            )
+            for receipt in member_receipts
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension Member receipt와 실제 필터 확인값이 일치하지 않습니다.",
+            )
 
         # 3. ContextAsset 객체 튜플 조립
         items = tuple(
@@ -537,6 +582,7 @@ class PipelineContextService:
                 )
                 for metric_id in business_metric_ids
             ),
+            dimension_member_receipts=member_receipts,
         )
         package = self._context_builder.build(
             request,

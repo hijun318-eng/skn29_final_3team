@@ -22,6 +22,7 @@ type PresentationRun = {
   readonly metrics?: readonly MetricLike[];
   readonly evidence?: {
     readonly period?: { readonly start?: string | null; readonly endExclusive?: string | null } | null;
+    readonly comparisonPeriod?: { readonly start?: string | null; readonly endExclusive?: string | null } | null;
     readonly metrics?: readonly MetricLike[];
   } | null;
 };
@@ -101,7 +102,10 @@ function monthTitle(period?: PeriodLike | null): string {
 
 /** 승인된 기간·지표 메타데이터만으로 제목을 만들고, 부족하면 일반 결과 제목으로 닫는다. */
 export function analysisTitle(run: PresentationRun): string {
-  const period = monthTitle(run.evidence?.period);
+  const period = [
+    monthTitle(run.evidence?.period),
+    monthTitle(run.evidence?.comparisonPeriod),
+  ].filter(Boolean).join("·");
   const metrics = [...new Set((run.metrics?.length ? run.metrics : run.evidence?.metrics ?? [])
     .map((metric) => metric.label?.trim())
     .filter((label): label is string => Boolean(label)))]

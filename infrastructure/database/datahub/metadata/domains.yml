@@ -1,0 +1,34 @@
+# 책임: DataHub Domain·owner 경계를 고정하며 참조 누락 시 canonical 게시를 차단한다.
+domains:
+- description: banquet.walkerhill_v4_3의 검증된 카탈로그 데이터 도메인
+  name: BANQUET
+  urn: urn:li:domain:answervice_banquet
+- description: crm.walkerhill_v4_3의 검증된 카탈로그 데이터 도메인
+  name: CRM
+  urn: urn:li:domain:answervice_crm
+- description: facility.walkerhill_v4_3의 검증된 카탈로그 데이터 도메인
+  name: FACILITY
+  urn: urn:li:domain:answervice_facility
+- description: pms.walkerhill_v4_3의 검증된 카탈로그 데이터 도메인
+  name: PMS
+  urn: urn:li:domain:answervice_pms
+- description: pos.walkerhill_v4_3의 검증된 카탈로그 데이터 도메인
+  name: POS
+  urn: urn:li:domain:answervice_pos
+- description: serving.analytics_v4_3의 검증된 카탈로그 데이터 도메인
+  name: SERVING
+  urn: urn:li:domain:answervice_serving
+lifecycles:
+- description: Approved production lifecycle
+  name: APPROVED
+  urn: urn:li:lifecycleStageType:APPROVED
+owner_groups:
+- description: 승인된 합성 평가 release의 runtime metric·권한·계보를 관리하는 기술 소유 그룹
+  name: Answervice Runtime Stewards
+  urn: urn:li:corpGroup:answervice_runtime_stewards
+schema_version: answervice.canonical-metadata.v1
+source:
+  active_catalog_release_id: walkerhill-analysis-semantics-v1.20260826.2
+  active_projection_sha256: 7b6b14da115f360653df0eb6cc3d5705bd73c77fb5c8630465d09e0a60ae6397
+  datahub_baseline_sha256: 00d7dd8163986ab0ff8b18afb51b440a9d8231156de4c2a2f20c00e4e1f37f13
+  runtime_baseline_sha256: 7b6b14da115f360653df0eb6cc3d5705bd73c77fb5c8630465d09e0a60ae6397

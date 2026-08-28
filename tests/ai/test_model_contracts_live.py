@@ -16,7 +16,7 @@ class LiveModelContractTests(unittest.TestCase):
     def test_release_manifest_has_one_active_v1_contract_for_every_live_node(self):
         manifest = model_release_manifest()
 
-        self.assertEqual("MODEL-RELEASE-v1.39.0", manifest["manifest_version"])
+        self.assertEqual("MODEL-RELEASE-v1.42.0", manifest["manifest_version"])
         self.assertEqual("ACTIVE", manifest["state"])
         self.assertEqual("v1", manifest["schema_contract"])
         self.assertEqual(schema_version(), manifest["schema_version"])
@@ -43,6 +43,7 @@ class LiveModelContractTests(unittest.TestCase):
         )
         for forbidden in ("candidate", "cutover_gates", "rollback"):
             self.assertNotIn(forbidden, manifest)
+        self.assertEqual("node2.sql_only", manifest["nodes"]["node2"]["prompt_id"])
 
     def test_release_entries_are_bound_to_live_prompt_and_schema_hashes(self):
         manifest = model_release_manifest()

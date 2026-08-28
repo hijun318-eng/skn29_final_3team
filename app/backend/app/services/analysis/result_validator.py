@@ -320,6 +320,30 @@ class PipelineResultValidator:
                     "end_exclusive": bindings[end_name],
                 }
             }
+            comparison = time_rules.get("comparison_window")
+            if comparison is not None:
+                if not isinstance(comparison, dict):
+                    raise ValueError("런타임 비교 기간 계약이 유효하지 않습니다.")
+                comparison_start = comparison.get("start_parameter")
+                comparison_end = comparison.get("end_parameter")
+                if (
+                    not isinstance(comparison_start, str)
+                    or not comparison_start
+                    or not isinstance(comparison_end, str)
+                    or not comparison_end
+                ):
+                    raise ValueError("런타임 비교 기간 계약이 유효하지 않습니다.")
+                bound_comparison_edges = (
+                    comparison_start in bindings,
+                    comparison_end in bindings,
+                )
+                if any(bound_comparison_edges) and not all(bound_comparison_edges):
+                    raise ValueError("런타임 비교 기간 파라미터 바인딩이 불완전합니다.")
+                if all(bound_comparison_edges):
+                    time_evidence["comparison_period"] = {
+                        "start": bindings[comparison_start],
+                        "end_exclusive": bindings[comparison_end],
+                    }
         else:
             raise ValueError("지원되지 않는 런타임 시간 선택 mode입니다.")
         filter_rules = [

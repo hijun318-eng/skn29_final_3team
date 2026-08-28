@@ -57,6 +57,9 @@ def test_workflow_is_not_role_or_handoff_scoped():
     ):
         assert obsolete not in source
     assert "python -m pytest -p no:cacheprovider tests -q" in source
+    trigger_source = source[source.index("on:") : source.index("permissions:")]
+    assert re.search(r"(?m)^  push:\s*$", trigger_source)
+    assert "branches:" not in trigger_source
     assert "pull_request:" in source
 
 
@@ -64,5 +67,8 @@ def test_workflow_keeps_read_only_permission_and_common_quality_gate():
     source = _workflow()
     assert source.count("permissions:") == 1
     assert re.search(r"(?m)^permissions:\s*\n  contents: read\s*$", source)
+    assert 'python-version: "3.12"' in source
+    assert source.count("app/backend/requirements.lock.txt") == 2
+    assert "--constraint app/backend/requirements.lock.txt" in source
     assert "needs: [python-tests, frontend, compose-config]" in source
     assert 'if [[ "$result" != "success" ]]; then' in source

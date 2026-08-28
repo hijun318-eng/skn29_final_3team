@@ -1,0 +1,43 @@
+{
+  "receipt_version": "NODE2-HUGGINGFACE-MODEL-v1",
+  "captured_at": "2026-08-26T11:57:25Z",
+  "status": "PASS_PRIVATE_MODEL_UPLOAD_AND_REMOTE_METADATA_VERIFICATION",
+  "production_switch_allowed": false,
+  "repository": {
+    "repo_id": "yoondaesung/answerviceqwen352b",
+    "private": true,
+    "commit_sha": "28e9974a42163c5ca97137622669d40cfc14d73b",
+    "commit_url": "https://huggingface.co/yoondaesung/answerviceqwen352b/commit/28e9974a42163c5ca97137622669d40cfc14d73b",
+    "file_count": 13,
+    "reported_used_storage_bytes": 4568210863
+  },
+  "checkpoint": {
+    "model_weight_path": "model.safetensors",
+    "model_weight_size_bytes": 4548221520,
+    "local_model_weight_sha256": "3e2ff059714318ba0b355e35247704e1a7accfc4a03b8c2ad0122d96982a1dda",
+    "remote_model_weight_sha256": "3e2ff059714318ba0b355e35247704e1a7accfc4a03b8c2ad0122d96982a1dda",
+    "local_merge_manifest_sha256": "db8c3c52c5566711ad0b5c8dca17cbc7f7f3508ff94b0084248efa2282d33d74",
+    "remote_merge_manifest_sha256": "db8c3c52c5566711ad0b5c8dca17cbc7f7f3508ff94b0084248efa2282d33d74",
+    "expected_keys": 632,
+    "saved_keys": 632,
+    "replaced_language_keys": 96,
+    "preserved_base_keys": 536
+  },
+  "checks": {
+    "local_source_hash_verification": "PASS_12_FILES",
+    "private_repository": "PASS",
+    "immutable_commit_sha": "PASS",
+    "remote_file_inventory": "PASS_13_FILES",
+    "remote_weight_lfs_sha256": "PASS_MATCH_LOCAL",
+    "remote_merge_manifest_sha256": "PASS_MATCH_PINNED_WORKER_VALUE",
+    "credential_in_receipt": false
+  },
+  "next_stage": {
+    "runpod_model_name": "yoondaesung/answerviceqwen352b",
+    "runpod_model_revision": "28e9974a42163c5ca97137622669d40cfc14d73b",
+    "requires_read_only_fine_grained_token": true,
+    "requires_worker_registry_push": true,
+    "gpu_preflight": "NOT_RUN",
+    "serverless_endpoint_created": false
+  }
+}

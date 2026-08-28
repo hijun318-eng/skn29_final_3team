@@ -1,0 +1,5 @@
+# RunPod extension installed only after the proven 183-package cu129 lock.
+# Resolve this file with the base lock as a constraint. The official
+# worker-vllm v2.25.2 accepts runpod~=1.12.0; keep one exact SDK version so the
+# worker protocol cannot drift between image builds.
+runpod==1.12.0

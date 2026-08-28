@@ -10,32 +10,12 @@ from catalog_governance import DATASET_QUERY, TECHNICAL_OWNER, GovernancePlan
 from http_client import DataHubMetadataAdminClient
 
 
-TERM_QUERY = """
-query CatalogGlossaryTerm($urn: String!) {
-  glossaryTerm(urn: $urn) {
-    urn exists status { removed }
-    glossaryTermInfo {
-      name description termSource sourceRef
-      customProperties { key value }
-    }
-    ownership {
-      owners {
-        owner { ... on CorpUser { urn } ... on CorpGroup { urn } }
-        type ownershipType { urn }
-      }
-    }
-    domain { domain { urn } }
-  }
-}
-""".strip()
-
-
 async def verify_plan(
     client: DataHubMetadataAdminClient,
     plan: GovernancePlan,
     release_version: str,
 ) -> dict[str, int]:
-    """모든 dataset·field association과 term 본문·lineage의 정확한 일치를 요구한다."""
+    """모든 dataset의 owner·domain·tag·lineage가 계획과 일치하는지 검증한다."""
 
     tag_urns = {
         tag_id: f"urn:li:tag:answervice_{tag_id}" for tag_id in plan.tags
@@ -66,10 +46,6 @@ async def verify_plan(
         }
         if _association_urns(value.get("tags"), "tags", "tag") != expected_tags:
             raise ValueError("catalog dataset tag read-back mismatch")
-        if _association_urns(value.get("glossaryTerms"), "terms", "term") != {
-            plan.dataset_terms[dataset.urn]
-        }:
-            raise ValueError("catalog dataset glossary read-back mismatch")
         schema = _mapping(value.get("schemaMetadata"), "schema metadata")
         schema_fields = {
             _text(_mapping(raw, "schema field").get("fieldPath"), "field path"): raw
@@ -77,25 +53,6 @@ async def verify_plan(
         }
         if set(schema_fields) != {field.name for field in dataset.fields}:
             raise ValueError("catalog field membership read-back mismatch")
-        editable = _mapping(value.get("editableSchemaMetadata"), "editable schema metadata")
-        fields = {
-            _text(_mapping(raw, "editable schema field").get("fieldPath"), "field path"): raw
-            for raw in _list(
-                editable.get("editableSchemaFieldInfo"), "editable schema fields"
-            )
-        }
-        if set(fields) != set(schema_fields):
-            raise ValueError("catalog editable field membership read-back mismatch")
-        for field in dataset.fields:
-            if _mapping(fields[field.name], "editable schema field").get("description") != field.description:
-                raise ValueError("catalog editable field description read-back mismatch")
-            actual = _association_urns(
-                _mapping(fields[field.name], "schema field").get("glossaryTerms"),
-                "terms",
-                "term",
-            )
-            if actual != {plan.field_terms[(dataset.urn, field.name)]}:
-                raise ValueError("catalog field glossary read-back mismatch")
         actual_upstreams = {
             entity.get("urn")
             for relationship in _list_or_empty(
@@ -110,61 +67,12 @@ async def verify_plan(
 
     await asyncio.gather(*(verify_dataset(dataset) for dataset in plan.datasets))
 
-    expected_terms: dict[str, tuple[str, str, str]] = {}
-    for dataset in plan.datasets:
-        expected_terms[plan.dataset_terms[dataset.urn]] = (
-            dataset.display_name,
-            dataset.description,
-            plan.domains[dataset.scope],
-        )
-        for field in dataset.fields:
-            expected_terms[plan.field_terms[(dataset.urn, field.name)]] = (
-                f"{dataset.display_name}.{field.name}",
-                field.description,
-                plan.domains[dataset.scope],
-            )
-
-    async def verify_term(urn: str, expected: tuple[str, str, str]) -> None:
-        async with semaphore:
-            payload = await client.graphql(TERM_QUERY, {"urn": urn})
-        graph = _mapping(payload.get("data"), "GraphQL data")
-        value = _mapping(graph.get("glossaryTerm"), "glossary term")
-        if value.get("urn") != urn or value.get("exists") is not True:
-            raise ValueError("catalog glossary term identity read-back mismatch")
-        # DataHub v1.7은 GlossaryTerm의 status aspect를 GraphQL에서 null로 반환한다.
-        # ``exists``와 exact URN을 활성성의 권위 값으로 사용한다.
-        info = _mapping(value.get("glossaryTermInfo"), "glossary term info")
-        name, description, domain_urn = expected
-        custom = {
-            _text(item.get("key"), "custom property key"): _text(
-                item.get("value"), "custom property value"
-            )
-            for item in _list_or_empty(
-                info.get("customProperties"), "custom properties"
-            )
-            if isinstance(item, Mapping)
-        }
-        if (
-            info.get("name") != name
-            or info.get("description") != description
-            or info.get("termSource") != "INTERNAL"
-            or info.get("sourceRef") != release_version
-            or custom.get("answervice.catalog_release") != release_version
-        ):
-            raise ValueError("catalog glossary term content read-back mismatch")
-        if _owner_urns(value.get("ownership")) != {plan.owner_urn}:
-            raise ValueError("catalog glossary term owner read-back mismatch")
-        domain = _mapping(_mapping(value.get("domain"), "term domain").get("domain"), "term domain entity")
-        if domain.get("urn") != domain_urn:
-            raise ValueError("catalog glossary term domain read-back mismatch")
-
-    await asyncio.gather(*(verify_term(urn, expected) for urn, expected in expected_terms.items()))
     return {
         "datasets": len(plan.datasets),
         "fields": sum(len(dataset.fields) for dataset in plan.datasets),
         "domains": len(plan.domains),
         "tags": len(plan.tags),
-        "glossary_terms": len(expected_terms),
+        "glossary_terms": 0,
         "lineage_edges": len(plan.lineage_edges),
     }
 

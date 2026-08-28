@@ -907,6 +907,76 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(conversation["active_command_id"])
         self.assertIsNone(conversation["lease_expires_at"])
 
+    async def test_pipeline_exception_separates_public_and_durable_error_codes(self) -> None:
+        """시스템 예외는 공개 command code와 별개인 RECOVERY Run 실패로 닫힌다."""
+
+        class AnalysisRepositoryStub:
+            def __init__(self) -> None:
+                self.begun: list[UUID] = []
+                self.failures: list[tuple[UUID, str]] = []
+
+            async def begin_request(self, _question, _parameters, context) -> None:
+                self.begun.append(context.request_id)
+
+            async def fail_run_in_session(
+                self,
+                _session,
+                request_id,
+                error_type,
+            ) -> None:
+                self.failures.append((request_id, error_type))
+
+        analysis_repository = AnalysisRepositoryStub()
+
+        async def submit_failure(
+            _request,
+            context,
+            run_admission_sink,
+            context_receipt_sink,
+        ):
+            self.assertTrue(callable(context_receipt_sink))
+            await run_admission_sink(context)
+            raise ValueError("injected pipeline failure")
+
+        orchestrator = ConversationOrchestrator(
+            repository=self.repo,
+            data_platform=self.data_platform,
+            support=self.support,
+            submit_analysis=submit_failure,
+            analysis_repository_factory=analysis_repository,
+        )
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "pipeline failure",
+        )
+
+        with self.assertRaisesRegex(ValueError, "injected pipeline failure"):
+            await orchestrator.execute_command(
+                conversation["conversation_id"],
+                {
+                    "user_message": "2025년 8월 객실 매출 보여줘",
+                    "idempotency_key": "pipeline-failure",
+                    "expected_head_turn_id": None,
+                },
+                self.context,
+            )
+
+        self.assertEqual([self.context.request_id], analysis_repository.begun)
+        self.assertEqual(
+            [(self.context.request_id, "RECOVERY")],
+            analysis_repository.failures,
+        )
+        command = next(iter(self.repo.commands.values()))
+        self.assertEqual("FAILED", command["status"])
+        self.assertEqual(
+            "CONVERSATION_COMMAND_FAILED",
+            command["error_response"]["code"],
+        )
+        turns = await self.repo.list_turns(conversation["conversation_id"])
+        self.assertEqual(1, len(turns))
+        self.assertEqual("FAILED", turns[0]["terminal_status"])
+        self.assertEqual("CONVERSATION_COMMAND_FAILED", turns[0]["reason_code"])
+
     async def test_lease_heartbeat_renews_current_command(self) -> None:
         renewed: list[tuple[UUID, UUID]] = []
 
@@ -2571,6 +2641,41 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("suggestions", result)
         self.assertEqual("COMPLETED", result["turn"]["command_status"])
         self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual([], self.submitted_requests)
+
+    async def test_unapproved_dimension_member_is_a_typed_filter_error(self) -> None:
+        """승인되지 않은 member는 서비스 장애가 아니라 수정 가능한 조건 오류로 남긴다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "승인 조건 확인")
+        from app.services.context.builder import (
+            ContextBuildError,
+            ContextBuildErrorCode,
+        )
+
+        self.data_platform.search_error = ContextBuildError(
+            ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND,
+            (
+                "요청한 Observation Segment 값은 현재 승인된 값과 일치하지 않습니다. "
+                "승인된 값: OMEGA, SIGMA."
+            ),
+        )
+
+        result = await self.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "선택 기간 DELTA 구간의 수율을 알려줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.FILTER_VALUE_NOT_FOUND.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
+        self.assertIn("OMEGA, SIGMA", result["message"])
+        self.assertEqual("COMPLETED", result["turn"]["command_status"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual(
+            ErrorCode.FILTER_VALUE_NOT_FOUND.value,
+            result["turn"]["reason_code"],
+        )
         self.assertEqual([], self.submitted_requests)
 
     async def test_future_period_is_failed_with_typed_range_error(self) -> None:

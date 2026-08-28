@@ -40,6 +40,11 @@ from app.capability_contracts import (
     SourceReceipt,
 )
 from app.contracts import AnalysisRequest
+from app.adapters.runtime_catalog_repository import (
+    RuntimeCatalogActivationConflict,
+    validate_product_release_model_compatibility,
+)
+from src.ai.model_contracts import model_release_checksum, model_release_manifest
 
 
 def _product_evidence() -> ProductReleaseEvidence:
@@ -166,6 +171,42 @@ def test_product_release_manifest_binds_every_required_evidence_axis() -> None:
     tampered["evidence"]["migration"]["revision"] = "tampered"
     with pytest.raises(ValidationError, match="checksum"):
         ProductReleaseEvidenceManifest.model_validate(tampered)
+
+
+def test_activation_rejects_a_product_from_a_different_model_release() -> None:
+    current_model = ModelReceipt(
+        release_id=str(model_release_manifest()["manifest_version"]),
+        manifest_sha256=model_release_checksum(),
+    )
+    current_evidence = _product_evidence().model_copy(
+        update={"model": current_model}
+    )
+    current = ProductReleaseEvidenceManifest.seal(
+        product_release_id="ANSWERVICE-MVP-INTERNAL:" + "1" * 64,
+        evidence=current_evidence,
+        created_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+
+    validate_product_release_model_compatibility(current.model_dump(mode="json"))
+
+    previous_model = current_evidence.model_copy(
+        update={
+            "release_id": "MODEL-RELEASE-v1.40.0",
+            "manifest_sha256": "2" * 64,
+        }
+    )
+    previous = ProductReleaseEvidenceManifest.seal(
+        product_release_id="ANSWERVICE-MVP-INTERNAL:" + "3" * 64,
+        evidence=current_evidence.model_copy(update={"model": previous_model}),
+        created_at=datetime(2026, 8, 26, tzinfo=timezone.utc),
+    )
+    with pytest.raises(
+        RuntimeCatalogActivationConflict,
+        match="model contract differs",
+    ):
+        validate_product_release_model_compatibility(
+            previous.model_dump(mode="json")
+        )
 
 
 def test_existing_mcp_public_identifier_and_result_schema_are_unchanged() -> None:

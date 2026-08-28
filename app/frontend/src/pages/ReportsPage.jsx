@@ -11,7 +11,6 @@ import {
   ReportListView,
   ReportOperationsPanel,
   ReportAssistantPanel,
-  ReportAssistantOperationsPanel,
   ReportPropertiesPanel,
   ReportTemplateTile,
   ReportToolPanel,
@@ -44,12 +43,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   );
 
   if (page.view === "list") {
-    return <>{page.isAdmin && <ReportAssistantOperationsPanel
-      failures={lifecycle.assistantFailures}
-      onRefresh={lifecycle.loadAssistantOperations}
-      pending={lifecycle.pending}
-      summary={lifecycle.assistantOperations}
-    />}<ReportListView
+    return <ReportListView
       createOpen={lifecycle.createOpen}
       definitionState={lifecycle.definitionState}
       error={lifecycle.error}
@@ -69,7 +63,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       setStatusFilter={lifecycle.setStatusFilter}
       statusFilter={lifecycle.statusFilter}
       visibleDefinitions={lifecycle.visibleDefinitions}
-    /></>;
+    />;
   }
 
   if (page.view === "document" && lifecycle.selectedDefinition) {

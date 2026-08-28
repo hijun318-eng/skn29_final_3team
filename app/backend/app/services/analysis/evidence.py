@@ -162,6 +162,7 @@ def _reduce_context_metric(
     metric: ContextMetric,
     package: ContextPackage,
     rows: tuple[dict[str, object], ...] | list[dict[str, object]],
+    result_suffix: str = "",
 ) -> Decimal | None:
     """Reduce one metric, deriving ratios from their governed SUPPORT operands.
 
@@ -173,15 +174,19 @@ def _reduce_context_metric(
     if metric.reduction != "ratio":
         return _reduce_metric_values(
             metric.reduction,
-            [row.get(metric.result_field) for row in rows],
+            [row.get(f"{metric.result_field}{result_suffix}") for row in rows],
         )
     by_id = {item.id: item for item in package.metrics}
     numerator = by_id.get(metric.numerator_metric_id)
     denominator = by_id.get(metric.denominator_metric_id)
     if numerator is None or denominator is None or not rows:
         return None
-    numerator_values = [row.get(numerator.result_field) for row in rows]
-    denominator_values = [row.get(denominator.result_field) for row in rows]
+    numerator_values = [
+        row.get(f"{numerator.result_field}{result_suffix}") for row in rows
+    ]
+    denominator_values = [
+        row.get(f"{denominator.result_field}{result_suffix}") for row in rows
+    ]
     if any(value is None for value in (*numerator_values, *denominator_values)):
         return None
     numerator_total = sum(Decimal(str(value)) for value in numerator_values)

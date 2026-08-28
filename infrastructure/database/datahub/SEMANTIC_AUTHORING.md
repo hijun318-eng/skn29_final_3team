@@ -76,15 +76,25 @@ Answervice applies that boundary as follows:
 2. Node 1 first detects a named filter from the user's text without touching Trino.
    Presentation and report-action turns, and analysis questions with no named
    filter, perform no dimension suggestion query.
-3. Only the referenced approved dimension may run a bounded live `SELECT DISTINCT`
-   query. A domain with more than 64 values is treated as high-cardinality and no
-   partial candidate list is sent to the model. Complete low-cardinality domains
-   use a short process-local TTL controlled by
+3. A reviewed low-cardinality code set may declare `members` inside its Dimension.
+   Every member binds one canonical value and its aliases to a separately governed
+   DataHub Glossary Term. Publication associates those Terms with the exact Dataset
+   field, includes them in the release manifest and checksum, and verifies the same
+   membership through native DataHub read-back. Runtime then resolves only those
+   approved aliases and records their Term URN, version, and semantic hash in the
+   immutable Context receipt; it does not issue a domain-wide `SELECT DISTINCT`.
+4. Dimensions without an approved member registry retain the bounded live
+   `SELECT DISTINCT` path. A domain with more than 64 values is treated as
+   high-cardinality and no partial candidate list is sent to the model. Complete
+   low-cardinality domains use a short process-local TTL bound to the active Product
+   Release, runtime projection, and canonical semantic checksums; concurrent misses
+   for the same receipt, asset, and column share one in-flight query. Unreceipted
+   requests do not reuse this cache. The TTL is controlled by
    `DIMENSION_VALUE_CACHE_TTL_SECONDS` (30--3,600 seconds; default 300).
-4. If canonicalization is needed, Node 1 receives the complete candidate list once.
-   The selected value is still untrusted until the server performs a parameterized,
-   case-insensitive exact lookup against the same approved field.
-5. A stated restriction is never silently dropped. A candidate that cannot be
+5. Whether a value came from an approved member or dynamic discovery, it remains
+   untrusted until the server performs a parameterized, case-insensitive exact
+   lookup against the same approved field.
+6. A stated restriction is never silently dropped. A candidate that cannot be
    canonicalized remains the exact source span and ends in a typed unresolved-filter
    response if the live lookup cannot prove one match.
 

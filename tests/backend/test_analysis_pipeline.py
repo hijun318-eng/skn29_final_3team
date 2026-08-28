@@ -1231,6 +1231,45 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
         self.assertEqual(1, adapter.execute_count)
+        result = response.data.result
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(("period", RESULT_FIELD), result.table.columns)
+        self.assertEqual(
+            (
+                {"period": "2042-06-01", RESULT_FIELD: 17},
+                {"period": "2042-05-01", RESULT_FIELD: 11},
+            ),
+            result.table.rows,
+        )
+        self.assertIsNotNone(result.chart)
+        assert result.chart is not None
+        self.assertEqual("period", result.chart.x_field)
+        self.assertEqual((RESULT_FIELD,), result.chart.y_fields)
+        self.assertIsNotNone(result.evidence.comparison_period)
+        assert result.evidence.comparison_period is not None
+        self.assertEqual(
+            "2042-05-01",
+            result.evidence.comparison_period.start.isoformat(),
+        )
+        self.assertEqual(2, result.evidence.sampling.returned_rows)
+        self.assertIn("17", result.summary)
+        self.assertIn("11", result.summary)
+
+    async def test_single_period_uses_comparison_capable_asset_without_second_window(self):
+        adapter = AsyncRuntimeDataPlatform(asset=COMPARISON_ASSET, result=QUERY_RESULT)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model_with(node1=NODE1_RESPONSE, node2=VALID_PLAN),
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        result = response.data.result
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIsNone(result.evidence.comparison_period)
 
     async def test_pre_resolved_comparison_keeps_both_windows_and_skips_node1(self):
         original_payload = self.payload

@@ -10,17 +10,24 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from app.adapters.datahub_metadata import GlossaryMetricTerm, GovernedDataset
+from app.adapters.datahub_metadata import (
+    GlossaryDimensionMemberTerm,
+    GlossaryMetricTerm,
+    GovernedDataset,
+)
 from app.adapters.datahub_metadata_values import GovernedMetadataError
 from app.adapters.datahub_metadata_types import metric_rule_matches
 from src.data.governance_contract import (
     MANIFEST_DATASET_KEYS,
+    MANIFEST_DIMENSION_MEMBER_KEYS,
+    MANIFEST_DIMENSION_MEMBER_TERM_KEYS,
     MANIFEST_KEYS,
     MANIFEST_TERM_KEYS,
     asset_semantic_hash,
     catalog_hash,
     canonical_json,
     canonical_sha256,
+    dimension_members,
     glossary_hash,
     metric_source_kind,
     ratio_operand_ids,
@@ -98,7 +105,10 @@ def _validated_release_bundle(
     if len(manifests) != 1:
         raise GovernedMetadataError("DataHub datasets disagree on the release manifest")
     manifest = json.loads(next(iter(manifests)))
-    if not isinstance(manifest, dict) or set(manifest) != MANIFEST_KEYS:
+    if not isinstance(manifest, dict) or set(manifest) not in {
+        MANIFEST_KEYS,
+        MANIFEST_DIMENSION_MEMBER_KEYS,
+    }:
         raise GovernedMetadataError("DataHub release manifest fields are invalid")
     manifest_hash = canonical_sha256(manifest)
     if (
@@ -144,6 +154,18 @@ def _validated_release_bundle(
         if urn in expected_terms:
             raise GovernedMetadataError("DataHub manifest metric term URNs are duplicate")
         expected_terms[urn] = item
+    expected_members = {}
+    for item in manifest.get("dimension_member_terms", []):
+        if not isinstance(item, dict) or set(item) != MANIFEST_DIMENSION_MEMBER_TERM_KEYS:
+            raise GovernedMetadataError(
+                "DataHub manifest dimension member term entry is invalid"
+            )
+        urn = str(item["urn"])
+        if urn in expected_members or urn in expected_terms:
+            raise GovernedMetadataError(
+                "DataHub manifest glossary term URNs are duplicate"
+            )
+        expected_members[urn] = item
     same_catalog_terms = {
         urn: item
         for urn, item in snapshot.terms_by_urn.items()
@@ -154,17 +176,39 @@ def _validated_release_bundle(
         for urn, term in same_catalog_terms.items()
     ):
         raise GovernedMetadataError("DataHub release glossary membership is incomplete")
+    same_catalog_members = {
+        urn: item
+        for urn, item in snapshot.dimension_member_terms_by_urn.items()
+        if item.catalog_checksum == manifest["catalog_sha256"]
+    }
+    if set(same_catalog_members) != set(expected_members) or any(
+        term.dimension_id != expected_members[urn]["dimension_id"]
+        or term.id != expected_members[urn]["member_id"]
+        for urn, term in same_catalog_members.items()
+    ):
+        raise GovernedMetadataError(
+            "DataHub release dimension member glossary membership is incomplete"
+        )
     bundle = _catalog_bundle(
-        same_catalog, same_catalog_terms, snapshot.governance_entities
+        same_catalog,
+        same_catalog_terms,
+        snapshot.governance_entities,
+        same_catalog_members,
     )
     glossary_digest = glossary_hash(bundle)
     if (
-        {item.checksum for item in same_catalog_terms.values()} != {glossary_digest}
+        {
+            item.checksum
+            for item in (*same_catalog_terms.values(), *same_catalog_members.values())
+        }
+        != {glossary_digest}
         or manifest["glossary_sha256"] != glossary_digest
         or manifest["shared_semantic_sha256"] != shared_semantic_hash(bundle)
         or manifest["catalog_sha256"] != catalog_hash(bundle)
         or manifest["dataset_count"] != len(same_catalog)
         or manifest["metric_term_count"] != len(same_catalog_terms)
+        or manifest.get("dimension_member_term_count", 0)
+        != len(same_catalog_members)
         or manifest["column_count"] != sum(len(item.columns) for item in same_catalog.values())
     ):
         raise GovernedMetadataError("DataHub release manifest counts or hashes differ")
@@ -177,10 +221,24 @@ def _validated_release_bundle(
         expected = expected_terms[urn]["semantic_sha256"]
         if expected != canonical_sha256(_term_projection(term)):
             raise GovernedMetadataError("DataHub metric term semantic checksum differs")
+    member_definitions = {
+        item["urn"]: item for item in dimension_members(bundle)
+    }
+    for urn, term in same_catalog_members.items():
+        expected = expected_members[urn]["semantic_sha256"]
+        definition = member_definitions.get(urn)
+        if (
+            definition is None
+            or expected != canonical_sha256(definition)
+            or not _member_term_matches(term, definition)
+        ):
+            raise GovernedMetadataError(
+                "DataHub dimension member term semantic checksum differs"
+            )
     return bundle
 
 
-def _catalog_bundle(datasets, terms, governance_entities):
+def _catalog_bundle(datasets, terms, governance_entities, member_terms=None):
     ordered_datasets = sorted(datasets.values(), key=lambda value: value.urn)
     ordered_terms = sorted(terms.values(), key=lambda value: value.urn)
     representative = ordered_datasets[0]
@@ -211,7 +269,7 @@ def _catalog_bundle(datasets, terms, governance_entities):
         raise GovernedMetadataError(
             "DataHub native governance details differ from the release URNs"
         )
-    for term in ordered_terms:
+    for term in (*ordered_terms, *(member_terms or {}).values()):
         if (
             not term.owner_urns.issubset(governance_urns["owners"])
             or term.domain_urn not in governance_urns["domains"]
@@ -383,3 +441,26 @@ def _term_projection(value: GlossaryMetricTerm) -> dict[str, object]:
         "domain_urn": value.domain_urn,
         "approved_lifecycle_urn": value.lifecycle_urn,
     }
+
+
+def _member_term_matches(
+    value: GlossaryDimensionMemberTerm,
+    expected: dict[str, object],
+) -> bool:
+    """DataHub member Term과 Dataset release에 봉인된 정의를 exact 대조한다."""
+
+    return (
+        len(value.owner_urns) == 1
+        and value.id == expected["id"]
+        and value.dimension_id == expected["dimension_id"]
+        and value.urn == expected["urn"]
+        and value.label == expected["name"]
+        and value.definition == expected["definition"]
+        and list(value.aliases) == expected["aliases"]
+        and value.canonical_value == expected["canonical_value"]
+        and value.version == expected["version"]
+        and next(iter(value.owner_urns)) == expected["owner_urn"]
+        and value.domain_urn == expected["domain_urn"]
+        and value.lifecycle_urn == expected["approved_lifecycle_urn"]
+        and expected["approval_status"] == "APPROVED"
+    )

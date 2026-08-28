@@ -71,7 +71,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
             "fields": sum(len(dataset.fields) for dataset in plan.datasets),
             "domains": len(plan.domains),
             "tags": len(plan.tags),
-            "glossary_terms": len(plan.dataset_terms) + len(plan.field_terms),
+            "glossary_terms": 0,
             "lineage_edges": len(plan.lineage_edges),
         }
         if args.verify:

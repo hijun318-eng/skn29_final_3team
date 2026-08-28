@@ -35,10 +35,15 @@ from src.data.governance_contract import (  # noqa: E402
     catalog_hash,
     datahub_schema_sha1,
     dataset_runtime_property_projection,
+    dimension_member_term_runtime_property_projection,
+    dimension_members,
     release_manifest,
     term_runtime_property_projection,
 )
-from test_datahub_metadata_publication import arbitrary_bundle  # noqa: E402
+from test_datahub_metadata_publication import (  # noqa: E402
+    arbitrary_bundle,
+    bundle_with_dimension_members,
+)
 from test_metric_governance_v2 import _v2_bundle  # noqa: E402
 
 
@@ -159,6 +164,26 @@ def _runtime(bundle):
                 custom_properties={f"{PREFIX}{key}": value for key, value in properties.items()},
             )
         )
+    for definition in dimension_members(bundle):
+        properties = dimension_member_term_runtime_property_projection(
+            definition,
+            manifest,
+        )
+        terms.append(
+            DataHubTerm(
+                urn=definition["urn"],
+                exists=True,
+                name=definition["name"],
+                description=definition["definition"],
+                removed=False,
+                owners=(owner,),
+                domain=domain,
+                lifecycle=lifecycle,
+                custom_properties={
+                    f"{PREFIX}{key}": value for key, value in properties.items()
+                },
+            )
+        )
     inventory = TrinoInventory(tuple(relations), ("query-catalogs", "query-columns"))
     return tuple(sorted(scopes)), inventory, tuple(datasets), tuple(terms)
 
@@ -183,6 +208,26 @@ def test_dynamic_release_is_built_only_after_both_readiness_stages_pass():
     assert release_manifest(result.bundle) == release_manifest(bundle)
 
 
+def test_release_identity_uses_qualified_name_not_business_display_name():
+    """DataHub 업무 표시명은 보존하되 실행 FQN은 qualifiedName으로 대조한다."""
+
+    bundle = arbitrary_bundle()
+    scopes, inventory, datasets, terms = _runtime(bundle)
+    business_named = replace(datasets[0], name="객실 매출 업무 데이터")
+
+    result = asyncio.run(
+        inspect_release(
+            scopes,
+            FakeTrino(inventory),
+            FakeDataHub((business_named, *datasets[1:]), terms),
+        )
+    )
+
+    assert result.report.semantic_release.status == "READY"
+    assert result.bundle is not None
+    assert catalog_hash(result.bundle) == catalog_hash(bundle)
+
+
 def test_v2_release_readback_preserves_hidden_support_rules():
     """live Dataset property가 Glossary에 없는 SUPPORT Rule까지 동일하게 복원한다."""
 
@@ -205,6 +250,26 @@ def test_v2_release_readback_preserves_hidden_support_rules():
         "amount_per_event",
     }
     assert release_manifest(result.bundle) == release_manifest(bundle)
+
+
+def test_dimension_member_terms_round_trip_through_live_release_readback():
+    bundle = bundle_with_dimension_members()
+    scopes, inventory, datasets, terms = _runtime(bundle)
+
+    result = asyncio.run(
+        inspect_release(scopes, FakeTrino(inventory), FakeDataHub(datasets, terms))
+    )
+
+    assert result.report.semantic_release.status == "READY"
+    assert result.report.semantic_release.expected_term_count == 4
+    assert result.bundle is not None
+    assert catalog_hash(result.bundle) == catalog_hash(bundle)
+    assert release_manifest(result.bundle) == release_manifest(bundle)
+    assert {
+        item["urn"]: item for item in result.bundle["dimensions"][0]["members"]
+    } == {
+        item["urn"]: item for item in bundle["dimensions"][0]["members"]
+    }
 
 
 def test_missing_base_dataset_is_distinct_and_blocks_term_lookup():

@@ -340,9 +340,7 @@ class AnalysisRunStartRepositoryMixin:
         joins = normalized(
             [item.as_dict() for item in getattr(package, "join_graph", ())]
         )
-        policies = normalized(
-            [
-                {
+        policy_receipt = {
                     "policy_version": package.policy_version,
                     "time_version": package.time_version,
                     "evidence_cutoff": package.evidence_cutoff,
@@ -356,8 +354,11 @@ class AnalysisRunStartRepositoryMixin:
                     "runtime_contracts": getattr(package, "runtime_contracts", None),
                     "query_strategy": getattr(package, "query_strategy", ""),
                 }
+        if package.dimension_member_receipts:
+            policy_receipt["dimension_member_receipts"] = [
+                asdict(item) for item in package.dimension_member_receipts
             ]
-        )
+        policies = normalized([policy_receipt])
         expected_payload = {
             "user_scope_json": user_scope,
             "assets_json": assets,

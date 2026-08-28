@@ -175,6 +175,38 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
     assert gate.releases == 1
 
 
+@async_test
+async def test_analysis_definition_replay_stores_rate_limit_as_recovery_failure():
+    repository = _AnalysisRepository()
+    replay = AnalysisDefinitionReplay(
+        "postgresql://test",
+        _Controller(),
+        _Gate(acquired=False),
+    )
+
+    with patch(
+        "app.services.report.execution.PostgresAnalysisRepository",
+        return_value=repository,
+    ), patch(
+        "app.services.report.execution.require_active_subject_with_capability",
+        return_value=Principal(OWNER, Role.ANALYST),
+    ):
+        outcome = await replay.execute(
+            owner_id=OWNER,
+            definition_id=str(uuid4()),
+            definition_version=3,
+            as_of=AS_OF,
+            idempotency_key="report:rate-limited",
+            product_release_id="product-report-v1",
+            permission_snapshot_id=permission_snapshot_id(OWNER, Role.ANALYST),
+            semantic_release_id="semantic-report-v1",
+        )
+
+    assert outcome.status is BlockRunStatus.FAILED
+    assert outcome.failure_code is BlockFailureCode.RATE_LIMITED
+    assert repository.finished == (repository.request_id, "RECOVERY")
+
+
 class _ReportRepository:
     def __init__(self) -> None:
         self.records = []

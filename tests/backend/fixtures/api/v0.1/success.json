@@ -24,6 +24,7 @@
         "artifact_id": "00000000-0000-0000-0000-0000000002f9",
         "as_of": "2041-04-02",
         "cached": false,
+        "comparison_period": null,
         "context_release": "context-v1",
         "evidence_cutoff": null,
         "execution": {

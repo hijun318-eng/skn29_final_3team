@@ -8,6 +8,13 @@ DataHub에 등록된 승인 차원(Dimension Business Terms)의 자산 및 컬�
 from __future__ import annotations
 
 from typing import Any
+import unicodedata
+
+from app.services.context.builder_errors import (
+    ContextBuildError,
+    ContextBuildErrorCode,
+)
+from src.data.governance_contract import canonical_sha256
 
 # 허용된 필터 비교 연산자 (동등/부정)
 _ALLOWED_OPERATORS = frozenset({"eq", "neq"})
@@ -40,6 +47,33 @@ def dimension_terms(assets: list[dict[str, object]]) -> dict[str, dict[str, obje
                     "asset_fqn": str(dimension.get("asset_fqn") or asset.get("fqn") or ""),
                     "column": str(dimension.get("column") or dimension.get("field") or ""),
                 },
+                "members": [
+                    {
+                        "id": str(member["id"]),
+                        "term_urn": str(member["urn"]),
+                        "canonical_value": str(member["canonical_value"]),
+                        "aliases": list(map(str, member["aliases"])),
+                        "version": str(member["version"]),
+                        "semantic_sha256": canonical_sha256(
+                            {
+                                "dimension_id": identifier,
+                                "asset_fqn": str(
+                                    dimension.get("asset_fqn")
+                                    or asset.get("fqn")
+                                    or ""
+                                ),
+                                "column": str(
+                                    dimension.get("column")
+                                    or dimension.get("field")
+                                    or ""
+                                ),
+                                **member,
+                            }
+                        ),
+                    }
+                    for member in dimension.get("members", ())
+                    if isinstance(member, dict)
+                ],
             }
     return terms
 
@@ -110,12 +144,96 @@ def resolve_filter_candidates(
         ):
             raise ValueError("Node1 필터 후보가 승인되지 않은 차원 또는 잘못된 값을 참조하고 있습니다.")
         field = dimension_terms[dimension_id]["field"]
+        canonical_value = value_text.strip()
+        members = dimension_terms[dimension_id].get("members")
+        if isinstance(members, list) and members:
+            member = _member_for_text(canonical_value, members)
+            if member is None:
+                dimension_label = str(
+                    next(
+                        iter(dimension_terms[dimension_id].get("aliases", ())),
+                        dimension_id,
+                    )
+                )
+                approved_values = tuple(
+                    dict.fromkeys(str(item["canonical_value"]) for item in members)
+                )
+                raise ContextBuildError(
+                    ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND,
+                    (
+                        f"요청한 {dimension_label} 값은 현재 승인된 값과 일치하지 않습니다. "
+                        f"승인된 값: {', '.join(approved_values)}."
+                    ),
+                )
+            canonical_value = str(member["canonical_value"])
         resolved.append(
             {
                 "asset_fqn": str(field["asset_fqn"]),
                 "column": str(field["column"]),
                 "operator": "neq" if exclude else "eq",
-                "value_text": value_text.strip(),
+                "value_text": canonical_value,
             }
         )
     return resolved
+
+
+def dimension_member_receipts(
+    filter_fields: list[dict[str, str]],
+    dimension_terms: dict[str, dict[str, object]],
+) -> list[dict[str, str]]:
+    """승인 member로 해석된 filter만 immutable Context receipt로 투영한다."""
+
+    by_field = {
+        (
+            str(term.get("field", {}).get("asset_fqn")),
+            str(term.get("field", {}).get("column")),
+        ): (dimension_id, term)
+        for dimension_id, term in dimension_terms.items()
+        if isinstance(term.get("field"), dict)
+    }
+    receipts = []
+    for item in filter_fields:
+        matched = by_field.get((item["asset_fqn"], item["column"]))
+        if matched is None:
+            continue
+        dimension_id, term = matched
+        members = term.get("members")
+        if not isinstance(members, list) or not members:
+            continue
+        member = _member_for_text(item["value_text"], members)
+        if member is None:
+            raise ValueError(
+                "승인 Dimension Member receipt와 필터 값이 일치하지 않습니다."
+            )
+        receipts.append(
+            {
+                "dimension_id": dimension_id,
+                "member_id": str(member["id"]),
+                "term_urn": str(member["term_urn"]),
+                "canonical_value": str(member["canonical_value"]),
+                "version": str(member["version"]),
+                "semantic_sha256": str(member["semantic_sha256"]),
+                "asset_fqn": item["asset_fqn"],
+                "column": item["column"],
+            }
+        )
+    return receipts
+
+
+def _member_for_text(
+    value: str,
+    members: list[dict[str, object]],
+) -> dict[str, object] | None:
+    normalized = unicodedata.normalize("NFKC", value).casefold().strip()
+    matches = [
+        member
+        for member in members
+        if normalized
+        in {
+            unicodedata.normalize("NFKC", str(alias)).casefold().strip()
+            for alias in member.get("aliases", ())
+        }
+    ]
+    if len(matches) > 1:
+        raise ValueError("Dimension Member alias가 중복되어 단일 값으로 해석되지 않습니다.")
+    return matches[0] if matches else None

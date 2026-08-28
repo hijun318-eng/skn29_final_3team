@@ -169,6 +169,10 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
     start: string;
     endExclusive: string;
   } | null;
+  comparisonPeriod?: {
+    start: string;
+    endExclusive: string;
+  } | null;
   snapshot?: {
     cutoff: string;
     selection: "max_source_value_lt_as_of";
@@ -207,6 +211,10 @@ interface WireAnalysisEvidence {
   as_of: string;
   timezone?: string | null;
   period?: {
+    start: string;
+    end_exclusive: string;
+  } | null;
+  comparison_period?: {
     start: string;
     end_exclusive: string;
   } | null;
@@ -459,6 +467,10 @@ export function normalizeAnalysisEvidence(
       start: evidence.period.start,
       endExclusive: evidence.period.end_exclusive,
     } : undefined,
+    comparisonPeriod: evidence.comparison_period ? {
+      start: evidence.comparison_period.start,
+      endExclusive: evidence.comparison_period.end_exclusive,
+    } : undefined,
     snapshot: evidence.snapshot ? {
       cutoff: evidence.snapshot.cutoff,
       selection: evidence.snapshot.selection,
@@ -521,6 +533,11 @@ export function normalizeApiResponse(
   const hasPeriodEvidence = Boolean(
     evidence?.period?.start && evidence?.period?.end_exclusive
   );
+  const hasComparisonPeriodEvidence = !evidence?.comparison_period || Boolean(
+    evidence.comparison_period.start
+    && evidence.comparison_period.end_exclusive
+    && hasPeriodEvidence
+  );
   const hasSnapshotEvidence = Boolean(
     evidence?.snapshot?.cutoff
     && evidence.snapshot.selection === "max_source_value_lt_as_of"
@@ -529,6 +546,7 @@ export function normalizeApiResponse(
     evidence?.artifact_id
     && evidence?.query_id
     && hasPeriodEvidence !== hasSnapshotEvidence
+    && hasComparisonPeriodEvidence
     && sources.length
     && evidence?.gates
     && evidence.gates.g1 === "PASSED"

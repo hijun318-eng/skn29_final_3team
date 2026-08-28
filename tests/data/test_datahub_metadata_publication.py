@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import httpx
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -256,6 +257,76 @@ def arbitrary_bundle():
             "allowed_catalogs": ["ember", "quartz"],
         },
     }
+
+
+def bundle_with_dimension_members():
+    bundle = arbitrary_bundle()
+    bundle["dimensions"][0]["members"] = [
+        {
+            "id": "enterprise",
+            "urn": "urn:li:glossaryTerm:segment_enterprise",
+            "name": "ENTERPRISE",
+            "definition": "Approved enterprise account segment.",
+            "aliases": ["ENTERPRISE", "기업 고객"],
+            "canonical_value": "ENTERPRISE",
+            "version": "glossary-r4",
+            "approval_status": "APPROVED",
+            "owner_urn": OWNER,
+            "domain_urn": DOMAIN,
+            "approved_lifecycle_urn": LIFECYCLE,
+        },
+        {
+            "id": "consumer",
+            "urn": "urn:li:glossaryTerm:segment_consumer",
+            "name": "CONSUMER",
+            "definition": "Approved consumer account segment.",
+            "aliases": ["CONSUMER", "개인 고객"],
+            "canonical_value": "CONSUMER",
+            "version": "glossary-r4",
+            "approval_status": "APPROVED",
+            "owner_urn": OWNER,
+            "domain_urn": DOMAIN,
+            "approved_lifecycle_urn": LIFECYCLE,
+        },
+    ]
+    return bundle
+
+
+def test_dimension_members_are_hashed_and_associated_to_the_governed_field():
+    bundle = bundle_with_dimension_members()
+
+    validate_bundle(bundle)
+    manifest = release_manifest(bundle)
+    aspects = _aspect_index(bundle)
+    asset = bundle["schema_context"]["assets"][1]
+    editable = aspects[asset["urn"]]["editableSchemaMetadata"]
+    segment = next(
+        item
+        for item in editable["editableSchemaFieldInfo"]
+        if item["fieldPath"] == "segment"
+    )
+    field_terms = {
+        item["urn"] for item in segment["glossaryTerms"]["terms"]
+    }
+
+    assert manifest["dimension_member_term_count"] == 2
+    assert {item["member_id"] for item in manifest["dimension_member_terms"]} == {
+        "consumer",
+        "enterprise",
+    }
+    assert field_terms == {
+        "urn:li:glossaryTerm:segment_consumer",
+        "urn:li:glossaryTerm:segment_enterprise",
+    }
+    assert all(urn in aspects for urn in field_terms)
+
+
+def test_dimension_member_alias_collisions_fail_closed():
+    bundle = bundle_with_dimension_members()
+    bundle["dimensions"][0]["members"][1]["aliases"].append("기업 고객")
+
+    with pytest.raises(SemanticMetadataError, match="approved, unique"):
+        validate_bundle(bundle)
 
 
 def test_graphql_dataset_terms_exclude_support_metrics_without_native_terms():

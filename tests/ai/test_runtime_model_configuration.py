@@ -24,7 +24,7 @@ NODE2 = {
     "NODE2_MODEL_PROVIDER": "qwen",
     "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
     "NODE2_MODEL_API_TOKEN": "node2-token",
-    "NODE2_MODEL": "answervice-sql",
+    "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
 }
 
 
@@ -42,10 +42,13 @@ def test_dedicated_sql_route_resolves_served_alias_and_exact_capacity() -> None:
 
     assert sql_route.nodes == ("node2", "node2_repair")
     assert sql_route.provider == "qwen"
-    assert sql_route.model == "answervice-sql"
-    assert sql_route.capacity.base_model == "Qwen/Qwen3.5-4B"
+    assert sql_route.model == "node2-qwen35-2b-full3000-20260825"
+    assert sql_route.capacity.base_model == "Qwen/Qwen3.5-2B"
+    assert sql_route.capacity.snapshot == (
+        "yoondaesung/answerviceqwen352b@28e9974a42163c5ca97137622669d40cfc14d73b"
+    )
     assert sql_route.capacity.context_window_tokens == 5120
-    assert sql_route.capacity.runtime_max_output_tokens == 1280
+    assert sql_route.capacity.runtime_max_output_tokens == 1024
 
 
 @pytest.mark.parametrize("missing", tuple(NODE2))

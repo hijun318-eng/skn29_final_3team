@@ -72,6 +72,25 @@ class GlossaryMetricTerm:
 
 
 @dataclass(frozen=True)
+class GlossaryDimensionMemberTerm:
+    """승인 Dimension Member의 canonical value와 DataHub native governance receipt다."""
+
+    id: str
+    dimension_id: str
+    urn: str
+    label: str
+    aliases: tuple[str, ...]
+    definition: str
+    canonical_value: str
+    version: str
+    checksum: str
+    catalog_checksum: str
+    owner_urns: frozenset[str]
+    domain_urn: str
+    lifecycle_urn: str
+
+
+@dataclass(frozen=True)
 class GovernedDataset:
     """한 dataset의 release fingerprint, entitlement, schema, metric, join·time·query 정책을 불변으로 묶는다."""
     contract_version: str
@@ -274,11 +293,14 @@ class GovernedDataset:
         """Metric binding에 선언된 local typed dimension을 후보 projection에 보완한다.
 
         전역 dimension registry를 바꾸지 않는다. 현재 dataset의 실행 Metric이 실제로
-        선언한 필드 중 typed catalog column role이 ``dimension``인 필드만 release-bound
-        lexical evidence와 함께 추가하므로 임의 attribute가 후보로 열리지 않는다.
+        선언한 필드 중 typed catalog column role이 ``dimension``이거나 grain key
+        ``identifier``인 필드만 release-bound lexical evidence와 함께 추가한다. 컬럼은
+        하나의 role만 가질 수 있으므로, metric이 명시적으로 dimension으로 결속한 grain
+        key까지 거부하면 승인된 다중 grain metric을 후보로 만들 수 없다. 임의 attribute는
+        계속 열지 않는다.
         """
 
-        result = [dict(item) for item in self.dimensions]
+        result = [clone_mapping(item) for item in self.dimensions]
         existing_fields = {
             (str(item.get("asset_fqn") or ""), str(item.get("column") or ""))
             for item in result
@@ -301,7 +323,7 @@ class GovernedDataset:
             description = typed.get("description") if isinstance(typed, dict) else None
             if (
                 not isinstance(typed, dict)
-                or typed.get("role") != "dimension"
+                or typed.get("role") not in {"dimension", "identifier"}
                 or not isinstance(description, str)
                 or not description.strip()
             ):

@@ -33,6 +33,7 @@ function Resolve-AnswerviceSourceProvenance {
         $gitConfigArguments = @(
             '-c', 'core.excludesFile=',
             '-c', 'core.safecrlf=false',
+            '-c', 'core.quotePath=false',
             '-C', $resolvedRoot
         )
 

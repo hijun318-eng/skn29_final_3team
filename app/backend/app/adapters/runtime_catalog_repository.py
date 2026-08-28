@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -14,6 +15,8 @@ from app.adapters.runtime_catalog_projection import (
     RuntimeCatalogProjection,
     RuntimeCatalogProjectionError,
 )
+from app.capability_contracts import ProductReleaseEvidenceManifest
+from src.ai.model_contracts import model_release_checksum, model_release_manifest
 
 
 ACTIVE_RUNTIME_POINTER = "analysis"
@@ -254,6 +257,9 @@ class PostgresRuntimeCatalogProjectionRepository:
                     raise RuntimeCatalogActivationConflict(
                         "runtime catalog projection and product release do not match"
                     )
+                validate_product_release_model_compatibility(
+                    target_row["product_manifest_json"]
+                )
                 _active_from_row(target_row, generation=expected_generation + 1)
                 if current is None:
                     await session.execute(
@@ -426,6 +432,25 @@ def _active_from_row(
         product_release_id=product_release_id,
         generation=observed_generation,
     )
+
+
+def validate_product_release_model_compatibility(document: object) -> None:
+    """현재 모델 계약과 다른 Product가 active pointer가 되는 것을 차단한다."""
+
+    try:
+        manifest = ProductReleaseEvidenceManifest.model_validate(document)
+    except ValidationError as error:
+        raise RuntimeCatalogActivationConflict(
+            "product release evidence manifest is invalid"
+        ) from error
+    expected_release_id = str(model_release_manifest()["manifest_version"])
+    if (
+        manifest.evidence.model.release_id != expected_release_id
+        or manifest.evidence.model.manifest_sha256 != model_release_checksum()
+    ):
+        raise RuntimeCatalogActivationConflict(
+            "product release model contract differs from the active runtime"
+        )
 
 
 def _json(value: object) -> str:

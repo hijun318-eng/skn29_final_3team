@@ -31,6 +31,7 @@ from app.adapters.datahub_metadata_types import GlossaryMetricTerm, metric_rule_
 from app.adapters.legacy_semantic_release import compile_legacy_semantic_release
 from app.adapters.query_search_evidence import (
     compact_candidate_assets as _compact_candidate_assets,
+    governed_metric_specialization_ids as _governed_metric_specialization_ids,
     ranked_matches as _ranked_matches,
     unicode_tokens as _unicode_tokens,
     with_ratio_metrics as _with_ratio_metrics,
@@ -185,6 +186,8 @@ class QueryGovernanceEngine:
             max(0.1, ttl),
         )
         self._verified_projection_lock = asyncio.Lock()
+        self._parity_projection_key: tuple[str, str, int] | None = None
+        self._parity_projection_lock = asyncio.Lock()
 
     async def search_asset_candidates(
         self,
@@ -201,6 +204,7 @@ class QueryGovernanceEngine:
             asset_priorities,
             search_metric_ranks,
             governed_phrases,
+            governed_specialization_ids,
             active_projection,
         ) = await self._search_selection(query, context, for_interpretation=True)
         preferred_metric_ids = self._preferred_metric_ids(context)
@@ -232,6 +236,7 @@ class QueryGovernanceEngine:
                 search_metric_ranks,
                 self._search_mode == "datahub_lexical",
                 governed_phrases=governed_phrases,
+                governed_specialization_ids=governed_specialization_ids,
             )
             if active_projection is not None:
                 source_by_metric = {
@@ -433,6 +438,7 @@ class QueryGovernanceEngine:
         dict[str, int],
         dict[str, int],
         tuple[str, ...],
+        tuple[str, ...],
         ActiveRuntimeCatalogProjection | None,
     ]:
         """질문 증거로 bounded 후보 scope를 고르고 검증된 release 객체와 함께 반환한다."""
@@ -453,6 +459,11 @@ class QueryGovernanceEngine:
                 snapshot,
                 terms,
                 query,
+            )
+            governed_specialization_ids = _governed_metric_specialization_ids(
+                terms,
+                governed_phrases,
+                self._max_candidate_metrics,
             )
             semantic_hits = await self._load_search_evidence(
                 query,
@@ -479,8 +490,27 @@ class QueryGovernanceEngine:
                 datasets,
                 terms,
             )
+            specialization_datasets = self._preferred_metric_datasets(
+                governed_specialization_ids,
+                datasets,
+                terms,
+            )
+            ranked_datasets = tuple(entry[1] for entry in ranked)
+            # DataHub lexical mode에서도 local 전체 snapshot fallback은 허용하지 않는다.
+            # specialization은 그 family의 anchor Dataset/Term이 실제 검색 결과에 연결된
+            # 경우에만 승인 metadata closure로 추가한다.
+            if not (
+                {item.fqn for item in specialization_datasets}
+                & {item.fqn for item in ranked_datasets}
+            ):
+                specialization_datasets = ()
+                governed_specialization_ids = ()
             ordered_by_fqn: dict[str, GovernedDataset] = {}
-            for item in (*preferred_datasets, *(entry[1] for entry in ranked)):
+            for item in (
+                *preferred_datasets,
+                *specialization_datasets,
+                *ranked_datasets,
+            ):
                 ordered_by_fqn.setdefault(item.fqn, item)
             ordered_datasets = tuple(ordered_by_fqn.values())
             if not ordered_datasets:
@@ -559,6 +589,7 @@ class QueryGovernanceEngine:
             asset_priorities,
             search_metric_ranks,
             governed_phrases,
+            governed_specialization_ids,
             active_projection,
         )
 
@@ -864,6 +895,18 @@ class QueryGovernanceEngine:
             raise MetadataUnavailableError(str(error)) from error
         return datasets[0].context_release
 
+    async def catalog_cache_identity(self) -> tuple[str, str, int] | None:
+        """DataHub 전체 readback 없이 active pointer의 cache namespace만 읽는다."""
+
+        if self._projection_repository is None:
+            return None
+        active = await self._projection_repository.load_active()
+        return (
+            active.projection.projection_id,
+            active.product_release_id,
+            active.generation,
+        )
+
     async def _verify_runtime_projection_schema(
         self,
         datasets: tuple[GovernedDataset, ...],
@@ -916,7 +959,7 @@ class QueryGovernanceEngine:
                     raise RuntimeCatalogRepositoryError(
                         "runtime catalog parity loader is unavailable"
                     )
-                snapshot = await self._parity_loader.load()
+                snapshot = await self._load_parity_snapshot(active_projection)
                 expected_release = projection_release.catalog_version
             else:
                 if self._loader is None:  # pragma: no cover - 생성자가 보장한다.
@@ -998,6 +1041,27 @@ class QueryGovernanceEngine:
             else product_release_receipt(release)
         )
         return stages, receipt
+
+    async def _load_parity_snapshot(
+        self,
+        active_projection: ActiveRuntimeCatalogProjection,
+    ) -> CatalogSnapshot:
+        """활성 generation별로 DataHub parity snapshot을 한 번 fresh readback한다."""
+
+        if self._parity_loader is None:  # pragma: no cover - 호출자가 보장한다.
+            raise RuntimeCatalogRepositoryError(
+                "runtime catalog parity loader is unavailable"
+            )
+        key = (
+            active_projection.projection.projection_id,
+            active_projection.product_release_id,
+            active_projection.generation,
+        )
+        async with self._parity_projection_lock:
+            if self._parity_projection_key != key:
+                await self._parity_loader.invalidate()
+                self._parity_projection_key = key
+            return await self._parity_loader.load()
 
     async def _load_search_evidence(
         self,

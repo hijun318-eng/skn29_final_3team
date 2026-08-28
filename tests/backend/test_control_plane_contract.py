@@ -25,6 +25,24 @@ class ControlPlaneContractTest(unittest.TestCase):
             dockerfile,
         )
 
+    def test_backend_release_uses_exact_dependency_constraints(self) -> None:
+        dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
+        lock_lines = [
+            line.strip()
+            for line in (BACKEND / "requirements.lock.txt")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+
+        self.assertTrue(lock_lines)
+        for line in lock_lines:
+            self.assertRegex(line, r"^[A-Za-z0-9_.-]+==[^\s=]+$")
+        self.assertIn(
+            "--constraint app/backend/requirements.lock.txt",
+            dockerfile,
+        )
+
     def test_docker_healthcheck_is_liveness_not_product_readiness(self) -> None:
         dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
         healthcheck = dockerfile[dockerfile.index("HEALTHCHECK") :]

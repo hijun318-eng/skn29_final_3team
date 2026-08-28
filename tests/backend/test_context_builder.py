@@ -13,6 +13,7 @@ from app.services.context.builder import (
     ContextBuildError,
     ContextBuildErrorCode,
     ContextBuildRequest,
+    ContextDimensionMemberReceipt,
     ContextMetric,
     ContextMetricTerm,
     ContextPackageBuilder,
@@ -134,6 +135,28 @@ class ContextPackageBuilderTest(unittest.TestCase):
         self.assertEqual(shadow_request.evidence_cutoff, shadow.evidence_cutoff)
         self.assertNotEqual(legacy.package_hash, shadow.package_hash)
         self.assertNotEqual(shadow.package_hash, changed_release.package_hash)
+
+    def test_dimension_member_receipt_is_preserved_and_changes_package_hash(self) -> None:
+        entitled = frozenset({self.pms.urn, self.crm.urn})
+        receipt = ContextDimensionMemberReceipt(
+            dimension_id="membership_tier",
+            member_id="premier",
+            term_urn="urn:li:glossaryTerm:membership_tier_premier",
+            canonical_value="PREMIER",
+            version="glossary-r4",
+            semantic_sha256="a" * 64,
+            asset_fqn="crm.dbo.members",
+            column="grade",
+        )
+
+        baseline = self.builder.build(self.request(), entitled)
+        governed = self.builder.build(
+            replace(self.request(), dimension_member_receipts=(receipt,)),
+            entitled,
+        )
+
+        self.assertEqual((receipt,), governed.dimension_member_receipts)
+        self.assertNotEqual(baseline.package_hash, governed.package_hash)
 
     def test_glossary_checksum_is_preserved_and_changes_package_hash(self) -> None:
         term = ContextMetricTerm(

@@ -21,6 +21,7 @@ from metadata_contract_primitives import (
     unique_texts,
 )
 from metric_review_transition import READY_STATUS, plan_metric_review_transition
+from metric_review_contract import CONTRACT_VERSION_V1, CONTRACT_VERSION_V2
 from policy_compiler import DECISION_CONTRACT_VERSION_V2
 from src.data.governance_contract import canonical_sha256, catalog_hash
 from src.data.metric_governance import (
@@ -88,6 +89,13 @@ def build_metric_review_approval(
     owner = _review_owner(source, baseline_bundle)
     lifecycle = _approved_lifecycle(baseline_bundle)
     assets = _baseline_assets(baseline_bundle)
+    asset_additions, dimension_additions = _review_additions(source)
+    baseline_fqns = {str(asset["fqn"]) for asset in assets}
+    added_fqns = {str(item["fqn"]) for item in asset_additions}
+    if baseline_fqns & added_fqns:
+        raise SemanticMetadataError(
+            "asset additions cannot redeclare a live baseline asset"
+        )
     asset_fields = {
         str(asset["fqn"]): {
             str(mapping(column, "baseline column")["name"])
@@ -95,6 +103,20 @@ def build_metric_review_approval(
         }
         for asset in assets
     }
+    for item in asset_additions:
+        asset_fields[str(item["fqn"])] = set(
+            unique_texts(
+                mapping(item["grain"], "asset addition grain")["keys"],
+                "asset addition grain keys",
+                non_empty=True,
+            )
+        )
+    _extend_added_asset_fields(
+        asset_fields,
+        added_fqns,
+        array(source.get("metrics"), "review metrics", non_empty=True),
+        dimension_additions,
+    )
     metric_rules = [
         _metric_rule(mapping(item, "review metric"), asset_fields)
         for item in array(source.get("metrics"), "review metrics", non_empty=True)
@@ -132,10 +154,22 @@ def build_metric_review_approval(
                 **deepcopy(mapping(asset["grain"], "baseline asset grain")),
             }
             for asset in assets
+        ]
+        + [
+            {
+                "fqn": item["fqn"],
+                **deepcopy(mapping(item["grain"], "asset addition grain")),
+                "domain_urn": item["domain_urn"],
+            }
+            for item in asset_additions
         ],
         "metric_rules": metric_rules,
         "metric_terms": metric_terms,
-        "dimensions": deepcopy(baseline_bundle["dimensions"]),
+        "dimensions": _merge_dimensions(
+            baseline_bundle["dimensions"],
+            dimension_additions,
+            asset_fields,
+        ),
         "join_graph": deepcopy(baseline_bundle["join_graph"]),
         "time_rules": _decision_time_rules(
             baseline_bundle["time_rules"],
@@ -160,6 +194,118 @@ def build_metric_review_approval(
         "decision": decision,
     }
     return approval
+
+
+def _review_additions(
+    source: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """v2 검토안의 신규 semantic scope를 compact decision 형태로 정규화한다."""
+
+    version = source.get("contract_version")
+    if version == CONTRACT_VERSION_V1:
+        return [], []
+    if version != CONTRACT_VERSION_V2:
+        raise SemanticMetadataError("metric review contract version is unsupported")
+    assets: list[dict[str, Any]] = []
+    observed_assets: set[str] = set()
+    for raw in array(source.get("asset_additions"), "asset additions", limit=64):
+        item = mapping(raw, "asset addition")
+        asset_fqn = text(item.get("fqn"), "asset addition fqn")
+        if asset_fqn in observed_assets:
+            raise SemanticMetadataError("asset additions are duplicate")
+        observed_assets.add(asset_fqn)
+        assets.append(
+            {
+                "fqn": asset_fqn,
+                "grain": deepcopy(
+                    dict(mapping(item.get("grain"), "asset addition grain"))
+                ),
+                "domain_urn": text(
+                    item.get("domain_urn"),
+                    "asset addition domain URN",
+                ),
+            }
+        )
+    dimensions = [
+        deepcopy(dict(mapping(item, "dimension addition")))
+        for item in array(
+            source.get("dimension_additions"),
+            "dimension additions",
+            limit=64,
+        )
+    ]
+    return sorted(assets, key=lambda item: str(item["fqn"])), sorted(
+        dimensions,
+        key=lambda item: str(item["id"]),
+    )
+
+
+def _extend_added_asset_fields(
+    asset_fields: dict[str, set[str]],
+    added_fqns: set[str],
+    review_metrics: list[Any],
+    dimension_additions: list[dict[str, Any]],
+) -> None:
+    """SQL 검증을 통과한 신규 asset에서 승인 결정이 사용하는 field만 보존한다."""
+
+    for raw in review_metrics:
+        metric = mapping(raw, "review metric")
+        source = mapping(metric.get("source"), "review metric source")
+        asset_fqn = str(source.get("asset_fqn"))
+        if source.get("kind") != "COLUMN" or asset_fqn not in added_fqns:
+            continue
+        grain = mapping(metric.get("grain"), "review metric grain")
+        time = mapping(metric.get("time"), "review metric time")
+        asset_fields[asset_fqn].update(
+            {
+                text(source.get("column"), "review metric source column"),
+                text(time.get("field"), "review metric time field"),
+                *unique_texts(
+                    grain.get("keys"),
+                    "review metric grain keys",
+                    non_empty=True,
+                ),
+                *unique_texts(
+                    grain.get("dimensions"),
+                    "review metric grain dimensions",
+                ),
+            }
+        )
+    for dimension in dimension_additions:
+        asset_fqn = str(dimension.get("asset_fqn"))
+        if asset_fqn in added_fqns:
+            asset_fields[asset_fqn].add(
+                text(dimension.get("column"), "dimension addition column")
+            )
+
+
+def _merge_dimensions(
+    baseline_dimensions: object,
+    additions: list[dict[str, Any]],
+    asset_fields: Mapping[str, set[str]],
+) -> list[dict[str, Any]]:
+    """기존 dimension identity를 보존하고 신규 ID·field 충돌을 닫는다."""
+
+    result = [
+        deepcopy(dict(mapping(item, "baseline dimension")))
+        for item in array(baseline_dimensions, "baseline dimensions", limit=64)
+    ]
+    observed = {str(item["id"]) for item in result}
+    for item in additions:
+        dimension_id = text(item.get("id"), "dimension addition id")
+        asset_fqn = text(item.get("asset_fqn"), "dimension addition asset")
+        column = text(item.get("column"), "dimension addition column")
+        if (
+            dimension_id in observed
+            or asset_fqn not in asset_fields
+            or column not in asset_fields[asset_fqn]
+        ):
+            raise SemanticMetadataError(
+                "dimension addition conflicts or references an unreviewed field"
+            )
+        observed.add(dimension_id)
+        result.append(deepcopy(item))
+    return result
 
 
 def unwrap_metric_review_approval(document: Mapping[str, Any]) -> dict[str, Any]:

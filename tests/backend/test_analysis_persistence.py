@@ -411,7 +411,7 @@ async def test_direct_analysis_returns_distinct_retryable_error_when_artifact_pe
     assert payload["error"]["code"] == "ARTIFACT_PERSIST_FAILED"
     assert payload["error"]["retryable"] is True
     assert payload["meta"]["trace_id"] == request_context.trace_id
-    assert repository.finished == "ARTIFACT_PERSIST_FAILED"
+    assert repository.finished == "PERSISTENCE"
 
 
 @async_test

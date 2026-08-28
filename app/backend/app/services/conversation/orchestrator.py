@@ -802,14 +802,18 @@ class ConversationOrchestrator:
                 cancel_check and cancel_check()
             )
 
-        async def _commit_command_failure(error_data: dict[str, Any]) -> None:
+        async def _commit_command_failure(
+            error_data: dict[str, Any],
+            *,
+            analysis_error_type: str,
+        ) -> None:
             failure_committed = False
             if analysis_started and analysis_repo is not None:
                 async def _write_analysis_failure(session: Any) -> None:
                     await analysis_repo.fail_run_in_session(
                         session,
                         context.request_id,
-                        str(error_data["code"]),
+                        analysis_error_type,
                     )
 
                 try:
@@ -1091,12 +1095,15 @@ class ConversationOrchestrator:
                 if error.code in {
                     ContextBuildErrorCode.METRIC_NOT_AVAILABLE,
                     ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                    ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND,
                     ContextBuildErrorCode.ANALYSIS_SHAPE_REQUIRED,
                 }:
                     if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
                         public_code = ErrorCode.METRIC_NOT_AVAILABLE
                     elif error.code is ContextBuildErrorCode.OUT_OF_DATA_RANGE:
                         public_code = ErrorCode.OUT_OF_DATA_RANGE
+                    elif error.code is ContextBuildErrorCode.FILTER_VALUE_NOT_FOUND:
+                        public_code = ErrorCode.FILTER_VALUE_NOT_FOUND
                     else:
                         public_code = ErrorCode.CONTEXT_INCOMPLETE
                     public_error = {
@@ -1281,7 +1288,10 @@ class ConversationOrchestrator:
                             "retryable": True,
                             "required_action": "RETRY",
                         }
-                        await _commit_command_failure(rate_limited)
+                        await _commit_command_failure(
+                            rate_limited,
+                            analysis_error_type="RECOVERY",
+                        )
                         return rate_limited
 
                 async def _admit_analysis_run(
@@ -1616,7 +1626,8 @@ class ConversationOrchestrator:
                     "code": ErrorCode.QUERY_TIMEOUT.value,
                     "message": "분석 명령의 전체 실행 시간이 초과되었습니다.",
                     "retryable": True,
-                }
+                },
+                analysis_error_type="QUERY",
             )
             raise
         except Exception as error:
@@ -1626,7 +1637,10 @@ class ConversationOrchestrator:
                 "message": "대화 명령 실행을 안전하게 종료했습니다.",
                 "retryable": True,
             }
-            await _commit_command_failure(error_data)
+            await _commit_command_failure(
+                error_data,
+                analysis_error_type="RECOVERY",
+            )
             raise
         finally:
             lease_stop.set()

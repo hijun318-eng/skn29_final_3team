@@ -61,6 +61,48 @@ DATASET_MANIFEST_KEYS = frozenset(
     }
 )
 TERM_MANIFEST_KEYS = frozenset({"id", "urn", "semantic_sha256"})
+DIMENSION_MEMBER_TERM_MANIFEST_KEYS = frozenset(
+    {"dimension_id", "member_id", "urn", "semantic_sha256"}
+)
+DIMENSION_MEMBER_TERM_RUNTIME_PROPERTY_KEYS = frozenset(
+    {
+        "term_kind",
+        "dimension_id",
+        "member_id",
+        "canonical_value",
+        "aliases",
+        "approval_status",
+        "catalog_sha256",
+        "glossary_sha256",
+        "glossary_version",
+    }
+)
+RELEASE_MANIFEST_DIMENSION_MEMBER_KEYS = RELEASE_MANIFEST_KEYS | {
+    "dimension_member_terms",
+    "dimension_member_term_count",
+}
+
+
+def dimension_members(bundle: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Dimension에 중첩된 승인 member를 dimension identity와 함께 정렬한다."""
+
+    result = []
+    for dimension in bundle["dimensions"]:
+        for member in dimension.get("members", ()):  # 기존 release에는 key가 없다.
+            result.append(
+                {
+                    "dimension_id": dimension["id"],
+                    "asset_fqn": dimension["asset_fqn"],
+                    "column": dimension["column"],
+                    **dict(member),
+                }
+            )
+    return sorted(
+        result,
+        key=lambda item: (item["dimension_id"], item["id"]),
+    )
+
+
 def canonical_json(value: object) -> str:
     """Unicode를 보존하고 key를 정렬한 공백 없는 JSON으로 직렬화해 환경과 무관한 hash 입력을 만든다."""
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -206,6 +248,7 @@ def validate_governance_reference_coverage(bundle: Mapping[str, Any]) -> None:
     governed = [
         *bundle["schema_context"]["assets"],
         *bundle["metric_terms"],
+        *dimension_members(bundle),
     ]
     references = {
         "owners": {item["owner_urn"] for item in governed},
@@ -224,9 +267,12 @@ def validate_governance_reference_coverage(bundle: Mapping[str, Any]) -> None:
 
 
 def glossary_projection(bundle: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """metric term을 URN 순서로 복사해 glossary checksum의 결정론적 입력을 만든다."""
+    """Metric·Dimension Member term을 URN 순서로 복사해 glossary checksum 입력을 만든다."""
     return sorted(
-        (dict(item) for item in bundle["metric_terms"]),
+        (
+            *(dict(item) for item in bundle["metric_terms"]),
+            *(dict(item) for item in dimension_members(bundle)),
+        ),
         key=lambda item: item["urn"],
     )
 
@@ -297,7 +343,7 @@ def release_manifest(bundle: Mapping[str, Any]) -> dict[str, Any]:
                 "urn": term["urn"],
                 "semantic_sha256": canonical_sha256(term),
             }
-            for term in glossary_projection(bundle)
+            for term in sorted(bundle["metric_terms"], key=lambda item: item["urn"])
         ],
         "dataset_count": len(assets),
         "column_count": sum(len(asset["columns"]) for asset in assets),
@@ -306,12 +352,38 @@ def release_manifest(bundle: Mapping[str, Any]) -> dict[str, Any]:
             shared_semantic_projection(bundle)
         ),
     }
+    members = dimension_members(bundle)
+    if members:
+        manifest["dimension_member_terms"] = [
+            {
+                "dimension_id": member["dimension_id"],
+                "member_id": member["id"],
+                "urn": member["urn"],
+                "semantic_sha256": canonical_sha256(member),
+            }
+            for member in sorted(members, key=lambda item: item["urn"])
+        ]
+        manifest["dimension_member_term_count"] = len(members)
     # manifest field를 exact set으로 고정해야 publisher/runtime version drift가 조용히 무시되지 않는다.
-    _require_exact_keys(manifest, RELEASE_MANIFEST_KEYS, "release manifest")
+    _require_exact_keys(
+        manifest,
+        (
+            RELEASE_MANIFEST_DIMENSION_MEMBER_KEYS
+            if members
+            else RELEASE_MANIFEST_KEYS
+        ),
+        "release manifest",
+    )
     for item in manifest["datasets"]:
         _require_exact_keys(item, DATASET_MANIFEST_KEYS, "dataset manifest entry")
     for item in manifest["metric_terms"]:
         _require_exact_keys(item, TERM_MANIFEST_KEYS, "term manifest entry")
+    for item in manifest.get("dimension_member_terms", ()):
+        _require_exact_keys(
+            item,
+            DIMENSION_MEMBER_TERM_MANIFEST_KEYS,
+            "dimension member term manifest entry",
+        )
     return manifest
 
 
@@ -434,6 +506,31 @@ def term_runtime_property_projection(
     return result
 
 
+def dimension_member_term_runtime_property_projection(
+    member: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> dict[str, str]:
+    """승인 Dimension Member를 DataHub Glossary Term custom property로 투영한다."""
+
+    result = {
+        "term_kind": "DIMENSION_MEMBER",
+        "dimension_id": str(member["dimension_id"]),
+        "member_id": str(member["id"]),
+        "canonical_value": str(member["canonical_value"]),
+        "aliases": canonical_json(member["aliases"]),
+        "approval_status": str(member["approval_status"]),
+        "catalog_sha256": str(manifest["catalog_sha256"]),
+        "glossary_sha256": str(manifest["glossary_sha256"]),
+        "glossary_version": str(member["version"]),
+    }
+    _require_exact_keys(
+        result,
+        DIMENSION_MEMBER_TERM_RUNTIME_PROPERTY_KEYS,
+        "dimension member term properties",
+    )
+    return result
+
+
 def _require_exact_keys(
     value: Mapping[str, Any], expected: frozenset[str], name: str
 ) -> None:
@@ -505,5 +602,7 @@ def metric_asset_fqns(
 MANIFEST_KEYS = RELEASE_MANIFEST_KEYS
 MANIFEST_DATASET_KEYS = DATASET_MANIFEST_KEYS
 MANIFEST_TERM_KEYS = TERM_MANIFEST_KEYS
+MANIFEST_DIMENSION_MEMBER_KEYS = RELEASE_MANIFEST_DIMENSION_MEMBER_KEYS
+MANIFEST_DIMENSION_MEMBER_TERM_KEYS = DIMENSION_MEMBER_TERM_MANIFEST_KEYS
 DATASET_PROPERTY_KEYS = DATASET_RUNTIME_PROPERTY_KEYS
 TERM_PROPERTY_KEYS = TERM_RUNTIME_PROPERTY_KEYS

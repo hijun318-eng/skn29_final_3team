@@ -41,6 +41,8 @@ assert.match(viteConfig, /composeMode \? "http:\/\/127\.0\.0\.1:28000"/);
 assert.match(viteConfig, /composeMode \? "\/api"/);
 assert.match(frontendCompose, /VITE_BACKEND_BASE_URL: "\$\{VITE_BACKEND_BASE_URL:-\/api\}"/);
 assert.match(frontendDockerfile, /ARG VITE_BACKEND_BASE_URL=\/api/);
+assert.match(frontendDockerfile, /^FROM node:24-alpine@sha256:[a-f0-9]{64} AS build$/m);
+assert.match(frontendDockerfile, /^FROM nginx:1\.28-alpine@sha256:[a-f0-9]{64}$/m);
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(resolveRoute("/").path, "/agent");
 assert.equal(resolveRoute("/agent").page, "chat");
@@ -161,10 +163,12 @@ assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 
 assert.match(source("App.jsx"), /현재 계정에 허용된 서비스 메뉴가 없습니다/);
 assert.match(source("App.jsx"), /<AppSidebar page=\{route\.page\} role=\{role\} capabilities=\{capabilities\}/);
 assert.match(source("components/layout/AppSidebar.jsx"), /hasCapability\(capabilities, item\.capability\)/);
+assert.match(source("components/layout/AppSidebar.jsx"), /inert=\{!open\} aria-hidden=\{!open\}/);
 assert.match(source("authorization.ts"), /platform_admin/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
-assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadAssistantOperations\(\)/);
+assert.doesNotMatch(reportSources.page, /ReportAssistantOperationsPanel/);
+assert.doesNotMatch(reportSources.lifecycle, /loadAssistantOperations/);
 assert.match(source("api/reportClient.ts"), /getAssistantOperationsSummary/);
 assert.match(source("api/reportClient.ts"), /\/reports\/assistant\/operations\/summary/);
 assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);
@@ -384,6 +388,7 @@ const apiResponse = {
       evidence: {
         artifact_id: "artifact-1", query_id: "query-1", as_of: "2030-01-02", timezone: "Asia/Seoul",
         period: { start: "2030-01-01", end_exclusive: "2030-01-03" }, filters: {}, cached: false,
+        comparison_period: { start: "2029-12-01", end_exclusive: "2030-01-01" },
         context_release: "context-v1",
         product_release_id: "walkerhill-v4.3-sql-20260815-derived.1",
         evidence_cutoff: "2026-08-15",
@@ -416,6 +421,10 @@ assert.equal(normalized.metrics[0].definition, "Metric definition");
 assert.equal(normalized.metrics[0].resultField, "metric");
 assert.equal(normalized.evidence.metrics[0].definition, "Metric definition");
 assert.equal(normalized.evidence.productReleaseId, "walkerhill-v4.3-sql-20260815-derived.1");
+assert.deepEqual(normalized.evidence.comparisonPeriod, {
+  start: "2029-12-01",
+  endExclusive: "2030-01-01",
+});
 assert.equal(normalized.evidence.evidenceCutoff, "2026-08-15");
 assert.equal(normalized.evidence.models[0].promptId, "node3-prompt");
 assert.equal(normalized.evidence.gates.g3, "PASSED");
@@ -431,6 +440,7 @@ assert.equal(normalized.meta.synthetic, undefined);
 
 const snapshotResponse = structuredClone(apiResponse);
 delete snapshotResponse.data.result.evidence.period;
+delete snapshotResponse.data.result.evidence.comparison_period;
 snapshotResponse.data.result.evidence.snapshot = {
   cutoff: "2030-01-02",
   selection: "max_source_value_lt_as_of",

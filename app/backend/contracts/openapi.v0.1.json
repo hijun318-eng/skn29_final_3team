@@ -1395,6 +1395,16 @@
             "title": "Cached",
             "type": "boolean"
           },
+          "comparison_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "context_release": {
             "anyOf": [
               {

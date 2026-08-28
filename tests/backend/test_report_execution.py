@@ -95,6 +95,22 @@ class _AnalysisRepository:
                 "period_end_exclusive": "2026-07-01",
                 "property": "walkerhill",
             },
+            "semantic_request": {
+                "resolved_slots": {
+                    "metric_id": "reviewed_measure",
+                    "metric_ids": ["reviewed_measure"],
+                    "dimension_fields": [],
+                    "user_filters": [],
+                    "time_range": {
+                        "start": "2026-06-01",
+                        "end_exclusive": "2026-07-01",
+                    },
+                    "comparison_time_range": None,
+                    "analysis_operation": "aggregate",
+                    "analysis_time_bucket": None,
+                    "result_limit": None,
+                }
+            },
         }
 
     async def begin_run(self, definition, context, as_of, idempotency_key, parameters):
@@ -168,6 +184,8 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
     assert outcome.policy_version == "policy-current"
     assert repository.parameters == {"property": "walkerhill"}
     assert controller.payload.parameters == {"property": "walkerhill"}
+    assert controller.payload.resolved_slots is not None
+    assert controller.payload.resolved_slots.resolved_metric_ids == ("reviewed_measure",)
     assert repository.as_of.isoformat() == "2026-08-15"
     assert repository.context.product_release_id == "product-report-v1"
     assert repository.context.semantic_release_id == "semantic-report-v1"

@@ -65,6 +65,115 @@ def build_structured_analysis_request(
     return AnalysisRequest(question=user_message, resolved_slots=resolved)
 
 
+def build_replay_analysis_request(
+    definition: dict[str, Any],
+    parameters: dict[str, object],
+) -> AnalysisRequest:
+    """저장 시 확정된 슬롯으로 재실행 요청을 만들고 현재 거버넌스에서 다시 검증한다."""
+
+    semantic_request = definition.get("semantic_request")
+    snapshot = (
+        semantic_request.get("resolved_slots")
+        if isinstance(semantic_request, dict)
+        else None
+    )
+    return AnalysisRequest(
+        question=str(definition["question"]),
+        parameters=parameters,
+        resolved_slots=_resolved_slots_from_snapshot(snapshot, parameters),
+    )
+
+
+def _resolved_slots_from_snapshot(
+    snapshot: object,
+    parameters: dict[str, object],
+) -> ResolvedSlots | None:
+    """대화 Turn의 승인 슬롯 snapshot만 공개 ``ResolvedSlots`` 계약으로 축소한다."""
+
+    if not isinstance(snapshot, dict):
+        return None
+    metric_ids = tuple(
+        str(item)
+        for item in snapshot.get("metric_ids", ())
+        if isinstance(item, str) and item.strip()
+    )
+    metric_id = snapshot.get("metric_id")
+    if not isinstance(metric_id, str) or not metric_id.strip():
+        metric_id = None
+    if not metric_ids and metric_id is None:
+        return None
+
+    raw_dimensions = snapshot.get("dimension_ids")
+    if not isinstance(raw_dimensions, (list, tuple)):
+        raw_dimensions = snapshot.get("dimension_fields", ())
+    dimension_ids = tuple(
+        str(item.get("column"))
+        if isinstance(item, dict) and item.get("column")
+        else str(item)
+        for item in raw_dimensions
+        if (isinstance(item, dict) and item.get("column"))
+        or (isinstance(item, str) and item)
+    )
+    raw_filters = snapshot.get("user_filters", ())
+    user_filters = tuple(
+        {str(key): str(value) for key, value in item.items() if value is not None}
+        for item in raw_filters
+        if isinstance(item, dict)
+    )
+    period = snapshot.get("time_range")
+    comparison_period = snapshot.get("comparison_time_range")
+    parameter_period_start = parameters.get("period_start")
+    parameter_period_end = parameters.get("period_end_exclusive")
+    period_start = (
+        parameter_period_start
+        if isinstance(parameter_period_start, str)
+        else period.get("start")
+        if isinstance(period, dict)
+        else None
+    )
+    period_end_exclusive = (
+        parameter_period_end
+        if isinstance(parameter_period_end, str)
+        else period.get("end_exclusive")
+        if isinstance(period, dict)
+        else None
+    )
+    return ResolvedSlots(
+        metric_id=metric_id,
+        metric_ids=metric_ids,
+        dimension_ids=dimension_ids,
+        user_filters=user_filters,
+        period_start=str(period_start) if period_start is not None else None,
+        period_end_exclusive=(
+            str(period_end_exclusive)
+            if period_end_exclusive is not None
+            else None
+        ),
+        comparison_period_start=(
+            str(comparison_period.get("start"))
+            if isinstance(comparison_period, dict) and comparison_period.get("start")
+            else None
+        ),
+        comparison_period_end_exclusive=(
+            str(comparison_period.get("end_exclusive"))
+            if isinstance(comparison_period, dict)
+            and comparison_period.get("end_exclusive")
+            else None
+        ),
+        analysis_operation=(
+            str(snapshot["analysis_operation"])
+            if snapshot.get("analysis_operation") is not None
+            else None
+        ),
+        analysis_time_bucket=(
+            str(snapshot["analysis_time_bucket"])
+            if snapshot.get("analysis_time_bucket") is not None
+            else None
+        ),
+        result_limit=snapshot.get("result_limit"),
+    )
+
+
 def extract_artifact_id(analysis_response: Any) -> UUID | None:
     """공개 응답의 artifact 또는 evidence 위치에서 동일한 artifact UUID를 추출한다."""
 

@@ -76,6 +76,7 @@ from app.api.analysis_router_support import (
 from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis import AnalysisService, analysis_progress
 from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
+from app.services.conversation.analysis_request import build_replay_analysis_request
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.readiness import AppDatabaseReadiness
 
@@ -469,10 +470,7 @@ async def replay_analysis_definition(
 
     try:
         response = await _controller().submit(
-            AnalysisRequest(
-                question=definition["question"],
-                parameters=parameters,
-            ),
+            build_replay_analysis_request(definition, parameters),
             replay_context,
             execution.update,
             context_receipt_sink=_persist_context_receipt,

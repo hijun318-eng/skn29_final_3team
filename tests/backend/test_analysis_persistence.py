@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from functools import wraps
 from pathlib import Path
 from sys import path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -275,6 +275,67 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert artifact["metrics"] == artifact["evidence"].metric_values
     assert "sql" not in artifact
     assert "parameters" not in artifact
+
+
+@async_test
+async def test_replay_uses_saved_resolved_slots_for_context_dependent_question():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    repository.question = "4월은?"
+    repository.parameters = {
+        "period_start": "2026-04-01",
+        "period_end_exclusive": "2026-05-01",
+    }
+    repository.definition["semantic_request"] = {
+        "context_release": "fixture-context-v1",
+        "resolved_slots": {
+            "metric_id": "reviewed_measure",
+            "metric_ids": ["reviewed_measure"],
+            "dimension_fields": [],
+            "user_filters": [],
+            "time_range": {
+                "start": "2026-04-01",
+                "end_exclusive": "2026-05-01",
+            },
+            "comparison_time_range": None,
+            "analysis_operation": "aggregate",
+            "analysis_time_bucket": None,
+            "result_limit": None,
+        },
+    }
+    model = MetadataDrivenAnalysisModel()
+    model.normalize_question = AsyncMock(
+        side_effect=AssertionError("saved replay must not reinterpret an elliptical question")
+    )
+    controller = AnalysisController(
+        AnalysisService(AnalysisRuntimeDataPlatformFake(), model),
+        RoutingService(),
+    )
+
+    with (
+        patch.object(analysis_api, "_analysis_repository", return_value=repository),
+        patch.object(analysis_api, "_controller", return_value=controller),
+    ):
+        replayed = await analysis_api.replay_analysis_definition(
+            repository.definition_id,
+            ReplayAnalysisRequest(
+                idempotency_key="saved-resolved-slots",
+                parameters={
+                    "period_start": "2026-05-01",
+                    "period_end_exclusive": "2026-06-01",
+                },
+            ),
+            context(owner),
+        )
+
+    assert replayed["status"] == "SUCCEEDED"
+    assert model.normalize_question.await_count == 0
+    assert repository.finished[0].data.result.evidence.metrics[0].metric_id == "reviewed_measure"
+    assert repository.finished[0].data.result.evidence.period.start.isoformat() == "2026-05-01"
+    assert (
+        repository.finished[0].data.result.evidence.period.end_exclusive.isoformat()
+        == "2026-06-01"
+    )
 
 
 @async_test

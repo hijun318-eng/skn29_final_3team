@@ -22,13 +22,13 @@ from app.authorization import permission_snapshot_id as build_permission_snapsho
 from app.auth import AuthenticationError, require_active_subject_with_capability
 from app.context import ContextValidationError
 from app.contracts import (
-    AnalysisRequest,
     AnalysisStatus,
     Capability,
     ErrorCode,
     RequestContext,
 )
 from app.controllers.analysis_controller import AnalysisController
+from app.services.conversation.analysis_request import build_replay_analysis_request
 from src.report.domain import BlockFailureCode, BlockRunStatus, ReportRun, RunStatus
 
 _PUBLIC_FAILURES = {
@@ -207,10 +207,7 @@ class AnalysisDefinitionReplay:
 
             try:
                 response = await self._controller.submit(
-                    AnalysisRequest(
-                        question=definition["question"],
-                        parameters=parameters,
-                    ),
+                    build_replay_analysis_request(definition, parameters),
                     context,
                     execution.update,
                     context_receipt_sink=_persist_context_receipt,

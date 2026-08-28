@@ -26,8 +26,16 @@ class AnalysisDefinitionRepositoryMixin:
     """
 
     @staticmethod
-    def _definition(row, *, replay: bool = False) -> dict[str, Any]:
+    def _definition(
+        row,
+        *,
+        replay: bool = False,
+        resolved_slots: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         parameters = dict(row["parameters"])
+        semantic_request = dict(row["semantic_request"])
+        if resolved_slots and not semantic_request.get("resolved_slots"):
+            semantic_request["resolved_slots"] = dict(resolved_slots)
         definition = {
             "contract_version": ANALYSIS_PERSISTENCE_VERSION,
             "definition_id": row["definition_id"],
@@ -36,13 +44,38 @@ class AnalysisDefinitionRepositoryMixin:
             "title": row["title"],
             "question": row["question_text_redacted"],
             "parameter_types": _parameter_types(parameters),
-            "semantic_request": dict(row["semantic_request"]),
+            "semantic_request": semantic_request,
             "parameter_schema": dict(row["parameter_schema"]),
             "created_at": row["created_at"],
         }
         if replay:
             definition.update(question=row["question_text_redacted"], parameters=parameters)
         return definition
+
+    @staticmethod
+    async def _resolved_slots_for_source(
+        session,
+        source_request_id: str | UUID,
+    ) -> dict[str, Any]:
+        """성공한 대화 분석 Turn의 확정 슬롯을 저장 정의용 불변 snapshot으로 읽는다."""
+
+        value = (
+            await session.execute(
+                text(
+                    """
+                    SELECT resolved_slots
+                    FROM chat.turns
+                    WHERE request_id = :request_id
+                      AND route = 'ANALYSIS'
+                      AND artifact_id IS NOT NULL
+                    ORDER BY created_at DESC, turn_id DESC
+                    LIMIT 1
+                    """
+                ),
+                {"request_id": _uuid(source_request_id, "source_request_id")},
+            )
+        ).scalar_one_or_none()
+        return dict(value) if isinstance(value, dict) else {}
 
     async def create_definition_from_run(self, source_request_id: str | UUID, title: str) -> dict[str, Any]:
         """실행 입력의 소유권과 필드를 검증해 정의 산출물을 생성한다."""
@@ -68,6 +101,10 @@ class AnalysisDefinitionRepositoryMixin:
                 )).mappings().one_or_none()
                 if source is None:
                     raise ValueError("성공하거나 허용된 부분 성공 Analysis Artifact만 저장할 수 있습니다.")
+                resolved_slots = await self._resolved_slots_for_source(
+                    session,
+                    source_request_id,
+                )
                 evidence = dict(source["evidence_json"])
                 period = dict(evidence.get("period") or {})
                 snapshot = dict(evidence.get("snapshot") or {})
@@ -89,6 +126,8 @@ class AnalysisDefinitionRepositoryMixin:
                 }
                 if snapshot:
                     semantic_request["snapshot"] = snapshot
+                if resolved_slots:
+                    semantic_request["resolved_slots"] = resolved_slots
                 parameter_schema = {key: "date" for key in parameters}
                 row = (await session.execute(
                     text(
@@ -130,6 +169,7 @@ class AnalysisDefinitionRepositoryMixin:
         ``ValueError``, 존재하지 않거나 다른 소유자의 정의는 동일한 ``KeyError``, DB
         장애는 :class:`AnalysisRepositoryUnavailable`로 구분한다.
         """
+        resolved_slots: dict[str, Any] = {}
         try:
             async with self._sessionmaker() as session:
                 row = (await session.execute(
@@ -151,11 +191,19 @@ class AnalysisDefinitionRepositoryMixin:
                         "owner_id": self._owner_id,
                     },
                 )).mappings().one_or_none()
+                if row is not None:
+                    semantic_request = dict(row["semantic_request"])
+                    source_request_id = semantic_request.get("source_request_id")
+                    if source_request_id and not semantic_request.get("resolved_slots"):
+                        resolved_slots = await self._resolved_slots_for_source(
+                            session,
+                            source_request_id,
+                        )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
         if row is None:
             raise KeyError("Analysis Definition을 찾을 수 없습니다.")
-        return self._definition(row, replay=replay)
+        return self._definition(row, replay=replay, resolved_slots=resolved_slots)
 
     async def get_definition_for_report(
         self,
@@ -166,6 +214,7 @@ class AnalysisDefinitionRepositoryMixin:
 
         Load the exact immutable Analysis version captured by a Report block.
         """
+        resolved_slots: dict[str, Any] = {}
         try:
             async with self._sessionmaker() as session:
                 row = (await session.execute(
@@ -188,11 +237,19 @@ class AnalysisDefinitionRepositoryMixin:
                         "owner_id": self._owner_id,
                     },
                 )).mappings().one_or_none()
+                if row is not None:
+                    semantic_request = dict(row["semantic_request"])
+                    source_request_id = semantic_request.get("source_request_id")
+                    if source_request_id and not semantic_request.get("resolved_slots"):
+                        resolved_slots = await self._resolved_slots_for_source(
+                            session,
+                            source_request_id,
+                        )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis repository is unavailable.") from error
         if row is None:
             raise KeyError("Analysis Definition not found")
-        return self._definition(row, replay=True)
+        return self._definition(row, replay=True, resolved_slots=resolved_slots)
 
     async def list_definitions(self) -> list[dict[str, Any]]:
         """현재 owner가 명시적으로 저장한 분석 definition만 최신 생성 순서로 반환한다."""

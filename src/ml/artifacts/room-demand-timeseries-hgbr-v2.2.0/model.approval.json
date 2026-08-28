@@ -1,0 +1,288 @@
+{
+  "decision": "CONDITIONAL_PASS",
+  "final_decision": "CONDITIONAL_PASS",
+  "approval_status": "VALIDATED_SYNTHETIC",
+  "model_version": "room-demand-timeseries-hgbr-v2.2.0",
+  "artifact_sha256": "5b0a8a896bf87dd2516129d52599bf183c05dd7bc154e17b570851ca1e1564fa",
+  "dataset_release_id": "room-demand-timeseries-d1-d10-v2.0.0",
+  "dataset_sha256": {
+    "train": "74d617cc15b0565eddfa86777722a0bcc9b8af6f7da405d9027be6e023181796",
+    "validation": "ba392ca0594d7e4910526e6a097d15b284cbc591901e680c56d46a61bb2940b0",
+    "test_a_features": "0b8348f9b12810723bdaf108036c3bd67f6162b49f8aed15c0a2b254c99d3913",
+    "test_a_labels": "42a7f35934401e4ddec71990231952c646d8ddcc80f6e1de0985a45ec7c3f71b",
+    "test_b_features": "3f6f1e009cb7241dea8574980a4ca6bca0183e613f5080df16da45d72182d50a",
+    "test_b_labels": "17ea830ee813fff327ec5e66d68d394bf4d8adcd662dc71f560c7abbc15b4557",
+    "inference": "0614333017b0c6efd27f564800dec1b22ad7ba3a6a0c20a40e1e229badd27c28"
+  },
+  "train_period": "2018-01-07/2023-12-21",
+  "validation_period": "2024-01-01/2024-12-21",
+  "known_test_periods": [
+    "2025-01-01/2025-12-21",
+    "2026-01-01/2026-08-21"
+  ],
+  "hidden_test_release_id": "HIDDEN_TEST_D-seed-20260904",
+  "feature_version": "room-demand-historical-d1-d10-v2.0.0",
+  "runtime_feature_parity": "PASS",
+  "validation_metrics": {
+    "metrics": {
+      "rows": 32040,
+      "actual_total": 1882749.0,
+      "actual_mean": 58.7624531835206,
+      "wape": 0.1753199055518485,
+      "mae": 10.302227742129752,
+      "rmse": 18.980284862352715,
+      "bias": -0.005353691471155327,
+      "mase": 0.89602098021064,
+      "r2": 0.9441451016208683
+    },
+    "baseline_metrics": {
+      "rows": 32040,
+      "actual_total": 1882749.0,
+      "actual_mean": 58.7624531835206,
+      "wape": 0.1956649558703789,
+      "mae": 11.497752808988764,
+      "rmse": 21.11280896155675,
+      "bias": -0.00046952620875113997,
+      "mase": 1.0,
+      "r2": 0.9308888929544702
+    },
+    "baseline_improvement": 0.10397901978936008,
+    "worst_room_type_wape": 0.7308129029126911,
+    "worst_high_volume_room_type_wape": 0.24722766198961435,
+    "worst_low_volume_room_type_mae": 2.851386174105925,
+    "horizon_10_wape": 0.1759545759889191,
+    "raw_negative": 0,
+    "raw_above_capacity": 0,
+    "clipped_negative": 0,
+    "clipped_above_capacity": 0
+  },
+  "rolling_origin": {
+    "fold_count": 3,
+    "mean_wape": 0.16783417582484614,
+    "std_wape": 0.003508552717019702,
+    "worst_fold_wape": 0.17190085683335116,
+    "wape_coefficient_of_variation": 0.02090487649357704,
+    "mean_baseline_improvement": 0.09585438273969837,
+    "all_folds_improve_baseline": true
+  },
+  "hidden_test_metrics": {
+    "test_a": {
+      "metrics": {
+        "rows": 31950,
+        "actual_total": 1872175.0,
+        "actual_mean": 58.59702660406886,
+        "wape": 0.16211694542319402,
+        "mae": 9.49957096393328,
+        "rmse": 17.53812613139886,
+        "bias": -0.003034869125706281,
+        "mase": 0.8952435644342501,
+        "r2": 0.9519648233678273
+      },
+      "baseline_metrics": {
+        "rows": 31950,
+        "actual_total": 1872175.0,
+        "actual_mean": 58.59702660406886,
+        "wape": 0.18108697103636145,
+        "mae": 10.611158059467918,
+        "rmse": 19.361947216124726,
+        "bias": -1.3353452535152964e-05,
+        "mase": 1.0,
+        "r2": 0.9414548291926307
+      },
+      "baseline_improvement": 0.10475643556574998,
+      "worst_room_type_wape": 0.7582099625443232,
+      "worst_high_volume_room_type_wape": 0.24161171346670446,
+      "worst_low_volume_room_type_mae": 2.871257139707264,
+      "horizon_10_wape": 0.16108730775953262,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    },
+    "test_b": {
+      "metrics": {
+        "rows": 20970,
+        "actual_total": 1248389.0,
+        "actual_mean": 59.53214115402957,
+        "wape": 0.16331432477465,
+        "mae": 9.72245143495949,
+        "rmse": 17.742391247666983,
+        "bias": -0.015968086432132014,
+        "mase": 0.888394202821881,
+        "r2": 0.9519163855178836
+      },
+      "baseline_metrics": {
+        "rows": 20970,
+        "actual_total": 1248389.0,
+        "actual_mean": 59.53214115402957,
+        "wape": 0.1838309212913603,
+        "mae": 10.94384835479256,
+        "rmse": 19.991389121521966,
+        "bias": -0.003099194241538495,
+        "mase": 1.0,
+        "r2": 0.9389537841727236
+      },
+      "baseline_improvement": 0.11160579717811903,
+      "worst_room_type_wape": 0.7031661666064898,
+      "worst_high_volume_room_type_wape": 0.26027592470229405,
+      "worst_low_volume_room_type_mae": 2.949923100157316,
+      "horizon_10_wape": 0.16476733894246545,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    },
+    "approval": {
+      "decision": "PASS",
+      "split_gates": {
+        "test_a": {
+          "status": "PASS",
+          "hard_checks": {
+            "wape_lte_18pct": true,
+            "baseline_improvement_gte_8pct": true,
+            "high_volume_room_type_wape_lte_30pct": true,
+            "low_volume_room_type_mae_lte_3_rooms": true,
+            "horizon_10_wape_lte_20pct": true,
+            "absolute_bias_lte_5pct": true,
+            "clipped_negative_zero": true,
+            "clipped_above_capacity_zero": true
+          },
+          "raw_range_pass": true
+        },
+        "test_b": {
+          "status": "PASS",
+          "hard_checks": {
+            "wape_lte_18pct": true,
+            "baseline_improvement_gte_8pct": true,
+            "high_volume_room_type_wape_lte_30pct": true,
+            "low_volume_room_type_mae_lte_3_rooms": true,
+            "horizon_10_wape_lte_20pct": true,
+            "absolute_bias_lte_5pct": true,
+            "clipped_negative_zero": true,
+            "clipped_above_capacity_zero": true
+          },
+          "raw_range_pass": true
+        }
+      },
+      "test_b_relative_wape_degradation": 0.007385898792567902,
+      "test_seen_by_trainer": false,
+      "september_observed_values_used": false
+    }
+  },
+  "known_test_reproduction_metrics": {
+    "test_a": {
+      "metrics": {
+        "rows": 31950,
+        "actual_total": 1878060.0,
+        "actual_mean": 58.781220657277,
+        "wape": 0.16728941851991716,
+        "mae": 9.83347622364681,
+        "rmse": 18.045575363640324,
+        "bias": -0.0052741172180061045,
+        "mase": 0.8909432797622359,
+        "r2": 0.9499241822293584
+      },
+      "baseline_metrics": {
+        "rows": 31950,
+        "actual_total": 1878060.0,
+        "actual_mean": 58.781220657277,
+        "wape": 0.18776663152401946,
+        "mae": 11.037151799687011,
+        "rmse": 20.19111271980447,
+        "bias": 0.0010223315549023992,
+        "mase": 1.0,
+        "r2": 0.9373087268494521
+      },
+      "baseline_improvement": 0.10905672023776392,
+      "worst_room_type_wape": 0.7348105022430718,
+      "worst_high_volume_room_type_wape": 0.25240869656370263,
+      "worst_low_volume_room_type_mae": 2.729496214141273,
+      "horizon_10_wape": 0.16677550849314357,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    },
+    "test_b": {
+      "metrics": {
+        "rows": 20970,
+        "actual_total": 1233000.0,
+        "actual_mean": 58.798283261802574,
+        "wape": 0.16652383735094115,
+        "mae": 9.791315758402977,
+        "rmse": 17.790002396688287,
+        "bias": -0.006080050444992551,
+        "mase": 0.8944216947328064,
+        "r2": 0.950924054301153
+      },
+      "baseline_metrics": {
+        "rows": 20970,
+        "actual_total": 1233000.0,
+        "actual_mean": 58.798283261802574,
+        "wape": 0.18618045417680454,
+        "mae": 10.947091082498808,
+        "rmse": 19.898418712021133,
+        "bias": -0.006066504460665045,
+        "mase": 1.0,
+        "r2": 0.9386020607803804
+      },
+      "baseline_improvement": 0.10557830526719347,
+      "worst_room_type_wape": 0.8230176137502466,
+      "worst_high_volume_room_type_wape": 0.25351996525515064,
+      "worst_low_volume_room_type_mae": 2.875583306554385,
+      "horizon_10_wape": 0.16696228456529683,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    },
+    "approval": {
+      "decision": "PASS",
+      "split_gates": {
+        "test_a": {
+          "status": "PASS",
+          "hard_checks": {
+            "wape_lte_18pct": true,
+            "baseline_improvement_gte_8pct": true,
+            "high_volume_room_type_wape_lte_30pct": true,
+            "low_volume_room_type_mae_lte_3_rooms": true,
+            "horizon_10_wape_lte_20pct": true,
+            "absolute_bias_lte_5pct": true,
+            "clipped_negative_zero": true,
+            "clipped_above_capacity_zero": true
+          },
+          "raw_range_pass": true
+        },
+        "test_b": {
+          "status": "PASS",
+          "hard_checks": {
+            "wape_lte_18pct": true,
+            "baseline_improvement_gte_8pct": true,
+            "high_volume_room_type_wape_lte_30pct": true,
+            "low_volume_room_type_mae_lte_3_rooms": true,
+            "horizon_10_wape_lte_20pct": true,
+            "absolute_bias_lte_5pct": true,
+            "clipped_negative_zero": true,
+            "clipped_above_capacity_zero": true
+          },
+          "raw_range_pass": true
+        }
+      },
+      "test_b_relative_wape_degradation": -0.004576387291852946,
+      "test_seen_by_trainer": false,
+      "september_observed_values_used": false
+    }
+  },
+  "raw_range_violations": 0,
+  "clipped_range_violations": 0,
+  "data_is_synthetic": true,
+  "e2e_status": "PASS",
+  "approved_by": null,
+  "approved_at": null,
+  "freeze_manifest_sha256": "a31d996501349e40f65eba257165e2bb5f04cfcde8d9eb57483be741f470cc41",
+  "limitations": [
+    "Synthetic-data validated; not actual Walkerhill accuracy evidence.",
+    "Human production approval has not been granted.",
+    "No September observed room-demand value is used."
+  ]
+}

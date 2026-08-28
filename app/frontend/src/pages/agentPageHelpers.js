@@ -6,6 +6,7 @@ import {
   normalizeAnalysisEvidence,
   normalizeAnalysisMetrics,
 } from "../contracts/analysis.ts";
+import { ragRun } from "./agentResponseMappers.js";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -155,10 +156,13 @@ export function hydrateTurnsFromServer(serverTurns) {
     for (const st of serverTurns) {
       const isPresentation = st.route === "PRESENTATION";
       const isReportAction = st.route === "REPORT_ACTION";
+      const ragResult = st.resolved_slots?.rag;
       const userMessage = st.user_message || "";
       let run;
 
-      if (isPresentation && st.terminal_status === "SUCCEEDED") {
+      if (ragResult) {
+        run = ragRun(userMessage, ragResult);
+      } else if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
         const sourceQueryId = lastAnalysisRun?.artifact?.queryId;
         const responseEvidence = st.evidence_json;
@@ -275,7 +279,7 @@ export function hydrateTurnsFromServer(serverTurns) {
         resolvedSlots: st.resolved_slots || null,
         viewType: isPresentation
           ? (st.view_type || "TABLE")
-          : (st.resolved_slots?.target_chart_type || "SUMMARY"),
+          : ragResult ? "RAG" : (st.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
         reusePending: false,
         viewSpecId: isPresentation ? st.view_spec_id : null,

@@ -60,6 +60,7 @@ from app.api.analysis_router_runtime import (
     repository_call as _repository_call,
     routing_service as _routing_service,
 )
+from app.api.rag_router import RagQueryRequest, query_internal_manual
 from app.api.analysis_router_support import (
     analysis_support_router,
     cancel_analysis_progress,
@@ -545,7 +546,7 @@ async def execute_conversation_command(
     payload: ConversationCommandRequest,
     context: RequestContext = Depends(session_context),
 ) -> dict[str, Any]:
-    """대화방에서 발화 명령을 실행하여 라우트(ANALYSIS/PRESENTATION/REPORT_ACTION)를 수행한다."""
+    """대화방에서 분석·표현·보고서·내부지침 명령을 수행한다."""
     from app.api.analysis_router_runtime import conversation_orchestrator
     orch = conversation_orchestrator(_controller())
     conv = await orch._repo.get_conversation(conversation_id, context.user_id)
@@ -557,6 +558,38 @@ async def execute_conversation_command(
             "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
             409,
         )
+    if payload.requested_route == "INTERNAL_GUIDELINE":
+        rag_envelope = await query_internal_manual(
+            RagQueryRequest(
+                question=payload.user_message,
+                mode="DOCUMENT_ONLY",
+                conversation_id=conversation_id,
+                expected_head_turn_id=payload.expected_head_turn_id,
+                inherit_previous_context=payload.inherit_previous_context,
+            ),
+            context,
+        )
+        rag_result = rag_envelope["data"]
+        turns = await orch._repo.list_turns(conversation_id)
+        return {
+            "status": "SUCCESS",
+            "data": {
+                "status": "COMPLETED",
+                "type": "INTERNAL_GUIDELINE",
+                "turn": next(
+                    (
+                        item
+                        for item in turns
+                        if str(item["turn_id"]) == str(rag_result.get("turn_id"))
+                    ),
+                    None,
+                ),
+                "conversation": await orch._repo.get_conversation(
+                    conversation_id, context.user_id
+                ),
+                "rag_response": rag_result,
+            },
+        }
     final_status = AnalysisStatus.FAILED
     analysis_progress.start(
         context.trace_id,

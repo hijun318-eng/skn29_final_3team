@@ -15,7 +15,8 @@ export interface ConversationCommandPayload {
   user_message: string;
   expected_head_turn_id?: string | null;
   idempotency_key?: string;
-  requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
+  inherit_previous_context?: boolean;
   presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
 }
 
@@ -36,6 +37,8 @@ export interface AnalysisClient {
     parameters?: Record<string, AnalysisValue>,
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
+  listInternalManuals(): Promise<InternalManualSummary[]>;
+  manualPdfUrl(documentId: string): string;
   cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
@@ -56,6 +59,15 @@ export interface AnalysisClient {
   ): Promise<any>;
 }
 
+/** 현재 세션 역할로 열람이 승인된 내부 문서의 공개 메타데이터다. */
+export interface InternalManualSummary {
+  manual_id: string;
+  title: string;
+  version: string;
+  document_type: string;
+  owner_team: string;
+}
+
 /**
  * 서버 데이터베이스에서 수화된 대화 턴의 불변 유선 계약이다.
  */
@@ -64,7 +76,7 @@ export interface ConversationTurnWire {
   conversation_id: string;
   turn_index: number;
   user_message: string;
-  route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
   source_turn_ids: string[];
   reply_to_turn_id: string | null;
   clarifies_turn_id: string | null;
@@ -75,6 +87,7 @@ export interface ConversationTurnWire {
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {
+    rag?: Record<string, unknown>;
     business_terms?: string[];
     metric_id?: string | null;
     metric_ids?: string[];
@@ -269,6 +282,28 @@ function authenticationHeaders(explicitToken = "") {
   return explicitToken ? { Authorization: `Bearer ${explicitToken}` } : {};
 }
 
+function normalizeInternalManuals(value: unknown): InternalManualSummary[] {
+  if (!Array.isArray(value)) throw new Error("내부 문서 API가 올바르지 않은 응답을 반환했습니다.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object") {
+      throw new Error("내부 문서 API가 올바르지 않은 응답을 반환했습니다.");
+    }
+    const document = item as Record<string, unknown>;
+    for (const field of ["manual_id", "title", "version", "document_type", "owner_team"] as const) {
+      if (typeof document[field] !== "string" || !document[field].trim()) {
+        throw new Error("내부 문서 API가 올바르지 않은 응답을 반환했습니다.");
+      }
+    }
+    return {
+      manual_id: document.manual_id as string,
+      title: document.title as string,
+      version: document.version as string,
+      document_type: document.document_type as string,
+      owner_team: document.owner_team as string,
+    };
+  });
+}
+
 /** 명시된 backend origin에만 cookie 인증 요청을 보내며 origin 누락 시 즉시 실패하는 분석 클라이언트다. */
 export function createHttpAnalysisClient(
   baseUrl = env.VITE_BACKEND_BASE_URL,
@@ -291,7 +326,7 @@ export function createHttpAnalysisClient(
       const error = new AnalysisApiError(
         response.status,
         payload?.error?.code || `HTTP_${response.status}`,
-        payload?.error?.message || "분석 API 요청에 실패했습니다.",
+        payload?.error?.message || (typeof payload?.detail === "string" ? payload.detail : "분석 API 요청에 실패했습니다."),
         {
           retryable: Boolean(payload?.error?.retryable),
           requiredAction: payload?.error?.required_action,
@@ -362,6 +397,16 @@ export function createHttpAnalysisClient(
       } finally {
         if (poll !== undefined) window.clearInterval(poll);
       }
+    },
+    async listInternalManuals() {
+      const payload = await parse<{ data?: { documents?: unknown } }>(await request(
+        endpoint("/rag/documents"),
+        { credentials: "include", headers: headers() },
+      ));
+      return normalizeInternalManuals(payload?.data?.documents);
+    },
+    manualPdfUrl(documentId) {
+      return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source.pdf`);
     },
     async cancelAnalysis(traceId) {
       const payload = await parse<{ data: AnalysisProgress }>(await request(

@@ -703,6 +703,7 @@ assert.match(source("contracts/analysis.ts"), /interface ConversationCommandProg
 assert.match(source("pages/AgentPage.jsx"), /activeCommandAbortController\.current\?\.abort\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /progress\?\.traceId !== traceId/);
 assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
+assert.match(source("pages/AgentPage.jsx"), /requested_route: "INTERNAL_GUIDELINE",[\s\S]*?inherit_previous_context: true/);
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
@@ -716,6 +717,40 @@ assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION
 assert.equal(analysisRequest.init.headers["X-Trace-Id"], "client-trace");
 assert.equal(analysisRequest.init.headers["X-As-Of"], undefined);
 assert.deepEqual(JSON.parse(analysisRequest.init.body).parameters, { period_start: "2030-01-01", period_end_exclusive: "2030-01-03" });
+
+let ragCatalogRequest;
+const ragCatalogClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
+  ragCatalogRequest = { url, init };
+  return new Response(JSON.stringify({
+    status: "SUCCESS",
+    data: {
+      documents: [{
+        manual_id: "manual-approved",
+        title: "승인 운영 매뉴얼",
+        version: "v3",
+        document_type: "OPERATIONS_MANUAL",
+        owner_team: "운영팀",
+      }],
+    },
+  }), { status: 200 });
+}, "runtime-token");
+assert.deepEqual(await ragCatalogClient.listInternalManuals(), [{
+  manual_id: "manual-approved",
+  title: "승인 운영 매뉴얼",
+  version: "v3",
+  document_type: "OPERATIONS_MANUAL",
+  owner_team: "운영팀",
+}]);
+assert.equal(ragCatalogRequest.url, "http://backend.test/rag/documents");
+assert.equal(ragCatalogRequest.init.headers.Authorization, "Bearer runtime-token");
+
+const invalidRagCatalogClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
+  data: { documents: [{ manual_id: "manual-missing-approved-metadata" }] },
+}), { status: 200 }));
+await assert.rejects(
+  () => invalidRagCatalogClient.listInternalManuals(),
+  /내부 문서 API가 올바르지 않은 응답/,
+);
 
 const savedArtifact = {
   request_id: "saved-request", trace_id: "saved-trace", status: "SUCCEEDED",

@@ -1,0 +1,41 @@
+services:
+  ml-runtime:
+    profiles: [ml-candidate]
+    container_name: answervice-ml-runtime
+    build:
+      context: ../..
+      dockerfile: infrastructure/ml/Dockerfile
+    image: answervice-ml-runtime:room-demand-timeseries-v2.2-e2e-pass-20260826
+    environment:
+      ML_MODEL_ARTIFACT: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model.joblib
+      ML_MODEL_MANIFEST: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model_manifest.json
+      ML_MODEL_APPROVAL: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model.approval.json
+      ML_FEATURE_CONTRACT: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/feature_contract.json
+      ML_HISTORY_TABLE: ${ML_HISTORY_TABLE:-pms.ml_evaluation.room_demand_daily_facts_20260826_v2}
+      ML_ALLOW_CONDITIONAL: ${ML_ALLOW_CONDITIONAL:-false}
+      TRINO_URL: ${TRINO_URL:-https://trino:8443}
+      TRINO_USER: ${TRINO_RUNTIME_USER:?TRINO_RUNTIME_USER is required}
+      TRINO_PASSWORD: ${TRINO_RUNTIME_PASSWORD:?TRINO_RUNTIME_PASSWORD is required}
+      TRINO_CA_FILE: /run/secrets/trino-ca.pem
+      TZ: Asia/Seoul
+    volumes:
+      - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
+    ports:
+      - "${ML_RUNTIME_BIND_ADDRESS:-127.0.0.1}:${ML_RUNTIME_BIND_PORT:-18094}:8000"
+    networks:
+      database-network:
+        aliases:
+          - ml-runtime
+    depends_on:
+      trino:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readiness', timeout=2).read()"]
+      interval: 5s
+      timeout: 3s
+      start_period: 15s
+      retries: 12
+    restart: unless-stopped
+
+networks:
+  database-network: {}

@@ -874,6 +874,11 @@
             "title": "Idempotency Key",
             "type": "string"
           },
+          "inherit_previous_context": {
+            "default": false,
+            "title": "Inherit Previous Context",
+            "type": "boolean"
+          },
           "presentation_type": {
             "anyOf": [
               {
@@ -900,7 +905,8 @@
                 "enum": [
                   "ANALYSIS",
                   "PRESENTATION",
-                  "REPORT_ACTION"
+                  "REPORT_ACTION",
+                  "INTERNAL_GUIDELINE"
                 ],
                 "type": "string"
               },
@@ -2098,6 +2104,61 @@
           }
         },
         "title": "QueryExecutionEvidence",
+        "type": "object"
+      },
+      "RagQueryRequest": {
+        "additionalProperties": false,
+        "description": "내부 매뉴얼 검색에 허용되는 질문과 대화 문맥 입력을 제한한다.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "expected_head_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Turn Id"
+          },
+          "inherit_previous_context": {
+            "default": false,
+            "title": "Inherit Previous Context",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "DOCUMENT_ONLY",
+            "enum": [
+              "AUTO",
+              "DOCUMENT_ONLY"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "RagQueryRequest",
         "type": "object"
       },
       "ReadinessData": {
@@ -4044,6 +4105,37 @@
         "title": "Role",
         "type": "string"
       },
+      "RoomDemandRequest": {
+        "additionalProperties": false,
+        "description": "지원 대상과 기준일 및 최대 7일의 예측 범위를 제한한다.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "horizon": {
+            "default": 7,
+            "maximum": 7.0,
+            "minimum": 1.0,
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "as_of"
+        ],
+        "title": "RoomDemandRequest",
+        "type": "object"
+      },
       "RouteType": {
         "description": "질문을 동적 일반 분석으로 처리할지 승인된 템플릿 정의로 처리할지 표시한다.",
         "enum": [
@@ -5887,6 +5979,55 @@
         "summary": "Replay Analysis Definition"
       }
     },
+    "/analysis/ml": {
+      "post": {
+        "description": "허용된 사용자 요청만 예측하고 provenance 감사 이벤트를 저장한다.",
+        "operationId": "createMlAnalysis",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomDemandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Createmlanalysis",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Ml Analysis",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
     "/analysis/progress/{trace_id}": {
       "get": {
         "description": "인증 사용자의 유일한 trace 실행 snapshot을 API metadata와 함께 반환한다.\n\ntrace 재사용으로 실행이 모호하면 request ID 사용을 요구하는 409를, 소유 실행이 없거나\n만료됐으면 자원 존재를 노출하지 않는 404를 반환한다.",
@@ -6418,7 +6559,7 @@
     },
     "/conversations/{conversation_id}/commands": {
       "post": {
-        "description": "대화방에서 발화 명령을 실행하여 라우트(ANALYSIS/PRESENTATION/REPORT_ACTION)를 수행한다.",
+        "description": "대화방에서 분석·표현·보고서·내부지침 명령을 수행한다.",
         "operationId": "executeConversationCommand",
         "parameters": [
           {
@@ -6627,6 +6768,150 @@
           }
         ],
         "summary": "Mcp Post"
+      }
+    },
+    "/ml/capabilities": {
+      "get": {
+        "description": "현재 역할과 feature flag를 확인한 뒤 runtime capability를 반환한다.",
+        "operationId": "getMlCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Getmlcapabilities",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Ml Capabilities",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
+    "/rag/documents": {
+      "get": {
+        "description": "현재 역할이 열람할 수 있는 승인 문서 목록을 동적으로 반환한다.",
+        "operationId": "listInternalManuals",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Listinternalmanuals",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Internal Manuals"
+      }
+    },
+    "/rag/documents/{manual_id}/source.pdf": {
+      "get": {
+        "description": "요청 주체가 열람할 수 있는 내부 매뉴얼 PDF만 중계한다.",
+        "operationId": "getInternalManualPdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "manual_id",
+            "required": true,
+            "schema": {
+              "title": "Manual Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Internal Manual Pdf"
+      }
+    },
+    "/rag/query": {
+      "post": {
+        "description": "사용자 권한과 대화 head를 확인해 내부 매뉴얼 검색 결과를 반환한다.",
+        "operationId": "queryInternalManual",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Queryinternalmanual",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Query Internal Manual"
       }
     },
     "/readiness": {

@@ -7,7 +7,7 @@ from hashlib import sha256
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.contract_core import ContractModel, RequestContext
 
@@ -26,7 +26,10 @@ class ConversationCommandRequest(ContractModel):
     user_message: str = Field(min_length=1, max_length=1000)
     idempotency_key: str = Field(min_length=1, max_length=128)
     expected_head_turn_id: UUID | None
-    requested_route: Literal["ANALYSIS", "PRESENTATION", "REPORT_ACTION"] | None = None
+    requested_route: Literal[
+        "ANALYSIS", "PRESENTATION", "REPORT_ACTION", "INTERNAL_GUIDELINE"
+    ] | None = None
+    inherit_previous_context: bool = False
     presentation_type: Literal[
         "SUMMARY", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT"
     ] | None = None
@@ -39,6 +42,16 @@ class ConversationCommandRequest(ContractModel):
         if isinstance(value, str):
             return value.strip()
         return value
+
+    @model_validator(mode="after")
+    def validate_context_inheritance_route(self) -> "ConversationCommandRequest":
+        """저장된 RAG snapshot 상속은 명시적 내부지침 경로에서만 허용한다."""
+
+        if self.inherit_previous_context and self.requested_route != "INTERNAL_GUIDELINE":
+            raise ValueError(
+                "inherit_previous_context requires requested_route=INTERNAL_GUIDELINE"
+            )
+        return self
 
 
 def canonical_command_input_hash(
@@ -79,6 +92,7 @@ def canonical_command_input_hash(
         "payload": {
             "user_message": command.user_message,
             "requested_route": command.requested_route,
+            "inherit_previous_context": command.inherit_previous_context,
             "presentation_type": command.presentation_type,
         },
     }

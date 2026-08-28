@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "seed": 42,
+  "splits": ["dev", "test"],
+  "output_path": "evals/results/",
+  "experiments": [
+    {"run_id": "B01", "embedding_profile_id": null, "retrieval_mode": "LEXICAL_ONLY", "reranker_id": null},
+    {"run_id": "B02", "embedding_profile_id": "qwen3_06b", "retrieval_mode": "VECTOR_ONLY", "reranker_id": null},
+    {"run_id": "B03", "embedding_profile_id": "qwen3_06b", "retrieval_mode": "HYBRID", "reranker_id": null},
+    {"run_id": "B04", "embedding_profile_id": "bge_m3", "retrieval_mode": "VECTOR_ONLY", "reranker_id": null},
+    {"run_id": "B05", "embedding_profile_id": "bge_m3", "retrieval_mode": "HYBRID", "reranker_id": null},
+    {"run_id": "B06", "embedding_profile_id": "multilingual_e5_large", "retrieval_mode": "VECTOR_ONLY", "reranker_id": null},
+    {"run_id": "B07", "embedding_profile_id": "multilingual_e5_large", "retrieval_mode": "HYBRID", "reranker_id": null}
+  ]
+}

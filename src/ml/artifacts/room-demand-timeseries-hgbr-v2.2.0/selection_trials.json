@@ -1,0 +1,443 @@
+[
+  {
+    "config": {
+      "name": "global_residual_absolute_leaf15",
+      "scope": "global",
+      "loss": "absolute_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.06,
+      "max_iter": 360,
+      "max_leaf_nodes": 15,
+      "min_samples_leaf": 30,
+      "l2_regularization": 0.5,
+      "random_state": 20260826
+    },
+    "blend_weight": 0.5,
+    "selection_score": 0.23019484145726063,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.18356847192339,
+        "mae": 10.78693373736862,
+        "rmse": 19.841952441351406,
+        "bias": -0.011682289472087276,
+        "mase": 0.9381775653530805,
+        "r2": 0.9389585807947145
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.06182243464691972,
+      "worst_room_type_wape": 0.7323808208606062,
+      "worst_high_volume_room_type_wape": 0.25945384630802554,
+      "worst_low_volume_room_type_mae": 3.0237411237778975,
+      "horizon_10_wape": 0.18534971599579886,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_absolute_leaf15",
+      "scope": "global",
+      "loss": "absolute_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.06,
+      "max_iter": 360,
+      "max_leaf_nodes": 15,
+      "min_samples_leaf": 30,
+      "l2_regularization": 0.5,
+      "random_state": 20260826
+    },
+    "blend_weight": 0.75,
+    "selection_score": 0.22496550313053662,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.17949781804040812,
+        "mae": 10.547732129143581,
+        "rmse": 19.44119531466793,
+        "bias": -0.017288671103755343,
+        "mase": 0.9173733602010933,
+        "r2": 0.9413994434809511
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.08262663979890672,
+      "worst_room_type_wape": 0.7031043004016351,
+      "worst_high_volume_room_type_wape": 0.2533571952901097,
+      "worst_low_volume_room_type_mae": 2.940631702534337,
+      "horizon_10_wape": 0.18096666812951334,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_absolute_leaf15",
+      "scope": "global",
+      "loss": "absolute_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.06,
+      "max_iter": 360,
+      "max_leaf_nodes": 15,
+      "min_samples_leaf": 30,
+      "l2_regularization": 0.5,
+      "random_state": 20260826
+    },
+    "blend_weight": 1.0,
+    "selection_score": 0.2218090337022202,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1770487800917029,
+        "mae": 10.403820651338126,
+        "rmse": 19.211219328321445,
+        "bias": -0.022895052735423412,
+        "mase": 0.9048568728321051,
+        "r2": 0.9427776520112638
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.09514312716789486,
+      "worst_room_type_wape": 0.6750053931580701,
+      "worst_high_volume_room_type_wape": 0.249983443662499,
+      "worst_low_volume_room_type_mae": 2.8855426673420426,
+      "horizon_10_wape": 0.17833368090682078,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_absolute_leaf31",
+      "scope": "global",
+      "loss": "absolute_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.05,
+      "max_iter": 360,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 35,
+      "l2_regularization": 1.0,
+      "random_state": 20260826
+    },
+    "blend_weight": 0.5,
+    "selection_score": 0.22738210164981462,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.18155872091025613,
+        "mae": 10.668835837548809,
+        "rmse": 19.65368204504734,
+        "bias": -0.009110127279641242,
+        "mase": 0.9279061756492172,
+        "r2": 0.9401114683346379
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.07209382435078293,
+      "worst_room_type_wape": 0.7328185650811043,
+      "worst_high_volume_room_type_wape": 0.2549048004945966,
+      "worst_low_volume_room_type_mae": 2.9546758154514965,
+      "horizon_10_wape": 0.183047616375712,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_absolute_leaf31",
+      "scope": "global",
+      "loss": "absolute_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.05,
+      "max_iter": 360,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 35,
+      "l2_regularization": 1.0,
+      "random_state": 20260826
+    },
+    "blend_weight": 0.75,
+    "selection_score": 0.22194605769613301,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1773416071995723,
+        "mae": 10.421027890555166,
+        "rmse": 19.25086314845802,
+        "bias": -0.013430427815086287,
+        "mase": 0.9063534469455778,
+        "r2": 0.9425412429570413
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.09364655305442227,
+      "worst_room_type_wape": 0.704478936652232,
+      "worst_high_volume_room_type_wape": 0.248859353091836,
+      "worst_low_volume_room_type_mae": 2.8653225613146818,
+      "horizon_10_wape": 0.1783487003539553,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_absolute_leaf31",
+      "scope": "global",
+      "loss": "absolute_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.05,
+      "max_iter": 360,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 35,
+      "l2_regularization": 1.0,
+      "random_state": 20260826
+    },
+    "blend_weight": 1.0,
+    "selection_score": 0.2195616746120164,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.17551251400702053,
+        "mae": 10.313545887459547,
+        "rmse": 19.0867602486258,
+        "bias": -0.017750728350531337,
+        "mase": 0.8970053591164856,
+        "r2": 0.9435166755343244
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.1029946408835144,
+      "worst_room_type_wape": 0.6880587028659798,
+      "worst_high_volume_room_type_wape": 0.24655010405452263,
+      "worst_low_volume_room_type_mae": 2.8217807188449187,
+      "horizon_10_wape": 0.17612751808045146,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_squared_leaf31",
+      "scope": "global",
+      "loss": "squared_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.045,
+      "max_iter": 360,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 40,
+      "l2_regularization": 2.0,
+      "random_state": 20260826
+    },
+    "blend_weight": 0.5,
+    "selection_score": 0.2277445666444021,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1818048815641659,
+        "mae": 10.683300841449807,
+        "rmse": 19.643719468675158,
+        "bias": -0.0029116088399532337,
+        "mase": 0.9291642479126676,
+        "r2": 0.940172168700893
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.0708357520873324,
+      "worst_room_type_wape": 0.7421997281778673,
+      "worst_high_volume_room_type_wape": 0.2562225886741297,
+      "worst_low_volume_room_type_mae": 2.9593067298178988,
+      "horizon_10_wape": 0.18332021997440187,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_squared_leaf31",
+      "scope": "global",
+      "loss": "squared_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.045,
+      "max_iter": 360,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 40,
+      "l2_regularization": 2.0,
+      "random_state": 20260826
+    },
+    "blend_weight": 0.75,
+    "selection_score": 0.22227246759684832,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.17750835227057157,
+        "mae": 10.430826239983343,
+        "rmse": 19.20370154913181,
+        "bias": -0.004132650155554281,
+        "mase": 0.9072056438566574,
+        "r2": 0.9428224280141866
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.09279435614334253,
+      "worst_room_type_wape": 0.7290984043102192,
+      "worst_high_volume_room_type_wape": 0.25002536046869045,
+      "worst_low_volume_room_type_mae": 2.88172543145631,
+      "horizon_10_wape": 0.17854220145560679,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  },
+  {
+    "config": {
+      "name": "global_residual_squared_leaf31",
+      "scope": "global",
+      "loss": "squared_error",
+      "target_mode": "residual_rate",
+      "learning_rate": 0.045,
+      "max_iter": 360,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 40,
+      "l2_regularization": 2.0,
+      "random_state": 20260826
+    },
+    "blend_weight": 1.0,
+    "selection_score": 0.21953367712075075,
+    "report": {
+      "metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1753199055518485,
+        "mae": 10.302227742129752,
+        "rmse": 18.980284862352715,
+        "bias": -0.005353691471155327,
+        "mase": 0.89602098021064,
+        "r2": 0.9441451016208683
+      },
+      "baseline_metrics": {
+        "rows": 32040,
+        "actual_total": 1882749.0,
+        "actual_mean": 58.7624531835206,
+        "wape": 0.1956649558703789,
+        "mae": 11.497752808988764,
+        "rmse": 21.11280896155675,
+        "bias": -0.00046952620875113997,
+        "mase": 1.0,
+        "r2": 0.9308888929544702
+      },
+      "baseline_improvement": 0.10397901978936008,
+      "worst_room_type_wape": 0.7308129029126911,
+      "worst_high_volume_room_type_wape": 0.24722766198961435,
+      "worst_low_volume_room_type_mae": 2.851386174105925,
+      "horizon_10_wape": 0.1759545759889191,
+      "raw_negative": 0,
+      "raw_above_capacity": 0,
+      "clipped_negative": 0,
+      "clipped_above_capacity": 0
+    }
+  }
+]

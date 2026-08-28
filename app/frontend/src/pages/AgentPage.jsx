@@ -4,12 +4,16 @@ import { Eye, FilePlus2, History, MessageSquareText, Plus, Save, Send, Sparkles,
 import { AnalysisApiError, createAnalysisClient } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
+import { RagAnswerCard } from "../components/rag/RagAnswerCard";
+import RagEmptyState from "../components/rag/RagEmptyState";
+import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
 import { MetaStrip } from "../components/common/EnterpriseUi";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
+import { ragRun } from "./agentResponseMappers";
 import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
@@ -25,6 +29,8 @@ export function AgentPage({ onNavigate }) {
   const [inputError, setInputError] = useState("");
   const [conversationId, setConversationId] = useState(() => window.sessionStorage.getItem(CONVERSATION_KEY) || "");
   const [turns, setTurns] = useState([]);
+  const [emptyMode, setEmptyMode] = useState("analysis");
+  const [ragCatalog, setRagCatalog] = useState({ status: "idle", documents: [], error: "" });
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
@@ -85,6 +91,26 @@ export function AgentPage({ onNavigate }) {
         });
     }
   }, []);
+
+  useEffect(() => {
+    if (emptyMode !== "rag-documents") return undefined;
+    let active = true;
+    setRagCatalog({ status: "loading", documents: [], error: "" });
+    analysisClient.listInternalManuals()
+      .then((documents) => {
+        if (active) setRagCatalog({ status: "ready", documents, error: "" });
+      })
+      .catch((error) => {
+        if (active) {
+          setRagCatalog({
+            status: "error",
+            documents: [],
+            error: error instanceof Error ? error.message : "내부 문서 목록을 불러오지 못했습니다.",
+          });
+        }
+      });
+    return () => { active = false; };
+  }, [analysisClient, emptyMode]);
 
   const handleCancelAnalysis = async (turnId) => {
     const cancelledTraceId = activeTraceId.current;
@@ -150,6 +176,7 @@ export function AgentPage({ onNavigate }) {
     setConversationId("");
     window.sessionStorage.removeItem(CONVERSATION_KEY);
     setTurns([]);
+    setEmptyMode("analysis");
     setEvidenceOpen(false);
     setSelectedEvidenceRun(null);
     setReportModal("");
@@ -163,7 +190,8 @@ export function AgentPage({ onNavigate }) {
     const normalized = nextQuestion.trim();
     if (!normalized) { setInputError("분석할 질문을 입력해 주세요."); return; }
     if (requestInFlight.current) return;
-    const isPresentationAction = action?.requested_route === "PRESENTATION";
+    const resolvedAction = action;
+    const isPresentationAction = resolvedAction?.requested_route === "PRESENTATION";
     const sourceRun = sourceTurn?.run || latestArtifactTurn?.run || null;
     if (isPresentationAction && !hasReusablePresentationArtifact(sourceRun)) {
       const unavailableTurn = {
@@ -238,7 +266,7 @@ export function AgentPage({ onNavigate }) {
       let cmdResponse;
       try {
         cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-          ...(action || {}),
+          ...(resolvedAction || {}),
           user_message: normalized,
           expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : null,
           idempotency_key: commandIdempotencyKey,
@@ -257,7 +285,7 @@ export function AgentPage({ onNavigate }) {
           activeConvId = await initConversation(generation);
           if (!activeConvId || requestGeneration.current !== generation) return;
           cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-            ...(action || {}),
+            ...(resolvedAction || {}),
             user_message: normalized,
             expected_head_turn_id: null,
             idempotency_key: commandIdempotencyKey,
@@ -271,11 +299,14 @@ export function AgentPage({ onNavigate }) {
       const data = cmdResponse?.data || cmdResponse;
       const serverTurn = data?.turn;
       const analysisRaw = data?.analysis_response;
+      const responseType = data?.type || "ANALYSIS";
       const isPresentation = serverTurn?.route === "PRESENTATION";
       const isReportAction = serverTurn?.route === "REPORT_ACTION";
 
       let finalRun;
-      if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
+      if (responseType === "INTERNAL_GUIDELINE" && data?.rag_response) {
+        finalRun = ragRun(normalized, data.rag_response);
+      } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
         const clarType = commandClarificationType(data, serverTurn);
         finalRun = {
@@ -408,7 +439,8 @@ export function AgentPage({ onNavigate }) {
   const submitQuestion = (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void analyzeQuestion(String(form.get("question") || question).trim());
+    const action = emptyMode === "rag-documents" ? { requested_route: "INTERNAL_GUIDELINE" } : null;
+    void analyzeQuestion(String(form.get("question") || question).trim(), action);
   };
 
   const saveAnalysis = async (targetRun) => {
@@ -504,16 +536,28 @@ export function AgentPage({ onNavigate }) {
         {activeEvidenceRun.meta?.asOf && <MetaStrip meta={activeEvidenceRun.meta} verified={Boolean(activeEvidenceRun.artifact && ["success", "partial"].includes(activeEvidenceRun.status))} />}
         
         {turns.length === 0 && !submitting && (
-          <section className="chat-empty-state" aria-labelledby="chat-empty-title">
-            <small>대화형 데이터 분석</small>
-            <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
-            <p>호텔 운영 매출, 객실 지표, 고객 VOC 평점 등 다양한 지표와 기간을 자연어로 분석해 보세요.</p>
-            {exampleQuestions.length > 0 && (
-              <div aria-label="분석 질문 예시">
-                {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
+          emptyMode === "rag-documents" ? (
+            <RagEmptyState
+              documents={ragCatalog.documents}
+              loading={ragCatalog.status === "loading"}
+              error={ragCatalog.error}
+              onBack={() => setEmptyMode("analysis")}
+            />
+          ) : (
+            <section className="chat-empty-state" aria-labelledby="chat-empty-title">
+              <small>대화형 데이터 분석</small>
+              <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
+              <p>호텔 운영 데이터 분석과 내부 업무지침 검색을 한 화면에서 이용할 수 있습니다.</p>
+              {exampleQuestions.length > 0 && (
+                <div aria-label="추천 질문">
+                  {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
+                </div>
+              )}
+              <div className="chat-support-links" aria-label="도움말">
+                <button type="button" onClick={() => setEmptyMode("rag-documents")}>승인된 내부문서 검색</button>
               </div>
-            )}
-          </section>
+            </section>
+          )
         )}
 
         {turns.length > 0 && (
@@ -532,8 +576,24 @@ export function AgentPage({ onNavigate }) {
                 <div className="message message--agent">
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
-
-                    <AnalysisStatePanel
+                    {turnItem.run.rag ? (
+                      <>
+                        <small className="agent-result-type">내부지침</small>
+                        <RagAnswerCard
+                          rag={turnItem.run.rag}
+                          pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
+                            label: item.document_name || "근거 문서",
+                            url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
+                          }))}
+                          onFollowUp={turnItem.turnId === turns.at(-1)?.turnId
+                            ? (followUp) => void analyzeQuestion(followUp, {
+                                requested_route: "INTERNAL_GUIDELINE",
+                                inherit_previous_context: true,
+                              })
+                            : undefined}
+                        />
+                      </>
+                    ) : <AnalysisStatePanel
                       run={turnItem.run}
                       viewType={turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY"}
                       artifactReuse={turnItem.isArtifactReuse ? {
@@ -570,7 +630,7 @@ export function AgentPage({ onNavigate }) {
                         setSelectedEvidenceRun(turnItem.run);
                         setEvidenceOpen(true);
                       } : undefined}
-                    />
+                    />}
                     {turnItem.run.reportDefinitionId && (
                       <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                         <button
@@ -601,7 +661,7 @@ export function AgentPage({ onNavigate }) {
               value={question}
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder="분석할 지표와 기간을 자연어로 입력하세요"
+              placeholder={emptyMode === "rag-documents" ? "승인된 내부 지침에 질문하세요" : "데이터 분석 질문을 입력하세요"}
               aria-describedby="question-help"
               aria-invalid={Boolean(inputError)}
               disabled={submitting}
@@ -645,6 +705,8 @@ export function AgentPage({ onNavigate }) {
           </details>
         )}
       </main>
+
+      <MLPredictionWorkspace conversationId={conversationId || null} />
 
       {/* 우측 슬라이드: 분석 근거 서랍 */}
       <TurnEvidenceDrawer

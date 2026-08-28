@@ -23,6 +23,7 @@ try {
   const { commandClarificationMessage, commandClarificationType, savedRunStatus } = await server.ssrLoadModule("/src/pages/agentPageHelpers.js");
   const { AnalysisStatePanel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
+  const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
   const { normalizeApiResponse } = await server.ssrLoadModule("/src/contracts/analysis.ts");
   const run = normalizeApiResponse(response, "7월 PLATINUM 장기 투숙 우수 고객 객실 유형별 매출을 분석해줘");
   const html = renderToStaticMarkup(createElement(AnalysisStatePanel, { run }));
@@ -93,6 +94,19 @@ try {
   );
   assert.match(commandClarificationMessage({}, "metric"), /분석할 지표/);
   assert.equal(savedRunStatus("CLARIFYING"), "입력 필요");
+
+  const ragCatalogHtml = renderToStaticMarkup(createElement(RagEmptyState, {
+    documents: [{
+      manual_id: "manual-approved",
+      title: "승인 운영 매뉴얼",
+      version: "v3",
+      document_type: "OPERATIONS_MANUAL",
+      owner_team: "운영팀",
+    }],
+  }));
+  assert.match(ragCatalogHtml, /승인 운영 매뉴얼/);
+  assert.match(ragCatalogHtml, /OPERATIONS_MANUAL · v3 · 운영팀/);
+  assert.doesNotMatch(ragCatalogHtml, /추천 질문|환불 기준|안전사고 발생 시/);
 
   // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));

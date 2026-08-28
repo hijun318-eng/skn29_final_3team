@@ -1,0 +1,36 @@
+{
+  "decision": "PASS",
+  "split_gates": {
+    "test_a": {
+      "status": "PASS",
+      "hard_checks": {
+        "wape_lte_18pct": true,
+        "baseline_improvement_gte_8pct": true,
+        "high_volume_room_type_wape_lte_30pct": true,
+        "low_volume_room_type_mae_lte_3_rooms": true,
+        "horizon_10_wape_lte_20pct": true,
+        "absolute_bias_lte_5pct": true,
+        "clipped_negative_zero": true,
+        "clipped_above_capacity_zero": true
+      },
+      "raw_range_pass": true
+    },
+    "test_b": {
+      "status": "PASS",
+      "hard_checks": {
+        "wape_lte_18pct": true,
+        "baseline_improvement_gte_8pct": true,
+        "high_volume_room_type_wape_lte_30pct": true,
+        "low_volume_room_type_mae_lte_3_rooms": true,
+        "horizon_10_wape_lte_20pct": true,
+        "absolute_bias_lte_5pct": true,
+        "clipped_negative_zero": true,
+        "clipped_above_capacity_zero": true
+      },
+      "raw_range_pass": true
+    }
+  },
+  "test_b_relative_wape_degradation": 0.007385898792567902,
+  "test_seen_by_trainer": false,
+  "september_observed_values_used": false
+}

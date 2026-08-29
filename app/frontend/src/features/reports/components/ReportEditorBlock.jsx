@@ -13,7 +13,7 @@ function blockMinimumHeight(type) {
   if (type === "artifact") return 5;
   if (type === "chart") return 7;
   if (type === "table") return 5;
-  return 4;
+  return 3;
 }
 
 function shallowBlockEqual(previous, next) {
@@ -38,10 +38,7 @@ function editorBlockPropsEqual(previous, next) {
     && previous.locked === next.locked;
 }
 
-const RESIZE_DIRECTIONS = [
-  ["nw", "왼쪽 위"], ["n", "위"], ["ne", "오른쪽 위"], ["e", "오른쪽"],
-  ["se", "오른쪽 아래"], ["s", "아래"], ["sw", "왼쪽 아래"], ["w", "왼쪽"],
-];
+const RESIZE_DIRECTIONS = [["se", "오른쪽 아래"]];
 
 /** 단일 편집 블록과 제어기를 렌더링하며 custom comparator가 변경된 block field만 다시 그린다. */
 export const ReportEditorBlock = memo(function ReportEditorBlock({

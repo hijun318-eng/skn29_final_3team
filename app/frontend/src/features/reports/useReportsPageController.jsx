@@ -34,7 +34,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const isAdmin = suppliedIsAdmin ?? ["report_admin", "platform_admin"].includes(role);
   const lifecycle = useReportLifecycleState({ role, isAdmin });
   const [view, setView] = useState("list");
-  const [toolPanelOpen, setToolPanelOpen] = useState(true);
+  const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const [editorViewScale, setEditorViewScale] = useState("fit-width");
   const toolPanelRef = useRef(null);
   const toolToggleRef = useRef(null);

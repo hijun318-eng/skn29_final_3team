@@ -1,6 +1,6 @@
-/** 기존 보고서 상태와 명령을 V2 전용 3단 편집 화면에 배치하는 프레젠테이션 어댑터다. */
+/** 기존 보고서 상태와 명령을 캔버스 중심 편집 화면과 온디맨드 패널에 배치하는 어댑터다. */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Expand, HelpCircle, Keyboard, PanelRightClose, Settings2, Shrink, Sparkles } from "lucide-react";
+import { Expand, HelpCircle, PanelRightClose, Settings2, Shrink, Sparkles } from "lucide-react";
 
 import { ReportShortcutHelp } from "./ReportShortcutHelp";
 import "./report-builder-v2.css";
@@ -17,19 +17,14 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   pages,
   presentation,
   properties,
-  reportTitle,
   toolbar,
 }) {
   const rootRef = useRef(null);
   const shortcutTriggerRef = useRef(null);
   const workspaceRef = useRef(null);
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [propertiesOpen, setPropertiesOpen] = useState(() => (
-    typeof window === "undefined"
-    || typeof window.matchMedia !== "function"
-    || window.matchMedia("(min-width: 1180px)").matches
-  ));
-  const [rightPanel, setRightPanel] = useState(assistant ? "assistant" : "properties");
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [rightPanel, setRightPanel] = useState("properties");
   const [fullscreen, setFullscreen] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const fullscreenSupported = typeof document !== "undefined" && Boolean(document.fullscreenEnabled);
@@ -93,7 +88,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
     <div className="report-builder-v2-layout">
       {libraryOpen && <div className="builder-library-column">
         {library}
-        <nav className="builder-page-navigator" aria-label="보고서 페이지">
+        {pages.length > 1 && <nav className="builder-page-navigator" aria-label="보고서 페이지">
           <header><span>페이지</span><small>{pages.length} PAGES</small></header>
           <div>{pages.map((page, index) => <button
             type="button"
@@ -106,17 +101,16 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
             <span><b>{String(index + 1).padStart(2, "0")} 페이지</b><small>{page.blocks?.length || 0}개 블록</small></span>
             <em>{(page.orientation || orientation) === "landscape" ? "가로" : "세로"}</em>
           </button>)}</div>
-        </nav>
+        </nav>}
       </div>}
       <main ref={workspaceRef} className="builder-workspace" onScroll={trackVisiblePage}>
         <div className="builder-workspace-toolbar" data-report-editor-chrome="true">
-          <div><b>{reportTitle || "보고서 초안"}</b><span>{orientation === "landscape" ? "A4 가로 297 × 210mm" : "A4 세로 210 × 297mm"}</span><small>12 COLUMN · GRID SNAP</small></div>
+          <div className="builder-workspace-context"><b>{String(activePageIndex + 1).padStart(2, "0")} / {String(pages.length).padStart(2, "0")}</b><span>{orientation === "landscape" ? "가로" : "세로"}</span></div>
           <nav aria-label="작업 화면 설정">
-            <span title="입력 중에는 편집 단축키가 동작하지 않습니다."><Keyboard size={14} />Shift+클릭 다중 선택</span>
-            <button ref={shortcutTriggerRef} type="button" onClick={() => setShortcutHelpOpen(true)} aria-haspopup="dialog"><HelpCircle size={14} />단축키</button>
+            <button ref={shortcutTriggerRef} type="button" onClick={() => setShortcutHelpOpen(true)} aria-haspopup="dialog" aria-label="편집 단축키"><HelpCircle size={14} /><span>도움말</span></button>
             {presentation}
-            {assistant && <button type="button" onClick={() => toggleRightPanel("assistant")} aria-pressed={propertiesOpen && rightPanel === "assistant"}><Sparkles size={14} />AI Assistant</button>}
-            <button type="button" onClick={() => toggleRightPanel("properties")} aria-pressed={propertiesOpen && rightPanel === "properties"}>{propertiesOpen && rightPanel === "properties" ? <PanelRightClose size={14} /> : <Settings2 size={14} />}속성</button>
+            {assistant && <button type="button" onClick={() => toggleRightPanel("assistant")} aria-pressed={propertiesOpen && rightPanel === "assistant"}><Sparkles size={14} /><span>AI 도우미</span></button>}
+            <button type="button" onClick={() => toggleRightPanel("properties")} aria-pressed={propertiesOpen && rightPanel === "properties"}>{propertiesOpen && rightPanel === "properties" ? <PanelRightClose size={14} /> : <Settings2 size={14} />}<span>속성</span></button>
             {fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}
           </nav>
         </div>

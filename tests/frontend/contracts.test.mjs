@@ -269,8 +269,8 @@ assert.match(reportSources.blockControls, /<button\s+ref=\{setActivatorNodeRef\}
 assert.doesNotMatch(reportSources.blockControls, /report-template-drag|report-template-grip|GripVertical/);
 assert.match(reportSources.page, /DragOverlay/);
 assert.match(reportSources.dragAndDrop, /dropPositionRef\.current/);
-assert.match(reportSources.toolPanel, /원하는 위치로 끌어다 놓으세요/);
-assert.match(reportSources.toolPanel, /행은 빈 공간 없이 자동 정렬됩니다/);
+assert.match(reportSources.toolPanel, /필요한 항목만 열어 클릭하거나 캔버스로 끌어 놓으세요/);
+assert.match(reportSources.toolPanel, /<details className="report-library-group" open>/);
 assert.doesNotMatch(reportFeatureSource, /notion-block-toolbar/);
 assert.match(reportSources.artifactContent, /memo\(function ReportArtifactContent/);
 assert.match(reportSources.presentation, /metric\.result_field === resultField/);
@@ -280,6 +280,7 @@ assert.doesNotMatch(reportSources.artifactContent, /y_fields\.slice/);
 assert.doesNotMatch(source("api/analysisClient.ts"), /restoredMetrics|row\[metric\.metric_id\]/);
 assert.match(reportSources.evidence, /export function reportEvidenceReady/);
 assert.match(reportSources.artifacts, /if \(!artifact \|\| !reportEvidenceReady\(artifact\)\)/);
+assert.match(reportSources.artifacts, /if \(includeLibrary\) \{[\s\S]*discoveredAnalysisSources\.forEach\(\(source\) => hydrationIds\.add\(source\.artifactId\)\)/);
 assert.match(reportSources.controller, /const canEdit = Boolean\(isDraft && !lifecycle\.pending\)/);
 assert.match(reportSources.editorCanvas, /aria-busy=\{pending === "save"\}/);
 assert.match(reportSources.controller, /existingDraft/);

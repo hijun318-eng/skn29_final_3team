@@ -34,12 +34,12 @@ export function frontendTextBlockLayout(block, orientation = "landscape") {
   const visualLines = String(block.content || "")
     .split("\n")
     .reduce((count, line) => count + Math.max(1, Math.ceil([...line].length / charactersPerLine)), 0);
-  const requiredHeight = Math.max(4, 3 + Math.ceil(visualLines * 0.72));
+  const requiredHeight = Math.max(3, 1 + Math.ceil(visualLines * 0.65));
   const maximumHeight = 14;
   const minimumHeight = Math.min(maximumHeight, requiredHeight);
   return {
     minimumHeight,
-    height: Math.max(minimumHeight, Math.min(maximumHeight, Math.round(block.h ?? 4))),
+    height: Math.max(minimumHeight, Math.min(maximumHeight, Math.round(block.h ?? 3))),
     overflow: requiredHeight > maximumHeight,
   };
 }

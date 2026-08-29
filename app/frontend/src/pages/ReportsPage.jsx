@@ -281,7 +281,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       theme={theme}
     />}
     properties={properties}
-    reportTitle={lifecycle.selectedDefinition?.title}
     toolbar={toolbar}
   /> : <div
     className={`enterprise-report-editor notion-report-editor ${page.toolPanelOpen ? "" : "tools-collapsed"}`}

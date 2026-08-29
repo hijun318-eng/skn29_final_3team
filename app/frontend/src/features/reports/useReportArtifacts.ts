@@ -124,6 +124,11 @@ export function useReportArtifacts({
       artifactSelection,
       ...assistantAdditionalArtifactIds,
     ].filter(Boolean));
+    // 보관함에 노출할 최근 결과는 실제 근거를 먼저 검증해야 한다. 기존 보고서가
+    // 유실된 옛 Artifact를 참조하더라도 새 승인 결과 7건이 함께 가려지지 않게 한다.
+    if (includeLibrary) {
+      discoveredAnalysisSources.forEach((source) => hydrationIds.add(source.artifactId));
+    }
     for (const artifactId of hydrationIds) {
       if (!ids.includes(artifactId)) hydrationIds.delete(artifactId);
     }

@@ -22,12 +22,15 @@ export function AnalysisConversationalSummary({ run, valueScale }: { run: Analys
     <div className="agent-conversational-bubble" aria-label="AI 분석 요약">
       <header className="analysis-summary-heading">
         <div>
-          <small>결과 요약</small>
+          <small>분석 결과</small>
           <h3>{analysisTitle(run)}</h3>
         </div>
         <span className="analysis-summary-verified">근거 검증 완료</span>
       </header>
-      <p className="agent-narrative-text">{userFacingAnalysisSummary(run, valueScale)}</p>
+      <div className="analysis-summary-answer">
+        <small>핵심 답변</small>
+        <p className="agent-narrative-text">{userFacingAnalysisSummary(run, valueScale)}</p>
+      </div>
     </div>
   );
 }
@@ -159,12 +162,21 @@ export function AnalysisDataSection({
   valueScale: AnalysisValueScale;
 }) {
   if (!table?.columns?.length) return null;
+  const isCompactResult = table.columns.length <= 3 && visibleRows.length <= 8;
+  const isSingleValueResult = table.columns.length === 1 && visibleRows.length === 1;
+  const showRowNumbers = visibleRows.length > 1;
+  const canSort = visibleRows.length > 1;
   const sortedColumnLabel = tableSort.column ? columnLabel(tableSort.column, run) : "";
-  const sortDescription = tableSort.direction
-    ? `${sortedColumnLabel} ${tableSort.direction === "asc" ? "오름차순" : "내림차순"}`
-    : "열 제목을 눌러 정렬";
+  const sortDescription = canSort
+    ? tableSort.direction
+      ? `${sortedColumnLabel} ${tableSort.direction === "asc" ? "오름차순" : "내림차순"}`
+      : "열 제목을 눌러 정렬"
+    : "단일 결과";
   return (
-    <section className="analysis-result-section analysis-data-section">
+    <section
+      className={`analysis-result-section analysis-data-section${isCompactResult ? " is-compact-result" : ""}${isSingleValueResult ? " is-single-value-result" : ""}`}
+      data-table-density={isSingleValueResult ? "single" : isCompactResult ? "compact" : "full"}
+    >
       <header>
         <div><small>데이터</small><h3>상세 데이터</h3></div>
         <div className="analysis-data-meta">
@@ -177,18 +189,22 @@ export function AnalysisDataSection({
           <caption className="sr-only">{resultTitle} 상세 데이터</caption>
           <thead>
             <tr>
-              <th scope="col" className="row-number">#</th>
+              {showRowNumbers && <th scope="col" className="row-number">#</th>}
               {table.columns.map((column) => {
                 const unit = valueScale.unitLabel(columnUnit(column, run), column);
                 const label = columnLabel(column, run);
                 const sortDirection = tableSort.column === column ? tableSort.direction : "";
                 const SortIcon = sortDirection === "asc" ? ArrowUp : sortDirection === "desc" ? ArrowDown : ArrowUpDown;
                 return (
-                  <th scope="col" aria-sort={tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none"} className={numericColumns.has(column) ? "is-numeric" : ""} key={column}>
-                    <button type="button" className={`analysis-table-sort ${sortDirection ? "is-sorted" : ""}`} aria-label={`${metricUnitLabel(label, unit)} 열 정렬`} onClick={() => setTableSort((current) => nextTableSort(current, column))}>
-                      <span>{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
-                      <SortIcon size={12} aria-hidden="true" />
-                    </button>
+                  <th scope="col" aria-sort={canSort ? (tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none") : undefined} className={numericColumns.has(column) ? "is-numeric" : ""} key={column}>
+                    {canSort ? (
+                      <button type="button" className={`analysis-table-sort ${sortDirection ? "is-sorted" : ""}`} aria-label={`${metricUnitLabel(label, unit)} 열 정렬`} onClick={() => setTableSort((current) => nextTableSort(current, column))}>
+                        <span>{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
+                        <SortIcon size={12} aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <span className="analysis-table-label">{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
+                    )}
                   </th>
                 );
               })}
@@ -197,7 +213,7 @@ export function AnalysisDataSection({
           <tbody>
             {visibleRows.map((row, index) => (
               <tr key={`${run.requestId}-${index}`}>
-                <th scope="row" className="row-number">{index + 1}</th>
+                {showRowNumbers && <th scope="row" className="row-number">{index + 1}</th>}
                 {table.columns.map((column) => (
                   <td className={numericColumns.has(column) ? "is-numeric" : ""} key={column} title={valueScale.exact(row[column], columnUnit(column, run))}>
                     {valueScale.format(row[column], columnUnit(column, run), column)}

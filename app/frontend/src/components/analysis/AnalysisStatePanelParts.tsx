@@ -138,6 +138,7 @@ export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel })
       aria-live="polite"
       data-process-kind={model.kind}
       data-process-status={model.status}
+      data-process-flow="vertical"
     >
       <header>
         <div>

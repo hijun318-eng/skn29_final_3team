@@ -42,7 +42,9 @@ try {
   assert.match(html, /analysis-summary-heading/);
   assert.match(html, /근거 검증 완료/);
   assert.match(html, /analysis-summary-verified/);
-  assert.match(html, /결과 요약/);
+  assert.match(html, /분석 결과/);
+  assert.match(html, /analysis-summary-answer/);
+  assert.match(html, /핵심 답변/);
   assert.match(html, /수치 근거/);
   assert.match(html, />핵심 지표</);
   assert.doesNotMatch(html, /주요 KPI|개 승인 지표/);
@@ -52,7 +54,7 @@ try {
   const localizedSummaryHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run: {
       ...run,
-      summary: "2026년 6월의 Room Revenue 합계 계산 결과는 6,632,629,550 KRW입니다.",
+      summary: "2026-06-01부터 2026-07-01 전까지의 Room Revenue 합계 계산 결과는 6,632,629,550 KRW입니다.",
       evidence: {
         ...run.evidence,
         period: { start: "2026-06-01", endExclusive: "2026-07-01" },
@@ -69,12 +71,13 @@ try {
     },
   }));
   assert.match(localizedSummaryHtml, /2026년 6월 객실 매출 분석/);
-  assert.match(localizedSummaryHtml, /2026년 6월 객실 매출 합계는 66\.3억 원입니다/);
+  assert.match(localizedSummaryHtml, /2026년 6월 1일부터 30일까지의 객실 매출 합계는 66\.3억 원입니다/);
   assert.match(localizedSummaryHtml, /title="6,632,629,550 원"/);
   assert.doesNotMatch(localizedSummaryHtml, /Room Revenue|KRW|ADR|RevPAR/);
 
   const analysisProcessHtml = renderToStaticMarkup(createElement(AnalysisProgress, { model: processViewModels.analysisActive }));
   assert.match(analysisProcessHtml, /data-process-kind="ANALYSIS"/);
+  assert.match(analysisProcessHtml, /data-process-flow="vertical"/);
   assert.match(analysisProcessHtml, /class="active" data-state="active"/);
   assert.match(analysisProcessHtml, /class="done" data-state="complete"/);
   assert.match(analysisProcessHtml, /데이터 조회/);
@@ -188,6 +191,24 @@ try {
   }
   assert.doesNotMatch(followupHtml, /결과 보기 전환|이전 분석 결과|재사용|재조회|연결 정보/);
 
+  const singleMetricField = run.metrics[0].resultField;
+  const singleValueTableHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: {
+      ...run,
+      table: {
+        columns: [singleMetricField],
+        rows: [{ [singleMetricField]: run.metrics[0].value }],
+      },
+      rowCount: 1,
+    },
+    viewType: "TABLE",
+  }));
+  assert.match(singleValueTableHtml, /data-table-density="single"/);
+  assert.match(singleValueTableHtml, /is-compact-result is-single-value-result/);
+  assert.match(singleValueTableHtml, /analysis-table-label/);
+  assert.match(singleValueTableHtml, /단일 결과/);
+  assert.doesNotMatch(singleValueTableHtml, /class="row-number"|analysis-table-sort|열 제목을 눌러 정렬/);
+
   const pendingFollowupHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run: { ...run, elapsedSeconds: 0 },
     viewType: "TABLE",
@@ -224,6 +245,9 @@ try {
   assert.match(mlWorkspaceStylesSource, /left:\s*20px[\s\S]*right:\s*auto[\s\S]*bottom:\s*20px/);
   assert.match(mlWorkspaceStylesSource, /@media \(max-width: 720px\)[\s\S]*bottom:\s*122px/);
   assert.match(stylesSource, /\.analysis-result-section \.analysis-table thead th\{/);
+  assert.match(stylesSource, /\.analysis-data-section\.is-single-value-result\{width:min\(100%,460px\)\}/);
+  assert.match(stylesSource, /\.analysis-trace\[data-process-flow="vertical"\] ol\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(stylesSource, /\.analysis-summary-answer \.agent-narrative-text\{[^}]*font-size:16px/);
   assert.match(stylesSource, /\.message\.message--user\{justify-content:flex-end\}/);
   assert.match(stylesSource, /\.message--user>\.turn-user-bubble\{[^}]*margin-left:auto/);
   assert.match(stylesSource, /\.message\.message--agent\{justify-content:flex-start\}/);

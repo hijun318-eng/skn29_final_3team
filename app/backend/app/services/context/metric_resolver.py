@@ -127,7 +127,7 @@ def _reconcile_explicit_calendar_bucket(
         bucket is None
         or normalized.get("metric_resolution") != "selected"
         or enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES)
-        in {"PRESENTATION", "REPORT_ACTION"}
+        == "REPORT_ACTION"
         or operation not in {None, "aggregate", "breakdown", "time_trend"}
         or normalized.get("result_limit") is not None
     ):

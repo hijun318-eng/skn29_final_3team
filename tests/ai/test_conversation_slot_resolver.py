@@ -834,6 +834,41 @@ def test_presentation_signal_yields_to_a_new_measurement_request():
     assert slots.metric_id == "fnb_revenue"
 
 
+def test_presentation_signal_yields_to_explicit_monthly_reaggregation() -> None:
+    """월별 cadence는 기존 단일 합계 Artifact의 View 전환으로 처리하지 않는다."""
+
+    previous = _prior_analysis_turn()
+    previous["resolved_slots"].update(
+        {
+            "metric_ids": ["room_revenue"],
+            "analysis_operation": "aggregate",
+            "analysis_time_bucket": None,
+            "dimension_fields": [],
+            "user_filters": [],
+        }
+    )
+    slots = ConversationSlotResolver.resolve(
+        user_message="월별로 그래프로 비교해줘",
+        node1_output={
+            "requested_route": "PRESENTATION",
+            "presentation_type": "BAR",
+            "metric_resolution": "missing",
+            "is_elliptical": True,
+            "analysis_operation": "time_trend",
+            "analysis_time_bucket": "month",
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 30),
+    )
+
+    assert slots.route == "ANALYSIS"
+    assert slots.metric_id == "room_revenue"
+    assert slots.is_inherited_metric is True
+    assert slots.analysis_operation == "time_trend"
+    assert slots.analysis_time_bucket == "month"
+    assert slots.target_chart_type == "BAR"
+
+
 def test_presentation_type_outside_allowlist_is_rejected():
     """허용 목록 밖 표현 타입은 채택하지 않고 순환 기본값으로 닫는지 검증."""
     slots = ConversationSlotResolver.resolve(

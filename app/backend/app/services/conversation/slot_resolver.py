@@ -353,15 +353,40 @@ class ConversationSlotResolver:
             if isinstance(item, str) and item
         )
 
+        operations = {
+            "aggregate",
+            "breakdown",
+            "time_trend",
+            "top_n",
+            "bottom_n",
+            "period_comparison",
+        }
+        candidate_operation = node1_output.get("analysis_operation")
+        if candidate_operation not in operations:
+            candidate_operation = None
+        candidate_time_bucket = node1_output.get("analysis_time_bucket")
+        if candidate_time_bucket not in {"day", "week", "month", "quarter", "year"}:
+            candidate_time_bucket = None
+
         # PRESENTATION은 저장된 Artifact를 다시 그릴 뿐 질의를 재실행하지 않는다. 따라서
-        # 무엇을 측정할지(metric), 어떻게 나눌지(dimension), 어떤 행을 볼지(filter) 중 하나라도
-        # 바뀌면 재사용으로 답할 수 없다. 이 중 하나라도 후보가 오면 신호와 무관하게 모든
-        # 게이트를 거치는 ANALYSIS로 보낸다. 그러지 않으면 사용자가 요청한 분해·필터가
-        # 조용히 사라지고 이전 결과가 다시 표시된다.
+        # 무엇을 측정할지(metric), 어떻게 나눌지(dimension), 어떤 행을 볼지(filter),
+        # 어떤 집계 형태·시간 버킷을 쓸지 중 하나라도 바뀌면 재사용으로 답할 수 없다.
+        # 이 중 하나라도 후보가 오면 신호와 무관하게 모든 게이트를 거치는 ANALYSIS로
+        # 보낸다. 그러지 않으면 사용자가 요청한 재집계가 조용히 사라진다.
         changes_query_shape = bool(
             candidate_metric_ids
             or node1_output.get("dimension_fields")
             or node1_output.get("filter_fields")
+            or (
+                candidate_operation is not None
+                and candidate_operation
+                != analysis_inheritance_slots.get("analysis_operation")
+            )
+            or (
+                candidate_time_bucket is not None
+                and candidate_time_bucket
+                != analysis_inheritance_slots.get("analysis_time_bucket")
+            )
         )
         # 재사용할 선행 Artifact가 실제로 있는지는 오케스트레이터가 실행 직전에 확인해
         # 없으면 typed 실패로 닫는다(조용한 우회 금지).
@@ -433,25 +458,11 @@ class ConversationSlotResolver:
             metric_ids = (metric_id,) if metric_id else ()
             metric_changes = (metric_change,)
 
-        operations = {
-            "aggregate",
-            "breakdown",
-            "time_trend",
-            "top_n",
-            "bottom_n",
-            "period_comparison",
-        }
-        candidate_operation = node1_output.get("analysis_operation")
-        if candidate_operation not in operations:
-            candidate_operation = None
         analysis_operation = candidate_operation or (
             analysis_inheritance_slots.get("analysis_operation")
             if is_followup
             else None
         )
-        candidate_time_bucket = node1_output.get("analysis_time_bucket")
-        if candidate_time_bucket not in {"day", "week", "month", "quarter", "year"}:
-            candidate_time_bucket = None
         analysis_time_bucket = (
             candidate_time_bucket
             if candidate_operation == "time_trend"

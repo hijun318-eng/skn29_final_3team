@@ -69,6 +69,7 @@ from app.services.analysis.result_validator import PipelineResultValidator  # no
 from app.services.context.metric_resolver import (  # noqa: E402
     MetricResolver,
     _explicit_calendar_time_bucket,
+    _reconcile_explicit_calendar_bucket,
     _reconcile_comparison_axis,
     _validate_selected_data_availability,
 )
@@ -1998,6 +1999,27 @@ def test_explicit_calendar_cadence_is_finite_and_ambiguous_safe(
     """날짜 자체나 충돌 단위를 cadence로 만들지 않고 명시 문법만 typed bucket으로 변환한다."""
 
     assert _explicit_calendar_time_bucket(question) == expected
+
+
+def test_explicit_calendar_cadence_survives_presentation_candidate() -> None:
+    """월별 재집계 요구를 단순 View 전환 후보가 지우지 않는지 검증한다."""
+
+    reconciled = _reconcile_explicit_calendar_bucket(
+        {
+            "metric_resolution": "selected",
+            "requested_route": "PRESENTATION",
+            "analysis_operation": "aggregate",
+            "intent_candidates": ["aggregate"],
+            "analysis_time_bucket": None,
+            "result_limit": None,
+        },
+        "월별로 그래프로 비교해줘",
+    )
+
+    assert reconciled["requested_route"] == "PRESENTATION"
+    assert reconciled["analysis_operation"] == "time_trend"
+    assert reconciled["intent_candidates"] == ["time_trend"]
+    assert reconciled["analysis_time_bucket"] == "month"
 
 
 def test_explicit_calendar_cadence_repairs_dimensionless_shape_without_second_model_call() -> None:

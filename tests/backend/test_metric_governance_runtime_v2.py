@@ -1499,6 +1499,8 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
         user_id=UUID("20000000-0000-0000-0000-000000000002"),
         role=Role.ANALYST,
         as_of=date(2026, 8, 19),
+        product_release_id="verified-product-release",
+        semantic_release_id=str(assets[0]["context_release"]),
     )
 
     selected_assets, _question, structured = asyncio.run(
@@ -1586,6 +1588,8 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
         user_id=UUID("20000000-0000-0000-0000-000000000002"),
         role=Role.ANALYST,
         as_of=date(2026, 8, 19),
+        product_release_id="verified-product-release",
+        semantic_release_id=str(assets[0]["context_release"]),
     )
     request = AnalysisRequest(
         question="Amount per Event",
@@ -1595,6 +1599,8 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
     selected_assets, _question, structured = asyncio.run(
         resolver.resolve(request, context, assets)
     )
+    for asset in selected_assets:
+        asset["product_release_id"] = "verified-product-release"
     package = asyncio.run(
         PipelineContextService(engine, ContextPackageBuilder()).build(
             request,

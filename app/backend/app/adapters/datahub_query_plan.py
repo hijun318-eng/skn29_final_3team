@@ -86,7 +86,7 @@ class GovernedPhraseIndex:
                 terminal.append((normalized, form))
 
     def match(self, question: str, *, max_hints: int = 2) -> tuple[str, ...]:
-        """질문에 실제로 포함된 가장 긴 승인 문구를 bounded DataHub hint로 반환한다.
+        """질문의 exact·더 구체적인 token 관계를 bounded DataHub hint로 반환한다.
 
         Latin 식별자는 ASCII 단어 경계를 강제해 ``ADR``이 ``address``에 매치되는 일을
         막는다. 한국어는 조사와 무공백 복합어가 이어질 수 있어 Unicode 전체 단어 경계를
@@ -129,35 +129,55 @@ class GovernedPhraseIndex:
                         current = matches.get(canonical)
                         if current is None or candidate < current:
                             matches[canonical] = candidate
-        exact = tuple(
-            evidence[2]
-            for _canonical, evidence in sorted(
-                matches.items(), key=lambda item: (item[1][1], item[0])
-            )[:max_hints]
+        question_tokens = unicode_tokens(normalized)
+        exact_matches = sorted(
+            matches.items(), key=lambda item: (item[1][1], item[0])
+        )[:max_hints]
+        exact = tuple(evidence[2] for _canonical, evidence in exact_matches)
+
+        # 짧은 승인 문구가 exact로 포함돼도, 질문이 더 구체적인 승인 문구의 토큰을
+        # 더 많이 담으면 남은 bounded slot에 함께 보존한다. 한정어가 추가된 파생
+        # phrase의 어순이 달라져도 짧은 기본 측정량 phrase 하나로 축소되지 않아야 한다.
+        # 질문별 synonym이나 지표 ID 분기는 사용하지 않고 active release phrase만 비교한다.
+        exact_canonicals = {canonical for canonical, _evidence in exact_matches}
+        strongest_exact_relation = max(
+            (
+                sum(
+                    any(
+                        _related_unicode_token(token, candidate)
+                        for candidate in question_tokens
+                    )
+                    for token in self._phrase_tokens[canonical]
+                )
+                for canonical in exact_canonicals
+            ),
+            default=0,
         )
-        if exact:
-            return exact
 
         # Exact alias가 없는 자연어 표현은 phrase 전체를 무제한 scan하거나 업무별
         # synonym map을 두지 않는다. 미리 컴파일한 승인 phrase token과 질문 token 사이에
         # 독립적인 두 개 이상의 Unicode 부분-token 증거가 있을 때만 원래 승인 phrase를
         # bounded query hint로 사용한다. 예: ``식음료 순매출`` → ``식음료 매출``.
-        question_tokens = unicode_tokens(normalized)
         fuzzy: list[tuple[int, int, str]] = []
         for phrase, phrase_tokens in self._phrase_tokens.items():
+            if phrase in exact_canonicals:
+                continue
             related = sum(
                 any(_related_unicode_token(token, candidate) for candidate in question_tokens)
                 for token in phrase_tokens
             )
-            if related >= 2:
+            if related >= 2 and (
+                not exact or related > strongest_exact_relation
+            ):
                 fuzzy.append((related, len(phrase.replace(" ", "")), phrase))
-        return tuple(
+        fuzzy_hints = tuple(
             phrase
             for _score, _size, phrase in sorted(
                 fuzzy,
                 key=lambda item: (-item[0], -item[1], item[2]),
-            )[:max_hints]
+            )[: max(0, max_hints - len(exact))]
         )
+        return (*exact, *fuzzy_hints)
 
 
 def escape_search_text(value: str) -> str:

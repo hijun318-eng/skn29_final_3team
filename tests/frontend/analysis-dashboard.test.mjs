@@ -25,6 +25,7 @@ try {
   const { commandClarificationMessage, commandClarificationType, savedRunStatus } = await server.ssrLoadModule("/src/pages/agentPageHelpers.js");
   const { AnalysisStatePanel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
+  const { MetaStrip } = await server.ssrLoadModule("/src/components/common/EnterpriseUi.jsx");
   const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
   const { default: MLPredictionWorkspace } = await server.ssrLoadModule("/src/components/ml/MLPredictionWorkspace.jsx");
   const { normalizeApiResponse } = await server.ssrLoadModule("/src/contracts/analysis.ts");
@@ -88,6 +89,12 @@ try {
   }));
   assert.match(runningPanelHtml, /data-process-status="running"/);
   assert.match(runningPanelHtml, /승인된 범위에서 분석하고 있습니다/);
+
+  const metaStripHtml = renderToStaticMarkup(createElement(MetaStrip, {
+    meta: { asOf: "2026-08-30" },
+  }));
+  assert.match(metaStripHtml, /데이터 기준일 2026-08-30 · 서울 시간/);
+  assert.doesNotMatch(metaStripHtml, /분석 근거 연결 완료|분석 요청 기준|<svg/);
 
   const completedAnalysisProcess = {
     ...processViewModels.analysisActive,
@@ -251,6 +258,11 @@ try {
   assert.match(stylesSource, /\.message\.message--user\{justify-content:flex-end\}/);
   assert.match(stylesSource, /\.message--user>\.turn-user-bubble\{[^}]*margin-left:auto/);
   assert.match(stylesSource, /\.message\.message--agent\{justify-content:flex-start\}/);
+  assert.match(stylesSource, /\.chat-layout \.message\.message--agent>\.agent-response-container\{[^}]*padding:0[^}]*border:0[^}]*background:transparent/);
+  assert.match(stylesSource, /\.chat-layout \.analysis-state--loading,\.chat-layout \.analysis-state--delayed\{[^}]*grid-template-columns:minmax\(0,1fr\) auto[^}]*border-radius:12px/);
+  assert.match(stylesSource, /\.chat-layout \.run-history-panel\{[^}]*border:1px solid #26364a[^}]*border-radius:10px/);
+  assert.match(stylesSource, /\.chat-layout \.conversation,\.chat-layout \.meta-strip,\.chat-layout \.run-history-panel,\.chat-layout \.analysis-notice\{width:min\(100%,var\(--analysis-thread-width\)\)/);
+  assert.doesNotMatch(agentSource, /verified=\{/);
   assert.doesNotMatch(agentSource, /question-help/);
   assert.doesNotMatch(agentSource, /호텔 운영 데이터 분석과 후속 질문을 한 대화에서 이어갈 수 있습니다/);
   assert.doesNotMatch(agentSource, /승인된 내부 업무지침 질문과 후속 질문을 한 대화에서 이어갈 수 있습니다/);
@@ -277,6 +289,8 @@ try {
   assert.match(stylesSource, /html:has\(\.chat-layout\),body:has\(\.chat-layout\)\{overflow:hidden\}/);
   assert.match(stylesSource, /\.chat-main\{padding:0;display:grid;grid-template-rows:minmax\(0,1fr\) auto;overflow:hidden\}/);
   assert.match(stylesSource, /\.chat-scroll-region\{[^}]*overflow:auto[^}]*overscroll-behavior:contain\}/);
+  assert.match(stylesSource, /\.chat-scroll-region\{scrollbar-gutter:stable both-edges\}/);
+  assert.match(stylesSource, /@media\(max-width:650px\)\{[^\n]*\.chat-scroll-region\{scrollbar-gutter:auto;scrollbar-width:none\}/);
   assert.match(stylesSource, /\.chat-input\{position:static;min-width:0;width:100%;padding:10px 25px calc\(12px \+ env\(safe-area-inset-bottom\)\)\}/);
   assert.match(stylesSource, /\.chat-main>\.chat-input\{background:transparent\}/);
   assert.match(stylesSource, /\.question-field,\.analysis-input-error\{width:min\(100%,920px\);margin-inline:auto\}/);

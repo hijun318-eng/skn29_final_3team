@@ -569,7 +569,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       {/* 중앙: 대화 스레드 메인 */}
       <main className="chat-main" inert={Boolean(reportModal)}>
         <div className="chat-scroll-region">
-        {activeEvidenceRun.meta?.asOf && <MetaStrip meta={activeEvidenceRun.meta} verified={Boolean(activeEvidenceRun.artifact && ["success", "partial"].includes(activeEvidenceRun.status))} />}
+        {activeEvidenceRun.meta?.asOf && <MetaStrip meta={activeEvidenceRun.meta} />}
         
         {turns.length === 0 && !submitting && (
           emptyMode === "rag-documents" ? (

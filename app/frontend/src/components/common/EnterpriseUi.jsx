@@ -1,13 +1,10 @@
-/** 분석·보고서 화면이 공유하는 근거 meta와 섹션 제목 UI 모듈이다. */
-import { ShieldCheck } from "lucide-react";
+/** 분석·보고서 화면이 공유하는 기준일 meta와 섹션 제목 UI 모듈이다. */
 
-/** 서버 기준일과 근거 연결 여부만 표시하며 meta 부재 시 추정값 없이 렌더링을 생략한다. */
-export function MetaStrip({ meta, verified = false }) {
+/** 서버 기준일만 표시하며 meta 부재 시 추정값 없이 렌더링을 생략한다. */
+export function MetaStrip({ meta }) {
   if (!meta) return null;
   return (
-    <div className="meta-strip">
-      <ShieldCheck size={13} />
-      <span>{verified ? "분석 근거 연결 완료" : "분석 요청 기준"}</span>
+    <div className="meta-strip" aria-label="분석 데이터 기준일">
       {meta.asOf && <span>데이터 기준일 {meta.asOf} · 서울 시간</span>}
     </div>
   );

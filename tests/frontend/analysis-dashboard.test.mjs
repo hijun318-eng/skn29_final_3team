@@ -254,7 +254,7 @@ try {
   assert.match(stylesSource, /\.analysis-data-section\.is-single-value-result\{width:min\(100%,460px\)\}/);
   assert.match(stylesSource, /\.analysis-trace\[data-process-flow="vertical"\] ol\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
   assert.match(stylesSource, /\.analysis-summary-answer \.agent-narrative-text\{[^}]*font-size:16px/);
-  assert.match(stylesSource, /\.message\.message--user\{justify-content:flex-end\}/);
+  assert.match(stylesSource, /\.message\.message--user\{[^}]*align-items:center[^}]*justify-content:flex-end/);
   assert.match(stylesSource, /\.message--user>\.turn-user-bubble\{[^}]*margin-left:auto/);
   assert.match(stylesSource, /\.message--user>\.user-icon\{[^}]*border-radius:50%/);
   assert.doesNotMatch(stylesSource, /\.turn-user-bubble \.user-icon|analysis-summary-verified/);

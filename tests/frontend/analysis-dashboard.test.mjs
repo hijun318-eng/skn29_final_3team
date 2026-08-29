@@ -41,8 +41,7 @@ try {
   assert.doesNotMatch(html, /고객 고객/);
   assert.match(html, /AI 분석 요약/);
   assert.match(html, /analysis-summary-heading/);
-  assert.match(html, /근거 검증 완료/);
-  assert.match(html, /analysis-summary-verified/);
+  assert.doesNotMatch(html, /근거 검증 완료|analysis-summary-verified/);
   assert.match(html, /분석 결과/);
   assert.match(html, /analysis-summary-answer/);
   assert.match(html, /핵심 답변/);
@@ -257,6 +256,9 @@ try {
   assert.match(stylesSource, /\.analysis-summary-answer \.agent-narrative-text\{[^}]*font-size:16px/);
   assert.match(stylesSource, /\.message\.message--user\{justify-content:flex-end\}/);
   assert.match(stylesSource, /\.message--user>\.turn-user-bubble\{[^}]*margin-left:auto/);
+  assert.match(stylesSource, /\.message--user>\.user-icon\{[^}]*border-radius:50%/);
+  assert.doesNotMatch(stylesSource, /\.turn-user-bubble \.user-icon|analysis-summary-verified/);
+  assert.match(agentSource, /<div className="turn-user-bubble">\s*<div className="user-content">[\s\S]*?<\/div>\s*<\/div>\s*<span className="user-icon"/);
   assert.match(stylesSource, /\.message\.message--agent\{justify-content:flex-start\}/);
   assert.match(stylesSource, /\.chat-layout \.message\.message--agent>\.agent-response-container\{[^}]*padding:0[^}]*border:0[^}]*background:transparent/);
   assert.match(stylesSource, /\.chat-layout \.analysis-state--loading,\.chat-layout \.analysis-state--delayed\{[^}]*grid-template-columns:minmax\(0,1fr\) auto[^}]*border-radius:12px/);

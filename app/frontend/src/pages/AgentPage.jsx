@@ -606,11 +606,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
               <div key={turnItem.turnId || idx} className="conversation-turn-group">
                 <div className="message message--user" aria-label="사용자 메시지">
                   <div className="turn-user-bubble">
-                    <span className="user-icon" aria-hidden="true">나</span>
                     <div className="user-content">
                       <p className="user-text">{turnItem.question}</p>
                     </div>
                   </div>
+                  <span className="user-icon" aria-hidden="true">나</span>
                 </div>
 
                 <div className="message message--agent" aria-label="AI 응답">

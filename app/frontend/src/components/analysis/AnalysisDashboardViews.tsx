@@ -25,7 +25,6 @@ export function AnalysisConversationalSummary({ run, valueScale }: { run: Analys
           <small>분석 결과</small>
           <h3>{analysisTitle(run)}</h3>
         </div>
-        <span className="analysis-summary-verified">근거 검증 완료</span>
       </header>
       <div className="analysis-summary-answer">
         <small>핵심 답변</small>

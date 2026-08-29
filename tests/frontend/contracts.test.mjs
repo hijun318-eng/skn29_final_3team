@@ -317,7 +317,7 @@ assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /검�
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /from "recharts"/);
 assert.match(source("components/charts/EnterpriseChart.jsx"), /accessibilityLayer/);
 assert.match(source("components/charts/EnterpriseChart.jsx"), /<ChartTooltip/);
-assert.match(source("components/TurnReportModal.jsx"), /className=\{`report-transfer-modal/);
+assert.match(source("components/TurnReportModal.jsx"), /className=\{isDraft \? "report-transfer-modal"/);
 assert.match(source("components/TurnEvidenceDrawer.jsx"), /evidence-panel/);
 assert.match(source("components/TurnEvidenceDrawer.jsx"), /결과 요약/);
 assert.match(source("components/TurnEvidenceDrawer.jsx"), /문맥·SQL·결과 검증 통과/);

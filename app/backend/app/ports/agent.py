@@ -17,10 +17,16 @@ AGENT_RESULT_VERSION = "AgentResult.v1"
 
 
 class AgentKind(str, Enum):
-    """현재 실제 conversation command에 연결된 Agent 실행 종류다."""
+    """Conversation Supervisor가 식별할 수 있는 Agent 실행 종류다.
+
+    ML 종류는 교체 runtime의 ``AgentPort``와 capability probe가 승인되기 전까지
+    production registry에 등록하지 않는다. 종류를 미리 고정해 두면 교체 시 공통
+    AgentRequest·상태·LangGraph 계약을 다시 변경하지 않고 port만 추가할 수 있다.
+    """
 
     ANALYSIS_WORKFLOW = "ANALYSIS_WORKFLOW"
     INTERNAL_GUIDELINE = "INTERNAL_GUIDELINE"
+    ML_PREDICTION = "ML_PREDICTION"
 
 
 class AgentRequest(ContractModel):

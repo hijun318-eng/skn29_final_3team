@@ -19,6 +19,13 @@ from app.services.agent_supervisor import (
 SUPERVISOR_ROUTE_NODE = "supervisor_route"
 ANALYSIS_AGENT_NODE = "analysis_workflow_agent"
 INTERNAL_GUIDELINE_AGENT_NODE = "internal_guideline_agent"
+ML_PREDICTION_AGENT_NODE = "ml_prediction_agent"
+
+
+def _agent_node_name(agent: AgentKind) -> str:
+    """Agent enum을 안정적인 LangGraph node 이름으로 변환한다."""
+
+    return f"{agent.value.lower()}_agent"
 
 
 class _AgentGraphState(TypedDict, total=False):
@@ -52,22 +59,27 @@ class LangGraphAgentRuntime:
 
         builder = StateGraph(_AgentGraphState)
         builder.add_node(SUPERVISOR_ROUTE_NODE, self._route)
-        builder.add_node(ANALYSIS_AGENT_NODE, self._execute_analysis)
-        builder.add_node(
-            INTERNAL_GUIDELINE_AGENT_NODE,
-            self._execute_internal_guideline,
-        )
+        self._agent_nodes = {
+            agent: _agent_node_name(agent)
+            for agent in AgentKind
+        }
+        for agent, node_name in self._agent_nodes.items():
+            async def execute_agent(
+                state: _AgentGraphState,
+                *,
+                expected_agent: AgentKind = agent,
+            ) -> _AgentGraphState:
+                return await self._execute_selected(state, expected_agent)
+
+            builder.add_node(node_name, execute_agent)
         builder.add_edge(START, SUPERVISOR_ROUTE_NODE)
         builder.add_conditional_edges(
             SUPERVISOR_ROUTE_NODE,
             self._selected_agent_node,
-            {
-                ANALYSIS_AGENT_NODE: ANALYSIS_AGENT_NODE,
-                INTERNAL_GUIDELINE_AGENT_NODE: INTERNAL_GUIDELINE_AGENT_NODE,
-            },
+            {node_name: node_name for node_name in self._agent_nodes.values()},
         )
-        builder.add_edge(ANALYSIS_AGENT_NODE, END)
-        builder.add_edge(INTERNAL_GUIDELINE_AGENT_NODE, END)
+        for node_name in self._agent_nodes.values():
+            builder.add_edge(node_name, END)
         self._graph = builder.compile(name="answervice-agent-supervisor")
 
     async def execute(self, request: AgentRequest) -> AgentExecutionOutcome:
@@ -96,15 +108,11 @@ class LangGraphAgentRuntime:
             await self._after_route(routing)
         return {"routing": routing}
 
-    @staticmethod
-    def _selected_agent_node(state: _AgentGraphState) -> str:
+    def _selected_agent_node(self, state: _AgentGraphState) -> str:
         """ROUTED 상태의 Agent 종류를 등록된 graph node 이름으로만 변환한다."""
 
-        routing = LangGraphAgentRuntime._routing(state)
-        node = {
-            AgentKind.ANALYSIS_WORKFLOW: ANALYSIS_AGENT_NODE,
-            AgentKind.INTERNAL_GUIDELINE: INTERNAL_GUIDELINE_AGENT_NODE,
-        }.get(routing.decision.agent)
+        routing = self._routing(state)
+        node = self._agent_nodes.get(routing.decision.agent)
         if node is None:
             raise AgentDispatchError(
                 "AGENT_GRAPH_ROUTE_NOT_REGISTERED",
@@ -112,22 +120,6 @@ class LangGraphAgentRuntime:
                 state=routing.state,
             )
         return node
-
-    async def _execute_analysis(
-        self,
-        state: _AgentGraphState,
-    ) -> _AgentGraphState:
-        """분석 Agent node에서 선택된 concrete port 하나만 실행한다."""
-
-        return await self._execute_selected(state, AgentKind.ANALYSIS_WORKFLOW)
-
-    async def _execute_internal_guideline(
-        self,
-        state: _AgentGraphState,
-    ) -> _AgentGraphState:
-        """내부 업무지침 Agent node에서 선택된 concrete port 하나만 실행한다."""
-
-        return await self._execute_selected(state, AgentKind.INTERNAL_GUIDELINE)
 
     async def _execute_selected(
         self,

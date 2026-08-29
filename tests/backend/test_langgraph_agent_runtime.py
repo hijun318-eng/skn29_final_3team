@@ -14,15 +14,20 @@ for path in (ROOT, BACKEND):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from app.agent_contracts import AgentExecutionPhase  # noqa: E402
+from app.agent_contracts import AgentDecisionSource, AgentExecutionPhase  # noqa: E402
 from app.contracts import RequestContext  # noqa: E402
 from app.conversation_contracts import ConversationCommandRequest  # noqa: E402
 from app.ports.agent import AgentKind, AgentRequest, AgentResult  # noqa: E402
 from app.services.agent_supervisor import (  # noqa: E402
     AgentDispatchError,
     DeterministicAgentSupervisor,
+    SupervisorDecision,
 )
-from app.services.langgraph_agent_runtime import LangGraphAgentRuntime  # noqa: E402
+from app.services.langgraph_agent_runtime import (  # noqa: E402
+    LangGraphAgentRuntime,
+    ML_PREDICTION_AGENT_NODE,
+    _agent_node_name,
+)
 
 
 def _request(requested_route: str | None = None) -> AgentRequest:
@@ -67,6 +72,20 @@ class _RecordingPort:
         return AgentResult(
             agent=self._agent,
             payload={"status": "SUCCESS", "data": {"agent": self._agent.value}},
+        )
+
+
+class _MlCapabilityResolver:
+    """승인 receipt로 향후 ML port를 선택하는 테스트 전용 resolver다."""
+
+    decision_sources = frozenset({AgentDecisionSource.CAPABILITY_EVIDENCE})
+
+    async def resolve(self, _request: AgentRequest) -> SupervisorDecision:
+        return SupervisorDecision(
+            agent=AgentKind.ML_PREDICTION,
+            reason="ML_CAPABILITY_MATCH",
+            source=AgentDecisionSource.CAPABILITY_EVIDENCE,
+            evidence_refs=("agent-capability:v1:ml-prediction:test",),
         )
 
 
@@ -160,3 +179,26 @@ class LangGraphAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.code, "AGENT_NOT_CONFIGURED")
         self.assertEqual(raised.exception.state.phase, AgentExecutionPhase.FAILED)
         self.assertEqual(calls, [])
+
+    async def test_future_ml_port_uses_common_graph_without_runtime_branch(self) -> None:
+        """교체 ML port는 공통 Agent 계약만 구현하면 단일 node로 실행된다."""
+
+        calls: list[str] = []
+        supervisor = DeterministicAgentSupervisor(
+            {
+                AgentKind.ML_PREDICTION: _RecordingPort(
+                    AgentKind.ML_PREDICTION,
+                    calls,
+                )
+            },
+            route_resolver=_MlCapabilityResolver(),
+            allowed_decision_sources=frozenset(
+                {AgentDecisionSource.CAPABILITY_EVIDENCE}
+            ),
+        )
+
+        outcome = await LangGraphAgentRuntime(supervisor).execute(_request())
+
+        self.assertEqual(_agent_node_name(AgentKind.ML_PREDICTION), ML_PREDICTION_AGENT_NODE)
+        self.assertEqual(calls, [AgentKind.ML_PREDICTION.value])
+        self.assertEqual(outcome.result.agent, AgentKind.ML_PREDICTION)

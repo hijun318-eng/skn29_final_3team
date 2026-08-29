@@ -15,7 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.admin_router import admin_router
 from app.api.router import _controller, execution_gate, router
 from app.api.report_router import report_router
-from app.api.mcp_router import mcp_router
+from app.api.mcp_router import HEADER_MISMATCH, mcp_router
 from app.api.rag_router import rag_router
 from app.api.ml_router import router as ml_router
 from app.context import ContextValidationError, request_context, valid_trace_id
@@ -161,7 +161,19 @@ async def context_error(request: Request, exc: ContextValidationError) -> JSONRe
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """FastAPI body/header 검증 오류에서 누락 필드만 추출해 typed 422 응답을 만든다."""
+    """MCP header 오류 또는 일반 API의 누락 필드를 각 공개 계약으로 변환한다."""
+    if request.url.path == "/mcp":
+        return JSONResponse(
+            status_code=400,
+            content={
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": HEADER_MISMATCH,
+                    "message": "Required MCP request header is missing or malformed",
+                },
+            },
+        )
     context = request_context(request)
     missing = tuple(
         sorted(

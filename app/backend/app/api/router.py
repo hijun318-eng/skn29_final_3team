@@ -75,6 +75,8 @@ from app.api.analysis_router_support import (
     list_analysis_runs,
 )
 from app.controllers.analysis_controller import AnalysisController
+from app.ports.agent import AgentKind, AgentRequest
+from app.services.agent_supervisor import CallableAgentPort, DeterministicAgentSupervisor
 from app.services.analysis import AnalysisService, analysis_progress
 from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
 from app.services.conversation.analysis_request import build_replay_analysis_request
@@ -537,59 +539,54 @@ async def get_conversation_turns(
     }
 
 
-@router.post(
-    "/conversations/{conversation_id}/commands",
-    operation_id="executeConversationCommand",
-)
-async def execute_conversation_command(
-    conversation_id: UUID,
-    payload: ConversationCommandRequest,
-    context: RequestContext = Depends(session_context),
+async def _execute_internal_guideline_agent(
+    request: AgentRequest,
+    orchestrator: Any,
 ) -> dict[str, Any]:
-    """대화방에서 분석·표현·보고서·내부지침 명령을 수행한다."""
-    from app.api.analysis_router_runtime import conversation_orchestrator
-    orch = conversation_orchestrator(_controller())
-    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
-    if conv["status"] == "ARCHIVED":
-        raise ContextValidationError(
-            ErrorCode.CONVERSATION_ARCHIVED,
-            "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
-            409,
-        )
-    if payload.requested_route == "INTERNAL_GUIDELINE":
-        rag_envelope = await query_internal_manual(
-            RagQueryRequest(
-                question=payload.user_message,
-                mode="DOCUMENT_ONLY",
-                conversation_id=conversation_id,
-                expected_head_turn_id=payload.expected_head_turn_id,
-                inherit_previous_context=payload.inherit_previous_context,
+    """기존 RAG gateway·snapshot·Turn 저장 흐름을 typed AgentPort 뒤에서 실행한다."""
+
+    command = request.command
+    rag_envelope = await query_internal_manual(
+        RagQueryRequest(
+            question=command.user_message,
+            mode="DOCUMENT_ONLY",
+            conversation_id=request.conversation_id,
+            expected_head_turn_id=command.expected_head_turn_id,
+            inherit_previous_context=command.inherit_previous_context,
+        ),
+        request.context,
+    )
+    rag_result = rag_envelope["data"]
+    turns = await orchestrator._repo.list_turns(request.conversation_id)
+    return {
+        "status": "SUCCESS",
+        "data": {
+            "status": "COMPLETED",
+            "type": "INTERNAL_GUIDELINE",
+            "turn": next(
+                (
+                    item
+                    for item in turns
+                    if str(item["turn_id"]) == str(rag_result.get("turn_id"))
+                ),
+                None,
             ),
-            context,
-        )
-        rag_result = rag_envelope["data"]
-        turns = await orch._repo.list_turns(conversation_id)
-        return {
-            "status": "SUCCESS",
-            "data": {
-                "status": "COMPLETED",
-                "type": "INTERNAL_GUIDELINE",
-                "turn": next(
-                    (
-                        item
-                        for item in turns
-                        if str(item["turn_id"]) == str(rag_result.get("turn_id"))
-                    ),
-                    None,
-                ),
-                "conversation": await orch._repo.get_conversation(
-                    conversation_id, context.user_id
-                ),
-                "rag_response": rag_result,
-            },
-        }
+            "conversation": await orchestrator._repo.get_conversation(
+                request.conversation_id,
+                request.context.user_id,
+            ),
+            "rag_response": rag_result,
+        },
+    }
+
+
+async def _execute_analysis_workflow_agent(
+    request: AgentRequest,
+    orchestrator: Any,
+) -> dict[str, Any]:
+    """기존 분석·표현·Report Action 상태 머신과 progress 계약을 그대로 실행한다."""
+
+    context = request.context
     final_status = AnalysisStatus.FAILED
     analysis_progress.start(
         context.trace_id,
@@ -608,38 +605,23 @@ async def execute_conversation_command(
             1.0,
             min(configured_timeout, max(1.0, recovery_stale - 5.0)),
         )
-        try:
-            async with asyncio.timeout(command_timeout):
-                result = await orch.execute_command(
-                    conversation_id,
-                    payload.model_dump(mode="python"),
-                    context,
-                    progress_sink=lambda stage, outcome: analysis_progress.record(
-                        context.request_id,
-                        stage,
-                        outcome,
-                    ),
-                    cancel_check=lambda: analysis_progress.cancelled(
-                        context.request_id
-                    ),
-                    analysis_gate=execution_gate,
-                    analysis_queue_wait_seconds=float(
-                        os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")
-                    ),
-                )
-        except TimeoutError:
-            response = ErrorResponse(
-                data=EmptyData(),
-                meta=response_meta(context),
-                error=ErrorBody(
-                    code=ErrorCode.QUERY_TIMEOUT,
-                    message="분석 명령의 전체 실행 시간이 초과되었습니다.",
-                    retryable=True,
+        async with asyncio.timeout(command_timeout):
+            result = await orchestrator.execute_command(
+                request.conversation_id,
+                request.command.model_dump(mode="python"),
+                context,
+                progress_sink=lambda stage, outcome: analysis_progress.record(
+                    context.request_id,
+                    stage,
+                    outcome,
                 ),
-            )
-            return JSONResponse(
-                status_code=504,
-                content=response.model_dump(mode="json"),
+                cancel_check=lambda: analysis_progress.cancelled(
+                    context.request_id
+                ),
+                analysis_gate=execution_gate,
+                analysis_queue_wait_seconds=float(
+                    os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")
+                ),
             )
         final_status = {
             "SUCCESS": AnalysisStatus.SUCCEEDED,
@@ -678,6 +660,66 @@ async def execute_conversation_command(
         return {"status": "SUCCESS", "data": result}
     finally:
         analysis_progress.finish(context.request_id, final_status)
+
+
+@router.post(
+    "/conversations/{conversation_id}/commands",
+    operation_id="executeConversationCommand",
+)
+async def execute_conversation_command(
+    conversation_id: UUID,
+    payload: ConversationCommandRequest,
+    context: RequestContext = Depends(session_context),
+) -> dict[str, Any]:
+    """대화방에서 분석·표현·보고서·내부지침 명령을 수행한다."""
+    from app.api.analysis_router_runtime import conversation_orchestrator
+    orch = conversation_orchestrator(_controller())
+    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
+    if conv["status"] == "ARCHIVED":
+        raise ContextValidationError(
+            ErrorCode.CONVERSATION_ARCHIVED,
+            "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
+            409,
+        )
+    agent_request = AgentRequest(
+        conversation_id=conversation_id,
+        command=payload,
+        context=context,
+    )
+    supervisor = DeterministicAgentSupervisor(
+        {
+            AgentKind.ANALYSIS_WORKFLOW: CallableAgentPort(
+                AgentKind.ANALYSIS_WORKFLOW,
+                lambda request: _execute_analysis_workflow_agent(request, orch),
+            ),
+            AgentKind.INTERNAL_GUIDELINE: CallableAgentPort(
+                AgentKind.INTERNAL_GUIDELINE,
+                lambda request: _execute_internal_guideline_agent(request, orch),
+            ),
+        }
+    )
+    decision = supervisor.decide(agent_request)
+    try:
+        agent_result = await supervisor.execute(agent_request)
+    except TimeoutError:
+        if decision.agent is not AgentKind.ANALYSIS_WORKFLOW:
+            raise
+        response = ErrorResponse(
+            data=EmptyData(),
+            meta=response_meta(context),
+            error=ErrorBody(
+                code=ErrorCode.QUERY_TIMEOUT,
+                message="분석 명령의 전체 실행 시간이 초과되었습니다.",
+                retryable=True,
+            ),
+        )
+        return JSONResponse(
+            status_code=504,
+            content=response.model_dump(mode="json"),
+        )
+    return agent_result.payload
 
 
 router.include_router(analysis_support_router)

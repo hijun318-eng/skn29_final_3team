@@ -1,0 +1,36 @@
+{
+  "schema_version": "RoomDemandHgbrCandidate.v1",
+  "model_version": "room-demand-hgbr-occupancy-v3.3.0",
+  "algorithm": "HistGradientBoostingRegressor",
+  "target_mode": "occupancy_rate",
+  "hyperparameters": {
+    "name": "occupancy_rate_squared_base",
+    "mode": "occupancy_rate",
+    "loss": "squared_error",
+    "max_iter": 240,
+    "learning_rate": 0.06,
+    "max_leaf_nodes": 31,
+    "min_samples_leaf": 40,
+    "l2_regularization": 0.2
+  },
+  "artifact_file": "hgbr_candidate.joblib",
+  "artifact_bytes": 931014,
+  "artifact_sha256": "96b8527372c47341f1432b3b8288b770fabd90ae5bf0a55649bcd7eab2ba3f8c",
+  "observed_accuracy_winner": "xgboost",
+  "selected_operational_family": "hgbr",
+  "hgbr_strict_accuracy_winner": false,
+  "hgbr_noninferior": true,
+  "synthetic_training_data": true,
+  "runtime_integrated": false,
+  "production_approved": false,
+  "training_runtime_versions": {
+    "python": "3.12",
+    "joblib": "1.5.3",
+    "lightgbm": "4.6.0",
+    "numpy": "2.3.5",
+    "pandas": "3.0.1",
+    "scikit_learn": "1.7.1",
+    "scipy": "1.18.1",
+    "xgboost": "2.1.4"
+  }
+}

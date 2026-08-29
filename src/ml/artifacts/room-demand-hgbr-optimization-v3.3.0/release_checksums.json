@@ -1,0 +1,31 @@
+{
+  "schema_version": "RoomDemandHgbrOptimizationChecksums.v1",
+  "generated_at_utc": "2026-08-29T10:42:29.3321878Z",
+  "files": [
+    {
+      "path": "feature_contract.json",
+      "bytes": 2563,
+      "sha256": "3ca3083556719a7c744a57785046ef0f9a5ee8d6d0cd683dd64033e0aa290253"
+    },
+    {
+      "path": "hgbr_candidate.joblib",
+      "bytes": 931014,
+      "sha256": "96b8527372c47341f1432b3b8288b770fabd90ae5bf0a55649bcd7eab2ba3f8c"
+    },
+    {
+      "path": "hgbr_cv_results.csv",
+      "bytes": 3122,
+      "sha256": "abef914d2a0b5566f32df75be374a6c33785b14db573319d69cb758e511388fa"
+    },
+    {
+      "path": "model_manifest.json",
+      "bytes": 1126,
+      "sha256": "98735fc982972ce838cd22f3285fe2f53c9db1a4cacc1a7fb43994d182f72ebc"
+    },
+    {
+      "path": "selection.json",
+      "bytes": 5432,
+      "sha256": "93e68efa80ce85e1f43acfeba2798f3522af99117c3aed5a7d53eb3a6f3a7624"
+    }
+  ]
+}

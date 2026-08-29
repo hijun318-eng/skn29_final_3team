@@ -180,6 +180,14 @@ assert.doesNotMatch(source("pages/AdminPage.jsx"), /createAdminClient|VITE_BACKE
 assert.doesNotMatch(source("api/adminClient.ts"), /https?:\/\/|localhost|127\.0\.0\.1|:[0-9]{2,5}/);
 assert.match(source("pages/AdminPage.jsx"), /client\.resetPassword/);
 assert.match(source("pages/AdminPage.jsx"), /client\.deleteAccount/);
+assert.match(globalStyles, /\.admin-console\{display:grid;gap:18px;padding-top:22px\}/);
+assert.match(globalStyles, /\.admin-connection-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+assert.match(globalStyles, /\.admin-data-table__head,\.admin-data-table__row\{[^}]*display:grid/);
+assert.match(globalStyles, /\.ppt-theme \.admin-console__tabs button\.is-active\{/);
+assert.match(globalStyles, /@media\(max-width:700px\)\{\.admin-console\{padding-top:14px\}/);
+assert.match(globalStyles, /\.admin-data-table__row>\[role=cell\]::before\{content:attr\(data-label\)/);
+assert.match(source("pages/AdminPage.jsx"), /role="cell" data-label="사용자 아이디"/);
+assert.match(globalStyles, /@media\(max-width:700px\)\{[\s\S]*?\.top-actions>\.session-signout>span\{display:none\}/);
 assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.listAuditTrails\(filters, cursor\)/);
 assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.getAuditTrail\(selectedTrailId\)/);
 assert.doesNotMatch(source("components/layout/AppHeader.jsx"), /inert=|메뉴 열기|메뉴 닫기/);

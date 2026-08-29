@@ -266,6 +266,8 @@ try {
   assert.match(stylesSource, /\.chat-layout\{[^}]*grid-template-columns:205px minmax\(400px,1fr\) 285px/);
   assert.match(stylesSource, /@media\(min-width:1201px\)\{\.chat-layout\.evidence-open\{grid-template-columns:205px minmax\(400px,1fr\) 340px\}/);
   assert.match(stylesSource, /\.chat-input\{[^}]*left:205px[^}]*transition:right \.2s/);
+  assert.match(stylesSource, /\.chat-input\{min-width:0;bottom:calc\(8px \+ env\(safe-area-inset-bottom\)\);padding-bottom:12px\}/);
+  assert.match(stylesSource, /\.chat-main\{padding-bottom:calc\(126px \+ env\(safe-area-inset-bottom\)\);scroll-padding-bottom:calc\(126px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(stylesSource, /@media\(max-width:1200px\)\{[^\n]*\.chat-layout\{grid-template-columns:180px 1fr\}[^\n]*\.chat-input\{left:180px;right:0\}/);
   assert.match(stylesSource, /@media\(max-width:650px\)\{[^\n]*\.chat-layout\{height:auto;display:block\}[^\n]*\.chat-history\{display:none\}[^\n]*\.chat-input\{left:0;padding-inline:12px\}/);
   assert.match(stylesSource, /@media\(prefers-reduced-motion:reduce\)\{[^\n]*\.chat-input\{transition:none\}/);

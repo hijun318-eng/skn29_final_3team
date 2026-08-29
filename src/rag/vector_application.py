@@ -24,6 +24,7 @@ from .p2_contracts import P2GateStatus, RagToolContract
 from .contextual_query import ContextualQueryBuilder
 from .vector_search_payload import build_search_payload, hash_search_input
 from .manual_article_formatter import ManualArticleFormatter
+from .manual_domain_resolver import ManualDomainResolver
 
 
 class VectorRagApplication:
@@ -56,6 +57,7 @@ class VectorRagApplication:
             self._settings.config_dir / "access_policy.json"
         )
         self._embedding: QwenEmbeddingProvider | OpenAIEmbeddingProvider | None = None
+        self._domain_resolver = ManualDomainResolver()
         self._embedding_init_lock = threading.Lock()
         self._evidence_lock = threading.Lock()
 
@@ -164,10 +166,13 @@ class VectorRagApplication:
         explicit_selected_ids = ContextualQueryBuilder.validate_document_ids(
             selected_document_ids
         )
-        resolved_domains = tuple(dict.fromkeys(
-            domain.strip().upper() for domain in domains if domain.strip()
-        ))
-        selected_ids = explicit_selected_ids
+        resolved_domains = self._domain_resolver.resolve(effective_query, domains)
+        routed_document_ids = self._repository.manual_ids_for_titles(
+            self._domain_resolver.titles_for(resolved_domains),
+            decision.role,
+            decision.allow_unresolved_validity,
+        )
+        selected_ids = explicit_selected_ids or routed_document_ids
         effective_maximum_chunks = (
             max(2, maximum_chunks_per_document)
             if intent == "COMPARISON"
@@ -198,10 +203,11 @@ class VectorRagApplication:
             document_limit = self.answer_document_limit(intent, selected_ids)
             manual_ids = self.answer_document_ids(
                 explicit_selected_ids,
-                (),
+                routed_document_ids,
                 tuple(dict.fromkeys(item.manual_id for item in results)),
                 document_limit,
             )
+            retrieved = tuple(results)
             article_context = self._repository.article_context(
                 manual_ids,
                 article_numbers,
@@ -209,9 +215,27 @@ class VectorRagApplication:
                 decision.allow_unresolved_validity,
                 maximum_chunks_per_document=24 if intent == "COMPARISON" else 48,
             )
+            if intent != "SUMMARY":
+                anchor_pages: dict[str, int] = {}
+                for item in retrieved:
+                    anchor_pages.setdefault(item.manual_id, item.page_start)
+                article_context = [
+                    item for item in article_context
+                    if item.manual_id not in anchor_pages
+                    or abs(item.page_start - anchor_pages[item.manual_id]) <= 1
+                ]
+            anchors = []
+            remaining = []
+            anchored_manual_ids: set[str] = set()
+            for item in retrieved:
+                if item.manual_id not in anchored_manual_ids:
+                    anchored_manual_ids.add(item.manual_id)
+                    anchors.append(item)
+                else:
+                    remaining.append(item)
             hydrated = []
             seen_evidence_ids: set[str] = set()
-            for item in (*article_context, *results):
+            for item in (*anchors, *article_context, *remaining):
                 if item.evidence_id in seen_evidence_ids:
                     continue
                 seen_evidence_ids.add(item.evidence_id)

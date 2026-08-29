@@ -19,7 +19,7 @@ class P2GateStatus:
     implementation_state: str = ImplementationState.INTEGRATED_RC
     p2_gate: str = "TECHNICALLY_VALIDATED"
     tool_registration: str = "INTERNAL_HTTP_AVAILABLE"
-    production_integration: str = "CODE_INTEGRATED_E2E_PENDING"
+    production_integration: str = "LOCAL_DOCKER_VALIDATED"
     affects_p0_p1_completion: bool = False
 
 
@@ -33,9 +33,9 @@ class RagToolContract:
     transport: str = "INTERNAL_HTTP"
     timeout_seconds: int = 30
     maximum_retries: int = 0
-    enabled: bool = False
+    enabled: bool = True
     approval_status: str = "PENDING_BUSINESS_OWNER_APPROVAL"
-    health_status: str = "NOT_LIVE_VERIFIED"
+    health_status: str = "HEALTH_ENDPOINT_AVAILABLE"
     read_only: bool = True
     destructive: bool = False
     idempotent: bool = True

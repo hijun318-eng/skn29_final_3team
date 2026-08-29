@@ -29,7 +29,13 @@ class ManualSearchRequest(BaseModel):
     recent_utterances: list[str] = Field(default_factory=list, max_length=3)
     selected_document_ids: list[str] = Field(default_factory=list, max_length=10)
     resolved_question: str | None = Field(default=None, min_length=2, max_length=500)
-    domains: list[Literal["PRIVACY", "REPORT", "CUSTOMER_SERVICE", "ROOM", "RESERVATION_CHECKIN_PAYMENT", "CANCELLATION_REFUND_COMPENSATION", "FOOD_BEVERAGE", "LEISURE", "FACILITY", "SAFETY", "PARKING_EVENT_LOBBY"]] = Field(default_factory=list, max_length=3)
+    domains: list[Literal[
+        "COMMON", "PRIVACY", "REPORT", "NOTIFICATION_COOPERATION",
+        "INTERACTIVE_ANALYSIS", "CUSTOMER_SERVICE", "EXTERNAL_REVIEW",
+        "FOOD_BEVERAGE", "RESERVATION_CHECKIN_PAYMENT", "LEISURE",
+        "FACILITY", "PARKING_EVENT_LOBBY", "ROOM", "SAFETY",
+        "CUSTOMER_FEEDBACK", "CANCELLATION_REFUND_COMPENSATION",
+    ]] = Field(default_factory=list, max_length=3)
     intent: Literal["PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA", "REGULATION_CHECK", "COMPARISON", "SUMMARY"] = "REGULATION_CHECK"
 
 

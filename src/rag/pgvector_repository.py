@@ -306,6 +306,33 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                 break
         return results
 
+    def manual_ids_for_titles(
+        self,
+        titles: tuple[str, ...],
+        role: str,
+        allow_unresolved: bool,
+    ) -> tuple[str, ...]:
+        if not titles:
+            return ()
+        with psycopg.connect(self._database_url) as connection:
+            rows = connection.execute(
+                """
+                SELECT manual_id, title
+                FROM documents
+                WHERE title=ANY(%s::text[])
+                  AND deleted_at IS NULL
+                  AND document_status='WORKING_KNOWLEDGE'
+                  AND approval_status='APPROVED'
+                  AND %s=ANY(role_scope)
+                  AND (%s OR validity_status!='UNRESOLVED')
+                  AND (effective_from IS NULL OR effective_from <= CURRENT_DATE)
+                  AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)
+                """,
+                (list(titles), role, allow_unresolved),
+            ).fetchall()
+        ids_by_title = {str(title): str(manual_id) for manual_id, title in rows}
+        return tuple(ids_by_title[title] for title in titles if title in ids_by_title)
+
     def article_context(
         self,
         manual_ids: tuple[str, ...],

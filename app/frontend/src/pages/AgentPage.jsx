@@ -1,7 +1,7 @@
 /** 대화형 분석 워크스페이스의 세션·멀티턴 상태·증적 서랍·보고서 연계를 통합 관리하는 모듈이다. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, FilePlus2, History, MessageSquareText, Plus, Save, Send, Sparkles, TableProperties } from "lucide-react";
-import { AnalysisApiError, createAnalysisClient, normalizeConversationCommandProgress } from "../api/analysisClient";
+import { AnalysisApiError, createAnalysisClient, normalizeConversationCommandProgress, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
@@ -22,7 +22,7 @@ const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
 
 /** 대화형 분석 워크스페이스를 렌더링하고 Report 작업은 서버 Capability가 있을 때만 노출한다. */
-export function AgentPage({ canDraftReport = false, onNavigate }) {
+export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavigate }) {
   const analysisClient = useMemo(() => createAnalysisClient(fetch), []);
   const reportClient = useMemo(() => createReportClient(undefined, fetch), []);
   const [question, setQuestion] = useState(() => window.sessionStorage.getItem(QUESTION_DRAFT_KEY) || "");
@@ -71,6 +71,11 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
     () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
     [turns],
   );
+  const internalGuidelineEnabled = enabledFeatures.includes(SERVICE_FEATURE.internalGuideline);
+  const mlPredictionEnabled = enabledFeatures.includes(SERVICE_FEATURE.mlPrediction);
+  const ragAvailable = internalGuidelineEnabled
+    && ragCatalog.status === "ready"
+    && ragCatalog.documents.length > 0;
 
   const refreshSaved = async () => {
     const [nextDefs, nextRuns] = await Promise.all([analysisClient.listDefinitions(), analysisClient.listRuns()]);
@@ -100,7 +105,10 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
   }, []);
 
   useEffect(() => {
-    if (emptyMode !== "rag-documents") return undefined;
+    if (!internalGuidelineEnabled) {
+      setRagCatalog({ status: "idle", documents: [], error: "" });
+      return undefined;
+    }
     let active = true;
     setRagCatalog({ status: "loading", documents: [], error: "" });
     analysisClient.listInternalManuals()
@@ -115,9 +123,9 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
             error: error instanceof Error ? error.message : "내부 문서 목록을 불러오지 못했습니다.",
           });
         }
-      });
+    });
     return () => { active = false; };
-  }, [analysisClient, emptyMode]);
+  }, [analysisClient, internalGuidelineEnabled]);
 
   const handleCancelAnalysis = async (turnId) => {
     const cancelledTraceId = activeTraceId.current;
@@ -199,6 +207,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
     if (requestInFlight.current) return;
     const resolvedAction = action;
     const isPresentationAction = resolvedAction?.requested_route === "PRESENTATION";
+    const isInternalGuidelineAction = resolvedAction?.requested_route === "INTERNAL_GUIDELINE";
     const sourceRun = sourceTurn?.run || latestArtifactTurn?.run || null;
     if (isPresentationAction && !hasReusablePresentationArtifact(sourceRun)) {
       const unavailableTurn = {
@@ -335,7 +344,11 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
           },
         };
       } else if (["BLOCKED", "FAILED", "CANCELLED"].includes(data?.status)) {
-        finalRun = commandErrorRun(normalized, data);
+        finalRun = commandErrorRun(
+          normalized,
+          data,
+          isInternalGuidelineAction ? "INTERNAL_GUIDELINE" : "ANALYSIS",
+        );
       } else if (isPresentation) {
         const sourceArtifactId = sourceRun?.artifact?.artifactId;
         const sourceQueryId = sourceRun?.artifact?.queryId;
@@ -387,7 +400,11 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       } else if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
       } else if (data?.status === "PARTIAL") {
-        finalRun = commandErrorRun(normalized, data);
+        finalRun = commandErrorRun(
+          normalized,
+          data,
+          isInternalGuidelineAction ? "INTERNAL_GUIDELINE" : "ANALYSIS",
+        );
       } else if (isReportAction) {
         finalRun = {
           ...transientRun(normalized, "success"),
@@ -457,6 +474,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
             suggestions: error instanceof AnalysisApiError ? error.suggestions : [],
             missing_requirements: error instanceof AnalysisApiError ? error.missingRequirements : [],
             trace_id: traceId,
+            service_context: isInternalGuidelineAction ? "INTERNAL_GUIDELINE" : "ANALYSIS",
           },
         },
       } : t));
@@ -583,15 +601,19 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
             <section className="chat-empty-state" aria-labelledby="chat-empty-title">
               <small>ANSWERVICE AI</small>
               <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
-              <p>호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다.</p>
+              <p>{ragAvailable
+                ? "호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."
+                : "호텔 운영 데이터 분석과 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."}</p>
               {exampleQuestions.length > 0 && (
                 <div aria-label="추천 질문">
                   {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
                 </div>
               )}
-              <div className="chat-support-links" aria-label="도움말">
-                <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부 업무지침 찾아보기</button>
-              </div>
+              {ragAvailable && (
+                <div className="chat-support-links" aria-label="도움말">
+                  <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부 업무지침 찾아보기</button>
+                </div>
+              )}
             </section>
           )
         )}
@@ -706,7 +728,9 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
             <button aria-label="메시지 전송" disabled={submitting || !question.trim()}><Send size={16} /></button>
           </div>
           <small id="question-help" className="question-help">
-            <span>분석, 내부 지침, 후속 질문을 한 대화에서 이어갈 수 있습니다.</span>
+            <span>{emptyMode === "rag-documents"
+              ? "승인된 내부 업무지침 질문과 후속 질문을 한 대화에서 이어갈 수 있습니다."
+              : "호텔 운영 데이터 분석과 후속 질문을 한 대화에서 이어갈 수 있습니다."}</span>
             <span>{question.length.toLocaleString("ko-KR")}/{MAX_QUESTION_LENGTH.toLocaleString("ko-KR")}자</span>
           </small>
           {inputError && <p className="analysis-input-error" role="alert">{inputError}</p>}
@@ -745,7 +769,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         )}
       </main>
 
-      <MLPredictionWorkspace conversationId={conversationId || null} />
+      {mlPredictionEnabled && <MLPredictionWorkspace conversationId={conversationId || null} />}
 
       {/* 우측 슬라이드: 분석 근거 서랍 */}
       <TurnEvidenceDrawer

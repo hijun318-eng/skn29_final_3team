@@ -115,6 +115,10 @@ export default function MLPredictionWorkspace() {
     }
   }
 
+  if (!Array.isArray(capability?.properties) || capability.properties.length === 0) {
+    return null;
+  }
+
   return (
     <section className={"ml-workspace " + (open ? "is-open" : "")}>
       <button

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
-
 from app.adapters.conversation_repository import ConversationRepository
+from app.contracts import RuntimeFeature
 from app.database import get_sessionmaker
+from app.runtime_features import runtime_feature_enabled
 from app.services.internal_manual_query import InternalManualQueryService
 from app.services.rag_gateway import InternalManualAgent
 
@@ -24,13 +24,8 @@ def internal_manual_query_service() -> InternalManualQueryService:
         if database_url
         else None
     )
-    enabled = os.getenv("RAG_FEATURE_ENABLED", "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
     return InternalManualQueryService(
         repository,
         executor_factory,
-        enabled=enabled,
+        enabled=runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE),
     )

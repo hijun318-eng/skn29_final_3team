@@ -166,6 +166,7 @@ export interface SessionInfo {
   status: "authenticated";
   role: ServiceRole;
   capabilities: ServiceCapability[];
+  enabled_features?: ServiceFeature[];
 }
 
 /** 로그인 성공 응답은 검증된 세션 계약과 동일하다. */
@@ -178,17 +179,29 @@ const SESSION_ROLES = new Set<ServiceRole>([
   "platform_admin",
 ]);
 const SESSION_CAPABILITIES = new Set<ServiceCapability>(Object.values(CAPABILITY));
+/** 인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 이름이다. */
+export const SERVICE_FEATURE = {
+  internalGuideline: "internal_guideline",
+  mlPrediction: "ml_prediction",
+} as const;
+/** 서버가 활성화해 세션 응답으로 전달하는 선택 기능의 문자열 계약이다. */
+export type ServiceFeature = typeof SERVICE_FEATURE[keyof typeof SERVICE_FEATURE];
+const SESSION_FEATURES = new Set<ServiceFeature>(Object.values(SERVICE_FEATURE));
 
 /** 인증 응답이 지원 Role과 중복 없는 Capability만 포함하는지 런타임에서 검증한다. */
 function isSessionInfo(value: unknown): value is SessionInfo {
   if (!value || typeof value !== "object") return false;
   const session = value as Partial<SessionInfo>;
+  const enabledFeatures = session.enabled_features ?? [];
   return session.status === "authenticated"
     && typeof session.role === "string"
     && SESSION_ROLES.has(session.role as ServiceRole)
     && Array.isArray(session.capabilities)
     && session.capabilities.length === new Set(session.capabilities).size
-    && session.capabilities.every((item) => SESSION_CAPABILITIES.has(item));
+    && session.capabilities.every((item) => SESSION_CAPABILITIES.has(item))
+    && Array.isArray(enabledFeatures)
+    && enabledFeatures.length === new Set(enabledFeatures).size
+    && enabledFeatures.every((item) => SESSION_FEATURES.has(item));
 }
 
 /** 재실행 가능한 서버 저장 분석 정의의 wire 계약이다. */

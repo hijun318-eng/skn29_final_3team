@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-import os
 from typing import Annotated, Any
 
 import httpx
@@ -14,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_database_session
 from app.context import session_context
 from app.authorization import has_capability
-from app.contracts import Capability, ContractModel, RequestContext
+from app.contracts import Capability, ContractModel, RequestContext, RuntimeFeature
+from app.runtime_features import runtime_feature_enabled
 from app.services.ml_prediction_service import MLPredictionService
 
 
@@ -37,10 +37,7 @@ class RoomDemandRequest(ContractModel):
 def _require_ml_access(context: RequestContext) -> None:
     if not has_capability(context.role, Capability.RUN_ANALYSIS):
         raise HTTPException(status_code=403, detail="ML 예측 권한이 없습니다.")
-    enabled = os.getenv("ML_FEATURE_ENABLED", "0").strip().lower() in {
-        "1", "true", "yes"
-    }
-    if not enabled:
+    if not runtime_feature_enabled(RuntimeFeature.ML_PREDICTION):
         raise HTTPException(status_code=503, detail="ML 예측 기능이 비활성화되었습니다.")
 
 

@@ -50,6 +50,7 @@ from app.contracts import (
 )
 from app.auth import AuthenticationError, create_authenticated_session, revoke_session
 from app.authorization import capabilities_for, has_capability, permission_snapshot_id
+from app.runtime_features import enabled_runtime_features
 from app.conversation_contracts import ConversationCommandRequest
 from app.api.analysis_router_runtime import (
     active_analytics_context_release as _active_analytics_context_release,
@@ -187,6 +188,11 @@ def authenticated_session(
         data=SessionData(
             role=context.role,
             capabilities=capabilities_for(context.role),
+            enabled_features=(
+                enabled_runtime_features()
+                if has_capability(context.role, Capability.RUN_ANALYSIS)
+                else ()
+            ),
         ),
         meta=response_meta(context),
     )
@@ -231,6 +237,11 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
         data=LoginData(
             role=principal.role,
             capabilities=capabilities_for(principal.role),
+            enabled_features=(
+                enabled_runtime_features()
+                if has_capability(principal.role, Capability.RUN_ANALYSIS)
+                else ()
+            ),
         ),
         meta=response_meta(context),
     )

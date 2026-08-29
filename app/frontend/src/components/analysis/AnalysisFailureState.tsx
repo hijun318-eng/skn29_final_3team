@@ -104,6 +104,7 @@ export function analysisFailurePresentation(
 ): FailurePresentation {
   const error = run.error;
   const code = error?.code ?? "";
+  const isInternalGuideline = error?.service_context === "INTERNAL_GUIDELINE";
   const choices = run.disambiguationOptions?.length
     || error?.disambiguation_options?.length
     || error?.suggestions?.length;
@@ -267,6 +268,20 @@ export function analysisFailurePresentation(
 
   if (SERVICE_ERROR_CODES.has(code)) {
     const timeout = ["MODEL_TIMEOUT", "QUERY_TIMEOUT"].includes(code);
+    if (isInternalGuideline) {
+      return {
+        tone: "service",
+        category: timeout ? "응답 지연" : "서비스 상태",
+        title: timeout ? "제한 시간 안에 내부 업무지침을 찾지 못했습니다" : "현재 내부 업무지침 서비스를 사용할 수 없습니다",
+        reason: timeout
+          ? "승인 문서 검색과 답변 생성에 예상보다 오래 걸려 요청을 중단했습니다."
+          : "승인된 내부 문서 검색 서비스가 준비되지 않았거나 연결되지 않았습니다.",
+        nextStep: error?.retryable
+          ? "잠시 후 같은 질문을 다시 요청해 주세요."
+          : "내부 업무지침 서비스가 준비된 뒤 다시 요청해 주세요.",
+        retryLabel: error?.retryable ? "같은 질문 다시 요청" : undefined,
+      };
+    }
     return {
       tone: "service",
       category: timeout ? "응답 지연" : "서비스 상태",

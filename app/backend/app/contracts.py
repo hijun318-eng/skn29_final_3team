@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from enum import Enum
 from typing import Literal
 from uuid import UUID
 
@@ -242,11 +243,19 @@ class ReadinessData(ContractModel):
     dependencies: dict[str, str]
 
 
+class RuntimeFeature(str, Enum):
+    """인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 집합이다."""
+
+    INTERNAL_GUIDELINE = "internal_guideline"
+    ML_PREDICTION = "ml_prediction"
+
+
 class SessionData(ContractModel):
     """현재 인증 세션 상태와 서버가 확인한 역할·Capability를 반환한다."""
     status: str = "authenticated"
     role: Role | None = None
     capabilities: tuple[Capability, ...] = ()
+    enabled_features: tuple[RuntimeFeature, ...] = ()
 
 
 class LoginRequest(ContractModel):

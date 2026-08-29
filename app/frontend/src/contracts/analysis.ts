@@ -377,6 +377,7 @@ interface WireAnalysisEvidence {
     disambiguation_options?: DisambiguationOption[];
     clarification_type?: "metric" | "period" | null;
     trace_id?: string;
+    service_context?: "ANALYSIS" | "INTERNAL_GUIDELINE";
   };
   sources: AnalysisSource[];
   trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;

@@ -112,9 +112,10 @@ export function analysisError(error) {
  * 저장된 내부 detail/type은 화면에 복사하지 않으며 catalog 실패를 질문 보완으로 바꾸지 않는다.
  * @param {string} question - 실패한 사용자 질문.
  * @param {object} command - command top-level 결과 또는 저장된 command_error.
+ * @param {"ANALYSIS"|"INTERNAL_GUIDELINE"} serviceContext - 사용자가 요청한 서비스 문맥.
  * @returns {object} 서버 code/message/retryable/action을 보존한 실패 run.
  */
-export function commandErrorRun(question, command) {
+export function commandErrorRun(question, command, serviceContext = "ANALYSIS") {
   const source = command?.command_error || command?.error || command || {};
   const code = typeof source.code === "string" && source.code
     ? source.code
@@ -139,6 +140,7 @@ export function commandErrorRun(question, command) {
         : "분석 서비스를 검증하지 못했습니다. 서비스 관리자 확인 후 다시 시도해 주세요.",
       retryable: Boolean(source.retryable),
       required_action: requiredAction,
+      service_context: serviceContext,
     },
   };
 }
@@ -235,9 +237,17 @@ export function hydrateTurnsFromServer(serverTurns) {
           },
         };
       } else if (st.command_status === "FAILED" || st.command_error) {
-        run = commandErrorRun(userMessage, st);
+        run = commandErrorRun(
+          userMessage,
+          st,
+          st.route === "INTERNAL_GUIDELINE" ? "INTERNAL_GUIDELINE" : "ANALYSIS",
+        );
       } else if (["BLOCKED", "PARTIAL", "FAILED", "CANCELLED"].includes(st.terminal_status)) {
-        run = commandErrorRun(userMessage, st);
+        run = commandErrorRun(
+          userMessage,
+          st,
+          st.route === "INTERNAL_GUIDELINE" ? "INTERNAL_GUIDELINE" : "ANALYSIS",
+        );
       } else if (st.data_snapshot_json) {
         const tableData = st.data_snapshot_json;
         const chartSpec = st.chart_spec_json;

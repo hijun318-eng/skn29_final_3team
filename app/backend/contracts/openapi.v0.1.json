@@ -2652,6 +2652,14 @@
             "title": "Capabilities",
             "type": "array"
           },
+          "enabled_features": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RuntimeFeature"
+            },
+            "title": "Enabled Features",
+            "type": "array"
+          },
           "role": {
             "anyOf": [
               {
@@ -5486,6 +5494,15 @@
         "title": "RunDueReportScheduleResponse",
         "type": "object"
       },
+      "RuntimeFeature": {
+        "description": "인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 집합이다.",
+        "enum": [
+          "internal_guideline",
+          "ml_prediction"
+        ],
+        "title": "RuntimeFeature",
+        "type": "string"
+      },
       "SamplingEvidence": {
         "additionalProperties": false,
         "description": "결과 샘플링 여부와 반환 행 수, 확인 가능한 경우 전체 행 수를 증거로 남긴다.",
@@ -5527,6 +5544,14 @@
               "$ref": "#/components/schemas/Capability"
             },
             "title": "Capabilities",
+            "type": "array"
+          },
+          "enabled_features": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RuntimeFeature"
+            },
+            "title": "Enabled Features",
             "type": "array"
           },
           "role": {

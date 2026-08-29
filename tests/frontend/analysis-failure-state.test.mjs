@@ -116,6 +116,22 @@ try {
   assert.equal((timeoutHtml.match(/같은 질문 다시 분석/g) ?? []).length, 1);
   assert.doesNotMatch(timeoutHtml, /internal detail/);
 
+  const internalGuidelineUnavailableHtml = render({
+    ...baseRun,
+    status: "failed",
+    error: {
+      code: "DEPENDENCY_UNAVAILABLE",
+      message: "필수 서비스가 준비되지 않았습니다.",
+      retryable: true,
+      required_action: "RETRY",
+      service_context: "INTERNAL_GUIDELINE",
+    },
+  }, "ERROR");
+  assert.match(internalGuidelineUnavailableHtml, /현재 내부 업무지침 서비스를 사용할 수 없습니다/);
+  assert.match(internalGuidelineUnavailableHtml, /승인된 내부 문서 검색 서비스/);
+  assert.equal((internalGuidelineUnavailableHtml.match(/같은 질문 다시 요청/g) ?? []).length, 1);
+  assert.doesNotMatch(internalGuidelineUnavailableHtml, /다시 분석|분석에 필요한 데이터 서비스/);
+
   const policyHtml = render({
     ...baseRun,
     error: {

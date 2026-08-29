@@ -26,6 +26,7 @@ try {
   const { AnalysisStatePanel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
   const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
+  const { default: MLPredictionWorkspace } = await server.ssrLoadModule("/src/components/ml/MLPredictionWorkspace.jsx");
   const { normalizeApiResponse } = await server.ssrLoadModule("/src/contracts/analysis.ts");
   const run = normalizeApiResponse(response, "7월 PLATINUM 장기 투숙 우수 고객 객실 유형별 매출을 분석해줘");
   const html = renderToStaticMarkup(createElement(AnalysisStatePanel, { run }));
@@ -142,6 +143,8 @@ try {
   assert.match(ragCatalogHtml, /승인 운영 매뉴얼/);
   assert.match(ragCatalogHtml, /OPERATIONS_MANUAL · v3 · 운영팀/);
   assert.doesNotMatch(ragCatalogHtml, /추천 질문|환불 기준|안전사고 발생 시/);
+  assert.match(agentSource, /ragAvailable &&/);
+  assert.equal(renderToStaticMarkup(createElement(MLPredictionWorkspace)), "");
 
   // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));
@@ -205,7 +208,8 @@ try {
   assert.match(stylesSource, /\.message\.message--user\{justify-content:flex-end\}/);
   assert.match(stylesSource, /\.message--user>\.turn-user-bubble\{[^}]*margin-left:auto/);
   assert.match(stylesSource, /\.message\.message--agent\{justify-content:flex-start\}/);
-  assert.match(agentSource, /분석, 내부 지침, 후속 질문을 한 대화에서 이어갈 수 있습니다/);
+  assert.match(agentSource, /호텔 운영 데이터 분석과 후속 질문을 한 대화에서 이어갈 수 있습니다/);
+  assert.match(agentSource, /승인된 내부 업무지침 질문과 후속 질문을 한 대화에서 이어갈 수 있습니다/);
   assert.match(agentSource, /무엇을 도와드릴까요/);
   assert.match(agentSource, /className="scope-notice-response"/);
   assert.match(agentSource, /답변을 준비하고 있어요/);

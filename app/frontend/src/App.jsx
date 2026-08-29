@@ -42,6 +42,7 @@ export function App() {
   const [reportDirty, setReportDirty] = useState(false);
   const role = session?.role || "";
   const capabilities = session?.capabilities;
+  const enabledFeatures = session?.enabled_features || [];
   const canRunAnalysis = hasCapability(capabilities, CAPABILITY.runAnalysis);
   const canDraftReport = hasCapability(capabilities, CAPABILITY.draftReport);
   const canManageReports = hasCapability(capabilities, CAPABILITY.manageReport);
@@ -146,8 +147,8 @@ export function App() {
       return <AdminPage role={role} client={adminClient} />;
     }
     if (!canRunAnalysis) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={canUseAdmin} onNavigate={navigate} />;
-    return <AgentPage canDraftReport={canDraftReport} onNavigate={navigate} />;
-  }, [adminClient, canDraftReport, canManageReports, canRunAnalysis, canUseAdmin, canUseReports, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
+    return <AgentPage canDraftReport={canDraftReport} enabledFeatures={enabledFeatures} onNavigate={navigate} />;
+  }, [adminClient, canDraftReport, canManageReports, canRunAnalysis, canUseAdmin, canUseReports, enabledFeatures, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
 
   if (session === undefined) return <main className={`session-login ${themeClass}`}><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
   if (!session) return <SessionLogin theme={theme} onToggleTheme={toggleTheme} notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;

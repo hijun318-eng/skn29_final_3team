@@ -974,6 +974,7 @@ class ConversationOrchestrator:
         from app.services.conversation_agent_registry import (
             build_conversation_agent_supervisor,
         )
+        from app.services.langgraph_agent_runtime import LangGraphAgentRuntime
 
         if not isinstance(request, AgentRequest):
             raise TypeError("dispatch_agent_command에는 AgentRequest가 필요합니다.")
@@ -1043,17 +1044,15 @@ class ConversationOrchestrator:
                 if callable(renew_lease)
                 else None
             )
-            try:
-                routing = await supervisor.route_with_state(
-                    admitted_request,
-                    timeout_seconds=route_timeout_seconds,
-                )
-                if route_lease_lost.is_set():
-                    raise AgentDispatchError(
-                        "AGENT_ROUTE_LEASE_LOST",
-                        "Agent route 결정 중 command 소유권을 잃었습니다.",
-                    )
-            finally:
+            route_lease_closed = False
+
+            async def _stop_route_lease() -> None:
+                """route node 전용 heartbeat를 AgentPort 실행 전에 한 번만 종료한다."""
+
+                nonlocal route_lease_closed
+                if route_lease_closed:
+                    return
+                route_lease_closed = True
                 route_lease_stop.set()
                 if route_lease_task is not None:
                     route_lease_task.cancel()
@@ -1061,10 +1060,27 @@ class ConversationOrchestrator:
                         await route_lease_task
                     except asyncio.CancelledError:
                         pass
-            outcome = await supervisor.execute_routed_with_state(
-                admitted_request,
-                routing,
+
+            async def _after_route(routing: Any) -> None:
+                """route 소유권을 검증한 뒤 선택 Agent의 lease 구간으로 넘긴다."""
+
+                if route_lease_lost.is_set():
+                    raise AgentDispatchError(
+                        "AGENT_ROUTE_LEASE_LOST",
+                        "Agent route 결정 중 command 소유권을 잃었습니다.",
+                        state=routing.state,
+                    )
+                await _stop_route_lease()
+
+            runtime = LangGraphAgentRuntime(
+                supervisor,
+                route_timeout_seconds=route_timeout_seconds,
+                after_route=_after_route,
             )
+            try:
+                outcome = await runtime.execute(admitted_request)
+            finally:
+                await _stop_route_lease()
             result = outcome.result
             return result.payload
         except asyncio.CancelledError as error:

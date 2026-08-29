@@ -48,8 +48,8 @@
     },
     "report_assistant_turn": {
       "prompt_id": "report.assistant.turn",
-      "prompt_version": "PROMPT-v1.9.5",
-      "prompt_sha256": "6727705e368c2adaa1439153e33bdcb560609d3122ba601fd496976f50dec813",
+      "prompt_version": "PROMPT-v1.9.7",
+      "prompt_sha256": "a387934f50c26bb8ad4a607840c71e0bbdd62ae9e6b32c68d1451ecba3c724e0",
       "request_definition": "report_assistant_turn_request",
       "response_definition": "report_assistant_turn_response"
     },

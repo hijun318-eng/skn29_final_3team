@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from time import perf_counter
 from typing import Any
@@ -21,6 +22,9 @@ from src.modelops.runtime_config import (
     active_route_for_node,
     resolve_active_model_routes,
 )
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class ReportAssistantModelError(RuntimeError):
@@ -89,6 +93,27 @@ def _model_runtime_limits() -> tuple[float, int]:
             code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
         )
     return timeout, max_attempts
+
+
+def _validation_error_signature(error: Exception | None) -> str:
+    """Pydantic 오류에서 입력값을 제외한 필드 경로·오류 유형만 반환한다."""
+
+    errors = getattr(error, "errors", None)
+    if not callable(errors):
+        return "none"
+    try:
+        items = errors(
+            include_url=False,
+            include_context=False,
+            include_input=False,
+        )
+    except TypeError:
+        return "unavailable"
+    signatures = []
+    for item in items[:8]:
+        location = ".".join(str(part) for part in item.get("loc", ())) or "root"
+        signatures.append(f"{location}:{item.get('type', 'unknown')}")
+    return ",".join(signatures) or "none"
 
 
 def report_evidence_catalog(
@@ -179,6 +204,86 @@ def report_patch_model_payload(patch: ReportAssistantPatch) -> dict[str, object]
             item["width"] = placement.get("width")
         operations.append(item)
     return {"summary": patch.summary, "operations": operations}
+
+
+def _normalize_wire_text_operation(
+    payload: dict[str, object],
+    raw_operation: dict[str, object],
+) -> dict[str, object]:
+    """모델 wire text 연산을 typed patch 검증 전에 보존적으로 정규화한다."""
+
+    normalized = dict(raw_operation)
+    operation = normalized.get("op")
+    if operation == "add_text":
+        if normalized.get("content") is not None and normalized.get("title") is None:
+            normalized["title"] = "핵심 요약"
+        return normalized
+    if operation != "update_text":
+        return normalized
+
+    report = payload.get("report")
+    blocks = report.get("blocks") if isinstance(report, dict) else None
+    if not isinstance(blocks, list):
+        raise ValueError("Report Assistant report blocks are invalid")
+    target = next(
+        (
+            block
+            for block in blocks
+            if isinstance(block, dict)
+            and block.get("block_id") == normalized.get("block_id")
+        ),
+        None,
+    )
+    if target is None or target.get("type") == "text":
+        return normalized
+    if normalized.get("content") is None:
+        normalized["op"] = "update_block_title"
+        return normalized
+
+    normalized.update(
+        {
+            "op": "add_text",
+            "block_id": None,
+            "title": normalized.get("title") or "핵심 요약",
+            "after_block_id": target["block_id"],
+            "width": "full",
+        }
+    )
+    return normalized
+
+
+def _validate_patch_target_types(
+    payload: dict[str, object],
+    patch: ReportAssistantPatch,
+) -> None:
+    """남은 typed 설정 연산이 현재 Report block 유형과 맞는지 확인한다."""
+
+    report = payload.get("report")
+    blocks = report.get("blocks") if isinstance(report, dict) else None
+    if not isinstance(blocks, list):
+        raise ValueError("Report Assistant report blocks are invalid")
+    block_types = {
+        str(block["block_id"]): str(block["type"])
+        for block in blocks
+        if isinstance(block, dict)
+        and isinstance(block.get("block_id"), str)
+        and isinstance(block.get("type"), str)
+    }
+    required_types = {
+        "update_text": frozenset({"text"}),
+        "update_chart_settings": frozenset({"chart"}),
+        "update_table_settings": frozenset({"table"}),
+        "set_block_size_mode": frozenset({"artifact", "chart", "table"}),
+    }
+    for operation in patch.operations:
+        accepted = required_types.get(operation.op)
+        if accepted is None:
+            continue
+        block_type = block_types.get(str(operation.block_id))
+        if block_type not in accepted:
+            raise ValueError(
+                f"{operation.op} targets an incompatible report block type"
+            )
 
 
 async def generate_report_draft(
@@ -279,8 +384,11 @@ async def generate_report_change_proposal(
     timeout, max_attempts = _model_runtime_limits()
     started = perf_counter()
     last_error: Exception | None = None
+    failure_stage = "model_transport"
+    observed_operation_types: tuple[str, ...] = ()
     for attempt in range(1, max_attempts + 1):
         try:
+            failure_stage = "model_transport"
             result = await openai_transport(
                 route.endpoint,
                 route.token,
@@ -291,7 +399,9 @@ async def generate_report_change_proposal(
                 provider=route.provider,
             )
             transport_meta = result.pop(_TRANSPORT_META_KEY, {})
+            failure_stage = "response_contract"
             validate_payload(response_definition(node), result)
+            failure_stage = "change_contract"
             kind = result["change_kind"]
             plan = result["analysis_plan"]
             raw_patch = result["patch"]
@@ -323,6 +433,11 @@ async def generate_report_change_proposal(
                 }
                 operations = []
                 for raw_operation in raw_patch["operations"]:
+                    failure_stage = "wire_text_normalization"
+                    raw_operation = _normalize_wire_text_operation(
+                        payload, raw_operation
+                    )
+                    failure_stage = "operation_projection"
                     allowed_fields = operation_fields[raw_operation["op"]]
                     if raw_operation["op"] == "add_artifact_view":
                         view_fields = {
@@ -352,9 +467,16 @@ async def generate_report_change_proposal(
                         operation["after_block_id"] = raw_operation["after_block_id"]
                         operation["width"] = raw_operation["width"] or "full"
                     operations.append(operation)
+                observed_operation_types = tuple(
+                    str(operation["op"]) for operation in operations
+                )
+                failure_stage = "typed_patch"
                 patch = ReportAssistantPatch.model_validate(
                     {"summary": raw_patch["summary"], "operations": operations}
-                ).model_dump(mode="json")
+                )
+                failure_stage = "target_type_validation"
+                _validate_patch_target_types(payload, patch)
+                patch = patch.model_dump(mode="json")
             elif kind == "new_data" and (not isinstance(plan, dict) or raw_patch is not None):
                 raise ValueError("new_data requires an analysis plan and no patch")
             elif kind == "clarification" and (plan is not None or raw_patch is not None):
@@ -386,6 +508,15 @@ async def generate_report_change_proposal(
             last_error = error
             if isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError)):
                 break
+    logger.warning(
+        "Report Assistant turn failed after %s attempt(s): "
+        "stage=%s error_type=%s operations=%s validation=%s",
+        attempt,
+        failure_stage,
+        type(last_error).__name__ if last_error is not None else "unknown",
+        observed_operation_types,
+        _validation_error_signature(last_error),
+    )
     raise _model_failure(
         last_error,
         message="Report Assistant turn model call failed",

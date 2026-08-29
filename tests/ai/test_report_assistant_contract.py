@@ -456,7 +456,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 단일 Artifact 묶음은 과거 clarification·분해 operation보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.9.5", prompt.version)
+        self.assertEqual("PROMPT-v1.9.7", prompt.version)
         self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
         self.assertIn("current instruction is authoritative", prompt.text)
         self.assertIn("ignore any unresolved earlier clarification", prompt.text)
@@ -472,6 +472,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         self.assertIn("never reinterpret it as block movement", prompt.text)
         self.assertIn("Use update_block_title for any existing text, chart, table, or Artifact block title", prompt.text)
         self.assertIn("Use update_chart_settings only for chart blocks", prompt.text)
+        self.assertIn("Every add_text must include a non-empty title", prompt.text)
         self.assertIn("duplicate_block is an exact copy", prompt.text)
         self.assertIn("do not ask whether those values should remain the same", prompt.text)
         self.assertIn("require only duplicate_block", prompt.text)
@@ -623,8 +624,8 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             proposal["patch"]["operations"][0],
         )
 
-    async def test_update_text_remains_typed_for_server_target_validation(self):
-        """모델의 update_text는 typed patch로 보존하고 실제 block 유형은 적용기가 검증한다."""
+    async def test_non_text_update_becomes_evidence_bound_text_addition(self):
+        """비-text 본문은 변조하지 않고 승인 대기 add_text로 정규화한다."""
 
         from app.adapters.report_assistant import generate_report_change_proposal
 
@@ -640,6 +641,58 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             "after_block_id": None,
             "width": None,
             "evidence_refs": ["artifact_narrative"],
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        transport = AsyncMock(return_value=response)
+        with (
+            patch(
+                "app.adapters.report_assistant.resolve_active_model_routes",
+                return_value=object(),
+            ),
+            patch(
+                "app.adapters.report_assistant.active_route_for_node",
+                return_value=route,
+            ),
+            patch(
+                "app.adapters.report_assistant.openai_transport",
+                new=transport,
+            ),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual(
+            {
+                "op": "add_text",
+                "title": "핵심 요약",
+                "content": "승인된 근거를 세 문장으로 요약했습니다.",
+                "evidence_refs": ["artifact_narrative"],
+                "placement": {"after_block_id": "block-one", "width": "full"},
+            },
+            proposal["patch"]["operations"][0],
+        )
+        self.assertEqual(1, transport.await_count)
+        self.assertEqual(1, _trace["attempts"])
+
+    async def test_non_text_title_only_update_becomes_block_title_update(self):
+        """비-text 제목 변경은 본문 연산 대신 공통 block 제목 연산으로 정규화한다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "update_text",
+            "block_id": "block-one",
+            "title": "월간 매출 차트",
+            "content": None,
+            "evidence_refs": [],
         }]
         route = SimpleNamespace(
             endpoint="https://model.invalid/v1",
@@ -667,11 +720,9 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             {
-                "op": "update_text",
+                "op": "update_block_title",
                 "block_id": "block-one",
-                "title": None,
-                "content": "승인된 근거를 세 문장으로 요약했습니다.",
-                "evidence_refs": ["artifact_narrative"],
+                "title": "월간 매출 차트",
             },
             proposal["patch"]["operations"][0],
         )
@@ -782,6 +833,59 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             },
             proposal["patch"]["operations"][0],
         )
+
+    async def test_add_text_with_content_but_no_title_gets_safe_default(self):
+        """모델이 add_text 제목만 누락해도 본문·근거는 보존하고 승인 대기로 보낸다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "add_text",
+            "title": None,
+            "content": "승인된 근거를 두 문장으로 요약했습니다.",
+            "after_block_id": "block-one",
+            "width": "full",
+            "evidence_refs": ["artifact_narrative"],
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        transport = AsyncMock(return_value=response)
+        with (
+            patch(
+                "app.adapters.report_assistant.resolve_active_model_routes",
+                return_value=object(),
+            ),
+            patch(
+                "app.adapters.report_assistant.active_route_for_node",
+                return_value=route,
+            ),
+            patch(
+                "app.adapters.report_assistant.openai_transport",
+                new=transport,
+            ),
+        ):
+            proposal, trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual(
+            {
+                "op": "add_text",
+                "title": "핵심 요약",
+                "content": "승인된 근거를 두 문장으로 요약했습니다.",
+                "placement": {"after_block_id": "block-one", "width": "full"},
+                "evidence_refs": ["artifact_narrative"],
+            },
+            proposal["patch"]["operations"][0],
+        )
+        self.assertEqual(1, transport.await_count)
+        self.assertEqual(1, trace["attempts"])
 
     async def test_editor_setting_wire_operation_becomes_typed_patch(self):
         """GPT의 strict 차트 설정은 임의 settings 객체 없이 typed 서버 patch로 변환된다."""

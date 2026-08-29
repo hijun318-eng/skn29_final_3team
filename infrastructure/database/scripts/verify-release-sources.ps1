@@ -135,8 +135,8 @@ $adapters = [ordered]@{
     }
     '03_mysql_pos' = [pscustomobject]@{
         Service = 'pos-mysql'
-        Command = 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --batch --raw --show-warnings -uroot "$MYSQL_DATABASE" < /tmp/answervice_release_validation.sql'
-        Inventory = 'printf "%s" "$INVENTORY_SQL_BASE64" | base64 -d > /tmp/answervice_inventory.sql; export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --batch --skip-column-names -uroot "$MYSQL_DATABASE" < /tmp/answervice_inventory.sql'
+        Command = 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --default-character-set=utf8mb4 --batch --raw --show-warnings -uroot "$MYSQL_DATABASE" < /tmp/answervice_release_validation.sql'
+        Inventory = 'printf "%s" "$INVENTORY_SQL_BASE64" | base64 -d > /tmp/answervice_inventory.sql; export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --default-character-set=utf8mb4 --batch --skip-column-names -uroot "$MYSQL_DATABASE" < /tmp/answervice_inventory.sql'
         InventorySql = 'SELECT count(*) FROM information_schema.statistics WHERE table_schema=DATABASE()'
         Shell = 'sh'
         Dialect = 'mysql'

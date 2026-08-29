@@ -9,7 +9,8 @@ services:
       args:
         RAG_INCLUDE_QWEN: ${RAG_INCLUDE_QWEN:-0}
     environment:
-      RAG_DATABASE_URL: ${RAG_DATABASE_URL:-postgresql://${RAG_DB_USER:-rag_local}:${RAG_DB_PASSWORD:?RAG_DB_PASSWORD is required}@rag-postgres:5432/${RAG_DB_NAME:-answervice_rag}}
+      # profile 비활성 시에는 secret 보간을 강제하지 않는다. 활성 시 DB·readiness가 빈 값을 fail-closed 한다.
+      RAG_DATABASE_URL: ${RAG_DATABASE_URL:-postgresql://${RAG_DB_USER:-rag_local}:${RAG_DB_PASSWORD:-}@rag-postgres:5432/${RAG_DB_NAME:-answervice_rag}}
       RAG_CONFIG_DIR: /workspace/config/rag
       RAG_MANUALS_DIR: /workspace/data/rag/manuals
       RAG_EVIDENCE_DIR: /workspace/evals/runs/rag
@@ -25,7 +26,7 @@ services:
       RAG_ANSWER_ENDPOINT: ${RAG_ANSWER_ENDPOINT:-http://rag-local-answer:8001/v1/chat/completions}
       RAG_ANSWER_MODEL: ${RAG_ANSWER_MODEL:-rag-local-answer-v2}
       RAG_ANSWER_API_KEY: ${RAG_ANSWER_API_KEY:-rag-local-no-secret}
-      RAG_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:?RAG_GATEWAY_HMAC_SECRET is required}
+      RAG_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:-}
     volumes:
       - "${RAG_MODELS_DIR:-../rag/models}:/models:ro"
       - "${RAG_MANUALS_HOST_DIR:-../../data/rag/manuals}:/workspace/data/rag/manuals:ro"
@@ -53,7 +54,7 @@ services:
         RAG_INCLUDE_QWEN: ${RAG_INCLUDE_QWEN:-0}
     environment:
       RAG_E2E_BASE_URL: http://rag-api:8000
-      RAG_E2E_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:?RAG_GATEWAY_HMAC_SECRET is required}
+      RAG_E2E_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:-}
       RAG_E2E_ROLE: ${RAG_E2E_ROLE:-MANAGER}
       RAG_E2E_QUERY: "\uAD00\uB9AC\uC790 \uBCF4\uACE0\uC11C \uBE14\uB85D \uAD6C\uC131 \uAE30\uC900"
       RAG_E2E_TOP_K: ${RAG_E2E_TOP_K:-3}

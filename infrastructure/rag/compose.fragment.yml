@@ -6,7 +6,8 @@ services:
     environment:
       POSTGRES_DB: ${RAG_DB_NAME:-answervice_rag}
       POSTGRES_USER: ${RAG_DB_USER:-rag_local}
-      POSTGRES_PASSWORD: ${RAG_DB_PASSWORD:?RAG_DB_PASSWORD is required}
+      # 비활성 profile도 root Compose가 파싱되도록 비워 두되, 선택 시 PostgreSQL이 빈 암호로 시작하지 못하게 한다.
+      POSTGRES_PASSWORD: ${RAG_DB_PASSWORD:-}
     ports:
       - "127.0.0.1:${RAG_DB_PORT:-55432}:5432"
     volumes:

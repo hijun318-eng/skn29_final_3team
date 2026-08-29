@@ -447,14 +447,13 @@ def test_checked_in_manifest_does_not_preserve_reversible_utf8_mojibake() -> Non
     ]
 
 
-def test_mysql_release_runner_forces_utf8mb4_client_decoding() -> None:
+def test_active_release_verifier_forces_utf8mb4_client_decoding() -> None:
     runner = (
         ROOT
         / "infrastructure"
         / "database"
-        / "releases"
-        / "walkerhill_v4_3_20260815_derived_1"
-        / "run-v43.ps1"
+        / "scripts"
+        / "verify-release-sources.ps1"
     ).read_text(encoding="utf-8")
 
     assert "mysql --default-character-set=utf8mb4" in runner

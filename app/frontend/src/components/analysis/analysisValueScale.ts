@@ -12,7 +12,8 @@ import {
   formatCurrencyAmount,
   isCurrencyMetricUnit,
 } from "../../features/reports/reportCurrency";
-import { formatMetricValue } from "../../utils/presentation";
+import type { AnalysisRun } from "../../contracts/analysis";
+import { formatCompactNumber, formatMetricValue, isNumericValue, localizeAnalysisSummary, metricDisplayUnit } from "../../utils/presentation";
 
 type ResolvedUnit = "hundredMillion" | "one";
 
@@ -47,6 +48,42 @@ export interface AnalysisValueScale {
   exact(value: unknown, unit?: string | null): string;
   /** 주어진 통화 field들이 모두 같은 배율이면 그 배율 라벨을, 아니면 null을 반환한다(차트 축 통일 판정용). */
   sharedCurrencyLabel(fields: readonly string[]): string | null;
+}
+
+function escapedSummaryToken(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 요약 카드와 근거 서랍이 같은 한국어 label·금액 배율 문구를 사용하게 한다. */
+export function userFacingAnalysisSummary(run: AnalysisRun, valueScale: AnalysisValueScale): string {
+  const metrics = run.metrics?.length ? run.metrics : run.evidence?.metrics ?? [];
+  let summary = localizeAnalysisSummary(run.summary || "선택한 조건의 지표 계산이 완료되었습니다.", metrics);
+  for (const metric of run.metrics ?? []) {
+    if (!isNumericValue(metric.value)) continue;
+    const unit = valueScale.unitLabel(metric.unit, metric.resultField) ?? metricDisplayUnit(metric.unit);
+    if (!unit) continue;
+    const numeric = Number(metric.value);
+    const formatted = valueScale.isCurrency(metric.unit)
+      ? valueScale.format(metric.value, metric.unit, metric.resultField)
+      : Math.abs(numeric) >= 100_000_000
+        ? formatCompactNumber(numeric)
+        : formatMetricValue(metric.value, { includeUnit: false, unit: metric.unit });
+    const replacement = `${formatted}${unit}`;
+    const valueTokens = [...new Set([
+      String(metric.value),
+      numeric.toLocaleString("ko-KR", { maximumFractionDigits: 20 }),
+    ])];
+    const unitTokens = [...new Set([metricDisplayUnit(metric.unit), metric.unit].filter(Boolean) as string[])];
+    for (const valueToken of valueTokens) {
+      for (const unitToken of unitTokens) {
+        summary = summary.replace(
+          new RegExp(`${escapedSummaryToken(valueToken)}\\s*${escapedSummaryToken(unitToken)}`, "gi"),
+          replacement,
+        );
+      }
+    }
+  }
+  return summary;
 }
 
 /**
@@ -86,9 +123,9 @@ export function createAnalysisValueScale(
     unitLabel(unit, field) {
       if (!unit) return null;
       if (isCurrencyMetricUnit(unit)) return currencyDisplayLabel(unitFor(field));
-      return unit.trim().toLowerCase() === "ratio" ? "%" : unit;
+      return metricDisplayUnit(unit);
     },
-    exact: (value, unit) => formatMetricValue(value, { unit: unit ?? undefined }),
+    exact: (value, unit) => formatMetricValue(value, { unit: metricDisplayUnit(unit) ?? undefined }),
     sharedCurrencyLabel(fields) {
       if (fields.length === 0) return null;
       const units = fields.map((field) => (unitByField.has(field) ? unitByField.get(field)! : null));

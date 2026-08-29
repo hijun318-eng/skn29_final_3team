@@ -56,6 +56,11 @@ _WRITE_SQL_KEYWORD = re.compile(
     re.IGNORECASE,
 )
 
+_OUT_OF_SCOPE_MESSAGE = (
+    "해당 요청은 지원하지 않습니다. 이 서비스는 호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, "
+    "분석 결과의 보고서 작업만 지원합니다. 지원 범위에 맞게 요청해 주세요."
+)
+
 
 def _explicit_write_sql_intent(user_message: str) -> bool:
     """명시적인 SQL write keyword가 포함된 요청을 모델·metadata 전에 차단한다."""
@@ -622,12 +627,29 @@ class ConversationOrchestrator:
                 if terminal_status in {None, "SUCCEEDED"}
                 else terminal_status
             )
-            return {
+            result = {
                 "status": status,
                 "code": target_turn.get("reason_code") if target_turn else None,
                 "is_idempotent_replay": True,
                 "turn": target_turn,
             }
+            if target_turn and target_turn.get("route") == "OUT_OF_SCOPE":
+                scope_rejection = target_turn.get("resolved_slots", {}).get(
+                    "scope_rejection",
+                    {},
+                )
+                result.update(
+                    {
+                        "type": "OUT_OF_SCOPE",
+                        "message": scope_rejection.get(
+                            "message",
+                            _OUT_OF_SCOPE_MESSAGE,
+                        ),
+                        "retryable": False,
+                        "required_action": "MODIFY_REQUEST",
+                    }
+                )
+            return result
         if existing_command["status"] == "RUNNING":
             return {
                 "status": "BUSY",
@@ -839,6 +861,53 @@ class ConversationOrchestrator:
                     command_id,
                     error_data,
                 )
+
+        async def _commit_scope_rejection(scope_reason: str) -> dict[str, Any]:
+            """승인 capability에 매칭되지 않은 요청을 모델 호출 없이 고정 응답으로 닫는다."""
+
+            turn_id = uuid4()
+            await self._repo.commit_turn(
+                conversation_id=conversation_id,
+                command_id=command_id,
+                turn_id=turn_id,
+                turn_index=len(previous_turns),
+                user_message=user_message,
+                route="OUT_OF_SCOPE",
+                source_turn_ids=[],
+                request_id=None,
+                artifact_id=None,
+                view_spec_id=None,
+                report_definition_id=None,
+                resolved_slots={
+                    "scope_rejection": {
+                        "message": _OUT_OF_SCOPE_MESSAGE,
+                        "reason": scope_reason,
+                    }
+                },
+                product_release_id=current_product,
+                permission_snapshot_id=current_permission,
+                semantic_release_id=current_semantic,
+                terminal_status="BLOCKED",
+                reason_code=ErrorCode.DATA_ASSET_NOT_FOUND.value,
+            )
+            updated_turns = await self._repo.list_turns(conversation_id)
+            latest_turn = next(
+                turn for turn in updated_turns if turn["turn_id"] == turn_id
+            )
+            return {
+                "status": "BLOCKED",
+                "type": "OUT_OF_SCOPE",
+                "code": ErrorCode.DATA_ASSET_NOT_FOUND.value,
+                "message": _OUT_OF_SCOPE_MESSAGE,
+                "retryable": False,
+                "required_action": "MODIFY_REQUEST",
+                "turn": latest_turn,
+                "conversation": {
+                    "conversation_id": str(conversation_id),
+                    "head_turn_id": str(turn_id),
+                    "turn_count": len(previous_turns) + 1,
+                },
+            }
 
         try:
             # 4. 이전 불변 턴 목록 조회
@@ -1083,11 +1152,9 @@ class ConversationOrchestrator:
                     )
                     node1_res = structured
             except NoEntitledAssetsError:
-                # 이 사전 검색은 역할만으로 좁힌 근사치이고, 권위 있는 자산 탐색은 분석
-                # 파이프라인이 전체 Context로 다시 수행한다. 여기서 못 찾았다고 닫으면
-                # 파이프라인이라면 답했을 질문까지 막으므로, 신호 없이 ANALYSIS로 진행해
-                # 파이프라인이 typed 결과(DATA_ASSET_NOT_FOUND 등)를 내도록 맡긴다.
-                node1_res = {}
+                return await _commit_scope_rejection(
+                    "NO_APPROVED_CAPABILITY_MATCH"
+                )
             except ContextBuildError as error:
                 # 지표·기간이 여러 갈래로 해석되는 상태다. 빈 신호로 계속 진행하면 같은
                 # 모호성을 파이프라인에서 다시 만난다. 운영 resolver가 함께 반환한 확정
@@ -1230,6 +1297,17 @@ class ConversationOrchestrator:
             # 5-1. UI가 이미 아는 동작은 자연어로 바꾸지 않고 typed action으로 받는다.
             # 신호는 후보일 뿐이며 재사용 가능 여부는 아래 라우팅 계약이 다시 확인한다.
             node1_res = {**node1_res, **action_signals}
+            if (
+                preflight_clarification is None
+                and not action_signals
+                and node1_res.get("metric_resolution") in {"missing", "unsupported"}
+                and node1_res.get("is_elliptical") is not True
+                and node1_res.get("requested_route")
+                not in {"PRESENTATION", "REPORT_ACTION"}
+            ):
+                return await _commit_scope_rejection(
+                    "NO_APPROVED_METRIC_MATCH"
+                )
 
             # 6. 결정론적 슬롯/시간 리졸버로 슬롯 및 라우트 확정
             slots: ResolvedTurnSlots = ConversationSlotResolver.resolve(

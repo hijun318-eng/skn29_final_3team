@@ -6,6 +6,10 @@ import {
   formatCompactNumber,
   formatMetricValue,
   isNumericValue,
+  localizeAnalysisSummary,
+  localizeMetricDefinition,
+  metricDisplayLabel,
+  metricDisplayUnit,
   metricUnitLabel,
   reportTitleForAnalysis,
   seriesColor,
@@ -47,6 +51,22 @@ assert.equal(isNumericValue("0"), true);
 assert.equal(isNumericValue(""), false);
 assert.equal(isNumericValue(null), false);
 assert.equal(metricUnitLabel("객실 매출", "원"), "객실 매출 (원)");
+assert.equal(metricDisplayLabel({ label: "Any Metric", displayLabel: "승인 지표" }), "승인 지표");
+assert.equal(metricDisplayLabel({ label: "원본 지표" }), "원본 지표");
+assert.equal(metricDisplayUnit("KRW"), "원");
+assert.equal(metricDisplayUnit("KRW_per_available_room_night"), "원");
+assert.equal(localizeAnalysisSummary(
+  "2026년 6월의 Room Revenue 합계 계산 결과는 6,632,629,550 KRW입니다.",
+  [{ label: "Room Revenue", displayLabel: "객실 매출", unit: "KRW", displayUnit: "원" }],
+), "2026년 6월 객실 매출 합계는 6,632,629,550 원입니다.");
+assert.equal(localizeAnalysisSummary(
+  "Room Revenue는 요청 기간에 계산됩니다.",
+  [{ label: "Room Revenue", displayLabel: "객실 매출", unit: "KRW", displayUnit: "원" }],
+), "객실 매출은 요청 기간에 계산됩니다.");
+assert.equal(
+  localizeMetricDefinition("승인된 금액은 KRW 단위다."),
+  "승인된 금액은 원 단위다.",
+);
 
 assert.equal(new Set(ENTERPRISE_SERIES_COLORS).size, 8);
 assert.equal(seriesColor(0), ENTERPRISE_SERIES_COLORS[0]);

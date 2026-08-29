@@ -1,5 +1,5 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.46.0",
+  "manifest_version": "MODEL-RELEASE-v1.47.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
   "schema_version": "MODEL-v1.28.0",
@@ -34,8 +34,8 @@
     },
     "node3": {
       "prompt_id": "node3.explain",
-      "prompt_version": "PROMPT-v1.2.5",
-      "prompt_sha256": "0e3553c55c1e390e9c6ba9dfed9654ea18773d9afe04fbc77e400105aff67593",
+      "prompt_version": "PROMPT-v1.3.0",
+      "prompt_sha256": "2bc30d55dfdc2631ed78edd8cd6867d19e1ce15adf0a5e143a7354b1687618a8",
       "request_definition": "node3_request",
       "response_definition": "node3_response"
     },

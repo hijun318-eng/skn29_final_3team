@@ -22,6 +22,20 @@ export function transientRun(question, status = "idle") {
   };
 }
 
+const DEFAULT_SCOPE_MESSAGE = "해당 요청은 지원하지 않습니다. 이 서비스는 호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, 분석 결과의 보고서 작업만 지원합니다. 지원 범위에 맞게 요청해 주세요.";
+
+/** 범위 밖 요청에 대한 서버 고정 안내를 분석 Artifact와 분리해 표시한다. */
+export function scopeNoticeRun(question, message) {
+  const normalized = typeof message === "string" && message.trim()
+    ? message.trim()
+    : DEFAULT_SCOPE_MESSAGE;
+  return {
+    ...transientRun(question, "blocked"),
+    summary: normalized,
+    scopeNotice: { message: normalized },
+  };
+}
+
 /**
  * PRESENTATION이 재사용할 Artifact·query·근거가 같은 식별자로 연결됐는지 확인한다.
  * @param {object|null|undefined} run - 기존 분석 결과 run.
@@ -156,11 +170,15 @@ export function hydrateTurnsFromServer(serverTurns) {
     for (const st of serverTurns) {
       const isPresentation = st.route === "PRESENTATION";
       const isReportAction = st.route === "REPORT_ACTION";
+      const isOutOfScope = st.route === "OUT_OF_SCOPE";
       const ragResult = st.resolved_slots?.rag;
+      const scopeRejection = st.resolved_slots?.scope_rejection;
       const userMessage = st.user_message || "";
       let run;
 
-      if (ragResult) {
+      if (isOutOfScope) {
+        run = scopeNoticeRun(userMessage, scopeRejection?.message);
+      } else if (ragResult) {
         run = ragRun(userMessage, ragResult);
       } else if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
@@ -197,7 +215,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           ...(lastAnalysisRun || transientRun(userMessage, "success")),
           question: userMessage,
           status: "success",
-          summary: `분석 대화 결과가 공식 보고서 초안(Draft)으로 결합되었습니다. (/reports에서 확인 가능)`,
+          summary: "분석 결과를 보고서 초안에 담았습니다.",
           reportDefinitionId: st.report_definition_id,
         };
       } else if (st.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
@@ -279,7 +297,9 @@ export function hydrateTurnsFromServer(serverTurns) {
         resolvedSlots: st.resolved_slots || null,
         viewType: isPresentation
           ? (st.view_type || "TABLE")
-          : ragResult ? "RAG" : (st.resolved_slots?.target_chart_type || "SUMMARY"),
+          : isOutOfScope
+            ? "CHAT"
+            : ragResult ? "RAG" : (st.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
         reusePending: false,
         viewSpecId: isPresentation ? st.view_spec_id : null,
@@ -291,27 +311,6 @@ export function hydrateTurnsFromServer(serverTurns) {
     console.error("Error hydrating turns:", err);
     return [];
   }
-}
-
-/**
- * 빠른 동작 버튼이 서버에 보낼 typed action과 대화 기록에 남길 라벨.
- * 라우팅은 action이 결정하므로 label은 서버 분기에 관여하지 않는 표시용 문구다.
- */
-export const QUICK_ACTION = {
-  CHART: { label: "그래프로 보기", action: { requested_route: "PRESENTATION", presentation_type: "BAR" } },
-  TABLE: { label: "표로 보기", action: { requested_route: "PRESENTATION", presentation_type: "TABLE" } },
-  REPORT: { label: "보고서에 담기", action: { requested_route: "REPORT_ACTION" } },
-};
-
-/**
- * 빠른 동작을 대화에 남길 서버 typed action으로 변환한다.
- * 서버가 지원하는 TABLE·CHART 표현과 REPORT action만 typed command로 변환한다.
- * SUMMARY·KPI는 이미 받은 Artifact의 로컬 보기이므로 서버 command를 만들지 않는다.
- * @param {"SUMMARY"|"CHART"|"TABLE"|"KPI"|"REPORT"|string} mode - 사용자가 누른 빠른 동작
- * @returns {{label: string, action: object}|null} 서버로 보낼 동작, 지원하지 않으면 null
- */
-export function quickViewAction(mode) {
-  return QUICK_ACTION[mode] || null;
 }
 
 /**

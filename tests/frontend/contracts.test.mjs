@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VERSION } from "../../app/frontend/src/contracts/analysis.ts";
 import { compactDraftLayout, placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks, seoulWallClockToIso } from "../../app/frontend/src/contracts/report.ts";
-import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient } from "../../app/frontend/src/api/analysisClient.ts";
+import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient, normalizeConversationCommandProgress } from "../../app/frontend/src/api/analysisClient.ts";
 import { AdminApiError, createAdminClient } from "../../app/frontend/src/api/adminClient.ts";
 import { normalizeAuditTrailDetail, normalizeAuditTrailPage } from "../../app/frontend/src/features/admin/audit/auditTrailTypes.ts";
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
-import { commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction } from "../../app/frontend/src/pages/agentPageHelpers.js";
+import { commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun } from "../../app/frontend/src/pages/agentPageHelpers.js";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
@@ -32,6 +32,7 @@ const reportA4Styles = [
   "features/reports/report-a4-artifact.css",
   "features/reports/report-a4-print.css",
 ].map(source).join("\n");
+const globalStyles = source("styles.css");
 const reportAssistantPanelSource = source("features/reports/components/ReportAssistantPanel.jsx");
 
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
@@ -78,18 +79,9 @@ assert.match(source("App.jsx"), /answervice:clear-drafts/);
 
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
 assert.match(source("pages/AgentPage.jsx"), /analysisClient\.submitTurnCommand/);
-assert.equal(quickViewAction("SUMMARY"), null);
-assert.equal(quickViewAction("KPI"), null);
-assert.deepEqual(quickViewAction("CHART"), {
-  label: "그래프로 보기",
-  action: { requested_route: "PRESENTATION", presentation_type: "BAR" },
-});
-assert.deepEqual(quickViewAction("TABLE"), {
-  label: "표로 보기",
-  action: { requested_route: "PRESENTATION", presentation_type: "TABLE" },
-});
-assert.equal(quickViewAction("FULL"), null);
-assert.equal(quickViewAction("UNKNOWN"), null);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /onQuickView|quickViewAction/);
+assert.doesNotMatch(source("components/analysis/AnalysisDashboardViews.tsx"), /요약으로 보기|KPI만 보기|표로 보기|그래프로 보기/);
+assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /AnalysisArtifactReuseNotice/);
 assert.equal(hasReusablePresentationArtifact({
   artifact: { artifactId: "artifact-1", queryId: "query-1" },
   evidence: { artifactId: "artifact-1", queryId: "query-1" },
@@ -124,7 +116,7 @@ const analysisPanelSource = [
   source("components/analysis/AnalysisFailureState.tsx"),
 ].join("\n");
 assert.match(analysisPanelSource, /분석 취소/);
-assert.match(analysisPanelSource, /내부 처리 순서는 추측해 표시하지 않습니다/);
+assert.match(analysisPanelSource, /서버가 반환한 실행 트레이스를 업무 단계로 묶어 표시합니다/);
 assert.doesNotMatch(analysisPanelSource, /ANALYSIS_PHASES|modelCount/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /supportedChartType/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /문의 코드/);
@@ -140,7 +132,7 @@ assert.doesNotMatch(source("pages/agentPageHelpers.js"), /code: "NO_MATCH"/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /ERROR_ACTIONS|AT A GLANCE/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /KEY TAKEAWAY|VISUAL|DETAIL|SCOPE/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /actual_checkout_at|membership_grade_code/);
-assert.match(analysisPanelSource, /\?\? column/);
+assert.match(analysisPanelSource, /metric \? metricDisplayLabel\(metric\) : column/);
 assert.match(source("components/auth/SessionLogin.jsx"), /\.login\(nextUsername, password\)/);
 assert.match(source("components/auth/SessionLogin.jsx"), /Caps Lock이 켜져 있습니다/);
 assert.match(source("components/auth/SessionLogin.jsx"), /비밀번호 표시/);
@@ -326,8 +318,17 @@ assert.match(source("components/charts/EnterpriseChart.jsx"), /accessibilityLaye
 assert.match(source("components/charts/EnterpriseChart.jsx"), /<ChartTooltip/);
 assert.match(source("components/TurnReportModal.jsx"), /className=\{`report-transfer-modal/);
 assert.match(source("components/TurnEvidenceDrawer.jsx"), /evidence-panel/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /결과 요약/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /문맥·SQL·결과 검증 통과/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /분석 기간/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /analysisTitle\(run\)/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /userFacingAnalysisSummary\(run, valueScale\)/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /"분석 데이터"/);
+assert.doesNotMatch(source("components/TurnEvidenceDrawer.jsx"), /analytics_v4_3|SOURCE_LABELS_KO/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /timezone === "Asia\/Seoul" \? "서울 시간"/);
 assert.match(source("components/TurnEvidenceDrawer.jsx"), /run\.evidence\?\.productReleaseId/);
 assert.match(source("components/TurnEvidenceDrawer.jsx"), /run\.evidence\?\.evidenceCutoff/);
+assert.match(globalStyles, /\.theme-light \.artifact-report-summary\{[^}]*background:#f8fbff/);
 assert.match(source("pages/AgentPage.jsx"), /inert=\{Boolean\(reportModal\)\}/);
 assert.match(source("api/analysisClient.ts"), /\/analysis\/runs\/\$\{encodeURIComponent\(requestId\)\}\/artifact/);
 
@@ -427,7 +428,7 @@ const apiResponse = {
     artifact: { artifact_id: "artifact-1", query_id: "query-1", context_hash: "context-1" },
     result: {
       summary: "API result",
-      metrics: [{ metric_id: "metric", result_field: "metric", label: "Metric", definition: "Metric definition", value: 3, unit: "count" }],
+      metrics: [{ metric_id: "metric", result_field: "metric", label: "Metric", display_label: "승인 지표", definition: "Metric definition", value: 3, unit: "count", display_unit: "건" }],
       table: { columns: ["metric"], rows: [{ metric: 3 }] },
       chart: null,
       evidence: {
@@ -438,7 +439,7 @@ const apiResponse = {
         product_release_id: "walkerhill-v4.3-sql-20260815-derived.1",
         evidence_cutoff: "2026-08-15",
         policy_version: "policy-v1", model_version: "model-v1",
-        metrics: [{ metric_id: "metric", result_field: "metric", label: "Metric", definition: "Metric definition", unit: "count" }],
+        metrics: [{ metric_id: "metric", result_field: "metric", label: "Metric", display_label: "승인 지표", definition: "Metric definition", unit: "count", display_unit: "건" }],
         models: [{ node: "node3", model_version: "model-v1", prompt_id: "node3-prompt", prompt_version: "v1" }],
         gates: { g1: "PASSED", g2: "PASSED", g3: "PASSED" },
         gate_history: { g1: ["PASSED"], g2: ["BLOCKED", "PASSED"], g3: ["PASSED"] },
@@ -464,7 +465,10 @@ assert.equal(dataProvenanceLabel([{ synthetic: true }, {}]), "합성 데이터 �
 assert.equal(dataProvenanceLabel([{ synthetic: false }, {}]), null);
 assert.equal(normalized.metrics[0].definition, "Metric definition");
 assert.equal(normalized.metrics[0].resultField, "metric");
+assert.equal(normalized.metrics[0].displayLabel, "승인 지표");
+assert.equal(normalized.metrics[0].displayUnit, "건");
 assert.equal(normalized.evidence.metrics[0].definition, "Metric definition");
+assert.equal(normalized.evidence.metrics[0].displayLabel, "승인 지표");
 assert.equal(normalized.evidence.productReleaseId, "walkerhill-v4.3-sql-20260815-derived.1");
 assert.deepEqual(normalized.evidence.comparisonPeriod, {
   start: "2029-12-01",
@@ -604,6 +608,22 @@ assert.equal(hydratedCatalogFailure[0].run.error.code, "CONTEXT_SOURCE_FAILED");
 assert.equal(hydratedCatalogFailure[0].run.error.required_action, "CONTACT_SUPPORT");
 assert.equal(hydratedCatalogFailure[0].run.error.detail, undefined);
 
+const scopeNotice = scopeNoticeRun("오늘 날씨 어때?", "지원 범위에 맞게 요청해 주세요.");
+assert.equal(scopeNotice.status, "blocked");
+assert.equal(scopeNotice.scopeNotice.message, "지원 범위에 맞게 요청해 주세요.");
+const hydratedScopeNotice = hydrateTurnsFromServer([{
+  turn_id: "turn-out-of-scope",
+  user_message: "오늘 날씨 어때?",
+  route: "OUT_OF_SCOPE",
+  terminal_status: "BLOCKED",
+  resolved_slots: {
+    scope_rejection: { message: "지원 범위에 맞게 요청해 주세요." },
+  },
+}]);
+assert.equal(hydratedScopeNotice[0].viewType, "CHAT");
+assert.equal(hydratedScopeNotice[0].run.scopeNotice.message, "지원 범위에 맞게 요청해 주세요.");
+assert.equal(hydratedScopeNotice[0].run.artifact, undefined);
+
 const hydratedSuccess = hydrateTurnsFromServer([{
   turn_id: "turn-success",
   user_message: "임의 지표를 보여줘",
@@ -717,20 +737,58 @@ assert.equal(presentationRequest.url, "http://backend.test/conversations/convers
 assert.equal(presentationRequest.url.includes("/analysis"), false);
 assert.equal(JSON.parse(presentationRequest.init.body).requested_route, "PRESENTATION");
 
-let commandProgressCalled = false;
+const commandProgressSnapshot = {
+  trace_id: "command-trace",
+  request_id: "58e54349-1f44-4d5f-9839-c5a81d437ad6",
+  status: "ROUTED",
+  started_at: "2026-08-28T00:00:00Z",
+  elapsed_seconds: 2.4,
+  cancel_requested: false,
+  trace: [
+    { stage: "ROUTER", outcome: "PASSED" },
+    { stage: "CONTROLLER", outcome: "PASSED" },
+    { stage: "CONTEXT", outcome: "PASSED" },
+    { stage: "G1", outcome: "PASSED" },
+  ],
+};
+const normalizedCommandProgress = normalizeConversationCommandProgress(commandProgressSnapshot);
+assert.equal(normalizedCommandProgress.traceId, "command-trace");
+assert.deepEqual(normalizedCommandProgress.steps.map((step) => step.state), [
+  "complete", "complete", "active", "pending", "pending", "pending",
+]);
+assert.match(normalizedCommandProgress.steps[2].label, /SQL/);
+
+let commandResponseResolve;
+let receivedCommandProgress = null;
+const commandProgressRequests = [];
 const commandAbortController = new AbortController();
-await presentationClient.submitTurnCommand("conversation-1", {
-  user_message: "요약으로 보여줘",
-  requested_route: "PRESENTATION",
-  presentation_type: "SUMMARY",
+const commandProgressClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
+  commandProgressRequests.push({ url, init });
+  if (url.endsWith("/commands")) {
+    return new Promise((resolve) => { commandResponseResolve = resolve; });
+  }
+  setTimeout(() => commandResponseResolve(new Response(JSON.stringify({ status: "SUCCESS" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })), 10);
+  return new Response(JSON.stringify({ data: commandProgressSnapshot }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+});
+await commandProgressClient.submitTurnCommand("conversation-1", {
+  user_message: "5월 객실 매출",
+  requested_route: "ANALYSIS",
 }, {
   traceId: "command-trace",
   signal: commandAbortController.signal,
-  onProgress: () => { commandProgressCalled = true; },
+  onProgress: (progress) => { receivedCommandProgress = progress; },
 });
-assert.equal(presentationRequest.init.headers["X-Trace-Id"], "command-trace");
-assert.equal(presentationRequest.init.signal, commandAbortController.signal);
-assert.equal(commandProgressCalled, false);
+const commandRequest = commandProgressRequests.find((item) => item.url.endsWith("/commands"));
+assert.equal(commandRequest.init.headers["X-Trace-Id"], "command-trace");
+assert.equal(commandRequest.init.signal, commandAbortController.signal);
+assert.equal(commandProgressRequests.some((item) => item.url.endsWith("/analysis/progress/command-trace/poll")), true);
+assert.equal(receivedCommandProgress?.steps[2].state, "active");
 
 const abortingCommandClient = createHttpAnalysisClient("http://backend.test", async (_url, init) => new Promise((_resolve, reject) => {
   init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
@@ -747,6 +805,8 @@ assert.match(source("api/analysisClient.ts"), /interface SubmitTurnCommandOption
 assert.match(source("contracts/analysis.ts"), /interface ConversationCommandProgress extends AnalysisProcessViewModel/);
 assert.match(source("pages/AgentPage.jsx"), /activeCommandAbortController\.current\?\.abort\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /progress\?\.traceId !== traceId/);
+assert.match(source("pages/AgentPage.jsx"), /completedAnalysisProcess/);
+assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /showCompletedAnalysisProcess/);
 assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
 assert.match(source("pages/AgentPage.jsx"), /requested_route: "INTERNAL_GUIDELINE",[\s\S]*?inherit_previous_context: true/);
 

@@ -4,8 +4,10 @@
   --ml-muted: #91a8c0;
   --ml-line: rgba(137, 180, 223, 0.2);
   position: fixed;
-  right: 28px;
-  bottom: 24px;
+  /* 데스크톱에서는 왼쪽 분석 목록의 footer처럼 배치해 질문 입력과 결과 액션을 가리지 않는다. */
+  left: 20px;
+  right: auto;
+  bottom: 20px;
   z-index: 100;
   color: var(--ml-ink);
   font-family: "Pretendard", "Noto Sans KR", sans-serif;
@@ -36,7 +38,8 @@
 
 .ml-workspace__panel {
   position: absolute;
-  right: 0;
+  left: 0;
+  right: auto;
   bottom: 66px;
   width: min(760px, calc(100vw - 40px));
   max-height: min(790px, calc(100vh - 120px));
@@ -241,11 +244,13 @@
 
 @media (max-width: 720px) {
   .ml-workspace {
+    left: auto;
     right: 14px;
-    bottom: 14px;
+    bottom: 122px;
   }
 
   .ml-workspace__panel {
+    left: auto;
     right: -2px;
     bottom: 62px;
     width: calc(100vw - 24px);
@@ -263,4 +268,8 @@
   .ml-workspace__days {
     grid-template-columns: 1fr;
   }
+}
+
+@media (min-width: 721px) and (max-width: 1200px) {
+  .ml-workspace { left: 8px; }
 }

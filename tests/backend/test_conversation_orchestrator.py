@@ -747,6 +747,57 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             analysis_gate=analysis_gate,
         )
 
+    async def test_unmatched_request_uses_fixed_scope_rejection_without_model(self) -> None:
+        conversation = await self.repo.create_conversation(self.user_id, "범위 밖 요청")
+        self.data_platform.search_error = NoEntitledAssetsError(
+            "no governed asset matches"
+        )
+        result = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "안녕하세요"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual("OUT_OF_SCOPE", result["type"])
+        self.assertEqual("OUT_OF_SCOPE", result["turn"]["route"])
+        self.assertEqual(
+            "해당 요청은 지원하지 않습니다. 이 서비스는 호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, "
+            "분석 결과의 보고서 작업만 지원합니다. 지원 범위에 맞게 요청해 주세요.",
+            result["message"],
+        )
+        self.assertEqual([], self.support.questions)
+        self.assertEqual([], self.submitted_requests)
+        self.assertIsNone(
+            self.repo.conversations[conversation["conversation_id"]][
+                "data_focus_turn_id"
+            ]
+        )
+
+    async def test_node1_missing_metric_is_rejected_without_general_reply(self) -> None:
+        conversation = await self.repo.create_conversation(self.user_id, "지원 범위 확인")
+        self.support.program(
+            "오늘 날씨 어때?",
+            metric_resolution="missing",
+            selected_metric_id=None,
+            selected_metric_ids=[],
+            requested_route=None,
+            is_elliptical=False,
+        )
+
+        result = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "오늘 날씨 어때?"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual("OUT_OF_SCOPE", result["type"])
+        self.assertEqual("DATA_ASSET_NOT_FOUND", result["code"])
+        self.assertNotIn("general_chat", result["turn"]["resolved_slots"])
+        self.assertEqual(["오늘 날씨 어때?"], self.support.questions)
+        self.assertEqual([], self.submitted_requests)
+
     async def test_analysis_route_passes_untampered_question_and_slots(self) -> None:
         """ANALYSIS 라우트 실행 시 질문 문자열을 변조하지 않고 원본 발화와 typed slots를 전달하는지 검증."""
         conv = await self.repo.create_conversation(self.user_id, "매출 분석")
@@ -2489,10 +2540,16 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             context=self.context,
         )
 
+        self.assertEqual("BLOCKED", second["status"])
+        self.assertEqual("OUT_OF_SCOPE", second["type"])
+        self.assertEqual("OUT_OF_SCOPE", second["turn"]["route"])
         slots = second["turn"]["resolved_slots"]
-        self.assertIsNone(slots["metric_id"])
-        self.assertFalse(slots["is_inherited_metric"])
-        self.assertFalse(slots["is_inherited_dimension"])
+        self.assertNotIn("metric_id", slots)
+        self.assertEqual(
+            "NO_APPROVED_CAPABILITY_MATCH",
+            slots["scope_rejection"]["reason"],
+        )
+        self.assertEqual(1, len(self.submitted_requests))
 
 
     async def test_interpretation_failure_fails_closed_instead_of_empty_signals(self) -> None:

@@ -403,6 +403,40 @@
         "title": "AnalysisProgressData",
         "type": "object"
       },
+      "AnalysisProgressPollResponse": {
+        "additionalProperties": false,
+        "description": "대화 라우팅 중 아직 분석이 시작되지 않은 경우까지 오류 없이 polling한다.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisProgressData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "AnalysisProgressPollResponse",
+        "type": "object"
+      },
       "AnalysisProgressResponse": {
         "additionalProperties": false,
         "description": "비동기 분석의 현재 진행 정보와 공통 메타데이터, 선택적 오류를 반환한다.",
@@ -2784,6 +2818,28 @@
             "title": "Definition",
             "type": "string"
           },
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Label"
+          },
+          "display_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Unit"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -2824,6 +2880,28 @@
           "definition": {
             "title": "Definition",
             "type": "string"
+          },
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Label"
+          },
+          "display_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Unit"
           },
           "label": {
             "title": "Label",
@@ -7952,6 +8030,51 @@
           }
         ],
         "summary": "Cancel Analysis Progress"
+      }
+    },
+    "/analysis/progress/{trace_id}/poll": {
+      "get": {
+        "description": "대화 명령의 라우팅과 분석 등록 사이에는 빈 진행 상태를 정상 응답한다.\n\n소유 분석이 시작되면 strict progress와 같은 snapshot을 반환한다. 미등록 trace와\n다른 사용자 소유 trace는 모두 ``data: null``로 처리해 자원 존재를 노출하지 않는다.\n동일 소유자의 trace가 모호한 경우에는 request ID 조회를 요구하는 409를 유지한다.",
+        "operationId": "pollAnalysisProgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgressPollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Poll Analysis Progress"
       }
     },
     "/analysis/requests/{request_id}/cancel": {

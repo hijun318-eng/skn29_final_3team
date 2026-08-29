@@ -58,6 +58,8 @@ class MetricReference(ContractModel):
     label: str
     definition: str
     unit: str | None = None
+    display_label: str | None = None
+    display_unit: str | None = None
 
 
 class MetricValue(MetricReference):
@@ -285,6 +287,13 @@ class AnalysisResponse(ResponseContractModel):
 class AnalysisProgressResponse(ResponseContractModel):
     """비동기 분석의 현재 진행 정보와 공통 메타데이터, 선택적 오류를 반환한다."""
     data: AnalysisProgressData
+    meta: ResponseMeta
+    error: ErrorBody | None = None
+
+
+class AnalysisProgressPollResponse(ResponseContractModel):
+    """대화 라우팅 중 아직 분석이 시작되지 않은 경우까지 오류 없이 polling한다."""
+    data: AnalysisProgressData | None = None
     meta: ResponseMeta
     error: ErrorBody | None = None
 

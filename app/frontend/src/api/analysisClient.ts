@@ -20,7 +20,7 @@ export interface ConversationCommandPayload {
   presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
 }
 
-/** command 요청의 추적·취소와 향후 typed progress 전달 지점을 제공하는 선택 옵션이다. */
+/** command 요청의 추적·취소와 서버 확인 progress 전달 지점을 제공하는 선택 옵션이다. */
 export interface SubmitTurnCommandOptions {
   traceId?: string;
   signal?: AbortSignal;
@@ -82,7 +82,7 @@ export interface ConversationTurnWire {
   conversation_id: string;
   turn_index: number;
   user_message: string;
-  route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
+  route: "OUT_OF_SCOPE" | "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
   source_turn_ids: string[];
   reply_to_turn_id: string | null;
   clarifies_turn_id: string | null;
@@ -93,6 +93,10 @@ export interface ConversationTurnWire {
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {
+    scope_rejection?: {
+      message: string;
+      reason?: string;
+    };
     rag?: Record<string, unknown>;
     business_terms?: string[];
     metric_id?: string | null;
@@ -230,6 +234,112 @@ export interface AnalysisProgress {
   elapsed_seconds: number;
   cancel_requested: boolean;
   trace: Array<{ stage: string; outcome: string; detail?: string | null }>;
+}
+
+const ANALYSIS_PROCESS_PHASES = [
+  {
+    id: "request",
+    label: "요청 분류와 권한 확인",
+    description: "질문 유형, 사용자 권한과 실행 가능 여부를 확인합니다.",
+    completionStage: "CONTROLLER",
+  },
+  {
+    id: "scope",
+    label: "지표·기간·필터 확정",
+    description: "승인된 카탈로그에서 사용할 지표와 데이터 범위를 확정합니다.",
+    completionStage: "G1",
+  },
+  {
+    id: "plan",
+    label: "분석 계획·SQL 안전성 검증",
+    description: "실행 계획을 구성하고 읽기 전용 SQL과 지표 규칙을 검증합니다.",
+    completionStage: "G2",
+  },
+  {
+    id: "query",
+    label: "승인 데이터 조회",
+    description: "검증을 통과한 쿼리를 데이터 엔진에서 실행합니다.",
+    completionStage: "QUERY",
+  },
+  {
+    id: "verify",
+    label: "결과·근거 검증",
+    description: "조회 결과가 요청 조건과 실행 근거에 일치하는지 확인합니다.",
+    completionStage: "G3",
+  },
+  {
+    id: "answer",
+    label: "답변과 Artifact 구성",
+    description: "검증된 결과를 답변과 재사용 가능한 Artifact로 구성합니다.",
+    completionStage: "ARTIFACT",
+  },
+] as const;
+
+function progressPhaseIndex(stage: string, passedStages: Set<string>) {
+  if (["ROUTER", "CONTROLLER"].includes(stage)) return 0;
+  if (["CONTEXT", "G1"].includes(stage)) return 1;
+  if (["G2", "REPAIR"].includes(stage)) return 2;
+  if (stage === "QUERY") return 3;
+  if (stage === "G3") return 4;
+  if (stage === "ARTIFACT") return 5;
+  if (stage === "MODEL") {
+    if (passedStages.has("G3")) return 5;
+    if (passedStages.has("G1")) return 2;
+    return 1;
+  }
+  return -1;
+}
+
+/** 서버의 기술 트레이스를 순서를 바꾸지 않고 사용자용 분석 단계로 묶는다. */
+export function normalizeConversationCommandProgress(progress: AnalysisProgress): ConversationCommandProgress {
+  const passedStages = new Set(
+    progress.trace.filter((step) => step.outcome === "PASSED").map((step) => step.stage),
+  );
+  const status: ConversationCommandProgress["status"] = {
+    RECEIVED: "running",
+    ROUTED: "running",
+    SUCCEEDED: "success",
+    PARTIAL: "success",
+    BLOCKED: "blocked",
+    FAILED: "failed",
+    CANCELLED: "cancelled",
+  }[progress.status];
+  const states: ConversationCommandProgress["steps"][number]["state"][] = ANALYSIS_PROCESS_PHASES.map(
+    (phase) => passedStages.has(phase.completionStage) ? "complete" : "pending",
+  );
+
+  for (const step of progress.trace) {
+    if (step.outcome === "PASSED") continue;
+    const phaseIndex = progressPhaseIndex(step.stage, passedStages);
+    if (phaseIndex < 0) continue;
+    states[phaseIndex] = progress.cancel_requested || progress.status === "CANCELLED"
+      ? "cancelled"
+      : step.outcome === "BLOCKED"
+        ? "blocked"
+        : "failed";
+  }
+
+  if (status === "running") {
+    const activeIndex = states.findIndex((state) => state === "pending");
+    if (activeIndex >= 0) states[activeIndex] = "active";
+  } else if (status !== "success" && states.every((state) => ["complete", "pending"].includes(state))) {
+    const terminalIndex = states.findIndex((state) => state === "pending");
+    if (terminalIndex >= 0) states[terminalIndex] = status;
+  }
+
+  return {
+    traceId: progress.trace_id,
+    kind: "ANALYSIS",
+    status,
+    elapsedSeconds: progress.elapsed_seconds,
+    cancelRequested: progress.cancel_requested,
+    steps: ANALYSIS_PROCESS_PHASES.map((phase, index) => ({
+      id: phase.id,
+      label: phase.label,
+      description: phase.description,
+      state: states[index],
+    })),
+  };
 }
 
 /** 분석 호출의 trace 및 진행 콜백 입력이며 콜백 부재 시 polling을 만들지 않는다. */
@@ -511,8 +621,40 @@ export function createHttpAnalysisClient(
       );
     },
     async submitTurnCommand(conversationId, cmdPayload, options = {}) {
-      // Backend command progress transport가 확정되기 전에는 onProgress를 호출하거나 polling하지 않는다.
-      return this.executeTurnCommand(conversationId, cmdPayload, options);
+      const traceId = options.traceId || createUuid();
+      const commandPromise = this.executeTurnCommand(conversationId, cmdPayload, { ...options, traceId });
+      const onProgress = options.onProgress;
+      if (!onProgress) return commandPromise;
+
+      let polling = true;
+      let requestInFlight = false;
+      const pollProgress = async () => {
+        if (!polling || requestInFlight) return;
+        requestInFlight = true;
+        try {
+          const response = await request(endpoint(`/analysis/progress/${encodeURIComponent(traceId)}/poll`), {
+            credentials: "include",
+            headers: headers(false, traceId),
+            signal: options.signal,
+          });
+          const payload = await parse<{ data: AnalysisProgress | null }>(response);
+          if (polling && payload.data?.trace?.length) {
+            onProgress(normalizeConversationCommandProgress(payload.data));
+          }
+        } catch {
+          // 진행 조회 실패는 최종 command 응답의 성공·오류 계약을 덮지 않는다.
+        } finally {
+          requestInFlight = false;
+        }
+      };
+      void pollProgress();
+      const poll = globalThis.setInterval(() => void pollProgress(), 500);
+      try {
+        return await commandPromise;
+      } finally {
+        polling = false;
+        globalThis.clearInterval(poll);
+      }
     },
   };
 }

@@ -8,6 +8,10 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.services.context.builder import ContextMetric, ContextPackage
+from app.services.context.display_metadata import (
+    metric_display_label,
+    metric_display_unit,
+)
 from app.services.analysis.evidence import _reduce_context_metric
 
 
@@ -130,7 +134,8 @@ def explanation_is_grounded(
             terms_by_id = {term.id: term for term in terms}
             summary_key = summary.casefold()
             if any(
-                terms_by_id[metric.id].label.casefold() not in summary_key
+                metric_display_label(terms_by_id[metric.id]).casefold()
+                not in summary_key
                 for metric in metrics
             ):
                 return False
@@ -207,13 +212,14 @@ def _time_label(query: dict[str, Any]) -> str:
 
 
 def _format_value(value: Decimal, unit: str) -> str:
+    display_unit = metric_display_unit(unit)
     displayed = value * 100 if unit.lower() == "ratio" else value
     if unit.lower() == "ratio":
         displayed = displayed.quantize(Decimal("0.01"))
     raw = format(displayed, ",f")
     if "." in raw:
         raw = raw.rstrip("0").rstrip(".")
-    suffix = "%" if unit.lower() == "ratio" else f" {unit}" if unit else ""
+    suffix = "%" if unit.lower() == "ratio" else f" {display_unit}" if display_unit else ""
     return f"{raw}{suffix}"
 
 
@@ -232,7 +238,7 @@ def grounded_summary(query: dict[str, Any], package: ContextPackage) -> str:
             label = _period_label(period_value)
             values = [
                 (
-                    terms[metric.id].label,
+                    metric_display_label(terms[metric.id]),
                     _metric_value(metric, package, rows, result_suffix),
                     metric.unit or terms[metric.id].unit,
                 )
@@ -262,7 +268,7 @@ def grounded_summary(query: dict[str, Any], package: ContextPackage) -> str:
     if len(metrics) > 1:
         values = [
             (
-                terms[metric.id].label,
+                metric_display_label(terms[metric.id]),
                 _metric_value(metric, package, rows),
                 metric.unit or terms[metric.id].unit,
             )
@@ -283,12 +289,13 @@ def grounded_summary(query: dict[str, Any], package: ContextPackage) -> str:
 
     metric = metrics[0]
     term = terms[metric.id]
+    display_label = metric_display_label(term)
     value = _metric_value(metric, package, rows)
     if value is None:
-        return f"{period}의 {term.label}에 표시할 수 있는 관측값이 없습니다."
+        return f"{period}의 {display_label}에 표시할 수 있는 관측값이 없습니다."
     label = {"sum": "합계", "average": "평균"}.get(metric.reduction, "")
     calculation = f"{label} 계산 결과" if label else "계산 결과"
-    summary = f"{period}의 {term.label} {calculation}는 {_format_value(value, metric.unit or term.unit)}입니다."
+    summary = f"{period}의 {display_label} {calculation}는 {_format_value(value, metric.unit or term.unit)}입니다."
 
     numeric = _numeric_columns(rows)
     values = numeric.get(metric.result_field)

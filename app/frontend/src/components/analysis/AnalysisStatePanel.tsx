@@ -28,7 +28,6 @@ import {
   type TableSort,
 } from "./AnalysisStatePanelParts";
 import {
-  AnalysisArtifactReuseNotice,
   AnalysisConversationalSummary,
   AnalysisDataSection,
   AnalysisKpiSection,
@@ -45,7 +44,6 @@ export function AnalysisStatePanel({
   run,
   viewType = "SUMMARY",
   onSuggestion,
-  onQuickView,
   onRetry,
   onCancel,
   onSave,
@@ -61,7 +59,6 @@ export function AnalysisStatePanel({
   run: AnalysisRun;
   viewType?: ViewTypeMode;
   onSuggestion?: (suggestion: string) => void;
-  onQuickView?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE" | "REPORT") => void;
   onRetry?: () => void;
   onCancel?: () => void;
   onSave?: () => void;
@@ -93,6 +90,12 @@ export function AnalysisStatePanel({
   const hasMetrics = Boolean(run.metrics?.length);
   const hasTableRows = Boolean(table?.columns?.length && table?.rows?.length);
   const isPresentationPending = Boolean(artifactReuse?.pending);
+  const showCompletedAnalysisProcess = Boolean(
+    processViewModel
+    && processViewModel.kind === "ANALYSIS"
+    && processViewModel.status !== "running"
+    && processViewModel.steps.length > 1,
+  );
   const displayedProcessViewModel = processViewModel ?? createAnalysisProcessViewModel({
     kind: isPresentationPending ? "PRESENTATION" : "ANALYSIS",
     status: "running",
@@ -185,10 +188,6 @@ export function AnalysisStatePanel({
     return () => window.cancelAnimationFrame(frame);
   }, [run.error?.code, run.traceId, viewState]);
 
-  const handleViewChange = (newView: "SUMMARY" | "KPI" | "CHART" | "TABLE") => {
-    onQuickView?.(newView);
-  };
-
   if (viewState === "LOADING" || viewState === "DELAYED") {
     return (
       <section className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite" aria-busy="true">
@@ -220,14 +219,12 @@ export function AnalysisStatePanel({
 
       {showResult && (
         <div className="analysis-conversational-container">
-          {isPresentationPending
-            ? <AnalysisProgress model={displayedProcessViewModel} />
-            : artifactReuse && <AnalysisArtifactReuseNotice run={run} pending={false} />}
+          {isPresentationPending && <AnalysisProgress model={displayedProcessViewModel} />}
 
           {!isPresentationPending && <div className="analysis-visual-body">
             {isSummaryMode && (
               <div className="analysis-summary-stack">
-                <AnalysisConversationalSummary run={run} />
+                <AnalysisConversationalSummary run={run} valueScale={valueScale} />
                 {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} />}
               </div>
             )}
@@ -281,7 +278,7 @@ export function AnalysisStatePanel({
 
             {isFullMode && (
               <div className="analysis-full-view-stack">
-                <AnalysisConversationalSummary run={run} />
+                <AnalysisConversationalSummary run={run} valueScale={valueScale} />
                 {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} />}
                 {chart && <AnalysisVisualSection
                   run={run}
@@ -318,18 +315,16 @@ export function AnalysisStatePanel({
             )}
           </div>}
 
+          {showCompletedAnalysisProcess && processViewModel && (
+            <AnalysisProgress model={processViewModel} />
+          )}
+
           {!isPresentationPending && <AnalysisUnifiedToolbar
-            activeView={viewType}
-            onViewChange={onQuickView ? handleViewChange : undefined}
             onSave={onSave}
             onCreateReportDraft={onCreateReportDraft}
             onOpenEvidence={onOpenEvidence}
             onPreview={onPreview}
             saveDisabled={saveDisabled}
-            viewActionsDisabled={suggestionsDisabled || Boolean(artifactReuse?.pending)}
-            hasMetrics={hasMetrics}
-            hasChart={Boolean(chart && canRenderChart)}
-            hasTable={hasTableRows}
           />}
         </div>
       )}

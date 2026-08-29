@@ -10,6 +10,7 @@ const frontendRoot = fileURLToPath(new URL("../../app/frontend", import.meta.url
 const response = JSON.parse(readFileSync(new URL("./fixtures/analysis-rich-success.json", import.meta.url), "utf8"));
 const processViewModels = JSON.parse(readFileSync(new URL("./fixtures/analysis-process-view-models.json", import.meta.url), "utf8"));
 const stylesSource = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
+const mlWorkspaceStylesSource = readFileSync(new URL("../../app/frontend/src/components/ml/MLPredictionWorkspace.css", import.meta.url), "utf8");
 const agentSource = readFileSync(new URL("../../app/frontend/src/pages/AgentPage.jsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../app/frontend/src/App.jsx", import.meta.url), "utf8");
 const server = await createServer({
@@ -37,8 +38,39 @@ try {
   assert.doesNotMatch(html, />0<em>억 원<\/em>/);
   assert.doesNotMatch(html, /고객 고객/);
   assert.match(html, /AI 분석 요약/);
+  assert.match(html, /analysis-summary-heading/);
+  assert.match(html, /근거 검증 완료/);
+  assert.match(html, /analysis-summary-verified/);
+  assert.match(html, /결과 요약/);
+  assert.match(html, /수치 근거/);
+  assert.match(html, />핵심 지표</);
+  assert.doesNotMatch(html, /주요 KPI|개 승인 지표/);
   assert.doesNotMatch(html, /상세 데이터 표/);
   assert.doesNotMatch(html, /aria-label="차트 표현 방식"/);
+
+  const localizedSummaryHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: {
+      ...run,
+      summary: "2026년 6월의 Room Revenue 합계 계산 결과는 6,632,629,550 KRW입니다.",
+      evidence: {
+        ...run.evidence,
+        period: { start: "2026-06-01", endExclusive: "2026-07-01" },
+      },
+      metrics: [{
+        ...run.metrics[0],
+        metricId: "room_revenue",
+        label: "Room Revenue",
+        displayLabel: "객실 매출",
+        value: 6632629550,
+        unit: "KRW",
+        displayUnit: "원",
+      }],
+    },
+  }));
+  assert.match(localizedSummaryHtml, /2026년 6월 객실 매출 분석/);
+  assert.match(localizedSummaryHtml, /2026년 6월 객실 매출 합계는 66\.3억 원입니다/);
+  assert.match(localizedSummaryHtml, /title="6,632,629,550 원"/);
+  assert.doesNotMatch(localizedSummaryHtml, /Room Revenue|KRW|ADR|RevPAR/);
 
   const analysisProcessHtml = renderToStaticMarkup(createElement(AnalysisProgress, { model: processViewModels.analysisActive }));
   assert.match(analysisProcessHtml, /data-process-kind="ANALYSIS"/);
@@ -48,12 +80,14 @@ try {
 
   const presentationProcessHtml = renderToStaticMarkup(createElement(AnalysisProgress, { model: processViewModels.presentationActive }));
   assert.match(presentationProcessHtml, /data-process-kind="PRESENTATION"/);
-  assert.match(presentationProcessHtml, /이전 분석 결과 확인/);
-  assert.match(presentationProcessHtml, /요청한 보기 구성/);
+  assert.match(presentationProcessHtml, /요청한 보기/);
+  assert.doesNotMatch(presentationProcessHtml, /이전 분석 결과|재사용|재조회/);
   assert.doesNotMatch(presentationProcessHtml, /SQL|데이터 조회|재분석/);
 
   const completeProcessHtml = renderToStaticMarkup(createElement(AnalysisProgress, { model: processViewModels.complete }));
   assert.match(completeProcessHtml, /data-process-status="success"/);
+  assert.match(completeProcessHtml, /analysis-trace--complete/);
+  assert.match(completeProcessHtml, /단계 완료/);
   assert.match(completeProcessHtml, /class="done" data-state="complete"/);
 
   const failedProcessHtml = renderToStaticMarkup(createElement(AnalysisProgress, { model: processViewModels.failed }));
@@ -120,17 +154,17 @@ try {
     run,
     viewType: "TABLE",
     artifactReuse: { pending: false, viewSpecId: "view-table" },
-    onQuickView: () => {},
     onOpenEvidence: () => {},
   }));
-  assert.match(followupHtml, /기존 분석 결과 재사용/);
-  assert.match(followupHtml, /추가 데이터 조회 없이 같은 Artifact와 근거를 사용합니다/);
   assert.match(followupHtml, /상세 데이터 표/);
+  assert.match(followupHtml, /analysis-data-meta/);
+  assert.match(followupHtml, /열 제목을 눌러 정렬/);
+  assert.match(followupHtml, /analysis-table-sort/);
   assert.doesNotMatch(followupHtml, /AI 분석 요약/);
   for (const label of ["요약으로 보기", "표로 보기", "그래프로 보기", "KPI만 보기"]) {
-    assert.match(followupHtml, new RegExp(label));
+    assert.doesNotMatch(followupHtml, new RegExp(label));
   }
-  assert.doesNotMatch(followupHtml, /전체 보기/);
+  assert.doesNotMatch(followupHtml, /결과 보기 전환|이전 분석 결과|재사용|재조회|연결 정보/);
 
   const pendingFollowupHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run: { ...run, elapsedSeconds: 0 },
@@ -138,8 +172,9 @@ try {
     artifactReuse: { pending: true },
   }));
   assert.match(pendingFollowupHtml, /data-process-kind="PRESENTATION"/);
-  assert.match(pendingFollowupHtml, /기존 분석 결과로 보기를 준비합니다/);
-  assert.doesNotMatch(pendingFollowupHtml, /추가 데이터 조회 없이 같은 Artifact와 근거를 사용합니다/);
+  assert.match(pendingFollowupHtml, /요청한 형태로 답변을 구성하고 있습니다/);
+  assert.doesNotMatch(pendingFollowupHtml, /이전 분석 결과|재사용|재조회/);
+  assert.doesNotMatch(pendingFollowupHtml, /연결 정보/);
   assert.doesNotMatch(pendingFollowupHtml, /상세 데이터 표/);
   assert.doesNotMatch(pendingFollowupHtml, /SQL 실행 중|데이터 조회 중|재분석 중/);
 
@@ -163,12 +198,26 @@ try {
 
   // 실제 렌더 트리가 쓰는 KPI·차트·표 카드 선택자만 검증한다(죽은 ".analysis-dashboard" 조상 선택자는 삭제됨).
   assert.match(stylesSource, /\.analysis-metrics\{/);
+  assert.match(stylesSource, /\.analysis-summary-stack\{gap:0;overflow:hidden;border:1px solid var\(--av-paper-line\)/);
+  assert.match(mlWorkspaceStylesSource, /left:\s*20px[\s\S]*right:\s*auto[\s\S]*bottom:\s*20px/);
+  assert.match(mlWorkspaceStylesSource, /@media \(max-width: 720px\)[\s\S]*bottom:\s*122px/);
   assert.match(stylesSource, /\.analysis-result-section \.analysis-table thead th\{/);
+  assert.match(stylesSource, /\.message\.message--user\{justify-content:flex-end\}/);
+  assert.match(stylesSource, /\.message--user>\.turn-user-bubble\{[^}]*margin-left:auto/);
+  assert.match(stylesSource, /\.message\.message--agent\{justify-content:flex-start\}/);
+  assert.match(agentSource, /분석, 내부 지침, 후속 질문을 한 대화에서 이어갈 수 있습니다/);
+  assert.match(agentSource, /무엇을 도와드릴까요/);
+  assert.match(agentSource, /className="scope-notice-response"/);
+  assert.match(agentSource, /답변을 준비하고 있어요/);
+  assert.doesNotMatch(agentSource, /onQuickView|quickViewAction/);
+  assert.match(stylesSource, /\.theme-light \.analysis-result-section \.analysis-table-sort\{background:transparent\}/);
+  assert.match(stylesSource, /\.analysis-result-section \.analysis-table thead th\{color:#344a63;background:#f3f6fa;font-size:11\.5px/);
   assert.match(stylesSource, /\.app-shell\{--app-nav-height:64px;--app-context-height:74px;--app-header-height:calc\(var\(--app-nav-height\) \+ var\(--app-context-height\)\)/);
   assert.match(stylesSource, /\.topbar\{[^}]*grid-template-rows:var\(--app-nav-height\) var\(--app-context-height\)/);
   assert.match(appSource, /<AppHeader page=\{route\.page\}/);
   assert.match(stylesSource, /@media\(max-width:760px\)\{[^\n]*\.top-navigation\{[^}]*overflow-x:auto/);
   assert.match(stylesSource, /\.chat-layout\{[^}]*grid-template-columns:205px minmax\(400px,1fr\) 285px/);
+  assert.match(stylesSource, /@media\(min-width:1201px\)\{\.chat-layout\.evidence-open\{grid-template-columns:205px minmax\(400px,1fr\) 340px\}/);
   assert.match(stylesSource, /\.chat-input\{[^}]*left:205px[^}]*transition:right \.2s/);
   assert.match(stylesSource, /@media\(max-width:1200px\)\{[^\n]*\.chat-layout\{grid-template-columns:180px 1fr\}[^\n]*\.chat-input\{left:180px;right:0\}/);
   assert.match(stylesSource, /@media\(max-width:650px\)\{[^\n]*\.chat-layout\{height:auto;display:block\}[^\n]*\.chat-history\{display:none\}[^\n]*\.chat-input\{left:0;padding-inline:12px\}/);
@@ -183,8 +232,8 @@ try {
     run: { ...run, metrics: run.metrics.map((metric) => ({ ...metric, unit: "KRW", value: 33005912094 })) },
   }));
   assert.match(krwHtml, />330\.1<em>억 원<\/em>/);
-  assert.match(krwHtml, /title="33,005,912,094 KRW"/);
-  assert.doesNotMatch(krwHtml, /<em>KRW<\/em>/);
+  assert.match(krwHtml, /title="33,005,912,094 원"/);
+  assert.doesNotMatch(krwHtml, /KRW/);
 
   const partialHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     onRetry: () => {},

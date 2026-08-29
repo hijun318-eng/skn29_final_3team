@@ -345,6 +345,27 @@ class FastApiRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(404, status)
 
+        status, pending = self.request(
+            "/analysis/progress/not-yet-registered/poll",
+            headers=headers,
+        )
+        self.assertEqual(200, status)
+        self.assertIsNone(pending["data"])
+
+        status, hidden = self.request(
+            "/analysis/progress/runtime-progress-trace/poll",
+            headers=self.context_headers("report_admin"),
+        )
+        self.assertEqual(200, status)
+        self.assertIsNone(hidden["data"])
+
+        status, polled = self.request(
+            "/analysis/progress/runtime-progress-trace/poll",
+            headers=headers,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(progress["data"]["request_id"], polled["data"]["request_id"])
+
         status, _ = self.request(
             "/analysis/progress/runtime-progress-trace/cancel",
             method="POST",

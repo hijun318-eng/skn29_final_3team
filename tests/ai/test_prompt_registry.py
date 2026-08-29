@@ -16,7 +16,7 @@ class PromptRegistryTests(unittest.TestCase):
                 "node2.repair": "PROMPT-v1.4.0",
                 "node2.sql": "PROMPT-v1.8.0",
                 "node2.sql_only": "PROMPT-v1.2.0",
-                "node3.explain": "PROMPT-v1.2.5",
+                "node3.explain": "PROMPT-v1.3.0",
                 "report.assistant": "PROMPT-v1.0.0",
                 "report.assistant.review": "PROMPT-v1.2.1",
                 "report.assistant.turn": "PROMPT-v1.9.5",
@@ -59,6 +59,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("query repairer", prompts["node2.repair"].text)
         self.assertIn("사용자용 근거 설명자", prompts["node3.explain"].text)
         self.assertIn("자연스러운 한국어 2~4문장", prompts["node3.explain"].text)
+        self.assertIn("첫 문장에서 질문에 대한 결론", prompts["node3.explain"].text)
+        self.assertNotIn("화면 하단의 KPI 카드", prompts["node3.explain"].text)
         assistant = get_prompt("report.assistant")
         self.assertNotIn(
             assistant.metadata()["hash"],

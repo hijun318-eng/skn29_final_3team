@@ -12,10 +12,16 @@ export const ENTERPRISE_SERIES_COLORS = [
 ] as const;
 
 type MetricLike = {
+  readonly metricId?: string | null;
+  readonly metric_id?: string | null;
   readonly label?: string | null;
+  readonly displayLabel?: string | null;
+  readonly display_label?: string | null;
   readonly resultField?: string | null;
   readonly result_field?: string | null;
   readonly unit?: string | null;
+  readonly displayUnit?: string | null;
+  readonly display_unit?: string | null;
 };
 
 type PresentationRun = {
@@ -73,6 +79,82 @@ export function metricUnitLabel(label: string, unit?: string | null): string {
   return unit ? `${label} (${unit})` : label;
 }
 
+/** 서버가 승인한 표시명을 우선하고 canonical label은 증거 호환 fallback으로만 사용한다. */
+export function metricDisplayLabel(metric: MetricLike): string {
+  return String(metric.displayLabel ?? metric.display_label ?? metric.label ?? "").trim()
+    || "분석 지표";
+}
+
+/** 내부 단위 코드는 계산 계약에 남기고 사용자 화면에는 한국어 단위만 표시한다. */
+export function metricDisplayUnit(unit?: string | null, approvedDisplayUnit?: string | null): string | null {
+  const supplied = String(approvedDisplayUnit ?? "").trim();
+  if (supplied) return supplied;
+  if (!unit) return null;
+  const normalized = unit.trim().toLowerCase();
+  if (normalized === "krw" || normalized.startsWith("krw_per_")) return "원";
+  if (normalized === "ratio" || normalized === "%") return "%";
+  if (normalized === "room_night" || normalized === "room_nights") return "객실박";
+  if (normalized === "room" || normalized === "rooms") return "실";
+  if (normalized === "hour" || normalized === "hours") return "시간";
+  if (normalized === "point" || normalized === "points") return "점";
+  if (normalized === "count") return "건";
+  return unit;
+}
+
+function escapedPattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasKoreanFinalConsonant(label: string): boolean {
+  const lastHangul = [...label].reverse().find((character) => /[가-힣]/.test(character));
+  return Boolean(lastHangul && (lastHangul.charCodeAt(0) - 0xac00) % 28 !== 0);
+}
+
+function normalizeKoreanParticles(text: string, label: string): string {
+  const hasFinal = hasKoreanFinalConsonant(label);
+  return [
+    ["은", "는"],
+    ["이", "가"],
+    ["을", "를"],
+    ["과", "와"],
+  ].reduce((current, [withFinal, withoutFinal]) => current.replace(
+    new RegExp(`${escapedPattern(label)}(?:${withFinal}|${withoutFinal})`, "g"),
+    `${label}${hasFinal ? withFinal : withoutFinal}`,
+  ), text);
+}
+
+/** 정의의 의미는 변경하지 않고 사용자 단위 코드만 화면 표기로 바꾼다. */
+export function localizeMetricDefinition(definition?: string | null): string {
+  if (!definition) return "";
+  return definition.replace(/\bKRW\b/gi, "원");
+}
+
+/** 서버 서술의 의미는 보존하면서 catalog 영문 label·단위 코드와 기계적인 문장을 화면용 한국어로 정리한다. */
+export function localizeAnalysisSummary(summary: string, metrics: readonly MetricLike[] = []): string {
+  let localized = localizeMetricDefinition(summary);
+  for (const metric of metrics) {
+    const sourceLabel = String(metric.label ?? "").trim();
+    const displayLabel = metricDisplayLabel(metric);
+    if (sourceLabel && sourceLabel !== displayLabel) {
+      localized = localized.replace(new RegExp(escapedPattern(sourceLabel), "gi"), displayLabel);
+    }
+    const sourceUnit = String(metric.unit ?? "").trim();
+    const displayUnit = metricDisplayUnit(
+      sourceUnit,
+      metric.displayUnit ?? metric.display_unit,
+    );
+    if (sourceUnit && displayUnit && sourceUnit !== displayUnit) {
+      localized = localized.replace(new RegExp(escapedPattern(sourceUnit), "gi"), displayUnit);
+    }
+    localized = normalizeKoreanParticles(localized, displayLabel);
+  }
+  localized = localized
+    .replace(/\bKRW\b/gi, "원")
+    .replace(/(\d{4}년\s*\d{1,2}월)의\s+/g, "$1 ")
+    .replace(/\s+합계\s+계산\s+결과는/g, " 합계는");
+  return localized;
+}
+
 /** 계열 순번을 고정 팔레트에 순환 매핑해 렌더 간 색상 안정성을 보장한다. */
 export function seriesColor(index: number): string {
   return ENTERPRISE_SERIES_COLORS[Math.abs(index) % ENTERPRISE_SERIES_COLORS.length];
@@ -107,7 +189,7 @@ export function analysisTitle(run: PresentationRun): string {
     monthTitle(run.evidence?.comparisonPeriod),
   ].filter(Boolean).join("·");
   const metrics = [...new Set((run.metrics?.length ? run.metrics : run.evidence?.metrics ?? [])
-    .map((metric) => metric.label?.trim())
+    .map((metric) => metricDisplayLabel(metric).trim())
     .filter((label): label is string => Boolean(label)))]
     .slice(0, 2)
     .join("·");

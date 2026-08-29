@@ -43,6 +43,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "/analysis",
                 "/analysis/ml",
                 "/analysis/progress/{trace_id}",
+                "/analysis/progress/{trace_id}/poll",
                 "/analysis/progress/{trace_id}/cancel",
                 "/analysis/requests/{request_id}/progress",
                 "/analysis/requests/{request_id}/cancel",
@@ -120,6 +121,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "submitAnalysis",
                 "createMlAnalysis",
                 "getAnalysisProgress",
+                "pollAnalysisProgress",
                 "cancelAnalysisProgress",
                 "getAnalysisProgressByRequest",
                 "cancelAnalysisProgressByRequest",
@@ -229,6 +231,9 @@ class OpenApiContractTest(unittest.TestCase):
         evidence = schema["components"]["schemas"]["Evidence"]["properties"]
         self.assertIn("product_release_id", evidence)
         self.assertIn("evidence_cutoff", evidence)
+        metric_reference = schema["components"]["schemas"]["MetricReference"]["properties"]
+        self.assertIn("display_label", metric_reference)
+        self.assertIn("display_unit", metric_reference)
 
     def test_all_fixtures_match_typed_response(self) -> None:
         expected_names = set(contract_fixtures())

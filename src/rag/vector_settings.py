@@ -31,7 +31,6 @@ class VectorSettings:
     max_sequence_length: int
     chunk_max_tokens: int
     chunk_overlap_tokens: int
-    reranker_path: str | None
 
     @classmethod
     def load(cls, project_root: Path) -> "VectorSettings":
@@ -83,7 +82,6 @@ class VectorSettings:
             max_sequence_length=int(embedding.get("max_sequence_length", 2048)),
             chunk_max_tokens=int(retrieval.get("chunk_max_tokens", 384)),
             chunk_overlap_tokens=int(retrieval.get("chunk_overlap_tokens", 64)),
-            reranker_path=os.getenv("RERANKER_PATH", "").strip() or None,
         )
 
     @staticmethod

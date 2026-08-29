@@ -267,14 +267,16 @@ class OperationalControlTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "RAG_DATABASE_URL is required"):
             VectorSettings.load(PROJECT_ROOT)
 
-    def test_p2_gate_and_tool_registration_fail_closed(self) -> None:
+    def test_integrated_rc_stays_disabled_until_business_approval(self) -> None:
         gate = P2GateStatus()
         tool = RagToolContract()
-        self.assertEqual(gate.implementation_state, "ISOLATED_POC")
-        self.assertEqual(gate.p2_gate, "NOT_APPROVED")
+        self.assertEqual(gate.implementation_state, "INTEGRATED_RC")
+        self.assertEqual(gate.p2_gate, "TECHNICALLY_VALIDATED")
+        self.assertEqual(gate.production_integration, "CODE_INTEGRATED_E2E_PENDING")
         self.assertFalse(gate.affects_p0_p1_completion)
         self.assertFalse(tool.enabled)
-        self.assertEqual(tool.approval_status, "NOT_APPROVED")
+        self.assertEqual(tool.approval_status, "PENDING_BUSINESS_OWNER_APPROVAL")
+        self.assertEqual(tool.health_status, "NOT_LIVE_VERIFIED")
 
     def test_retrieval_contract_keeps_sql_and_document_evidence_separate(self) -> None:
         result = {

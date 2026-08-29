@@ -45,7 +45,7 @@ def create_app(project_root: Path | None = None) -> FastAPI:
     service = VectorRagApplication(root)
     audit = SecurityAuditRepository(service.database_url)
     authenticator = GatewayRequestAuthenticator(os.getenv("RAG_GATEWAY_HMAC_SECRET"))
-    app = FastAPI(title="Answervice Internal Manual Tool API", version="0.5.0-poc")
+    app = FastAPI(title="Answervice Internal Manual Tool API", version="1.0.0-rc1")
 
     @app.get("/health/live")
     def liveness() -> dict[str, str]:

@@ -8,9 +8,7 @@
     "SYSTEM_ADMIN"
   ],
   "unresolved_validity_roles": [
-    "ANALYST",
     "PLATFORM_ADMIN",
-    "STAFF",
     "MANAGER",
     "SYSTEM_ADMIN"
   ],

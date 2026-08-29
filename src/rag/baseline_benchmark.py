@@ -82,7 +82,7 @@ if __name__ == "__main__":
     queries_path = root_dir / "evals" / "testsets" / "rag" / "smoke_queries.json"
 
     benchmark = BaselineBenchmark(app, queries_path)
-    modes = ["LEXICAL_ONLY", "VECTOR_ONLY", "HYBRID", "HYBRID_RERANK"]
+    modes = ["LEXICAL_ONLY", "VECTOR_ONLY", "HYBRID"]
     report = benchmark.run_benchmark(app._settings.model_id, modes)
 
     print(json.dumps(report, indent=2, ensure_ascii=False))

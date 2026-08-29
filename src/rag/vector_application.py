@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import hashlib
-import re
 import threading
 import time
 from dataclasses import asdict
@@ -25,19 +24,6 @@ from .p2_contracts import P2GateStatus, RagToolContract
 from .contextual_query import ContextualQueryBuilder
 from .vector_search_payload import build_search_payload, hash_search_input
 from .manual_article_formatter import ManualArticleFormatter
-DOMAIN_DOCUMENT_TITLE_PREFIXES: dict[str, tuple[str, ...]] = {
-    "PRIVACY": ("02 개인정보",),
-    "REPORT": ("03 보고서",),
-    "CUSTOMER_SERVICE": ("06 고객응대", "07 외부 후기", "15 고객의견"),
-    "ROOM": ("13 객실",),
-    "RESERVATION_CHECKIN_PAYMENT": ("09 입실 퇴실 예약 결제",),
-    "CANCELLATION_REFUND_COMPENSATION": ("16 취소",),
-    "FOOD_BEVERAGE": ("08 식음",),
-    "LEISURE": ("10 레저",),
-    "FACILITY": ("11 시설",),
-    "SAFETY": ("14 안전",),
-    "PARKING_EVENT_LOBBY": ("12 주차 행사 로비",),
-}
 
 
 class VectorRagApplication:
@@ -63,13 +49,7 @@ class VectorRagApplication:
         self._settings = VectorSettings.load(project_root)
         self._repository = PgVectorRepository(self._settings.database_url)
 
-        reranker = None
-        if self._settings.reranker_path:
-            from .reranker import RerankerProvider
-            # Just initialize reranker right away or lazy load? Lazy load is better but for now let's just do it
-            reranker = RerankerProvider(self._settings.reranker_path, self._settings.device)
-
-        self._retrieval = VectorRetrievalService(self._repository, reranker=reranker)
+        self._retrieval = VectorRetrievalService(self._repository)
         self._evidence_repository = RagEvidenceRepository(self._settings.database_url)
         self._lifecycle = DocumentLifecycleRepository(self._settings.database_url)
         self._policy = SearchAccessPolicy.load(
@@ -173,51 +153,28 @@ class VectorRagApplication:
         intent: str = "REGULATION_CHECK",
     ) -> dict[str, object]:
         decision = self._policy.decide(role, top_k)
-        context_sensitive_intents = {"PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA"}
-        use_current_utterance = bool(
+        resolved_with_context = bool(
             resolved_question
             and resolved_question.strip() != query.strip()
-            and intent in context_sensitive_intents
         )
-        effective_query = (
-            query.strip()
-            if use_current_utterance
-            else ContextualQueryBuilder.build(
-                resolved_question or query,
-                () if resolved_question else recent_utterances,
-            )
+        effective_query = ContextualQueryBuilder.build(
+            resolved_question or query,
+            () if resolved_question else recent_utterances,
         )
-        if use_current_utterance and intent == "IMMEDIATE_ACTION" and "보고" in query:
-            effective_query = f"{query.strip()} 책임자에게 바로 보고할 상황"
-        selected_ids = ContextualQueryBuilder.validate_document_ids(
+        explicit_selected_ids = ContextualQueryBuilder.validate_document_ids(
             selected_document_ids
         )
-        domain_manual_ids: dict[str, tuple[str, ...]] = {}
-        explicit_manual_ids: tuple[str, ...] = ()
-        if domains and not selected_ids:
-            catalog = self._repository.catalog(role, decision.allow_unresolved)
-            explicit_manual_ids = tuple(
-                str(document["manual_id"])
-                for document in catalog
-                if (
-                    label := re.sub(r"^\d+\s*", "", str(document["title"])).strip()
-                )
-                and label in query
-            )
-            for domain in domains:
-                prefixes = DOMAIN_DOCUMENT_TITLE_PREFIXES.get(domain, ())
-                domain_manual_ids[domain] = tuple(
-                    str(document["manual_id"])
-                    for document in catalog
-                    if str(document["title"]).startswith(prefixes)
-                )
+        resolved_domains = tuple(dict.fromkeys(
+            domain.strip().upper() for domain in domains if domain.strip()
+        ))
+        selected_ids = explicit_selected_ids
         effective_maximum_chunks = (
             max(2, maximum_chunks_per_document)
             if intent == "COMPARISON"
             else max(min(decision.top_k, 10), maximum_chunks_per_document)
             if selected_ids
             else max(3, maximum_chunks_per_document)
-            if use_current_utterance
+            if resolved_with_context
             else maximum_chunks_per_document
         )
         started = time.perf_counter()
@@ -227,56 +184,7 @@ class VectorRagApplication:
             retrieval_mode=retrieval_mode,
             maximum_chunks_per_document=effective_maximum_chunks
         )
-        if domain_manual_ids:
-            anchored = []
-            for domain in domains:
-                manual_ids = domain_manual_ids.get(domain, ())
-                if not manual_ids:
-                    continue
-                domain_results = self._retrieval.retrieve(
-                    effective_query,
-                    vector,
-                    decision,
-                    manual_ids,
-                    retrieval_mode=retrieval_mode,
-                    maximum_chunks_per_document=1,
-                )
-                if domain_results:
-                    anchored.append(domain_results[0])
-            merged = []
-            seen_evidence_ids: set[str] = set()
-            for item in (*anchored, *results):
-                if item.evidence_id in seen_evidence_ids:
-                    continue
-                seen_evidence_ids.add(item.evidence_id)
-                merged.append(item)
-            results = merged[: decision.top_k]
-        if use_current_utterance and not results:
-            fallback_query = ContextualQueryBuilder.build(
-                resolved_question or query,
-                (),
-            )
-            fallback_vector = self._get_embedding().embed_query(fallback_query)
-            results = self._retrieval.retrieve(
-                fallback_query, fallback_vector, decision, selected_ids,
-                retrieval_mode=retrieval_mode,
-                maximum_chunks_per_document=effective_maximum_chunks,
-            )
-        if not results and intent == "IMMEDIATE_ACTION":
-            fallback_query = (
-                f"{query.strip()} 응급상황 안전사고 즉시 조치 현장 보호 "
-                "책임자 관리자 보고"
-            )
-            fallback_vector = self._get_embedding().embed_query(fallback_query)
-            results = self._retrieval.retrieve(
-                fallback_query,
-                fallback_vector,
-                decision,
-                selected_ids,
-                retrieval_mode=retrieval_mode,
-                maximum_chunks_per_document=effective_maximum_chunks,
-            )
-        if results or domain_manual_ids:
+        if results:
             answer_type = {
                 "PROCESS": "PROCEDURE",
                 "IMMEDIATE_ACTION": "IMMEDIATE",
@@ -288,34 +196,9 @@ class VectorRagApplication:
             formatter = ManualArticleFormatter()
             article_numbers = formatter.target_numbers(query, answer_type)
             document_limit = self.answer_document_limit(intent, selected_ids)
-            allowed_domain_manual_ids = {
-                manual_id
-                for manual_ids in domain_manual_ids.values()
-                for manual_id in manual_ids
-            }
-            explicit_manual_ids = tuple(
-                manual_id
-                for manual_id in explicit_manual_ids
-                if manual_id in allowed_domain_manual_ids
-            )
-            domain_preferred_ids = tuple(
-                next(
-                    (
-                        item.manual_id
-                        for item in results
-                        if item.manual_id in domain_manual_ids.get(domain, ())
-                    ),
-                    domain_manual_ids.get(domain, ("",))[0],
-                )
-                for domain in domains
-                if domain_manual_ids.get(domain)
-            )
-            routed_manual_ids = tuple(
-                dict.fromkeys((*explicit_manual_ids, *domain_preferred_ids))
-            )
             manual_ids = self.answer_document_ids(
-                selected_ids,
-                routed_manual_ids,
+                explicit_selected_ids,
+                (),
                 tuple(dict.fromkeys(item.manual_id for item in results)),
                 document_limit,
             )
@@ -333,13 +216,11 @@ class VectorRagApplication:
                     continue
                 seen_evidence_ids.add(item.evidence_id)
                 hydrated.append(item)
-            if intent == "COMPARISON" and len(routed_manual_ids) == 1:
-                hydrated = [
-                    item for item in hydrated if item.manual_id == routed_manual_ids[0]
-                ]
             results = hydrated[:50]
         latency_ms = (time.perf_counter() - started) * 1000
-        query_hash = hash_search_input(query, recent_utterances, selected_ids, resolved_question, domains, intent)
+        query_hash = hash_search_input(
+            query, recent_utterances, selected_ids, resolved_question, resolved_domains, intent
+        )
         resolved_request_id = request_id or str(uuid4())
         self._repository.audit_search(
             query_hash,
@@ -368,9 +249,9 @@ class VectorRagApplication:
             recent_utterance_count=len(recent_utterances),
             selected_document_ids=selected_ids,
             retrieval_mode=retrieval_mode,
-            domains=domains,
+            domains=resolved_domains,
             intent=intent,
-            resolved_with_context=bool(resolved_question and resolved_question.strip() != query.strip()),
+            resolved_with_context=resolved_with_context,
         )
         payload["agent"] = "INTERNAL_GUIDELINE"
         payload["processing_steps"] = [

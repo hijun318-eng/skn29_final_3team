@@ -39,6 +39,7 @@ class AnswerPromptParser:
             text = match.group("text").strip()
             metadata, separator, body = text.partition("본문내용:\n")
             body = body.strip() if separator else text
+            body = re.sub(r"\nEND_EVIDENCE\s*$", "", body).strip()
             if not evidence_id or not body or used_chars + len(body) > self._settings.maximum_evidence_chars:
                 continue
             fields = {

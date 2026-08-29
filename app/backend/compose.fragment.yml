@@ -110,6 +110,4 @@ services:
         condition: service_healthy
       app-migrations:
         condition: service_completed_successfully
-      ml-runtime:
-        condition: service_healthy
     restart: unless-stopped

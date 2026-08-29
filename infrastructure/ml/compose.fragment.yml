@@ -1,6 +1,6 @@
 services:
   ml-runtime:
-    profiles: [dev, full, split-host]
+    profiles: [ml, full, split-host]
     container_name: answervice-ml-runtime
     build:
       context: ../..
@@ -12,7 +12,7 @@ services:
       ML_MODEL_APPROVAL: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model.approval.json
       ML_FEATURE_CONTRACT: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/feature_contract.json
       ML_HISTORY_TABLE: ${ML_HISTORY_TABLE:-pms.ml_evaluation.room_demand_daily_facts_20260826_v2}
-      ML_ALLOW_CONDITIONAL: "true"
+      ML_ALLOW_CONDITIONAL: ${ML_ALLOW_CONDITIONAL:-false}
       TRINO_URL: ${TRINO_URL:-https://trino:8443}
       TRINO_USER: ${TRINO_RUNTIME_USER:?TRINO_RUNTIME_USER is required}
       TRINO_PASSWORD: ${TRINO_RUNTIME_PASSWORD:?TRINO_RUNTIME_PASSWORD is required}
@@ -26,9 +26,6 @@ services:
       database-network:
         aliases:
           - ml-runtime
-    depends_on:
-      trino:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readiness', timeout=2).read()"]
       interval: 5s

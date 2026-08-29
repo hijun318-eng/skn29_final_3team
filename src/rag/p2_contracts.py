@@ -11,15 +11,15 @@ class EvidenceType(str, Enum):
 
 
 class ImplementationState(str, Enum):
-    ISOLATED_POC = "ISOLATED_POC"
+    INTEGRATED_RC = "INTEGRATED_RC"
 
 
 @dataclass(frozen=True)
 class P2GateStatus:
-    implementation_state: str = ImplementationState.ISOLATED_POC
-    p2_gate: str = "NOT_APPROVED"
-    tool_registration: str = "DISABLED"
-    production_integration: str = "NOT_STARTED"
+    implementation_state: str = ImplementationState.INTEGRATED_RC
+    p2_gate: str = "TECHNICALLY_VALIDATED"
+    tool_registration: str = "INTERNAL_HTTP_AVAILABLE"
+    production_integration: str = "CODE_INTEGRATED_E2E_PENDING"
     affects_p0_p1_completion: bool = False
 
 
@@ -27,15 +27,15 @@ class P2GateStatus:
 class RagToolContract:
     tool_code: str = "internal-manual-search"
     tool_type: str = "RAG"
-    semantic_version: str = "0.5.0-poc"
-    owner: str = "UNASSIGNED"
+    semantic_version: str = "1.0.0-rc1"
+    owner: str = "ANSWERVICE_AI_TEAM"
     risk_level: str = "INTERNAL_RESTRICTED"
     transport: str = "INTERNAL_HTTP"
     timeout_seconds: int = 30
     maximum_retries: int = 0
     enabled: bool = False
-    approval_status: str = "NOT_APPROVED"
-    health_status: str = "UNKNOWN"
+    approval_status: str = "PENDING_BUSINESS_OWNER_APPROVAL"
+    health_status: str = "NOT_LIVE_VERIFIED"
     read_only: bool = True
     destructive: bool = False
     idempotent: bool = True

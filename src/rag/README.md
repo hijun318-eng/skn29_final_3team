@@ -69,8 +69,8 @@ MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint�
 | `RAG_CONFIG_DIR` | `config/rag` |
 | `RAG_MIGRATIONS_DIR` | `infrastructure/rag/db/init` |
 | `RAG_MANUALS_DIR` | `data/rag/manuals` |
-| `RAG_MODEL_PATH` | `models/Qwen3-Embedding-0.6B` |
-| `RAG_RERANKER_PATH` | `models/bge-reranker-v2-m3` |
+| `RAG_EMBEDDING_PROVIDER` | `openai` |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` |
 | `RAG_ANSWER_ENDPOINT` | `http://llm-service:8000/v1/chat/completions` |
 | `RAG_ANSWER_MODEL` | `answervice-llm` |
 | `RAG_DEVICE` | `auto` (CUDA 가능 시 `cuda`, 아니면 `cpu`) |
@@ -114,9 +114,9 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m src.rag search "객실 소음 대응 절차" --role MANAGER --top-k 3
 ```
 
-## 베이스라인 모델 비교 및 답변 평가
+## 베이스라인 검색 및 답변 평가
 
-RAG 성능 보완 및 베이스라인 모델 비교가 별도 실험 트랙으로 추가되었다. `config/rag/benchmark.json`과 `config/rag/embedding_models.json`을 사용하여 다음 실행 순서를 따른다.
+기본 검색은 OpenAI dense embedding과 BM25를 결합한 `HYBRID`다. 전용 reranker는 사용하지 않으며 `LEXICAL_ONLY`, `VECTOR_ONLY`, `HYBRID`만 비교한다.
 
 ```powershell
 # 베이스라인 평가

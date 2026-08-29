@@ -10,8 +10,8 @@ from uuid import UUID
 import numpy as np
 import psycopg
 
+from .bm25 import bm25_scores
 from .vector_models import PdfChunk, PdfDocument, VectorSearchResult
-from .vector_result_mapper import to_vector_search_result
 from .pgvector_observability import PgVectorObservabilityMixin
 
 
@@ -199,96 +199,71 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         maximum_chunks_per_document: int = 1,
     ) -> list[VectorSearchResult]:
         query_vector = self._vector_literal(vector)
-
-        # Build SQL condition based on retrieval mode
-        score_calc = (
-            "GREATEST(vector_score, "
-            "0.7 * vector_score + 0.3 * LEAST(1.0, lexical_score * 2.0))"
-        )
-        where_cond = f"(1 - (c.embedding <=> %s::vector) >= %s OR word_similarity(%s, d.title) >= 0.15 OR word_similarity(%s, c.content) >= 0.15)"
-        params = [query_vector, query_text, query_text, role, allow_unresolved, list(selected_manual_ids), list(selected_manual_ids), query_vector, minimum_vector_score, query_text, query_text]
-
-        if retrieval_mode == "LEXICAL_ONLY":
-            score_calc = "lexical_score"
-            where_cond = f"(word_similarity(%s, d.title) >= 0.15 OR word_similarity(%s, c.content) >= 0.15)"
-            # Adjust params for LEXICAL_ONLY
-            params = [query_vector, query_text, query_text, role, allow_unresolved, list(selected_manual_ids), list(selected_manual_ids), query_text, query_text]
-        elif retrieval_mode == "VECTOR_ONLY":
-            score_calc = "vector_score"
-            where_cond = f"(1 - (c.embedding <=> %s::vector) >= %s)"
-            # Adjust params for VECTOR_ONLY
-            params = [query_vector, query_text, query_text, role, allow_unresolved, list(selected_manual_ids), list(selected_manual_ids), query_vector, minimum_vector_score]
-
-        sql = f"""
-                WITH candidates AS (
-                    SELECT d.manual_id, d.title, d.version, c.page_start, c.page_end,
-                           c.section_title, c.content, d.document_status, c.chunk_id,
-                           c.chunk_index, d.authority_level, d.validity_status,
-                           d.approval_status, d.document_type,
-                           d.owner_team, d.effective_from, d.expires_at,
-                           1 - (c.embedding <=> %s::vector) AS vector_score,
-                           GREATEST(
-                               word_similarity(%s, d.title),
-                               word_similarity(%s, c.content)
-                           ) AS lexical_score
-                    FROM document_chunks c
-                    JOIN documents d ON d.manual_id = c.manual_id
-                    WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
-                      AND d.document_status = 'WORKING_KNOWLEDGE'
-                      AND d.approval_status = 'APPROVED'
-                      AND %s = ANY(d.role_scope)
-                      AND (%s OR d.validity_status != 'UNRESOLVED')
-                      AND (
-                          cardinality(%s::text[]) = 0
-                          OR d.manual_id = ANY(%s::text[])
-                      )
-                      AND (d.effective_from IS NULL OR d.effective_from <= CURRENT_DATE)
-                      AND (d.expires_at IS NULL OR d.expires_at >= CURRENT_DATE)
-                      AND {where_cond}
-                ), ranked AS (
-                    SELECT *,
-                           {score_calc} AS score,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY manual_id
-                               ORDER BY {score_calc} DESC
-                           ) AS document_rank
-                    FROM candidates
-                )
-                SELECT manual_id, title, version, page_start, page_end, section_title,
-                       content, score, vector_score, lexical_score, chunk_id,
-                       chunk_index, document_status, authority_level, validity_status,
-                       approval_status, document_type,
-                       owner_team, effective_from, expires_at
-                FROM ranked WHERE document_rank <= %s
-                ORDER BY score DESC LIMIT %s
+        sql = """
+            SELECT d.manual_id, d.title, d.version, c.page_start, c.page_end,
+                   c.section_title, c.content,
+                   1 - (c.embedding <=> %s::vector) AS vector_score,
+                   c.chunk_id, c.chunk_index, d.document_status,
+                   d.authority_level, d.validity_status, d.approval_status,
+                   d.document_type, d.owner_team, d.effective_from, d.expires_at
+            FROM document_chunks c
+            JOIN documents d ON d.manual_id = c.manual_id
+            WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
+              AND d.document_status = 'WORKING_KNOWLEDGE'
+              AND d.approval_status = 'APPROVED'
+              AND %s = ANY(d.role_scope)
+              AND (%s OR d.validity_status != 'UNRESOLVED')
+              AND (
+                  cardinality(%s::text[]) = 0
+                  OR d.manual_id = ANY(%s::text[])
+              )
+              AND (d.effective_from IS NULL OR d.effective_from <= CURRENT_DATE)
+              AND (d.expires_at IS NULL OR d.expires_at >= CURRENT_DATE)
         """
-        params.append(maximum_chunks_per_document)
-        params.append(top_k)
+        params = [
+            query_vector,
+            role,
+            allow_unresolved,
+            list(selected_manual_ids),
+            list(selected_manual_ids),
+        ]
 
         with psycopg.connect(self._database_url) as connection:
             rows = connection.execute(sql, params).fetchall()
 
-        results = []
-        for row in rows:
-            # row order follows the final SELECT above.
+        # ponytail: 현재 소규모 매뉴얼 전체를 메모리에서 BM25로 계산한다.
+        # corpus가 커져 측정된 병목이 생기면 그때 전용 lexical index로 바꾼다.
+        lexical_scores = bm25_scores(
+            query_text,
+            [f"{row[1]}\n{row[5]}\n{row[6]}" for row in rows],
+        )
+        ranked: list[tuple[float, float, float, tuple]] = []
+        for row, lexical_score in zip(rows, lexical_scores, strict=True):
+            vector_score = max(0.0, min(1.0, float(row[7])))
+            if retrieval_mode == "VECTOR_ONLY":
+                if vector_score < minimum_vector_score:
+                    continue
+                score = vector_score
+            elif retrieval_mode == "LEXICAL_ONLY":
+                if lexical_score <= 0:
+                    continue
+                score = lexical_score
+            else:
+                if vector_score < minimum_vector_score and lexical_score <= 0:
+                    continue
+                score = max(vector_score, 0.65 * vector_score + 0.35 * lexical_score)
+            ranked.append((score, vector_score, lexical_score, row))
+        ranked.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
 
-            # Since to_vector_search_result was used previously, we'll build it here or modify vector_result_mapper.py
-            # But it's easier to build VectorSearchResult here to avoid modifying vector_result_mapper.py unnecessarily
-            manual_id = row[0]
-            title = row[1]
-            version = row[2]
-            page_start = row[3]
-            page_end = row[4]
-            section_title = row[5]
-            content = row[6]
-            score = row[7]
-            vector_score = row[8]
-            lexical_score = row[9]
-            chunk_id = row[10]
-
+        results: list[VectorSearchResult] = []
+        document_counts: dict[str, int] = {}
+        for score, vector_score, lexical_score, row in ranked:
+            manual_id, title, version = str(row[0]), str(row[1]), str(row[2])
+            if document_counts.get(manual_id, 0) >= maximum_chunks_per_document:
+                continue
+            page_start, page_end, section_title, content = row[3:7]
+            chunk_id = row[8]
             evidence_id = f"{manual_id}:{version}:{page_start}:{chunk_id}"
-
-            # basic snippet logic from old mapper
             snippet_limit_raw = os.getenv("RAG_SNIPPET_MAX_CHARS", "1800").strip()
             try:
                 snippet_limit = max(200, int(snippet_limit_raw))
@@ -312,20 +287,23 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                     content=content,
                     citation=citation,
                     evidence_id=evidence_id,
-                    ranking_stage="retrieval",
+                    ranking_stage="dense_bm25",
                     reranker_score=None,
-                    document_status=row[12],
-                    authority_level=row[13],
-                    validity_status=row[14],
+                    document_status=row[10],
+                    authority_level=row[11],
+                    validity_status=row[12],
                     warning=None,
-                    document_type=row[16],
-                    owner_team=row[17],
-                    effective_from=str(row[18]) if row[18] else None,
-                    expires_at=str(row[19]) if row[19] else None,
-                    chunk_index=int(row[11]),
-                    approval_status=row[15],
+                    document_type=row[14],
+                    owner_team=row[15],
+                    effective_from=str(row[16]) if row[16] else None,
+                    expires_at=str(row[17]) if row[17] else None,
+                    chunk_index=int(row[9]),
+                    approval_status=row[13],
                 )
             )
+            document_counts[manual_id] = document_counts.get(manual_id, 0) + 1
+            if len(results) >= top_k:
+                break
         return results
 
     def article_context(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import subprocess
 import sys
 import unittest
@@ -74,6 +75,10 @@ KNOWN_REVISIONS = (
     "20260828_53",
     "20260828_54",
     "20260828_55",
+    "20260827_41",
+    "20260828_56",
+    "20260829_57",
+    "20260829_58",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -100,11 +105,25 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260828_55"], script.get_heads())
+        self.assertEqual(["20260829_58"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
         )
+
+    def test_deployed_seung_head_is_a_reconciled_compatibility_ancestor(self) -> None:
+        config = Config(str(BACKEND / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND / "migrations"))
+        script = ScriptDirectory.from_config(config)
+
+        legacy = script.get_revision("20260827_41")
+        reconciliation = script.get_revision("20260828_56")
+
+        self.assertIsNotNone(legacy)
+        self.assertIsNotNone(reconciliation)
+        self.assertEqual("20260828_55", legacy.down_revision)
+        self.assertEqual("20260827_41", reconciliation.down_revision)
+        self.assertEqual("20260829_58", script.get_current_head())
 
     def test_unknown_revision_is_native_nonzero_before_database_start(self) -> None:
         result = alembic("upgrade", "20260803_03", "--sql")
@@ -125,6 +144,67 @@ class MigrationGraphTest(unittest.TestCase):
         )
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+
+class SeungHeadReconciliationContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.namespace = runpy.run_path(
+            str(
+                BACKEND
+                / "migrations"
+                / "versions"
+                / "20260828_56_seung_head_reconciliation.py"
+            )
+        )
+
+    def test_source_fingerprint_accepts_only_complete_legacy_or_current_state(self) -> None:
+        source_state = self.namespace["_source_state"]
+        states = source_state.__globals__
+
+        with patch.dict(
+            states,
+            {"_schema_sentinels": lambda: {"a": lambda: False, "b": lambda: False}},
+        ):
+            self.assertEqual("SEUNG_LEGACY", source_state())
+        with patch.dict(
+            states,
+            {"_schema_sentinels": lambda: {"a": lambda: True, "b": lambda: True}},
+        ):
+            self.assertEqual("DAESUNG_CURRENT", source_state())
+        with patch.dict(
+            states,
+            {"_schema_sentinels": lambda: {"a": lambda: True, "b": lambda: False}},
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "SEUNG_DAESUNG_RECONCILIATION_AMBIGUOUS"
+            ):
+                source_state()
+
+    def test_reconciliation_does_not_replay_equivalent_report_assistant_ddl(self) -> None:
+        revisions = set(self.namespace["_DAESUNG_ONLY_REVISIONS"])
+
+        self.assertNotIn("20260826_37_report_assistant_sessions", revisions)
+        self.assertNotIn("20260828_54_report_page_break_blocks", revisions)
+        self.assertEqual(
+            {
+                "20260822_29_capability_evidence_contract",
+                "20260822_30_conversation_safety_foundation",
+                "20260822_31_runtime_catalog_projection",
+                "20260822_32_report_release_receipts",
+                "20260822_33_bounded_multi_turn_focus",
+                "20260823_34_phase10_runtime_query_terminal_grants",
+                "20260823_35_phase10_runtime_audit_grants",
+                "20260825_36_catalog_publisher_role",
+                "20260826_45_runtime_context_receipts",
+                "20260826_46_database_auth_accounts",
+                "20260828_47_query_generation_mode_compiler",
+                "20260828_48_rag_integration",
+                "20260828_49_ml_prediction_audit",
+                "20260828_55_admin_control_plane",
+            },
+            revisions,
+        )
 
 
 class IsolatedPostgresUpgradeTest(unittest.TestCase):
@@ -199,7 +279,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         result = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual("20260828_55", self.revision(self.empty_database))
+        self.assertEqual("20260829_58", self.revision(self.empty_database))
         engine = create_engine(self.base_url.set(database=self.empty_database))
         with engine.connect() as connection:
             widths = connection.execute(
@@ -225,7 +305,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260828_55", self.revision(self.known_database))
+        self.assertEqual("20260829_58", self.revision(self.known_database))
 
     def test_report_head_upgrades_to_analysis_persistence_head(self) -> None:
         database = self.create_database("migration_report")
@@ -236,7 +316,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260828_55", self.revision(database))
+        self.assertEqual("20260829_58", self.revision(database))
 
     def test_rag_candidate_registers_disabled_and_roundtrips(self) -> None:
         database = self.create_database("migration_rag_candidate")
@@ -271,7 +351,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         replayed = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
-        self.assertEqual("20260828_55", self.revision(database))
+        self.assertEqual("20260829_58", self.revision(database))
 
     def test_database_auth_accounts_roundtrips_from_previous_head(self) -> None:
         database = self.create_database("migration_auth_accounts")
@@ -396,7 +476,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         replayed = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
-        self.assertEqual("20260828_55", self.revision(database))
+        self.assertEqual("20260829_58", self.revision(database))
 
     def test_analysis_head_roundtrips_through_context_registry_and_run_parameters(self) -> None:
         database = self.create_database("migration_context")
@@ -406,7 +486,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
-        self.assertEqual("20260828_55", self.revision(database))
+        self.assertEqual("20260829_58", self.revision(database))
         downgrade = alembic("downgrade", "20260810_06", database_url=url)
         self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260810_06", self.revision(database))
@@ -438,7 +518,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual((None, None, None, None, False, False), tuple(rolled_back))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260828_55", self.revision(database))
+        self.assertEqual("20260829_58", self.revision(database))
 
     def test_phase1_downgrade_preserves_preexisting_manual_conversation_objects(self) -> None:
         database = self.create_database("migration_conversation_legacy")
@@ -623,7 +703,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260828_55", self.revision(database))
+        self.assertEqual("20260829_58", self.revision(database))
 
     def test_capability_evidence_contract_roundtrips_and_is_immutable(self) -> None:
         database = self.create_database("migration_evidence")
@@ -739,7 +819,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual("20260820_28", self.revision(database))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260828_55", self.revision(database))
+        self.assertEqual("20260829_58", self.revision(database))
 
 
 if __name__ == "__main__":

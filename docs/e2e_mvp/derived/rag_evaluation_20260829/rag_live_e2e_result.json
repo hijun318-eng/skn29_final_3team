@@ -1,0 +1,461 @@
+{
+  "measured_at": "2026-08-29T08:18:30.960689+00:00",
+  "runtime": {
+    "health_latency_ms": 92.98,
+    "model_id": "text-embedding-3-large",
+    "embedding_provider": "openai",
+    "embedding_dimension": 1024,
+    "database": {
+      "pgvector_version": "0.8.5",
+      "documents": 17,
+      "chunks": 363,
+      "audits": 113,
+      "embedding_dimension": 1024,
+      "embedding_sets": [
+        {
+          "provider": "openai",
+          "model": "text-embedding-3-large",
+          "dimensions": 1024,
+          "version": "text-embedding-3-large:d1024",
+          "chunks": 363
+        }
+      ]
+    },
+    "execution_state": {
+      "implementation_state": "INTEGRATED_RC",
+      "p2_gate": "TECHNICALLY_VALIDATED",
+      "tool_registration": "INTERNAL_HTTP_AVAILABLE",
+      "production_integration": "LOCAL_DOCKER_VALIDATED",
+      "affects_p0_p1_completion": false
+    },
+    "tool": {
+      "tool_code": "internal-manual-search",
+      "tool_type": "RAG",
+      "semantic_version": "1.0.0-rc1",
+      "owner": "ANSWERVICE_AI_TEAM",
+      "risk_level": "INTERNAL_RESTRICTED",
+      "transport": "INTERNAL_HTTP",
+      "timeout_seconds": 30,
+      "maximum_retries": 0,
+      "enabled": true,
+      "approval_status": "PENDING_BUSINESS_OWNER_APPROVAL",
+      "health_status": "HEALTH_ENDPOINT_AVAILABLE",
+      "read_only": true,
+      "destructive": false,
+      "idempotent": true,
+      "evidence_type": "DOCUMENT_EVIDENCE"
+    }
+  },
+  "summary": {
+    "cases": 17,
+    "search_document_hit_pass": 17,
+    "answer_citation_boilerplate_pass": 17,
+    "e2e_average_ms": 493.14,
+    "e2e_p50_ms": 452.87,
+    "e2e_p95_ms": 559.17,
+    "e2e_max_ms": 769.2
+  },
+  "multi_turn": {
+    "search_http": 200,
+    "document_hit": true,
+    "retrieved_titles": [
+      "11 시설",
+      "14 안전"
+    ],
+    "resolved_domains": [
+      "FACILITY",
+      "SAFETY"
+    ],
+    "answer_http": 200,
+    "answer_status": "ANSWER",
+    "citation_count": 2,
+    "e2e_ms": 432.21
+  },
+  "security": {
+    "authorized_http": 200,
+    "replay_http": 401,
+    "unknown_role_http": 403,
+    "expired_signature_http": 401,
+    "pass": true
+  },
+  "records": [
+    {
+      "query": "공통 업무에서 고객 안내 시 지킬 기본 원칙 알려줘",
+      "intent": "REGULATION_CHECK",
+      "expected_titles": [
+        "01 공통"
+      ],
+      "retrieved_titles": [
+        "01 공통"
+      ],
+      "resolved_domains": [
+        "COMMON"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 1,
+      "forbidden_boilerplate": [],
+      "search_ms": 326.52,
+      "answer_ms": 95.44,
+      "answer_preview": "문서명: 01 공통 vUNRESOLVED\n지침번호: MANUAL-2FC377147FE5\n영역: 구체적인 판단·처리 기준\n본문내용:\n[제3조 구체적인 판단·처리 기준]\n\n- 안전 위험, 고객에게 미치는 범위, 운영 차질, 개인정보·법적 영향, 반복 여부를 함께 본다\n\n- 단일 고객의 단순 문의·요청은 일반, 반복되거나 여러 고객에게 영향을 주면 주의, 안전·위생·개인정보·중대한 결제 문제는 위험으로 본다\n\n- 자동 분류나 추천 결과는 참고용이며 최종 판단은 담당자가 확인한 사실을 기준으로 한다\n\n- 보상·환불·운영 중단·대외 공개처럼"
+    },
+    {
+      "query": "개인정보가 잘못 전달된 것 같아. 바로 어떻게 처리해야 해?",
+      "intent": "IMMEDIATE_ACTION",
+      "expected_titles": [
+        "02 개인정보"
+      ],
+      "retrieved_titles": [
+        "02 개인정보"
+      ],
+      "resolved_domains": [
+        "PRIVACY"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 8,
+      "forbidden_boilerplate": [],
+      "search_ms": 370.22,
+      "answer_ms": 82.66,
+      "answer_preview": "문서명: 02 개인정보 vUNRESOLVED\n지침번호: MANUAL-6FF666F09446\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 무엇이, 언제, 어디에서, 누구에게 노출되었을 가능성이 있는지 확인한다\n\n2. 가능한 범위에서 연결주소·사용자 계정·공유 권한을 즉시 차단한다\n\n3. 관련 화면, 전송 기록, 접근 기록, 문서 진행 단계를 보전한다\n\n4. 개인정보 보호 책임자와 보안 책임자에게 즉시 보고한다\n\n5. 영향받은 정보 유형·인원·기간을 확인하되 불필요한 재열람을 피한다\n\n6. 잘못 전송된 경우 수신자에게 미열"
+    },
+    {
+      "query": "보고서 작성 기준 핵심만 정리해줘",
+      "intent": "SUMMARY",
+      "expected_titles": [
+        "03 보고서"
+      ],
+      "retrieved_titles": [
+        "03 보고서"
+      ],
+      "resolved_domains": [
+        "REPORT"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 9,
+      "forbidden_boilerplate": [],
+      "search_ms": 445.63,
+      "answer_ms": 95.76,
+      "answer_preview": "문서명: 03 보고서 vUNRESOLVED\n지침번호: MANUAL-1F729EDE31A5\n영역: 이 지침을 사용하는 상황 / 구체적인 판단·처리 기준 / 처리 순서 / 업무 종료 기준\n본문내용:\n[제1조 이 지침을 사용하는 상황]\n\n- 새 보고서 작성\n\n- 분석 결과 구성 항목 추가\n\n- 구성 항목 순서·크기 조정\n\n- 보고서 검토·확정\n\n- 초안 작성\n\n- 사용자 수정\n\n- 검토 요청\n\n- 확정·다시 수정\n\n- 기준 자료 변경\n\n- 사용자가 보고서 자동 작성을 요청\n\n- 역할·담당 장소 변경\n\n- 표준 양식 선택\n\n- 자동 작성 "
+    },
+    {
+      "query": "다른 부서에 협조 요청을 알릴 때 절차를 알려줘",
+      "intent": "PROCESS",
+      "expected_titles": [
+        "04 알림 협조"
+      ],
+      "retrieved_titles": [
+        "04 알림 협조"
+      ],
+      "resolved_domains": [
+        "NOTIFICATION_COOPERATION"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 5,
+      "forbidden_boilerplate": [],
+      "search_ms": 395.53,
+      "answer_ms": 113.56,
+      "answer_preview": "문서명: 04 알림 협조 vUNRESOLVED\n지침번호: MANUAL-74AFFA8C392F\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 주관부서가 직접 해결하기 어려운 이유를 확인한다\n\n2. 필요한 지원 내용·장소·우선순위·완료 기준을 적는다\n\n3. 지원 중에는 필요한 진행 내용만 주관부서와 공유한다\n\n4. 지원이 끝나면 실제 수행 내용과 완료 시각을 기록한다\n\n5. 주관부서가 결과를 확인하고 원래 문제의 후속 조치를 결정한다\n근거: [04 알림 협조 vUNRESOLVED p.4 제4조 1. 주관부서가 직접 해결하기 "
+    },
+    {
+      "query": "대화형 분석 문서의 주요 내용만 알려줘",
+      "intent": "SUMMARY",
+      "expected_titles": [
+        "05 대화형 분석"
+      ],
+      "retrieved_titles": [
+        "05 대화형 분석"
+      ],
+      "resolved_domains": [
+        "INTERACTIVE_ANALYSIS"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 9,
+      "forbidden_boilerplate": [],
+      "search_ms": 395.33,
+      "answer_ms": 120.78,
+      "answer_preview": "문서명: 05 대화형 분석 vUNRESOLVED\n지침번호: MANUAL-ECD162933342\n영역: 이 지침을 사용하는 상황 / 구체적인 판단·처리 기준 / 처리 순서 / 업무 종료 기준\n본문내용:\n[제1조 이 지침을 사용하는 상황]\n\n- 관리자가 분석 질문을 입력함\n\n- 질문에 기간·장소·지표가 빠짐\n\n- 개인정보 또는 권한 밖 영역이 포함됨\n\n- 검증된 조회 기준에 맞지 않음\n\n- 조회 결과가 반환됨\n\n- 표·그래프 작성이 필요한 경우\n\n- 평점·매출·운영 지표 비교\n\n- 결과가 없거나 일부만 조회됨\n\n- 새 대화 시작\n\n- "
+    },
+    {
+      "query": "고객 불만이 들어오면 어떻게 응대해야 해?",
+      "intent": "PROCESS",
+      "expected_titles": [
+        "06 고객응대"
+      ],
+      "retrieved_titles": [
+        "06 고객응대"
+      ],
+      "resolved_domains": [
+        "CUSTOMER_SERVICE"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 5,
+      "forbidden_boilerplate": [],
+      "search_ms": 381.08,
+      "answer_ms": 71.32,
+      "answer_preview": "문서명: 06 고객응대 vUNRESOLVED\n지침번호: MANUAL-EC1D9CA2679B\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 고객이 설명을 마칠 때까지 듣고 불편한 상황과 원하는 해결을 정리한다\n\n2. 즉시 바로잡을 수 있는 안내 오류는 정확한 내용으로 다시 안내한다\n\n3. 차별·위협·신체 접촉 등 중대한 내용이면 당사자를 분리하고 관리자에게 보고한다\n\n4. 사과는 고객이 겪은 불편에 대해 하되 확인되지 않은 책임을 단정하지 않는다\n\n5. 교육·안내문 개선·업무 인계 등 후속 조치를 정하고 반복 여부를 확인한"
+    },
+    {
+      "query": "온라인 후기에 문제가 올라오면 어떻게 처리해?",
+      "intent": "PROCESS",
+      "expected_titles": [
+        "07 외부 후기"
+      ],
+      "retrieved_titles": [
+        "07 외부 후기"
+      ],
+      "resolved_domains": [
+        "EXTERNAL_REVIEW"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 9,
+      "forbidden_boilerplate": [],
+      "search_ms": 475.54,
+      "answer_ms": 83.63,
+      "answer_preview": "문서명: 07 외부 후기 vUNRESOLVED\n지침번호: MANUAL-5E37FD97EE33\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 후기는 신고가 아니라 확인이 필요한 외부 신호다\n\n2. 문장 의미와 실제 발생 사실을 구분한다\n\n3. 주제·장소·위험 정도에 맞는 매뉴얼만 제시한다\n\n4. 위험 표현은 사실 확인 전이라도 선제 확인할 수 있다. 제4 조\n\n5. 후기의 출처·작성 시점·장소·핵심 표현을 확인한다\n\n6. 오래되었거나 장소가 불명확한 후기는 한계를 표시한다\n\n7. 안전·위생·객실·식음·응대·개인정보 등 주제"
+    },
+    {
+      "query": "주방에서 위생 문제가 발견됐어. 즉시 조치가 뭐야?",
+      "intent": "IMMEDIATE_ACTION",
+      "expected_titles": [
+        "08 식음"
+      ],
+      "retrieved_titles": [
+        "08 식음"
+      ],
+      "resolved_domains": [
+        "FOOD_BEVERAGE"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 6,
+      "forbidden_boilerplate": [],
+      "search_ms": 398.71,
+      "answer_ms": 84.19,
+      "answer_preview": "문서명: 08 식음 vUNRESOLVED\n지침번호: MANUAL-CAE03DC80B29\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 고객의 현재 상태와 즉시 도움이 필요한지 확인한다\n\n2. 필요 시 관계기관 도움 요청은 현장 책임자의 지시에 따른다\n\n3. 메뉴·원재료·알레르기 안내·조리·보관 정보를 확인한다\n\n4. 같은 메뉴를 섭취한 다른 고객의 이상 신고 여부를 확인한다\n\n5. 해당 음식의 추가 제공·판매 조치는 승인 담당자가 결정한다\n\n6. 식품안전 책임자가 조사·보고·재개 여부를 결정한다\n근거: [08 식음 vUN"
+    },
+    {
+      "query": "예약 불일치가 확인되면 어떤 순서로 처리해?",
+      "intent": "PROCESS",
+      "expected_titles": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "retrieved_titles": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "resolved_domains": [
+        "RESERVATION_CHECKIN_PAYMENT"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 7,
+      "forbidden_boilerplate": [],
+      "search_ms": 349.77,
+      "answer_ms": 87.41,
+      "answer_preview": "문서명: 09 입실 퇴실 예약 결제 vUNRESOLVED\n지침번호: MANUAL-F1F7CA18F02E\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 고객이 받은 예약 확인 내용과 현재 예약 기록을 대조한다\n\n2. 예약 조건·객실 유형·변경 이력 중 어디에서 차이가 생겼는지 확인한다\n\n3. 객실 변경·업그레이드·위약금·환불은 담당자가 임의로 약속하지 않고 승인 담당자가 결정한다\n\n4. 고객 이름·예약번호·객실번호는 공개된 장소에서 불필요하게 말하지 않는다. 제4 조\n\n5. 예약 경로·상품·숙박일과 고객 확인 정보를 안전하"
+    },
+    {
+      "query": "수영장 운영 기준을 알려줘",
+      "intent": "REGULATION_CHECK",
+      "expected_titles": [
+        "10 레저"
+      ],
+      "retrieved_titles": [
+        "10 레저"
+      ],
+      "resolved_domains": [
+        "LEISURE"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 2,
+      "forbidden_boilerplate": [],
+      "search_ms": 419.85,
+      "answer_ms": 75.68,
+      "answer_preview": "문서명: 10 레저 vUNRESOLVED\n지침번호: MANUAL-3639C950AD04\n영역: 구체적인 판단·처리 기준\n본문내용:\n[제3조 구체적인 판단·처리 기준]\n\n- 고객의 건강 이상과 미끄럼 등 즉시 안전 위험을 먼저 확인한다\n\n- 고객의 체감과 실제 측정값을 구분해 기록한다\n\n- 승인된 수온·수질·환경 기준과 실제 측정값을 비교한다\n\n- 측정할 수 없거나 기준을 확인할 수 없으면 정상이라고 단정하지 않는다\n\n- 이용 제한·운영 중단·재개는 승인 담당자의 판단에 따른다\n근거: [10 레저 vUNRESOLVED p.2 제3조 "
+    },
+    {
+      "query": "시설 고장이 접수되면 먼저 뭘 해야 해?",
+      "intent": "PROCESS",
+      "expected_titles": [
+        "11 시설"
+      ],
+      "retrieved_titles": [
+        "11 시설"
+      ],
+      "resolved_domains": [
+        "FACILITY"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 7,
+      "forbidden_boilerplate": [],
+      "search_ms": 694.16,
+      "answer_ms": 75.04,
+      "answer_preview": "문서명: 11 시설 vUNRESOLVED\n지침번호: MANUAL-26808F2E8638\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 설비명, 위치, 이상 현상, 고객 고립·부상 여부를 확인한다\n\n2. 전기·화재·누수·추락 등 즉시 위험을 판단하고 접근을 통제한다\n\n3. 시설관리 책임자에게 현상과 최초 발견 시각을 전달한다\n\n4. 현장 보존이 필요한 경우 임의 재가동이나 청소를 중단한다\n\n5. 영향받는 영업장과 프런트에 이용 제한과 대체 동선을 공유한다\n\n6. 안전 확인 후 승인 담당자의 지시에 따라 통제를 해제한다\n\n7"
+    },
+    {
+      "query": "주차 고객 안내 기준을 알려줘",
+      "intent": "REGULATION_CHECK",
+      "expected_titles": [
+        "12 주차 행사 로비"
+      ],
+      "retrieved_titles": [
+        "12 주차 행사 로비"
+      ],
+      "resolved_domains": [
+        "PARKING_EVENT_LOBBY"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 2,
+      "forbidden_boilerplate": [],
+      "search_ms": 481.75,
+      "answer_ms": 66.67,
+      "answer_preview": "문서명: 12 주차 행사 로비 vUNRESOLVED\n지침번호: MANUAL-C90878432D7A\n영역: 구체적인 판단·처리 기준\n본문내용:\n[제3조 구체적인 판단·처리 기준]\n\n- 차량 흐름보다 보행자·고객의 안전을 먼저 확인한다\n\n- 차량 정체가 진입·대리주차·출차 중 어느 구간에서 생기는지 판단한다\n\n- 대기시간보다 압박·넘어짐·비상통로 방해 위험을 먼저 확인한다\n\n- 행사명·장소·시작 시각·예상 인원은 주최 측 확인 내용을 기준으로 안내한다\n근거: [12 주차 행사 로비 vUNRESOLVED p.2 페이지 본문] / [12 "
+    },
+    {
+      "query": "객실 청결 불만이 들어오면 어떻게 처리해?",
+      "intent": "PROCESS",
+      "expected_titles": [
+        "13 객실"
+      ],
+      "retrieved_titles": [
+        "13 객실"
+      ],
+      "resolved_domains": [
+        "ROOM"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 3,
+      "forbidden_boilerplate": [],
+      "search_ms": 351.65,
+      "answer_ms": 94.76,
+      "answer_preview": "문서명: 13 객실 vUNRESOLVED\n지침번호: MANUAL-176E8FA6202D\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 오염·곰팡이·벌레·냄새·물고임의 위치와 범위를 확인한다\n\n2. 객실 사용이 어렵거나 객실 변경이 필요하면 관리자에게 보고한다\n\n3. 고객에게 조치 결과를 안내하고 재확인한다\n근거: [13 객실 vUNRESOLVED p.2 제4조 3. 오염·곰팡이·벌레·냄새·물고임의 위치와 범위를 확인한다.] / [13 객실 vUNRESOLVED p.2 제4조 7. 객실 사용이 어렵거나 객실 변경이 필요하면"
+    },
+    {
+      "query": "고객이 객실에서 쓰러졌어. 지금 뭘 해야 해?",
+      "intent": "IMMEDIATE_ACTION",
+      "expected_titles": [
+        "14 안전"
+      ],
+      "retrieved_titles": [
+        "14 안전"
+      ],
+      "resolved_domains": [
+        "SAFETY"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 7,
+      "forbidden_boilerplate": [],
+      "search_ms": 346.68,
+      "answer_ms": 59.37,
+      "answer_preview": "문서명: 14 안전 vUNRESOLVED\n지침번호: MANUAL-EB0224E8A037\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 주변 차량·전기·낙하물·미끄럼 등 구조자의 위험을 먼저 확인한다\n\n2. 도움이 필요하면 즉시 주변 직원에게 안전 책임자와 응급기관 연락을 요청한다\n\n3. 교육받은 직원은 보유 장비와 교육 범위 안에서 응급조치를 수행한다\n\n4. 고객을 불필요하게 이동시키지 않고 주변 시선을 차단한다\n\n5. 응급기관에 정확한 위치, 출입 경로, 환자 상태를 전달한다\n\n6. 구급대 도착 전 상태 변화를 관찰하고"
+    },
+    {
+      "query": "고객의견을 접수한 뒤 처리 순서를 알려줘",
+      "intent": "PROCESS",
+      "expected_titles": [
+        "15 고객의견"
+      ],
+      "retrieved_titles": [
+        "15 고객의견"
+      ],
+      "resolved_domains": [
+        "CUSTOMER_FEEDBACK"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 5,
+      "forbidden_boilerplate": [],
+      "search_ms": 390.63,
+      "answer_ms": 58.79,
+      "answer_preview": "문서명: 15 고객의견 vUNRESOLVED\n지침번호: MANUAL-DAE195190F10\n영역: 처리 순서\n본문내용:\n[제4조 처리 순서]\n\n1. 긴급하거나 위험한 표현이 있으면 관련 책임자에게 먼저 알린다\n\n2. 전화번호·예약번호·결제정보 등 불필요한 개인정보는 전달용 내용에서 가린다\n\n3. 문의·서비스 요청·불만·칭찬·긴급 문제로 구분한다\n\n4. 발생 장소와 주제를 기준으로 담당부서에 전달한다\n\n5. 분류 근거와 전달 결과를 기록한다\n근거: [15 고객의견 vUNRESOLVED p.2 제4조 2. 긴급하거나 위험한 표현이 있으"
+    },
+    {
+      "query": "예약 취소하면 환불 가능한가?",
+      "intent": "REGULATION_CHECK",
+      "expected_titles": [
+        "16 취소"
+      ],
+      "retrieved_titles": [
+        "16 취소"
+      ],
+      "resolved_domains": [
+        "CANCELLATION_REFUND_COMPENSATION"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 1,
+      "forbidden_boilerplate": [],
+      "search_ms": 372.8,
+      "answer_ms": 74.28,
+      "answer_preview": "문서명: 16 취소 vUNRESOLVED\n지침번호: MANUAL-451E4E48F8B0\n영역: 구체적인 판단·처리 기준\n본문내용:\n[제3조 구체적인 판단·처리 기준]\n\n- 예약 채널과 요금 조건에 따라 취소 기한·환불 조건·미도착 비용이 다를 수 있으므로 예약 당시 고지 내용을 우선 확인한다\n\n- 선수금은 모든 예약에 일괄 적용하지 않고 승인된 요금 조건에 따라 카드 보증·일부 선수금·전액 선결제를 구분한다\n\n- 예약 확인 연락의 시점과 횟수는 조직이 승인한 예약 유형별 일정에 따른다. 승인되지 않은 예시 일정을 현장 기준으로 사용"
+    },
+    {
+      "query": "시설 장애와 안전사고 대응은 어떻게 달라?",
+      "intent": "COMPARISON",
+      "expected_titles": [
+        "11 시설",
+        "14 안전"
+      ],
+      "retrieved_titles": [
+        "11 시설",
+        "14 안전"
+      ],
+      "resolved_domains": [
+        "FACILITY",
+        "SAFETY"
+      ],
+      "search_http": 200,
+      "document_hit": true,
+      "answer_http": 200,
+      "answer_status": "ANSWER",
+      "citation_count": 3,
+      "forbidden_boilerplate": [],
+      "search_ms": 381.97,
+      "answer_ms": 66.15,
+      "answer_preview": "문서명: 14 안전 vUNRESOLVED / 11 시설 vUNRESOLVED\n지침번호: MANUAL-EB0224E8A037 / MANUAL-26808F2E8638\n영역: 구체적인 판단·처리 기준\n본문내용:\n[14 안전 · 제3조 구체적인 판단·처리 기준]\n\n- 표지판만 설치했다고 조치가 끝난 것으로 보지 않는다\n\n- 위험 구역을 먼저 통제한 뒤 물기·누수·파손·장애물의 원인을 제거한다\n\n[11 시설 · 제3조 구체적인 판단·처리 기준]\n\n- 고장 자체보다 고객 고립·감전·화재·누수 등 즉시 위험을 먼저 확인한다\n\n- 위험구역 접근 "
+    }
+  ],
+  "semantic_completeness": "MANUAL_REVIEW_REQUIRED"
+}

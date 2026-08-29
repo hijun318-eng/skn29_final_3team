@@ -1,0 +1,414 @@
+{
+  "measured_at": "2026-08-29 07:22:20 Asia/Seoul",
+  "contract": {
+    "documents": 17,
+    "chunks": 363,
+    "gold_candidate_questions": 80,
+    "hard_subset": 45,
+    "dimensions": 1024,
+    "fusion": "max(dense, 0.65*dense + 0.35*BM25)",
+    "minimum_score": 0.35
+  },
+  "usage": {
+    "text-embedding-3-small": {
+      "corpus_tokens": 66677,
+      "query_tokens": 2133,
+      "total_tokens": 68810,
+      "actual_eval_cost_usd": 0.001376,
+      "corpus_embedding_latency_ms": 6098.69,
+      "query_batch_latency_ms": 398.73,
+      "api_calls": 5,
+      "dimensions": 1024
+    },
+    "text-embedding-3-large": {
+      "corpus_tokens": 66677,
+      "query_tokens": 2133,
+      "total_tokens": 68810,
+      "actual_eval_cost_usd": 0.008945,
+      "corpus_embedding_latency_ms": 2087.6,
+      "query_batch_latency_ms": 406.94,
+      "api_calls": 5,
+      "dimensions": 1024
+    }
+  },
+  "results": [
+    {
+      "model": "text-embedding-3-small",
+      "mode": "dense",
+      "overall": {
+        "samples": 80,
+        "recall_at_1": 0.575,
+        "recall_at_3": 0.8625,
+        "recall_at_5": 0.9375,
+        "mrr": 0.7315,
+        "ndcg_at_5": 0.7838,
+        "zero_result_count": 0,
+        "failed_case_count": 5
+      },
+      "hard_subset": {
+        "samples": 45,
+        "recall_at_1": 0.5556,
+        "recall_at_3": 0.8222,
+        "recall_at_5": 0.9333,
+        "mrr": 0.7144,
+        "ndcg_at_5": 0.7697,
+        "zero_result_count": 0,
+        "failed_case_count": 3
+      },
+      "failed_cases": [
+        {
+          "question": "고객 안내와 실제 기록을 대조할 때 공통 기준을 알려줘",
+          "expected": "01 공통",
+          "hard": false,
+          "top_documents": [
+            "07 외부 후기",
+            "06 고객응대",
+            "02 개인정보",
+            "전체안내 및 업무별 빠른찾기",
+            "09 입실 퇴실 예약 결제"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "업무를 시작하기 전에 기본적으로 확인할 사항은?",
+          "expected": "01 공통",
+          "hard": true,
+          "top_documents": [
+            "11 시설",
+            "16 취소",
+            "02 개인정보",
+            "03 보고서",
+            "14 안전"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "부서가 달라도 함께 지켜야 하는 내부 업무 기준을 요약해줘",
+          "expected": "01 공통",
+          "hard": true,
+          "top_documents": [
+            "03 보고서",
+            "12 주차 행사 로비",
+            "02 개인정보",
+            "15 고객의견",
+            "전체안내 및 업무별 빠른찾기"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "교육받지 않은 직원이 전기 설비를 분해해도 돼?",
+          "expected": "11 시설",
+          "hard": true,
+          "top_documents": [
+            "14 안전",
+            "12 주차 행사 로비",
+            "13 객실",
+            "06 고객응대",
+            "07 외부 후기"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "고객이 객실에서 쓰러졌어. 지금 뭘 해야 해?",
+          "expected": "14 안전",
+          "hard": false,
+          "top_documents": [
+            "08 식음",
+            "13 객실",
+            "10 레저",
+            "06 고객응대",
+            "09 입실 퇴실 예약 결제"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        }
+      ]
+    },
+    {
+      "model": "text-embedding-3-small",
+      "mode": "hybrid_65_35",
+      "overall": {
+        "samples": 80,
+        "recall_at_1": 0.6625,
+        "recall_at_3": 0.9125,
+        "recall_at_5": 0.9375,
+        "mrr": 0.7806,
+        "ndcg_at_5": 0.8206,
+        "zero_result_count": 0,
+        "failed_case_count": 5
+      },
+      "hard_subset": {
+        "samples": 45,
+        "recall_at_1": 0.6,
+        "recall_at_3": 0.9111,
+        "recall_at_5": 0.9333,
+        "mrr": 0.7537,
+        "ndcg_at_5": 0.8,
+        "zero_result_count": 0,
+        "failed_case_count": 3
+      },
+      "failed_cases": [
+        {
+          "question": "사실과 다른 인터넷 후기에 답변하는 기준을 알려줘",
+          "expected": "07 외부 후기",
+          "hard": false,
+          "top_documents": [
+            "15 고객의견",
+            "01 공통",
+            "02 개인정보",
+            "05 대화형 분석",
+            "04 알림 협조"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "공개 댓글로 고객과 논쟁하면 안 되는 이유와 기준은?",
+          "expected": "07 외부 후기",
+          "hard": true,
+          "top_documents": [
+            "02 개인정보",
+            "12 주차 행사 로비",
+            "09 입실 퇴실 예약 결제",
+            "15 고객의견",
+            "01 공통"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "체크인 대기가 길어질 때 고객에게 어떻게 안내해야 해?",
+          "expected": "09 입실 퇴실 예약 결제",
+          "hard": true,
+          "top_documents": [
+            "08 식음",
+            "07 외부 후기",
+            "13 객실",
+            "02 개인정보",
+            "12 주차 행사 로비"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "고객이 객실에서 쓰러졌어. 지금 뭘 해야 해?",
+          "expected": "14 안전",
+          "hard": false,
+          "top_documents": [
+            "06 고객응대",
+            "01 공통",
+            "09 입실 퇴실 예약 결제",
+            "10 레저",
+            "08 식음"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "다른 부서 답변을 기다릴 때 고객에게 무엇을 남겨야 해?",
+          "expected": "15 고객의견",
+          "hard": true,
+          "top_documents": [
+            "05 대화형 분석",
+            "09 입실 퇴실 예약 결제",
+            "08 식음",
+            "07 외부 후기",
+            "02 개인정보"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        }
+      ]
+    },
+    {
+      "model": "text-embedding-3-large",
+      "mode": "dense",
+      "overall": {
+        "samples": 80,
+        "recall_at_1": 0.6625,
+        "recall_at_3": 0.8625,
+        "recall_at_5": 0.9375,
+        "mrr": 0.7725,
+        "ndcg_at_5": 0.8139,
+        "zero_result_count": 0,
+        "failed_case_count": 5
+      },
+      "hard_subset": {
+        "samples": 45,
+        "recall_at_1": 0.6,
+        "recall_at_3": 0.8222,
+        "recall_at_5": 0.9333,
+        "mrr": 0.7281,
+        "ndcg_at_5": 0.7793,
+        "zero_result_count": 0,
+        "failed_case_count": 3
+      },
+      "failed_cases": [
+        {
+          "question": "고객 안내와 실제 기록을 대조할 때 공통 기준을 알려줘",
+          "expected": "01 공통",
+          "hard": false,
+          "top_documents": [
+            "07 외부 후기",
+            "09 입실 퇴실 예약 결제",
+            "05 대화형 분석",
+            "15 고객의견",
+            "08 식음"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "업무를 시작하기 전에 기본적으로 확인할 사항은?",
+          "expected": "01 공통",
+          "hard": true,
+          "top_documents": [
+            "03 보고서",
+            "05 대화형 분석",
+            "11 시설",
+            "13 객실",
+            "14 안전"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "정보 오발송 사고에서 반드시 남겨야 하는 기록은?",
+          "expected": "02 개인정보",
+          "hard": true,
+          "top_documents": [
+            "16 취소",
+            "01 공통",
+            "07 외부 후기",
+            "14 안전",
+            "15 고객의견"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "카드 전체번호를 받아도 되는지 알려줘",
+          "expected": "09 입실 퇴실 예약 결제",
+          "hard": false,
+          "top_documents": [
+            "15 고객의견",
+            "02 개인정보",
+            "16 취소",
+            "05 대화형 분석",
+            "12 주차 행사 로비"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "레저 업무 재개 전에 확인할 사항을 알려줘",
+          "expected": "10 레저",
+          "hard": true,
+          "top_documents": [
+            "08 식음",
+            "15 고객의견",
+            "09 입실 퇴실 예약 결제",
+            "11 시설",
+            "03 보고서"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        }
+      ]
+    },
+    {
+      "model": "text-embedding-3-large",
+      "mode": "hybrid_65_35",
+      "overall": {
+        "samples": 80,
+        "recall_at_1": 0.675,
+        "recall_at_3": 0.9125,
+        "recall_at_5": 0.9625,
+        "mrr": 0.7952,
+        "ndcg_at_5": 0.8376,
+        "zero_result_count": 0,
+        "failed_case_count": 3
+      },
+      "hard_subset": {
+        "samples": 45,
+        "recall_at_1": 0.6444,
+        "recall_at_3": 0.9111,
+        "recall_at_5": 0.9778,
+        "mrr": 0.7896,
+        "ndcg_at_5": 0.8375,
+        "zero_result_count": 0,
+        "failed_case_count": 1
+      },
+      "failed_cases": [
+        {
+          "question": "공개 댓글로 고객과 논쟁하면 안 되는 이유와 기준은?",
+          "expected": "07 외부 후기",
+          "hard": true,
+          "top_documents": [
+            "02 개인정보",
+            "12 주차 행사 로비",
+            "09 입실 퇴실 예약 결제",
+            "15 고객의견",
+            "전체안내 및 업무별 빠른찾기"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "고객이 객실에서 쓰러졌어. 지금 뭘 해야 해?",
+          "expected": "14 안전",
+          "hard": false,
+          "top_documents": [
+            "06 고객응대",
+            "16 취소",
+            "13 객실",
+            "10 레저",
+            "01 공통"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        },
+        {
+          "question": "고객 제안에서 반드시 기록할 내용은 무엇이야?",
+          "expected": "15 고객의견",
+          "hard": false,
+          "top_documents": [
+            "06 고객응대",
+            "08 식음",
+            "01 공통",
+            "13 객실",
+            "09 입실 퇴실 예약 결제"
+          ],
+          "rank": 0,
+          "reciprocal_rank": 0,
+          "ndcg_at_5": 0
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Gold labels are engineering-authored from the approved 17-document domain map; business-owner sign-off remains a release governance step.",
+    "This retrieval evaluation does not by itself prove answer completeness or hallucination rate."
+  ]
+}

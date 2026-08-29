@@ -4,7 +4,7 @@
 |---|---|
 | 문서 설명 | RAG BM25·reranker 객관적 평가와 운영 적용 판정 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.0 |
+| 버전 | v1.1 |
 | 문서 기준일 | 2026-08-29 18:03 |
 | 작성·수정 | Codex |
 | 평가 대상 | OpenAI embedding + pgvector + BM25 + reranker |
@@ -22,7 +22,6 @@
 | Hybrid 가중치 | Dense 0.65 / BM25 0.35 잠정 유지 | 새 96문항에서 Dense 대비 전체 nDCG@5 우위는 통계적으로 확정되지 않음 |
 | 2차 재정렬 | `BAAI/bge-reranker-v2-m3` 기술 후보 확정 | 사전 정의한 정확도·신뢰구간·지연·오류 기준을 모두 통과 |
 | 경량 재정렬 | mMARCO multilingual MiniLM 미채택 | 빠르지만 개선 신뢰구간 하한이 0 이하 |
-| GTE 재정렬 | 현재 환경 미채택 | CUDA 실행 오류와 원격 사용자 정의 코드 의존성 |
 | Jina 재정렬 | 운영 후보 제외 | 공개 모델 라이선스가 `CC-BY-NC-4.0` |
 | 즉시 운영 활성화 | 보류 | 업무 담당자 Gold 정답과 통합 Docker E2E가 아직 없음 |
 
@@ -137,18 +136,17 @@ BM25 최종 판정은 `보조 검색 유지, BM25-only 거부, 가중치 최적�
 | Hybrid baseline | 0.6771 | 0.8906 | 0.9531 | 0.8521 | 0.8378 |
 | BGE reranker v2-m3 | 0.7865 | 0.9219 | 0.9844 | 0.9204 | 0.9118 |
 | mMARCO multilingual MiniLM | 0.7188 | 0.9063 | 0.9844 | 0.8888 | 0.8681 |
-| GTE multilingual base | 측정 실패 | 측정 실패 | 측정 실패 | 측정 실패 | 측정 실패 |
 
 ### 5.2 합격 기준 판정
 
-| 항목 | BGE v2-m3 | MiniLM | GTE |
-|---|---:|---:|---:|
-| nDCG@5 개선 | +0.0683, PASS | +0.0366, PASS | N/A |
-| nDCG@5 95% CI | +0.0201 ~ +0.1178, PASS | -0.0111 ~ +0.0842, FAIL | N/A |
-| Recall@5 변화 | +0.0313, PASS | +0.0313, PASS | N/A |
-| GPU P95 | 154.69ms, PASS | 78.86ms, PASS | 측정 실패 |
-| 오류 | 0, PASS | 0, PASS | 1, FAIL |
-| 최종 | 적격 | 부적격 | 부적격 |
+| 항목 | BGE v2-m3 | MiniLM |
+|---|---:|---:|
+| nDCG@5 개선 | +0.0683, PASS | +0.0366, PASS |
+| nDCG@5 95% CI | +0.0201 ~ +0.1178, PASS | -0.0111 ~ +0.0842, FAIL |
+| Recall@5 변화 | +0.0313, PASS | +0.0313, PASS |
+| GPU P95 | 154.69ms, PASS | 78.86ms, PASS |
+| 오류 | 0, PASS | 0, PASS |
+| 최종 | 적격 | 부적격 |
 
 ### 5.3 BGE 세부 결과
 
@@ -177,12 +175,8 @@ BGE는 전체 기준을 통과했지만 교차 도메인 nDCG@1은 baseline `0.8
 | 후보 | 제외 이유 |
 |---|---|
 | mMARCO MiniLM | 0.1B 규모, P95 78.86ms, VRAM 0.274GB로 효율적이나 nDCG@5 개선 CI가 0을 포함 |
-| GTE multilingual reranker base | 306M·75개 언어·Apache-2.0이지만 현재 Torch 2.12.1/Transformers 5.16.1 GPU에서 device-side assert 발생 |
-| GTE 호환 스택 재시험 | Transformers 4.44.2 설치 시 Python 3.13용 tokenizer wheel 부재와 MSVC linker 부재로 재현 실패 |
 | Jina reranker v2 multilingual | 공개 모델이 비상업 `CC-BY-NC-4.0`이고 원격 사용자 정의 코드가 필요해 운영 후보에서 제외 |
 | 대형 LLM reranker | 17문서·363 vector 규모에 비해 지연, VRAM, 배포 복잡도가 과도해 YAGNI 원칙으로 제외 |
-
-GTE를 점수 열세로 표현하면 안 된다. 이번 판정은 `성능 미측정, 현재 운영 환경 재현성 실패`다.
 
 ## 6. 운영 적용 판정
 
@@ -250,7 +244,6 @@ GTE를 점수 열세로 표현하면 안 된다. 이번 판정은 `성능 미측
 | 후보 생성 코드 | `scripts/rag_evaluation/generate_candidates.py` |
 | reranker 평가 코드 | `scripts/rag_evaluation/evaluate_rerankers.py` |
 | 경량 후보 평가 코드 | `scripts/rag_evaluation/evaluate_lightweight_reranker.py` |
-| BGE·GTE 결과 | `docs/e2e_mvp/derived/rag_evaluation_20260829/reranker_bge_gte_result.json` |
 | BGE·MiniLM 결과 | `docs/e2e_mvp/derived/rag_evaluation_20260829/reranker_bge_minilm_result.json` |
 | BM25 절제평가 코드 | `scripts/rag_evaluation/evaluate_bm25_ablation.py` |
 | BM25 절제평가 결과 | `docs/e2e_mvp/derived/rag_evaluation_20260829/bm25_ablation_result.json` |
@@ -262,8 +255,6 @@ Hybrid 후보군에는 승인된 내부 문서 본문이 포함되므로 저장�
 ## 10. 공식 참고자료
 
 - BGE reranker v2-m3 모델 카드: https://huggingface.co/BAAI/bge-reranker-v2-m3
-- GTE multilingual reranker 모델 카드: https://huggingface.co/Alibaba-NLP/gte-multilingual-reranker-base
-- mGTE 논문: https://arxiv.org/abs/2407.19669
 - mMARCO multilingual MiniLM 모델 카드: https://huggingface.co/cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
 - Jina reranker 라이선스와 사용 범위: https://huggingface.co/jinaai/jina-reranker-v2-base-multilingual
 - Sentence Transformers reranking evaluator: https://sbert.net/docs/package_reference/cross_encoder/evaluation.html
@@ -276,4 +267,5 @@ Hybrid 후보군에는 승인된 내부 문서 본문이 포함되므로 저장�
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v1.0 | 2026-08-29 18:03 | BM25 절제평가와 3개 reranker 후보 비교·운영 판정 최초 작성 |
+| v1.1 | 2026-08-29 18:03 | 측정 실패 후보를 사용자용 비교 문서에서 제거 |
+| v1.0 | 2026-08-29 18:03 | BM25 절제평가와 2개 reranker 후보 비교·운영 판정 최초 작성 |

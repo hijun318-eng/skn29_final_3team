@@ -805,8 +805,9 @@ assert.match(source("api/analysisClient.ts"), /interface SubmitTurnCommandOption
 assert.match(source("contracts/analysis.ts"), /interface ConversationCommandProgress extends AnalysisProcessViewModel/);
 assert.match(source("pages/AgentPage.jsx"), /activeCommandAbortController\.current\?\.abort\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /progress\?\.traceId !== traceId/);
-assert.match(source("pages/AgentPage.jsx"), /completedAnalysisProcess/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /showCompletedAnalysisProcess/);
+assert.match(source("pages/AgentPage.jsx"), /processViewModel: null/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /completedAnalysisProcess|normalizeConversationCommandProgress/);
+assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /showCompletedAnalysisProcess/);
 assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
 assert.match(source("pages/AgentPage.jsx"), /requested_route: "INTERNAL_GUIDELINE",[\s\S]*?inherit_previous_context: true/);
 

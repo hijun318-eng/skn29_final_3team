@@ -1,7 +1,7 @@
 /** 대화형 분석 워크스페이스의 세션·멀티턴 상태·증적 서랍·보고서 연계를 통합 관리하는 모듈이다. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, FilePlus2, History, MessageSquareText, Plus, Save, Send, Sparkles, TableProperties } from "lucide-react";
-import { AnalysisApiError, createAnalysisClient, normalizeConversationCommandProgress, SERVICE_FEATURE } from "../api/analysisClient";
+import { AnalysisApiError, createAnalysisClient, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
@@ -420,20 +420,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         });
       }
 
-      const completedAnalysisProcess = (
-        serverTurn?.route === "ANALYSIS"
-        && Array.isArray(finalRun?.trace)
-        && finalRun.trace.length > 0
-      ) ? normalizeConversationCommandProgress({
-          trace_id: finalRun.traceId || traceId,
-          request_id: finalRun.requestId || serverTurn?.request_id || "",
-          status: analysisRaw?.data?.status || (finalRun.status === "partial" ? "PARTIAL" : "SUCCEEDED"),
-          started_at: analysisRaw?.meta?.timestamp || new Date().toISOString(),
-          elapsed_seconds: finalRun.elapsedSeconds || 0,
-          cancel_requested: false,
-          trace: finalRun.trace,
-        }) : null;
-
       if (requestGeneration.current !== generation) return;
       setTurns((prev) => prev.map((t) => t.turnId === optimisticTurn.turnId ? {
         turnId: serverTurn?.turn_id || optimisticTurn.turnId,
@@ -448,13 +434,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(finalRun),
         reusePending: false,
         viewSpecId: isPresentation ? serverTurn?.view_spec_id : null,
-        processViewModel: completedAnalysisProcess ? {
-          ...completedAnalysisProcess,
-          elapsedSeconds: Math.max(
-            completedAnalysisProcess.elapsedSeconds,
-            t.processViewModel?.elapsedSeconds || 0,
-          ),
-        } : t.processViewModel,
+        processViewModel: null,
       } : t));
 
       void refreshSaved();
@@ -464,6 +444,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         ...t,
         isArtifactReuse: false,
         reusePending: false,
+        processViewModel: null,
         run: {
           ...transientRun(normalized, error instanceof AnalysisApiError && error.status === 403 ? "blocked" : "failed"),
           error: {

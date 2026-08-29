@@ -90,12 +90,6 @@ export function AnalysisStatePanel({
   const hasMetrics = Boolean(run.metrics?.length);
   const hasTableRows = Boolean(table?.columns?.length && table?.rows?.length);
   const isPresentationPending = Boolean(artifactReuse?.pending);
-  const showCompletedAnalysisProcess = Boolean(
-    processViewModel
-    && processViewModel.kind === "ANALYSIS"
-    && processViewModel.status !== "running"
-    && processViewModel.steps.length > 1,
-  );
   const displayedProcessViewModel = processViewModel ?? createAnalysisProcessViewModel({
     kind: isPresentationPending ? "PRESENTATION" : "ANALYSIS",
     status: "running",
@@ -314,10 +308,6 @@ export function AnalysisStatePanel({
               </div>
             )}
           </div>}
-
-          {showCompletedAnalysisProcess && processViewModel && (
-            <AnalysisProgress model={processViewModel} />
-          )}
 
           {!isPresentationPending && <AnalysisUnifiedToolbar
             onSave={onSave}

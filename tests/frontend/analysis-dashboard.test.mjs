@@ -79,6 +79,25 @@ try {
   assert.match(analysisProcessHtml, /class="done" data-state="complete"/);
   assert.match(analysisProcessHtml, /데이터 조회/);
 
+  const runningPanelHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: { ...run, status: "running" },
+    processViewModel: processViewModels.analysisActive,
+  }));
+  assert.match(runningPanelHtml, /data-process-status="running"/);
+  assert.match(runningPanelHtml, /승인된 범위에서 분석하고 있습니다/);
+
+  const completedAnalysisProcess = {
+    ...processViewModels.analysisActive,
+    status: "success",
+    steps: processViewModels.analysisActive.steps.map((step) => ({ ...step, state: "complete" })),
+  };
+  const completedPanelHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    processViewModel: completedAnalysisProcess,
+  }));
+  assert.match(completedPanelHtml, /AI 분석 요약/);
+  assert.doesNotMatch(completedPanelHtml, /analysis-trace|분석 과정을 완료했습니다|단계 완료/);
+
   const presentationProcessHtml = renderToStaticMarkup(createElement(AnalysisProgress, { model: processViewModels.presentationActive }));
   assert.match(presentationProcessHtml, /data-process-kind="PRESENTATION"/);
   assert.match(presentationProcessHtml, /요청한 보기/);

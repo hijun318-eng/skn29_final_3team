@@ -701,19 +701,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
               placeholder={emptyMode === "rag-documents" ? "내부 업무지침에 대해 물어보세요" : "메시지를 입력하세요"}
-              aria-describedby="question-help"
               aria-invalid={Boolean(inputError)}
               disabled={submitting}
               required
             />
             <button aria-label="메시지 전송" disabled={submitting || !question.trim()}><Send size={16} /></button>
           </div>
-          <small id="question-help" className="question-help">
-            <span>{emptyMode === "rag-documents"
-              ? "승인된 내부 업무지침 질문과 후속 질문을 한 대화에서 이어갈 수 있습니다."
-              : "호텔 운영 데이터 분석과 후속 질문을 한 대화에서 이어갈 수 있습니다."}</span>
-            <span>{question.length.toLocaleString("ko-KR")}/{MAX_QUESTION_LENGTH.toLocaleString("ko-KR")}자</span>
-          </small>
           {inputError && <p className="analysis-input-error" role="alert">{inputError}</p>}
         </form>
 

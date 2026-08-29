@@ -104,7 +104,8 @@ assert.doesNotMatch(
 );
 assert.match(source("pages/AgentPage.jsx"), /clarifiedQuestion\(turnItem\.question, sugg/);
 assert.match(source("components/analysis/AnalysisFailureState.tsx"), /분석 기간을 선택해 주세요/);
-assert.match(source("pages/AgentPage.jsx"), /MAX_QUESTION_LENGTH\.toLocaleString/);
+assert.match(source("pages/AgentPage.jsx"), /maxLength=\{MAX_QUESTION_LENGTH\}/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /MAX_QUESTION_LENGTH\.toLocaleString|question-help/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /APPROVED_QUESTIONS|객실·식음 통합 매출을 비교해 줘/);
 assert.match(source("pages/AgentPage.jsx"), /onSuggestion=\{\(sugg\)/);
 assert.match(source("components/analysis/AnalysisFailureState.tsx"), /analysis-diagnostic__options/);

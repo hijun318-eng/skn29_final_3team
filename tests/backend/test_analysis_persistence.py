@@ -84,6 +84,7 @@ class FakeAnalysisRepository:
         self.run_context: RequestContext | None = None
         self.finished = None
         self.context_receipts = []
+        self.list_options = None
         self.definition = {
             "contract_version": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
             "definition_id": self.definition_id,
@@ -166,7 +167,8 @@ class FakeAnalysisRepository:
             "period_end_exclusive": None,
         }
 
-    async def list_runs(self):
+    async def list_runs(self, *, limit=100, approved_only=False):
+        self.list_options = {"limit": limit, "approved_only": approved_only}
         return [] if self.request_id is None else [await self.get_run(self.request_id)]
 
     async def get_run_artifact(self, request_id):
@@ -229,6 +231,65 @@ async def test_definition_routes_are_owner_scoped_repository_calls_without_value
     assert created["question"]
     assert created["semantic_request"]
     assert created["parameter_schema"]
+
+
+@async_test
+async def test_run_list_forwards_bounded_approved_artifact_filter():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+        listed = await analysis_api.list_analysis_runs(
+            context(owner),
+            limit=7,
+            approved_only=True,
+        )
+
+    assert listed == {"items": []}
+    assert repository.list_options == {"limit": 7, "approved_only": True}
+
+
+@async_test
+async def test_repository_run_list_filters_approved_artifacts_before_lateral_limit():
+    class Result:
+        def mappings(self):
+            return []
+
+    class Session:
+        statement = ""
+        parameters = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def execute(self, statement, parameters):
+            self.statement = str(statement)
+            self.parameters = parameters
+            return Result()
+
+    session = Session()
+
+    def session_factory():
+        return session
+
+    repository = PostgresAnalysisRepository(
+        "postgresql+psycopg://unused",
+        uuid4(),
+        session_factory=session_factory,
+    )
+    assert await repository.list_runs(limit=7, approved_only=True) == []
+
+    artifact_filter = "AND (NOT :approved_only OR status = 'APPROVED')"
+    assert artifact_filter in session.statement
+    artifact_query = session.statement[session.statement.index(
+        "FROM artifact.analysis_artifacts"
+    ):]
+    assert artifact_query.index(artifact_filter) < artifact_query.index("LIMIT 1")
+    assert "AND a.artifact_id IS NOT NULL" in session.statement
+    assert session.parameters["limit"] == 7
+    assert session.parameters["approved_only"] is True
 
 
 @async_test

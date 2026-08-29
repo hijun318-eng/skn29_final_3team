@@ -77,6 +77,29 @@ export function analysisRunArtifactSources(runs = [], definitions = []) {
     });
 }
 
+/** 대표·명시 선택을 보존하고 최신순 후보로 채워 Assistant 선택기를 최대 7개로 제한한다. */
+export function reportAssistantArtifactOptions(options = [], primaryArtifactId = "", selectedArtifactIds = [], recentArtifactIds = []) {
+  const byId = new Map(options
+    .filter((option) => option?.artifactId)
+    .map((option) => [option.artifactId, option]));
+  const result = [];
+  const seen = new Set();
+  const orderedIds = [
+    primaryArtifactId,
+    ...selectedArtifactIds,
+    ...recentArtifactIds,
+    ...options.map((option) => option?.artifactId),
+  ];
+  for (const artifactId of orderedIds) {
+    if (result.length >= 7) break;
+    const option = byId.get(artifactId);
+    if (!option || seen.has(artifactId)) continue;
+    seen.add(artifactId);
+    result.push(option);
+  }
+  return result;
+}
+
 function analysisMetricToReport(metric) {
   return {
     metric_id: metric.metricId,

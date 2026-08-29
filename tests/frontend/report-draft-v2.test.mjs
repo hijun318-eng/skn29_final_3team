@@ -29,6 +29,7 @@ import {
   moveFrontendBlock,
   orientFrontendBlocks,
   reportArtifactLibrarySources,
+  reportAssistantArtifactOptions,
   saveFrontendDraft,
 } from "../../app/frontend/src/features/reports/reportDraftV2.js";
 import { reportEvidenceReady } from "../../app/frontend/src/features/reports/reportArtifactEvidence.ts";
@@ -149,6 +150,31 @@ assert.deepEqual(analysisSources.map(({ artifactId, requestId, title }) => [arti
   ["artifact-revenue", "request-revenue-new", "월간 객실 매출 추이"],
 ]);
 assert.equal(analysisSources.some((source) => Object.hasOwn(source, "question")), false);
+
+const manyAssistantOptions = Array.from({ length: 222 }, (_, index) => ({
+  artifactId: `artifact-${index + 1}`,
+  title: `Artifact ${index + 1}`,
+}));
+assert.deepEqual(
+  reportAssistantArtifactOptions(
+    manyAssistantOptions,
+    "artifact-120",
+    [],
+    ["artifact-222", "artifact-221", "artifact-220", "artifact-219", "artifact-218", "artifact-217", "artifact-216"],
+  ).map(({ artifactId }) => artifactId),
+  ["artifact-120", "artifact-222", "artifact-221", "artifact-220", "artifact-219", "artifact-218", "artifact-217"],
+);
+assert.deepEqual(
+  reportAssistantArtifactOptions(
+    manyAssistantOptions,
+    "artifact-120",
+    ["artifact-8", "artifact-9"],
+    ["artifact-222", "artifact-221", "artifact-220", "artifact-219", "artifact-218"],
+  ).map(({ artifactId }) => artifactId),
+  ["artifact-120", "artifact-8", "artifact-9", "artifact-222", "artifact-221", "artifact-220", "artifact-219"],
+  "explicitly selected evidence must stay visible before recent candidates fill the seven slots",
+);
+assert.deepEqual(reportAssistantArtifactOptions([manyAssistantOptions[0]], "artifact-1"), [manyAssistantOptions[0]]);
 
 const analysisArtifactBefore = structuredClone(analysisLibraryFixture.artifact);
 const adaptedAnalysisArtifact = adaptAnalysisRunArtifact(analysisLibraryFixture.artifact);
@@ -324,8 +350,13 @@ assert.match(
   /if \(draft\.isDirty\) \{\s*lifecycle\.setError\("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요\."\)/,
 );
 assert.match(reportSources.lifecycle, /createAnalysisClient\(fetch\)/);
-assert.match(reportSources.artifacts, /analysisClient\.listRuns\(\)/);
+assert.match(reportSources.artifacts, /analysisClient\.listRuns\(\{ limit: 7, approvedOnly: true \}\)/);
 assert.match(reportSources.artifacts, /analysisClient\.getRunArtifact\(source\.requestId \|\| source\.artifactRequestId\)/);
+assert.match(reportSources.artifacts, /sources\.filter\([\s\S]*hydrationIds\.has\(source\.artifactId\)/);
+assert.match(reportSources.artifacts, /const setAssistantArtifacts = useCallback\(async/);
+assert.match(reportSources.artifacts, /const primaryArtifactId = artifactSelection \|\| uniqueIds\[0\] \|\| ""/);
+assert.match(reportSources.artifacts, /const selectedIds = \[primaryArtifactId, \.\.\.requested\]/);
+assert.match(reportSources.artifacts, /setArtifactSelection\(primaryArtifactId\)/);
 assert.match(reportSources.controller, /const persistedBlocks = compactDraftLayout\(draft\.orderedBlocks\)/);
 assert.doesNotMatch(
   reportFeatureSource,

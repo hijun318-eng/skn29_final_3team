@@ -6,7 +6,7 @@ from importlib import import_module
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.analysis_contracts import (
     AnalysisDefinitionListResponse,
@@ -194,10 +194,19 @@ async def get_analysis_definition(
 )
 async def list_analysis_runs(
     context: Annotated[RequestContext, Depends(analysis_context)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    approved_only: bool = False,
 ) -> dict[str, Any]:
-    """현재 분석 주체의 run과 최신 query·artifact evidence를 시작 시각 역순으로 반환한다."""
+    """현재 분석 주체의 run을 승인 여부와 서버 상한을 적용해 시작 시각 역순으로 반환한다."""
     repository = _analysis_repository(context)
-    return {"items": await _repository_call(repository.list_runs)}
+    return {
+        "items": await _repository_call(
+            lambda: repository.list_runs(
+                limit=limit,
+                approved_only=approved_only,
+            )
+        )
+    }
 
 
 @analysis_support_router.get(

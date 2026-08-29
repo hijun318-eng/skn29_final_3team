@@ -8048,9 +8048,31 @@
     },
     "/analysis/runs": {
       "get": {
-        "description": "현재 분석 주체의 run과 최신 query·artifact evidence를 시작 시각 역순으로 반환한다.",
+        "description": "현재 분석 주체의 run을 승인 여부와 서버 상한을 적용해 시작 시각 역순으로 반환한다.",
         "operationId": "analysisListRuns",
         "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "approved_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Approved Only",
+              "type": "boolean"
+            }
+          },
           {
             "in": "header",
             "name": "X-Trace-Id",

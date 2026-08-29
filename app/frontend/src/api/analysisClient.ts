@@ -44,7 +44,7 @@ export interface AnalysisClient {
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
   replayDefinition(definitionId: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisRun>;
   getRunArtifact(requestId: string): Promise<AnalysisRun>;
-  listRuns(): Promise<SavedAnalysisRun[]>;
+  listRuns(options?: AnalysisRunListOptions): Promise<SavedAnalysisRun[]>;
   createConversation(): Promise<{ conversation_id: string; created_at: string }>;
   getConversationTurns(conversationId: string): Promise<ConversationTurnWire[]>;
   executeTurnCommand(
@@ -57,6 +57,12 @@ export interface AnalysisClient {
     payload: ConversationCommandPayload,
     options?: SubmitTurnCommandOptions,
   ): Promise<any>;
+}
+
+/** 저장 분석 목록의 서버 조회 범위를 명시해 무제한 이력 전송을 막는다. */
+export interface AnalysisRunListOptions {
+  limit?: number;
+  approvedOnly?: boolean;
 }
 
 /** 현재 세션 역할로 열람이 승인된 내부 문서의 공개 메타데이터다. */
@@ -462,9 +468,15 @@ export function createHttpAnalysisClient(
         },
       }, detail.question);
     },
-    async listRuns() {
+    async listRuns(options: AnalysisRunListOptions = {}) {
+      const search = new URLSearchParams();
+      if (options.limit !== undefined) search.set("limit", String(options.limit));
+      if (options.approvedOnly !== undefined) {
+        search.set("approved_only", String(options.approvedOnly));
+      }
+      const query = search.size ? `?${search.toString()}` : "";
       return (await parse<{ items: SavedAnalysisRun[] }>(
-        await request(endpoint("/analysis/runs"), { credentials: "include", headers: headers() }),
+        await request(endpoint(`/analysis/runs${query}`), { credentials: "include", headers: headers() }),
       )).items;
     },
     async createConversation() {

@@ -50,7 +50,6 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   }, []);
   const artifacts = useReportArtifacts({
     analysisClient: lifecycle.analysisClient,
-    definitions: lifecycle.definitions,
     onHydrated: handleHydratedArtifacts,
     reportClient: lifecycle.reportClient,
     selectedDefinition: lifecycle.selectedDefinition,

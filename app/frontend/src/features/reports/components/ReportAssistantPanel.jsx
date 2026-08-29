@@ -251,8 +251,8 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   onRejectPatch,
   onReview,
   onRetry,
+  onSelectArtifacts,
   onSubmit,
-  onToggleArtifact,
   pending,
   patchPreview = null,
   review = null,
@@ -265,11 +265,48 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   workflowRetryable = false,
 }) {
   const [messages, setMessages] = useState([]);
+  const [evidencePickerOpen, setEvidencePickerOpen] = useState(false);
+  const [evidencePickerPending, setEvidencePickerPending] = useState(false);
+  const [draftArtifactIds, setDraftArtifactIds] = useState(assistantArtifactIds);
+  const evidencePickerRef = useRef(null);
+  const evidencePickerTitleId = useId();
   const waiting = pending === "assistant";
   const workflowActive = Boolean(approvalRequest || patchPreview);
   const canRefinePatch = Boolean(patchPreview) && workflowStatus === "waiting_patch_approval";
   const composerBlocked = workflowActive && !canRefinePatch;
   const disabled = !canEdit || !artifact || !instruction.trim() || Boolean(pending) || composerBlocked;
+
+  useEffect(() => {
+    if (!evidencePickerOpen) setDraftArtifactIds(assistantArtifactIds);
+  }, [assistantArtifactIds, evidencePickerOpen]);
+
+  useEffect(() => {
+    const picker = evidencePickerRef.current;
+    if (evidencePickerOpen && picker && !picker.open) picker.showModal();
+  }, [evidencePickerOpen]);
+
+  const openEvidencePicker = useCallback(() => {
+    setDraftArtifactIds(assistantArtifactIds);
+    setEvidencePickerOpen(true);
+  }, [assistantArtifactIds]);
+
+  const toggleDraftArtifact = useCallback((artifactId) => {
+    if (!artifactId || artifactId === assistantArtifactIds[0]) return;
+    setDraftArtifactIds((current) => current.includes(artifactId)
+      ? current.filter((item) => item !== artifactId)
+      : current.length < 5 ? [...current, artifactId] : current);
+  }, [assistantArtifactIds]);
+
+  const applyEvidenceSelection = useCallback(async () => {
+    if (!onSelectArtifacts || evidencePickerPending) return;
+    setEvidencePickerPending(true);
+    try {
+      const applied = await onSelectArtifacts(draftArtifactIds);
+      if (applied) setEvidencePickerOpen(false);
+    } finally {
+      setEvidencePickerPending(false);
+    }
+  }, [draftArtifactIds, evidencePickerPending, onSelectArtifacts]);
 
   const submitInstruction = useCallback(async (event) => {
     event.preventDefault();
@@ -297,23 +334,50 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
     <div className="report-assistant-context">
       <Database size={14} aria-hidden="true" />
       <span><b>{artifactTitle || "분석 Artifact를 선택해 주세요"}</b><small>{artifact ? "승인된 분석 결과를 근거로 초안을 다시 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
+      {artifactOptions.length > 1 && <button
+        type="button"
+        onClick={openEvidencePicker}
+        disabled={!canEdit || Boolean(pending) || workflowActive}
+      >근거 변경{assistantArtifactIds.length > 1 ? ` · ${assistantArtifactIds.length}` : ""}</button>}
     </div>
-    {artifactOptions.length > 1 && <fieldset className="report-assistant-context" disabled={!canEdit || Boolean(pending) || workflowActive}>
-      <legend>종합 편집 근거 · 최대 5개</legend>
-      {artifactOptions.map((option) => {
-        const primary = option.artifactId === assistantArtifactIds[0];
-        const checked = assistantArtifactIds.includes(option.artifactId);
-        return <label key={option.artifactId}>
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={primary || (!checked && assistantArtifactIds.length >= 5)}
-            onChange={() => onToggleArtifact(option.artifactId)}
-          />
-          {option.title || "승인 Artifact"}{primary ? " · 대표 근거" : ""}
-        </label>;
-      })}
-    </fieldset>}
+
+    {evidencePickerOpen && <dialog
+      ref={evidencePickerRef}
+      className="report-assistant-evidence-picker"
+      aria-labelledby={evidencePickerTitleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!evidencePickerPending) setEvidencePickerOpen(false);
+      }}
+      onClose={() => setEvidencePickerOpen(false)}
+    >
+      <header>
+        <div><small>APPROVED ARTIFACTS</small><h3 id={evidencePickerTitleId}>종합 편집 근거 선택</h3></div>
+        <button type="button" aria-label="근거 선택 닫기" onClick={() => setEvidencePickerOpen(false)} disabled={evidencePickerPending}><X size={16} /></button>
+      </header>
+      <p>대표 근거를 포함해 최대 5개까지 선택할 수 있습니다. 선택한 근거만 검증해 Assistant에 전달합니다.</p>
+      <div className="report-assistant-evidence-options">
+        {artifactOptions.map((option) => {
+          const primary = option.artifactId === assistantArtifactIds[0];
+          const checked = draftArtifactIds.includes(option.artifactId);
+          const period = [option.periodStart, option.periodEndExclusive].filter(Boolean).join(" – ");
+          return <label key={option.artifactId} title={option.title || "승인 Artifact"}>
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={primary || evidencePickerPending || (!checked && draftArtifactIds.length >= 5)}
+              onChange={() => toggleDraftArtifact(option.artifactId)}
+            />
+            <span><b>{option.title || "승인 Artifact"}</b><small>{primary ? "대표 근거 · 필수" : period || "승인된 분석 결과"}</small></span>
+          </label>;
+        })}
+      </div>
+      <footer>
+        <span>{draftArtifactIds.length} / 5개 선택</span>
+        <button type="button" onClick={() => setEvidencePickerOpen(false)} disabled={evidencePickerPending}>취소</button>
+        <button type="button" className="primary" onClick={applyEvidenceSelection} disabled={evidencePickerPending || !draftArtifactIds.length}>{evidencePickerPending ? <LoaderCircle size={14} /> : <Check size={14} />}선택 적용</button>
+      </footer>
+    </dialog>}
 
     <div className="report-assistant-thread" aria-live="polite">
       <article className="report-assistant-message assistant">

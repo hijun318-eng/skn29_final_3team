@@ -11,7 +11,6 @@ import {
   ReportListView,
   ReportOperationsPanel,
   ReportAssistantPanel,
-  ReportAssistantOperationsPanel,
   ReportPropertiesPanel,
   ReportTemplateTile,
   ReportToolPanel,
@@ -44,12 +43,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   );
 
   if (page.view === "list") {
-    return <>{page.isAdmin && <ReportAssistantOperationsPanel
-      failures={lifecycle.assistantFailures}
-      onRefresh={lifecycle.loadAssistantOperations}
-      pending={lifecycle.pending}
-      summary={lifecycle.assistantOperations}
-    />}<ReportListView
+    return <ReportListView
       createOpen={lifecycle.createOpen}
       definitionState={lifecycle.definitionState}
       error={lifecycle.error}
@@ -69,7 +63,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       setStatusFilter={lifecycle.setStatusFilter}
       statusFilter={lifecycle.statusFilter}
       visibleDefinitions={lifecycle.visibleDefinitions}
-    /></>;
+    />;
   }
 
   if (page.view === "document" && lifecycle.selectedDefinition) {
@@ -230,7 +224,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
         }
       : null}
     artifact={page.selectedArtifact}
-    artifactOptions={artifacts.artifactOptions}
+    artifactOptions={artifacts.assistantArtifactOptions}
     assistantArtifactIds={page.assistantArtifactIds}
     artifactTitle={page.selectedArtifactSource?.title}
     canEdit={page.canEdit}
@@ -242,7 +236,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
     onReview={page.reviewAssistantReport}
-    onToggleArtifact={artifacts.toggleAssistantArtifact}
+    onSelectArtifacts={artifacts.setAssistantArtifacts}
     onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}
     patchPreview={lifecycle.assistantSession?.patch_request_id

@@ -192,8 +192,8 @@ assert.match(source("features/admin/audit/AuditTrailPanel.tsx"), /client\.getAud
 assert.doesNotMatch(source("components/layout/AppHeader.jsx"), /inert=|메뉴 열기|메뉴 닫기/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
-assert.match(reportSources.page, /ReportAssistantOperationsPanel/);
-assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadAssistantOperations\(\)/);
+assert.doesNotMatch(reportSources.page, /ReportAssistantOperationsPanel/);
+assert.doesNotMatch(reportSources.lifecycle, /loadAssistantOperations/);
 assert.match(source("api/reportClient.ts"), /getAssistantOperationsSummary/);
 assert.match(source("api/reportClient.ts"), /\/reports\/assistant\/operations\/summary/);
 assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);
@@ -214,8 +214,8 @@ assert.match(reportSources.lifecycle, /reportClient\.reviewAssistantSession\(ses
 assert.match(reportAssistantPanelSource, /실행 검증 완료/);
 assert.match(reportAssistantPanelSource, /비저장 품질 검토/);
 assert.match(reportAssistantPanelSource, /이 항목 수정하기/);
-assert.match(reportAssistantPanelSource, /종합 편집 근거 · 최대 5개/);
-assert.match(reportSources.page, /onToggleArtifact=\{artifacts\.toggleAssistantArtifact\}/);
+assert.match(reportAssistantPanelSource, /종합 편집 근거 선택/);
+assert.match(reportSources.page, /onSelectArtifacts=\{artifacts\.setAssistantArtifacts\}/);
 assert.match(reportAssistantPanelSource, /failed" && retryable/);
 assert.match(reportAssistantPanelSource, /새 세션으로 다시 시도/);
 assert.match(reportSources.page, /evidenceRefs: lifecycle\.assistantSession\.patch_evidence_refs/);
@@ -762,6 +762,8 @@ assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION
 assert.equal(analysisRequest.init.headers["X-Trace-Id"], "client-trace");
 assert.equal(analysisRequest.init.headers["X-As-Of"], undefined);
 assert.deepEqual(JSON.parse(analysisRequest.init.body).parameters, { period_start: "2030-01-01", period_end_exclusive: "2030-01-03" });
+await analysisClient.listRuns({ limit: 7, approvedOnly: true });
+assert.equal(analysisRequest.url, "http://backend.test/analysis/runs?limit=7&approved_only=true");
 
 let ragCatalogRequest;
 const ragCatalogClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {

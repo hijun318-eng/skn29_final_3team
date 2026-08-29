@@ -568,6 +568,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
 
       {/* 중앙: 대화 스레드 메인 */}
       <main className="chat-main" inert={Boolean(reportModal)}>
+        <div className="chat-scroll-region">
         {activeEvidenceRun.meta?.asOf && <MetaStrip meta={activeEvidenceRun.meta} verified={Boolean(activeEvidenceRun.artifact && ["success", "partial"].includes(activeEvidenceRun.status))} />}
         
         {turns.length === 0 && !submitting && (
@@ -691,25 +692,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           </div>
         )}
 
-        {/* 하단 고정 대화 입력창 */}
-        <form className="chat-input" onSubmit={submitQuestion}>
-          <div className="question-field">
-            <input
-              aria-label="메시지"
-              name="question"
-              value={question}
-              maxLength={MAX_QUESTION_LENGTH}
-              onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder={emptyMode === "rag-documents" ? "내부 업무지침에 대해 물어보세요" : "메시지를 입력하세요"}
-              aria-invalid={Boolean(inputError)}
-              disabled={submitting}
-              required
-            />
-            <button aria-label="메시지 전송" disabled={submitting || !question.trim()}><Send size={16} /></button>
-          </div>
-          {inputError && <p className="analysis-input-error" role="alert">{inputError}</p>}
-        </form>
-
         {message && <p className="analysis-notice" role="status">{message}</p>}
 
         {savedRuns.length > 0 && (
@@ -741,6 +723,26 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
             )}
           </details>
         )}
+        </div>
+
+        {/* 대화 결과를 덮지 않는 중앙 하단 입력 영역 */}
+        <form className="chat-input" onSubmit={submitQuestion}>
+          <div className="question-field">
+            <input
+              aria-label="메시지"
+              name="question"
+              value={question}
+              maxLength={MAX_QUESTION_LENGTH}
+              onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
+              placeholder={emptyMode === "rag-documents" ? "내부 업무지침에 대해 물어보세요" : "메시지를 입력하세요"}
+              aria-invalid={Boolean(inputError)}
+              disabled={submitting}
+              required
+            />
+            <button aria-label="메시지 전송" disabled={submitting || !question.trim()}><Send size={16} /></button>
+          </div>
+          {inputError && <p className="analysis-input-error" role="alert">{inputError}</p>}
+        </form>
       </main>
 
       {mlPredictionEnabled && <MLPredictionWorkspace conversationId={conversationId || null} />}

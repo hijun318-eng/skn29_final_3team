@@ -1853,6 +1853,20 @@ class ConversationOrchestrator:
             ):
                 preflight_clarification = None
 
+            if (
+                preflight_clarification is not None
+                and preflight_clarification.code
+                is ContextBuildErrorCode.INVALID_METRIC
+                and not action_signals
+                and node1_res.get("metric_resolution") == "missing"
+                and node1_res.get("is_elliptical") is not True
+                and node1_res.get("requested_route")
+                not in {"PRESENTATION", "REPORT_ACTION"}
+            ):
+                return await _commit_scope_rejection(
+                    "NO_APPROVED_METRIC_MATCH"
+                )
+
             turn_id = uuid4()
             turn_index = len(previous_turns)
             request_id = None

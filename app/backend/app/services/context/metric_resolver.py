@@ -1981,7 +1981,15 @@ class MetricResolver:
             and normalized.get("is_elliptical") is True
             and not intents
         )
-        if len(intents) != 1 and not shape_elided_followup:
+        unresolved_metric_without_intent = (
+            normalized.get("metric_resolution") in {"missing", "unsupported"}
+            and not intents
+        )
+        if (
+            len(intents) != 1
+            and not shape_elided_followup
+            and not unresolved_metric_without_intent
+        ):
             raise ValueError("Node1은 정확히 1개의 분석 의도를 선택해야 합니다.")
         raw_dimensions = normalized.get("dimension_candidates", ())
         if not isinstance(raw_dimensions, list):

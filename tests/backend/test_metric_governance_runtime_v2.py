@@ -1482,6 +1482,15 @@ class _MissingNormalizer(_Normalizer):
         return result
 
 
+class _NonEllipticalMissingNormalizer(_MissingNormalizer):
+    """승인 지표와 무관한 완결형 발화를 재현한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["is_elliptical"] = False
+        return result
+
+
 def test_node1_can_identify_support_metric_but_only_business_metric_is_selectable() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
@@ -2712,6 +2721,44 @@ def test_missing_measurement_alone_offers_approved_business_metrics() -> None:
     assert [
         option.metric_id for option in raised.value.disambiguation_options
     ] == ["amount_per_event"]
+
+
+def test_non_elliptical_missing_measurement_returns_typed_context_error() -> None:
+    """범위 밖 완결형 발화는 런타임 장애(ValueError)가 아닌 typed 미일치여야 한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _NonEllipticalMissingNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-non-elliptical-missing-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="오늘 서울 날씨를 알려줘",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert raised.value.partial_context["metric_resolution"] == "missing"
+    assert raised.value.partial_context["intent_candidates"] == []
+    assert raised.value.partial_context["is_elliptical"] is False
 
 
 def test_selected_v2_metric_prunes_unapproved_join_edges() -> None:

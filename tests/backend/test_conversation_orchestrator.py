@@ -2822,6 +2822,102 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(slots["is_inherited_metric"])
         self.assertTrue(slots["is_inherited_period"])
 
+    async def test_search_hint_does_not_turn_off_topic_message_into_runtime_failure(self) -> None:
+        """직전 지표 검색 힌트 뒤에도 완결형 미일치 발화는 고정 범위 거절로 닫는다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "검색 보강 뒤 범위 밖 요청",
+        )
+        conversation_id = conversation["conversation_id"]
+        first_message = "2026년 8월 객실 매출을 알려줘"
+        second_message = "오늘 서울 날씨를 알려줘"
+        room_asset = {"urn": "urn:li:dataset:(serving,room_daily,PROD)"}
+
+        self.support.program(
+            first_message,
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2026-08-01",
+                    "end_exclusive": "2026-08-19",
+                    "source_text": "2026년 8월",
+                }
+            ],
+            analysis_operation="aggregate",
+            intent_candidates=["aggregate"],
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        first = await self.execute_command(
+            conversation_id=conversation_id,
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+        head_turn_id = first["turn"]["turn_id"]
+
+        self.data_platform.assets = []
+        self.data_platform.program_search(second_message, [])
+        self.data_platform.program_preferred_search(
+            second_message,
+            ("room_revenue",),
+            [room_asset],
+        )
+        missing_context = {
+            "metric_resolution": "missing",
+            "metric_ids": [],
+            "metric_candidates": [],
+            "selected_metric_id": None,
+            "selected_metric_ids": [],
+            "intent_candidates": [],
+            "analysis_operation": None,
+            "analysis_time_bucket": None,
+            "result_limit": None,
+            "dimension_candidates": [],
+            "dimension_fields": [],
+            "filter_fields": [],
+            "period_candidates": [],
+            "period_relationship": "single",
+            "requested_route": None,
+            "presentation_type": None,
+            "is_elliptical": False,
+        }
+        self.support.program_error(
+            second_message,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문에 분석할 지표가 포함되지 않았습니다.",
+                partial_context=missing_context,
+            ),
+        )
+
+        second = await self.execute_command(
+            conversation_id=conversation_id,
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(head_turn_id),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", second["status"])
+        self.assertEqual("OUT_OF_SCOPE", second["type"])
+        self.assertEqual("DATA_ASSET_NOT_FOUND", second["code"])
+        self.assertEqual("OUT_OF_SCOPE", second["turn"]["route"])
+        self.assertEqual(
+            "NO_APPROVED_METRIC_MATCH",
+            second["turn"]["resolved_slots"]["scope_rejection"]["reason"],
+        )
+        self.assertEqual(1, len(self.submitted_requests))
+        self.assertEqual(
+            [second_message, second_message],
+            self.data_platform.queries[-2:],
+        )
+
     async def test_period_only_followup_uses_typed_metric_hint_and_executes_inherited_metric(self) -> None:
         """기간만 바꾼 생략문이 이전 Metric을 상속한 뒤 전체 분석 Gate를 다시 통과한다."""
 

@@ -461,6 +461,20 @@ class ConversationOrchestrator:
         self._report_repository_factory = report_repository_factory
         self._analysis_repository_factory = analysis_repository_factory
 
+    async def get_conversation(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+    ) -> dict[str, Any] | None:
+        """소유자 범위가 적용된 Conversation을 공개 읽기 경계로 반환한다."""
+
+        return await self._repo.get_conversation(conversation_id, user_id)
+
+    async def list_turns(self, conversation_id: UUID) -> list[dict[str, Any]]:
+        """Conversation의 불변 Turn 목록을 공개 읽기 경계로 반환한다."""
+
+        return await self._repo.list_turns(conversation_id)
+
     async def _renew_command_lease(
         self,
         conversation_id: UUID,

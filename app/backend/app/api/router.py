@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 from functools import lru_cache
 from typing import Annotated, Any
@@ -60,7 +59,7 @@ from app.api.analysis_router_runtime import (
     repository_call as _repository_call,
     routing_service as _routing_service,
 )
-from app.api.rag_router import RagQueryRequest, query_internal_manual
+from app.api.rag_router_runtime import internal_manual_query_service
 from app.api.analysis_router_support import (
     analysis_support_router,
     cancel_analysis_progress,
@@ -76,11 +75,16 @@ from app.api.analysis_router_support import (
 )
 from app.controllers.analysis_controller import AnalysisController
 from app.ports.agent import AgentKind, AgentRequest
-from app.services.agent_supervisor import CallableAgentPort, DeterministicAgentSupervisor
+from app.services.agent_supervisor import DeterministicAgentSupervisor
 from app.services.analysis import AnalysisService, analysis_progress
 from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
+from app.services.conversation_agent_ports import (
+    AnalysisWorkflowAgentPort,
+    InternalGuidelineAgentPort,
+)
 from app.services.conversation.analysis_request import build_replay_analysis_request
 from app.services.execution_control import ConcurrentExecutionGate
+from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
 
 
@@ -526,10 +530,10 @@ async def get_conversation_turns(
     """대화방의 불변 턴 목록을 순서대로 조회해 프론트엔드 상태를 수화(Hydration)한다."""
     from app.api.analysis_router_runtime import conversation_orchestrator
     orch = conversation_orchestrator(_controller())
-    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
+    conv = await orch.get_conversation(conversation_id, context.user_id)
     if not conv:
         raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
-    turns = await orch._repo.list_turns(conversation_id)
+    turns = await orch.list_turns(conversation_id)
     return {
         "status": "SUCCESS",
         "data": {
@@ -537,129 +541,6 @@ async def get_conversation_turns(
             "turns": turns,
         },
     }
-
-
-async def _execute_internal_guideline_agent(
-    request: AgentRequest,
-    orchestrator: Any,
-) -> dict[str, Any]:
-    """기존 RAG gateway·snapshot·Turn 저장 흐름을 typed AgentPort 뒤에서 실행한다."""
-
-    command = request.command
-    rag_envelope = await query_internal_manual(
-        RagQueryRequest(
-            question=command.user_message,
-            mode="DOCUMENT_ONLY",
-            conversation_id=request.conversation_id,
-            expected_head_turn_id=command.expected_head_turn_id,
-            inherit_previous_context=command.inherit_previous_context,
-        ),
-        request.context,
-    )
-    rag_result = rag_envelope["data"]
-    turns = await orchestrator._repo.list_turns(request.conversation_id)
-    return {
-        "status": "SUCCESS",
-        "data": {
-            "status": "COMPLETED",
-            "type": "INTERNAL_GUIDELINE",
-            "turn": next(
-                (
-                    item
-                    for item in turns
-                    if str(item["turn_id"]) == str(rag_result.get("turn_id"))
-                ),
-                None,
-            ),
-            "conversation": await orchestrator._repo.get_conversation(
-                request.conversation_id,
-                request.context.user_id,
-            ),
-            "rag_response": rag_result,
-        },
-    }
-
-
-async def _execute_analysis_workflow_agent(
-    request: AgentRequest,
-    orchestrator: Any,
-) -> dict[str, Any]:
-    """기존 분석·표현·Report Action 상태 머신과 progress 계약을 그대로 실행한다."""
-
-    context = request.context
-    final_status = AnalysisStatus.FAILED
-    analysis_progress.start(
-        context.trace_id,
-        context.user_id,
-        context.role,
-        context.request_id,
-    )
-    try:
-        configured_timeout = float(
-            os.getenv("CONVERSATION_COMMAND_TIMEOUT_SECONDS", "90")
-        )
-        recovery_stale = float(
-            os.getenv("CONVERSATION_RECOVERY_STALE_SECONDS", "120")
-        )
-        command_timeout = max(
-            1.0,
-            min(configured_timeout, max(1.0, recovery_stale - 5.0)),
-        )
-        async with asyncio.timeout(command_timeout):
-            result = await orchestrator.execute_command(
-                request.conversation_id,
-                request.command.model_dump(mode="python"),
-                context,
-                progress_sink=lambda stage, outcome: analysis_progress.record(
-                    context.request_id,
-                    stage,
-                    outcome,
-                ),
-                cancel_check=lambda: analysis_progress.cancelled(
-                    context.request_id
-                ),
-                analysis_gate=execution_gate,
-                analysis_queue_wait_seconds=float(
-                    os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")
-                ),
-            )
-        final_status = {
-            "SUCCESS": AnalysisStatus.SUCCEEDED,
-            "PARTIAL": AnalysisStatus.PARTIAL,
-            "BLOCKED": AnalysisStatus.BLOCKED,
-            "CLARIFICATION_REQUIRED": AnalysisStatus.BLOCKED,
-            "CANCELLED": AnalysisStatus.CANCELLED,
-        }.get(str(result.get("status")), AnalysisStatus.FAILED)
-        if result.get("status") in {"CONFLICT", "BUSY"}:
-            raw_code = str(result.get("code") or "")
-            code_map = {
-                "CONVERSATION_CONFLICT": ErrorCode.CONVERSATION_CONFLICT,
-                "CONVERSATION_BUSY": ErrorCode.CONVERSATION_BUSY,
-                "CONVERSATION_ARCHIVED": ErrorCode.CONVERSATION_ARCHIVED,
-                "IDEMPOTENCY_CONFLICT": ErrorCode.IDEMPOTENCY_CONFLICT,
-                "IDEMPOTENCY_PAYLOAD_MISMATCH": ErrorCode.IDEMPOTENCY_CONFLICT,
-                "RESOURCE_CONFLICT": ErrorCode.RESOURCE_CONFLICT,
-                "PRODUCT_RELEASE_MISMATCH": ErrorCode.RESOURCE_CONFLICT,
-                "ACCESS_DENIED": ErrorCode.ACCESS_DENIED,
-                "PERMISSION_SNAPSHOT_MISMATCH": ErrorCode.ACCESS_DENIED,
-                "RATE_LIMITED": ErrorCode.RATE_LIMITED,
-            }
-            public_code = code_map.get(raw_code, ErrorCode.RESOURCE_CONFLICT)
-            status_code = (
-                403
-                if public_code is ErrorCode.ACCESS_DENIED
-                else 429
-                if public_code is ErrorCode.RATE_LIMITED
-                else 409
-            )
-            raise ContextValidationError(
-                public_code,
-                str(result.get("message") or "현재 대화 상태와 요청이 충돌합니다."),
-                status_code,
-            )
-        return {"status": "SUCCESS", "data": result}
-    finally:
-        analysis_progress.finish(context.request_id, final_status)
 
 
 @router.post(
@@ -674,7 +555,7 @@ async def execute_conversation_command(
     """대화방에서 분석·표현·보고서·내부지침 명령을 수행한다."""
     from app.api.analysis_router_runtime import conversation_orchestrator
     orch = conversation_orchestrator(_controller())
-    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
+    conv = await orch.get_conversation(conversation_id, context.user_id)
     if not conv:
         raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
     if conv["status"] == "ARCHIVED":
@@ -690,13 +571,13 @@ async def execute_conversation_command(
     )
     supervisor = DeterministicAgentSupervisor(
         {
-            AgentKind.ANALYSIS_WORKFLOW: CallableAgentPort(
-                AgentKind.ANALYSIS_WORKFLOW,
-                lambda request: _execute_analysis_workflow_agent(request, orch),
+            AgentKind.ANALYSIS_WORKFLOW: AnalysisWorkflowAgentPort(
+                orch,
+                execution_gate,
             ),
-            AgentKind.INTERNAL_GUIDELINE: CallableAgentPort(
-                AgentKind.INTERNAL_GUIDELINE,
-                lambda request: _execute_internal_guideline_agent(request, orch),
+            AgentKind.INTERNAL_GUIDELINE: InternalGuidelineAgentPort(
+                orch,
+                internal_manual_query_service,
             ),
         }
     )
@@ -719,6 +600,11 @@ async def execute_conversation_command(
             status_code=504,
             content=response.model_dump(mode="json"),
         )
+    except InternalManualQueryError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail=str(error),
+        ) from error
     return agent_result.payload
 
 

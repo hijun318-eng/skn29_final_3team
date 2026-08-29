@@ -1,0 +1,237 @@
+"""concrete Conversation AgentPort와 내부지침 use case 경계를 검증한다."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+import unittest
+from uuid import uuid4
+
+
+ROOT = Path(__file__).resolve().parents[2]
+BACKEND = ROOT / "app" / "backend"
+if str(BACKEND) not in sys.path:
+    sys.path.insert(0, str(BACKEND))
+
+from app.contracts import AnalysisStatus, RequestContext
+from app.conversation_contracts import ConversationCommandRequest
+from app.ports.agent import AgentKind, AgentRequest
+from app.services.conversation_agent_ports import (
+    AnalysisWorkflowAgentPort,
+    InternalGuidelineAgentPort,
+)
+from app.services.execution_control import ConcurrentExecutionGate
+from app.services.internal_manual_query import (
+    InternalManualQuery,
+    InternalManualQueryError,
+    InternalManualQueryService,
+)
+
+
+def _agent_request(
+    route: str | None = None,
+    *,
+    inherit_previous_context: bool = False,
+) -> AgentRequest:
+    conversation_id = uuid4()
+    return AgentRequest(
+        conversation_id=conversation_id,
+        command=ConversationCommandRequest(
+            user_message="승인된 범위에서 처리해줘",
+            idempotency_key=uuid4().hex,
+            expected_head_turn_id=None,
+            requested_route=route,
+            inherit_previous_context=inherit_previous_context,
+        ),
+        context=RequestContext(conversation_id=conversation_id),
+    )
+
+
+class _ProgressTracker:
+    def __init__(self) -> None:
+        self.started: list[object] = []
+        self.finished: list[tuple[object, AnalysisStatus]] = []
+
+    def start(self, *values: object) -> None:
+        self.started.append(values)
+
+    def record(self, *values: object) -> None:
+        return None
+
+    def cancelled(self, request_id: object) -> bool:
+        return False
+
+    def finish(self, request_id: object, status: AnalysisStatus) -> None:
+        self.finished.append((request_id, status))
+
+
+class _AnalysisOrchestrator:
+    def __init__(self, result: dict) -> None:
+        self.result = result
+        self.calls: list[tuple] = []
+
+    async def execute_command(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self.result
+
+
+class _RagOrchestrator:
+    def __init__(self, turn_id) -> None:
+        self.turn_id = turn_id
+
+    async def list_turns(self, conversation_id):
+        return [{"turn_id": self.turn_id, "route": "INTERNAL_GUIDELINE"}]
+
+    async def get_conversation(self, conversation_id, user_id):
+        return {"conversation_id": conversation_id, "owner_id": user_id}
+
+
+class _RagRepository:
+    def __init__(self, conversation_id, turn_id) -> None:
+        self.conversation_id = conversation_id
+        self.turn_id = turn_id
+        self.appended: tuple | None = None
+
+    async def get_conversation(self, conversation_id, user_id):
+        if conversation_id != self.conversation_id:
+            return None
+        return {"conversation_id": conversation_id, "owner_id": user_id}
+
+    async def list_turns(self, conversation_id):
+        return [
+            {
+                "route": "INTERNAL_GUIDELINE",
+                "resolved_slots": {
+                    "rag": {
+                        "routing": {
+                            "snapshot_question": "승인된 시설 안전 절차",
+                            "selected_document_ids": ["MANUAL-SAFETY"],
+                        }
+                    }
+                },
+            }
+        ]
+
+    async def append_rag_turn(self, *args):
+        self.appended = args
+        return self.turn_id
+
+
+class _RagExecutor:
+    def __init__(self) -> None:
+        self.kwargs: dict = {}
+
+    async def execute(self, **kwargs):
+        self.kwargs = kwargs
+        return {
+            "status": "ANSWER",
+            "routing": {"snapshot_question": kwargs["query"]},
+        }
+
+
+class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
+    async def test_analysis_port_preserves_result_and_progress_contract(self) -> None:
+        request = _agent_request("ANALYSIS")
+        orchestrator = _AnalysisOrchestrator(
+            {"status": "SUCCESS", "turn": {"route": "ANALYSIS"}}
+        )
+        progress = _ProgressTracker()
+        port = AnalysisWorkflowAgentPort(
+            orchestrator,
+            ConcurrentExecutionGate(),
+            progress,
+        )
+
+        result = await port.execute(request)
+
+        self.assertEqual(result.agent, AgentKind.ANALYSIS_WORKFLOW)
+        self.assertEqual(result.payload["data"]["status"], "SUCCESS")
+        self.assertEqual(len(orchestrator.calls), 1)
+        self.assertEqual(
+            progress.finished,
+            [(request.context.request_id, AnalysisStatus.SUCCEEDED)],
+        )
+
+    async def test_internal_guideline_port_uses_service_and_public_reader(self) -> None:
+        request = _agent_request("INTERNAL_GUIDELINE")
+        turn_id = uuid4()
+        repository = _RagRepository(request.conversation_id, turn_id)
+        executor = _RagExecutor()
+        service = InternalManualQueryService(
+            repository,
+            lambda: executor,
+            enabled=True,
+        )
+        port = InternalGuidelineAgentPort(
+            _RagOrchestrator(turn_id),
+            lambda: service,
+        )
+
+        result = await port.execute(request)
+
+        self.assertEqual(result.agent, AgentKind.INTERNAL_GUIDELINE)
+        self.assertEqual(result.payload["data"]["type"], "INTERNAL_GUIDELINE")
+        self.assertEqual(result.payload["data"]["turn"]["turn_id"], turn_id)
+        self.assertIsNotNone(repository.appended)
+
+    async def test_internal_manual_followup_uses_only_approved_snapshot(self) -> None:
+        conversation_id = uuid4()
+        repository = _RagRepository(conversation_id, uuid4())
+        executor = _RagExecutor()
+        service = InternalManualQueryService(
+            repository,
+            lambda: executor,
+            enabled=True,
+        )
+
+        result = await service.execute(
+            InternalManualQuery(
+                question="그 절차를 더 설명해줘",
+                mode="DOCUMENT_ONLY",
+                conversation_id=conversation_id,
+                inherit_previous_context=True,
+            ),
+            RequestContext(),
+        )
+
+        self.assertEqual(
+            executor.kwargs["recent_utterances"],
+            ("승인된 시설 안전 절차",),
+        )
+        self.assertEqual(
+            executor.kwargs["selected_document_ids"],
+            ("MANUAL-SAFETY",),
+        )
+        self.assertEqual(result["routing"]["context_source"], "APPROVED_RAG_SNAPSHOT")
+
+    async def test_internal_manual_followup_without_snapshot_fails_closed(self) -> None:
+        conversation_id = uuid4()
+        repository = _RagRepository(conversation_id, uuid4())
+
+        async def no_turns(target_conversation_id):
+            return []
+
+        repository.list_turns = no_turns
+        service = InternalManualQueryService(
+            repository,
+            lambda: _RagExecutor(),
+            enabled=True,
+        )
+
+        with self.assertRaises(InternalManualQueryError) as raised:
+            await service.execute(
+                InternalManualQuery(
+                    question="그 절차를 더 설명해줘",
+                    mode="DOCUMENT_ONLY",
+                    conversation_id=conversation_id,
+                    inherit_previous_context=True,
+                ),
+                RequestContext(),
+            )
+
+        self.assertEqual(raised.exception.code, "RAG_APPROVED_CONTEXT_MISSING")
+        self.assertEqual(raised.exception.status_code, 409)
+
+
+if __name__ == "__main__":
+    unittest.main()

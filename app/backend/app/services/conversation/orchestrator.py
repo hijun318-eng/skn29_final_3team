@@ -20,11 +20,13 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import math
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
+from dataclasses import dataclass
 from datetime import date
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 from uuid import UUID, uuid4
 
 from app.adapters.conversation_repository import ConversationRepository
@@ -49,6 +51,10 @@ from app.services.conversation.slot_resolver import ConversationSlotResolver, Re
 from app.services.analysis.pipeline_support import PipelineSupport
 from app.services.execution_control import ConcurrentExecutionGate, ModelCallBudget
 
+if TYPE_CHECKING:
+    from app.ports.agent import AgentRequest
+    from app.services.agent_supervisor import AgentRouteResolver
+
 logger = logging.getLogger("uvicorn.error")
 
 _WRITE_SQL_KEYWORD = re.compile(
@@ -60,6 +66,18 @@ _OUT_OF_SCOPE_MESSAGE = (
     "해당 요청은 지원하지 않습니다. 이 서비스는 호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, "
     "분석 결과의 보고서 작업만 지원합니다. 지원 범위에 맞게 요청해 주세요."
 )
+
+
+@dataclass(frozen=True)
+class _AdmittedConversationCommand:
+    """기존 turn_commands lease를 획득한 단일 실행의 서버 확정값이다."""
+
+    context: RequestContext
+    command_id: UUID
+    canonical_input_hash: str
+    product_release_id: str
+    permission_snapshot_id: str
+    semantic_release_id: str
 
 
 def _explicit_write_sql_intent(user_message: str) -> bool:
@@ -681,7 +699,7 @@ class ConversationOrchestrator:
             None,
         )
         error_code = error.get("code", ErrorCode.CONTEXT_SOURCE_FAILED.value)
-        return {
+        result = {
             "status": (
                 "BUSY"
                 if error_code == ErrorCode.RATE_LIMITED.value
@@ -697,6 +715,529 @@ class ConversationOrchestrator:
             "turn": target_turn,
             "is_idempotent_replay": True,
         }
+        if isinstance(error.get("status_code"), int):
+            result["_http_status_code"] = error["status_code"]
+        return result
+
+    async def _admit_command(
+        self,
+        conversation_id: UUID,
+        command: ConversationCommandRequest,
+        context: RequestContext,
+    ) -> tuple[_AdmittedConversationCommand | None, dict[str, Any] | None]:
+        """공통 command hash·idempotency·CAS·lease를 한 경로에서 승인한다."""
+
+        if context.conversation_id not in {None, conversation_id}:
+            raise ValueError("RequestContext conversation_id가 path identity와 다릅니다.")
+        conversation = await self._repo.get_conversation(
+            conversation_id,
+            context.user_id,
+        )
+        if conversation is None:
+            return None, {
+                "status": "CONFLICT",
+                "code": "CONVERSATION_NOT_FOUND",
+                "message": "대화방을 찾을 수 없거나 접근 권한이 없습니다.",
+            }
+        current_permission = permission_snapshot_id(context.user_id, context.role)
+        if conversation["permission_snapshot_id"] != current_permission:
+            return None, {
+                "status": "CONFLICT",
+                "code": ErrorCode.ACCESS_DENIED.value,
+                "message": "Conversation 생성 이후 권한 snapshot이 변경되었습니다.",
+            }
+        try:
+            current_product, current_semantic = await self._release_receipt(
+                str(conversation["product_release_id"]),
+                str(conversation["semantic_release_id"]),
+            )
+        except RuntimeError:
+            return None, {
+                "status": "CONFLICT",
+                "code": ErrorCode.RESOURCE_CONFLICT.value,
+                "message": "Conversation에 고정된 product release를 더 이상 실행할 수 없습니다.",
+            }
+        wall_clock_anchor = conversation["wall_clock_anchor"]
+        if isinstance(wall_clock_anchor, str):
+            wall_clock_anchor = date.fromisoformat(wall_clock_anchor)
+        command_id = uuid4()
+        admitted_context = context.model_copy(
+            update={
+                "conversation_id": conversation_id,
+                "permission_snapshot_id": current_permission,
+                "product_release_id": current_product,
+                "semantic_release_id": current_semantic,
+                "command_id": command_id,
+                "as_of": wall_clock_anchor,
+            }
+        )
+        input_hash = canonical_command_input_hash(
+            command,
+            conversation_id,
+            admitted_context,
+        )
+        existing_command = await self._repo.get_command(
+            conversation_id,
+            command.idempotency_key,
+        )
+        if existing_command:
+            return None, await self._existing_command_result(
+                conversation_id,
+                existing_command,
+                input_hash,
+            )
+
+        lease_ok, lease_error = await self._repo.acquire_lease_and_check_cas(
+            conversation_id=conversation_id,
+            expected_head_turn_id=command.expected_head_turn_id,
+            command_id=command_id,
+            idempotency_key=command.idempotency_key,
+            input_hash=input_hash,
+            effective_subject_id=admitted_context.user_id,
+            product_release_id=current_product,
+            permission_snapshot_id=current_permission,
+            semantic_release_id=current_semantic,
+        )
+        if not lease_ok:
+            if lease_error == "IDEMPOTENCY_EXISTS":
+                raced = await self._repo.get_command(
+                    conversation_id,
+                    command.idempotency_key,
+                )
+                if raced is not None:
+                    return None, await self._existing_command_result(
+                        conversation_id,
+                        raced,
+                        input_hash,
+                    )
+            return None, {
+                "status": "CONFLICT",
+                "code": lease_error,
+                "message": f"동시성 충돌 또는 권한 오류 ({lease_error})",
+            }
+
+        return (
+            _AdmittedConversationCommand(
+                context=admitted_context,
+                command_id=command_id,
+                canonical_input_hash=input_hash,
+                product_release_id=current_product,
+                permission_snapshot_id=current_permission,
+                semantic_release_id=current_semantic,
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _validate_admitted_command(
+        conversation_id: UUID,
+        command: ConversationCommandRequest,
+        context: RequestContext,
+        admission: _AdmittedConversationCommand,
+    ) -> None:
+        """pre-admitted lease가 같은 command·context를 가리킬 때만 재사용한다."""
+
+        if (
+            not isinstance(admission, _AdmittedConversationCommand)
+            or admission.context != context
+            or context.conversation_id != conversation_id
+            or context.command_id != admission.command_id
+            or context.product_release_id != admission.product_release_id
+            or context.permission_snapshot_id != admission.permission_snapshot_id
+            or context.semantic_release_id != admission.semantic_release_id
+            or canonical_command_input_hash(command, conversation_id, context)
+            != admission.canonical_input_hash
+        ):
+            raise ValueError("pre-admitted Conversation command가 요청과 일치하지 않습니다.")
+
+    async def _hydrate_internal_guideline_replay(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """저장된 RAG terminal 결과를 기존 공개 응답에 필요한 형태로만 수화한다."""
+
+        if result.get("status") != "SUCCESS":
+            return result
+        turn = result.get("turn")
+        slots = turn.get("resolved_slots") if isinstance(turn, dict) else None
+        rag_response = slots.get("rag") if isinstance(slots, dict) else None
+        if (
+            not isinstance(turn, dict)
+            or turn.get("route") != "INTERNAL_GUIDELINE"
+            or not isinstance(rag_response, dict)
+        ):
+            return {
+                "status": "FAILED",
+                "code": "RAG_REPLAY_STATE_INVALID",
+                "message": "저장된 내부지침 실행 결과를 검증하지 못했습니다.",
+                "retryable": False,
+                "required_action": "CONTACT_SUPPORT",
+                "is_idempotent_replay": True,
+            }
+        return {
+            **result,
+            "conversation": await self._repo.get_conversation(
+                conversation_id,
+                user_id,
+            ),
+            "rag_response": {
+                **rag_response,
+                "turn_id": str(turn["turn_id"]),
+            },
+        }
+
+    async def _release_agent_dispatch_failure(
+        self,
+        conversation_id: UUID,
+        admission: _AdmittedConversationCommand,
+        error: BaseException,
+    ) -> None:
+        """Supervisor/route 단계 실패가 획득한 command lease를 남기지 않게 종결한다."""
+
+        raw_code = getattr(error, "code", None)
+        code = (
+            raw_code.value
+            if hasattr(raw_code, "value")
+            else str(raw_code).strip()
+            if raw_code is not None
+            else "AGENT_DISPATCH_FAILED"
+        )
+        if not code:
+            code = "AGENT_DISPATCH_FAILED"
+        raw_status_code = getattr(error, "status_code", None)
+        status_code = (
+            raw_status_code
+            if isinstance(raw_status_code, int)
+            else 504
+            if isinstance(error, (asyncio.CancelledError, TimeoutError))
+            else 503
+        )
+        execution_state = getattr(error, "agent_execution_state", None)
+        if execution_state is None:
+            execution_state = getattr(error, "state", None)
+        selected_agent = getattr(execution_state, "selected_agent", None)
+        evidence_refs = getattr(execution_state, "terminal_evidence_refs", ())
+        if (
+            not isinstance(evidence_refs, tuple)
+            or len(evidence_refs) != len(set(evidence_refs))
+            or any(not isinstance(ref, str) or not ref.strip() for ref in evidence_refs)
+        ):
+            evidence_refs = ()
+        public_error = raw_code is not None
+        error_response: dict[str, Any] = {
+            "type": type(error).__name__,
+            "code": code,
+            "message": (
+                str(error)
+                if public_error
+                else "Agent 명령 실행을 안전하게 종료했습니다."
+            ),
+            "retryable": status_code >= 500,
+            "required_action": "RETRY" if status_code >= 500 else "MODIFY_REQUEST",
+            "status_code": status_code,
+        }
+        if selected_agent is not None:
+            error_response["selected_agent"] = (
+                selected_agent.value
+                if hasattr(selected_agent, "value")
+                else str(selected_agent)
+            )
+        if evidence_refs:
+            error_response["evidence_refs"] = list(evidence_refs)
+        try:
+            await self._repo.release_lease_on_failure(
+                conversation_id,
+                admission.command_id,
+                error_response,
+            )
+        except Exception:
+            logger.exception("Agent dispatch failure lease release failed")
+
+    async def dispatch_agent_command(
+        self,
+        request: "AgentRequest",
+        execution_gate: ConcurrentExecutionGate,
+        internal_manual_query_service_factory: Callable[[], Any],
+        *,
+        route_resolver: "AgentRouteResolver | None" = None,
+    ) -> dict[str, Any]:
+        """공통 admission 후 Supervisor가 고른 concrete AgentPort 하나만 실행한다."""
+
+        from app.ports.agent import AgentRequest
+        from app.services.agent_supervisor import AgentDispatchError
+        from app.services.conversation_agent_ports import (
+            analysis_agent_result,
+            internal_guideline_agent_result,
+        )
+        from app.services.conversation_agent_registry import (
+            build_conversation_agent_supervisor,
+        )
+
+        if not isinstance(request, AgentRequest):
+            raise TypeError("dispatch_agent_command에는 AgentRequest가 필요합니다.")
+        admission, early_result = await self._admit_command(
+            request.conversation_id,
+            request.command,
+            request.context,
+        )
+        if early_result is not None:
+            turn = early_result.get("turn")
+            stored_route = turn.get("route") if isinstance(turn, dict) else None
+            is_internal_guideline = (
+                stored_route == "INTERNAL_GUIDELINE"
+                or request.command.requested_route == "INTERNAL_GUIDELINE"
+            )
+            if is_internal_guideline:
+                hydrated = await self._hydrate_internal_guideline_replay(
+                    request.conversation_id,
+                    request.context.user_id,
+                    early_result,
+                )
+                return internal_guideline_agent_result(hydrated).payload
+            return analysis_agent_result(early_result).payload
+        if admission is None:
+            raise RuntimeError("Agent command admission 결과가 없습니다.")
+
+        admitted_request = request.model_copy(update={"context": admission.context})
+        try:
+            try:
+                route_timeout_seconds = float(
+                    os.getenv("CONVERSATION_AGENT_ROUTE_TIMEOUT_SECONDS", "15")
+                )
+            except ValueError as error:
+                raise AgentDispatchError(
+                    "AGENT_ROUTE_TIMEOUT_INVALID",
+                    "Agent route 제한 시간 설정이 올바르지 않습니다.",
+                ) from error
+            if (
+                not math.isfinite(route_timeout_seconds)
+                or route_timeout_seconds <= 0
+                or route_timeout_seconds > 15
+            ):
+                raise AgentDispatchError(
+                    "AGENT_ROUTE_TIMEOUT_INVALID",
+                    "Agent route 제한 시간은 0초보다 크고 15초 이하여야 합니다.",
+                )
+            supervisor = build_conversation_agent_supervisor(
+                self,
+                execution_gate,
+                internal_manual_query_service_factory,
+                route_resolver=route_resolver,
+                admission=admission,
+            )
+            route_lease_stop = asyncio.Event()
+            route_lease_lost = asyncio.Event()
+            renew_lease = getattr(self._repo, "renew_lease", None)
+            route_lease_task = (
+                asyncio.create_task(
+                    self._renew_command_lease(
+                        request.conversation_id,
+                        admission.command_id,
+                        route_lease_stop,
+                        route_lease_lost,
+                    ),
+                    name=f"conversation-agent-route-lease-{admission.command_id}",
+                )
+                if callable(renew_lease)
+                else None
+            )
+            try:
+                routing = await supervisor.route_with_state(
+                    admitted_request,
+                    timeout_seconds=route_timeout_seconds,
+                )
+                if route_lease_lost.is_set():
+                    raise AgentDispatchError(
+                        "AGENT_ROUTE_LEASE_LOST",
+                        "Agent route 결정 중 command 소유권을 잃었습니다.",
+                    )
+            finally:
+                route_lease_stop.set()
+                if route_lease_task is not None:
+                    route_lease_task.cancel()
+                    try:
+                        await route_lease_task
+                    except asyncio.CancelledError:
+                        pass
+            outcome = await supervisor.execute_routed_with_state(
+                admitted_request,
+                routing,
+            )
+            result = outcome.result
+            return result.payload
+        except asyncio.CancelledError as error:
+            await self._release_agent_dispatch_failure(
+                request.conversation_id,
+                admission,
+                error,
+            )
+            raise
+        except Exception as error:
+            await self._release_agent_dispatch_failure(
+                request.conversation_id,
+                admission,
+                error,
+            )
+            raise
+
+    async def execute_internal_guideline_command(
+        self,
+        conversation_id: UUID,
+        payload: dict[str, Any],
+        context: RequestContext,
+        executor: Callable[[RequestContext], Awaitable[dict[str, Any]]],
+        *,
+        admission: _AdmittedConversationCommand | None = None,
+    ) -> dict[str, Any]:
+        """RAG Agent를 기존 command idempotency·CAS·lease·terminal 계약으로 실행한다."""
+
+        command = ConversationCommandRequest.model_validate(payload)
+        if command.requested_route != "INTERNAL_GUIDELINE":
+            raise ValueError("내부지침 command는 명시적 INTERNAL_GUIDELINE route가 필요합니다.")
+        early_result: dict[str, Any] | None = None
+        if admission is None:
+            admission, early_result = await self._admit_command(
+                conversation_id,
+                command,
+                context,
+            )
+        else:
+            self._validate_admitted_command(
+                conversation_id,
+                command,
+                context,
+                admission,
+            )
+        if early_result is not None:
+            return await self._hydrate_internal_guideline_replay(
+                conversation_id,
+                context.user_id,
+                early_result,
+            )
+        if admission is None:
+            raise RuntimeError("내부지침 command admission 결과가 없습니다.")
+
+        previous_turns = await self._repo.list_turns(conversation_id)
+        lease_stop = asyncio.Event()
+        lease_lost = asyncio.Event()
+        renew_lease = getattr(self._repo, "renew_lease", None)
+        lease_task = (
+            asyncio.create_task(
+                self._renew_command_lease(
+                    conversation_id,
+                    admission.command_id,
+                    lease_stop,
+                    lease_lost,
+                ),
+                name=f"conversation-rag-lease-{admission.command_id}",
+            )
+            if callable(renew_lease)
+            else None
+        )
+
+        async def _release_failure(error_data: dict[str, Any]) -> None:
+            try:
+                await self._repo.release_lease_on_failure(
+                    conversation_id,
+                    admission.command_id,
+                    error_data,
+                )
+            except Exception:
+                logger.exception("RAG conversation command failure release failed")
+
+        try:
+            rag_response = dict(await executor(admission.context))
+            rag_response.pop("turn_id", None)
+            if lease_lost.is_set():
+                raise RuntimeError("내부지침 command lease 소유권을 잃었습니다.")
+            turn_id = uuid4()
+            await self._repo.commit_turn(
+                conversation_id=conversation_id,
+                command_id=admission.command_id,
+                turn_id=turn_id,
+                turn_index=len(previous_turns),
+                user_message=command.user_message,
+                route="INTERNAL_GUIDELINE",
+                source_turn_ids=[],
+                request_id=None,
+                artifact_id=None,
+                view_spec_id=None,
+                report_definition_id=None,
+                resolved_slots={"rag": rag_response},
+                product_release_id=admission.product_release_id,
+                permission_snapshot_id=admission.permission_snapshot_id,
+                semantic_release_id=admission.semantic_release_id,
+            )
+            updated_turns = await self._repo.list_turns(conversation_id)
+            target_turn = next(
+                (turn for turn in updated_turns if turn["turn_id"] == turn_id),
+                None,
+            )
+            if target_turn is None:
+                raise RuntimeError("확정된 내부지침 Turn을 다시 조회하지 못했습니다.")
+            return {
+                "status": "SUCCESS",
+                "turn": target_turn,
+                "conversation": await self._repo.get_conversation(
+                    conversation_id,
+                    admission.context.user_id,
+                ),
+                "rag_response": {
+                    **rag_response,
+                    "turn_id": str(turn_id),
+                },
+                "is_idempotent_replay": False,
+            }
+        except asyncio.CancelledError:
+            await _release_failure(
+                {
+                    "type": "CancelledError",
+                    "code": ErrorCode.QUERY_TIMEOUT.value,
+                    "message": "내부지침 명령 실행이 취소되었습니다.",
+                    "retryable": True,
+                    "status_code": 504,
+                }
+            )
+            raise
+        except Exception as error:
+            raw_code = getattr(error, "code", "CONVERSATION_COMMAND_FAILED")
+            error_code = (
+                raw_code.value if hasattr(raw_code, "value") else str(raw_code)
+            )
+            raw_status = getattr(error, "status_code", 503)
+            status_code = raw_status if isinstance(raw_status, int) else 503
+            public_error = hasattr(error, "code") and hasattr(error, "status_code")
+            await _release_failure(
+                {
+                    "type": type(error).__name__,
+                    "code": error_code,
+                    "message": (
+                        str(error)
+                        if public_error
+                        else "내부지침 명령 실행을 안전하게 종료했습니다."
+                    ),
+                    "retryable": status_code >= 500,
+                    "required_action": (
+                        "REQUEST_ACCESS"
+                        if status_code == 403
+                        else "MODIFY_REQUEST"
+                        if status_code < 500
+                        else "RETRY"
+                    ),
+                    "status_code": status_code,
+                }
+            )
+            raise
+        finally:
+            lease_stop.set()
+            if lease_task is not None:
+                lease_task.cancel()
+                try:
+                    await lease_task
+                except asyncio.CancelledError:
+                    pass
 
     async def execute_command(
         self,
@@ -704,6 +1245,7 @@ class ConversationOrchestrator:
         payload: dict[str, Any],
         context: RequestContext,
         *,
+        admission: _AdmittedConversationCommand | None = None,
         progress_sink: Callable[[object, object], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
         analysis_gate: ConcurrentExecutionGate | None = None,
@@ -734,83 +1276,31 @@ class ConversationOrchestrator:
             대화 턴 실행 결과 딕셔너리 (status, turn, conversation, disambiguation_options 등)
         """
         command = ConversationCommandRequest.model_validate(payload)
-        user_message = command.user_message
-        idempotency_key = command.idempotency_key
-        expected_head_uuid = command.expected_head_turn_id
-        if context.conversation_id not in {None, conversation_id}:
-            raise ValueError("RequestContext conversation_id가 path identity와 다릅니다.")
-        conversation = await self._repo.get_conversation(conversation_id, context.user_id)
-        if conversation is None:
-            return {
-                "status": "CONFLICT",
-                "code": "CONVERSATION_NOT_FOUND",
-                "message": "대화방을 찾을 수 없거나 접근 권한이 없습니다.",
-            }
-        current_permission = permission_snapshot_id(context.user_id, context.role)
-        if conversation["permission_snapshot_id"] != current_permission:
-            return {
-                "status": "CONFLICT",
-                "code": ErrorCode.ACCESS_DENIED.value,
-                "message": "Conversation 생성 이후 권한 snapshot이 변경되었습니다.",
-            }
-        try:
-            current_product, current_semantic = await self._release_receipt(
-                str(conversation["product_release_id"]),
-                str(conversation["semantic_release_id"]),
-            )
-        except RuntimeError:
-            return {
-                "status": "CONFLICT",
-                "code": ErrorCode.RESOURCE_CONFLICT.value,
-                "message": "Conversation에 고정된 product release를 더 이상 실행할 수 없습니다.",
-            }
-        wall_clock_anchor = conversation["wall_clock_anchor"]
-        if isinstance(wall_clock_anchor, str):
-            wall_clock_anchor = date.fromisoformat(wall_clock_anchor)
-        command_id = uuid4()
-        context = context.model_copy(
-            update={
-                "conversation_id": conversation_id,
-                "permission_snapshot_id": current_permission,
-                "product_release_id": current_product,
-                "semantic_release_id": current_semantic,
-                "command_id": command_id,
-                "as_of": wall_clock_anchor,
-            }
-        )
-        input_hash = canonical_command_input_hash(command, conversation_id, context)
-
-        # 저장 hash를 비교하기 전에는 어떤 terminal 결과도 replay하지 않는다.
-        existing_cmd = await self._repo.get_command(conversation_id, idempotency_key)
-        if existing_cmd:
-            return await self._existing_command_result(
+        early_result: dict[str, Any] | None = None
+        if admission is None:
+            admission, early_result = await self._admit_command(
                 conversation_id,
-                existing_cmd,
-                input_hash,
+                command,
+                context,
             )
+        else:
+            self._validate_admitted_command(
+                conversation_id,
+                command,
+                context,
+                admission,
+            )
+        if early_result is not None:
+            return early_result
+        if admission is None:
+            raise RuntimeError("Conversation command admission 결과가 없습니다.")
 
-        # 3. CAS(Compare-And-Swap) 검사 및 동시성 Lease 획득
-        lease_ok, lease_error = await self._repo.acquire_lease_and_check_cas(
-            conversation_id=conversation_id,
-            expected_head_turn_id=expected_head_uuid,
-            command_id=command_id,
-            idempotency_key=idempotency_key,
-            input_hash=input_hash,
-            effective_subject_id=context.user_id,
-            product_release_id=current_product,
-            permission_snapshot_id=current_permission,
-            semantic_release_id=current_semantic,
-        )
-        if not lease_ok:
-            if lease_error == "IDEMPOTENCY_EXISTS":
-                raced = await self._repo.get_command(conversation_id, idempotency_key)
-                if raced is not None:
-                    return await self._existing_command_result(
-                        conversation_id,
-                        raced,
-                        input_hash,
-                    )
-            return {"status": "CONFLICT", "code": lease_error, "message": f"동시성 충돌 또는 권한 오류 ({lease_error})"}
+        user_message = command.user_message
+        context = admission.context
+        command_id = admission.command_id
+        current_product = admission.product_release_id
+        current_permission = admission.permission_snapshot_id
+        current_semantic = admission.semantic_release_id
 
         previous_turns: list[dict[str, Any]] = []
         analysis_repo: Any = None

@@ -75,13 +75,9 @@ from app.api.analysis_router_support import (
 )
 from app.controllers.analysis_controller import AnalysisController
 from app.ports.agent import AgentKind, AgentRequest
-from app.services.agent_supervisor import DeterministicAgentSupervisor
 from app.services.analysis import AnalysisService, analysis_progress
 from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
-from app.services.conversation_agent_ports import (
-    AnalysisWorkflowAgentPort,
-    InternalGuidelineAgentPort,
-)
+from app.services.agent_supervisor import AgentDispatchError
 from app.services.conversation.analysis_request import build_replay_analysis_request
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryError
@@ -569,23 +565,18 @@ async def execute_conversation_command(
         command=payload,
         context=context,
     )
-    supervisor = DeterministicAgentSupervisor(
-        {
-            AgentKind.ANALYSIS_WORKFLOW: AnalysisWorkflowAgentPort(
-                orch,
-                execution_gate,
-            ),
-            AgentKind.INTERNAL_GUIDELINE: InternalGuidelineAgentPort(
-                orch,
-                internal_manual_query_service,
-            ),
-        }
-    )
-    decision = supervisor.decide(agent_request)
     try:
-        agent_result = await supervisor.execute(agent_request)
-    except TimeoutError:
-        if decision.agent is not AgentKind.ANALYSIS_WORKFLOW:
+        result = await orch.dispatch_agent_command(
+            agent_request,
+            execution_gate,
+            internal_manual_query_service,
+        )
+    except TimeoutError as error:
+        execution_state = getattr(error, "agent_execution_state", None)
+        if (
+            execution_state is None
+            or execution_state.selected_agent is not AgentKind.ANALYSIS_WORKFLOW
+        ):
             raise
         response = ErrorResponse(
             data=EmptyData(),
@@ -605,7 +596,13 @@ async def execute_conversation_command(
             status_code=error.status_code,
             detail=str(error),
         ) from error
-    return agent_result.payload
+    except AgentDispatchError as error:
+        raise ContextValidationError(
+            ErrorCode.CONTEXT_SOURCE_FAILED,
+            "요청을 처리할 승인된 Agent를 확정하지 못했습니다.",
+            503,
+        ) from error
+    return result
 
 
 router.include_router(analysis_support_router)

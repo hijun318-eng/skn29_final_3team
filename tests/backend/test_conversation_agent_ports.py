@@ -79,11 +79,23 @@ class _RagOrchestrator:
     def __init__(self, turn_id) -> None:
         self.turn_id = turn_id
 
-    async def list_turns(self, conversation_id):
-        return [{"turn_id": self.turn_id, "route": "INTERNAL_GUIDELINE"}]
-
-    async def get_conversation(self, conversation_id, user_id):
-        return {"conversation_id": conversation_id, "owner_id": user_id}
+    async def execute_internal_guideline_command(
+        self,
+        conversation_id,
+        payload,
+        context,
+        executor,
+    ):
+        rag_response = await executor(context)
+        return {
+            "status": "SUCCESS",
+            "turn": {"turn_id": self.turn_id, "route": "INTERNAL_GUIDELINE"},
+            "conversation": {
+                "conversation_id": conversation_id,
+                "owner_id": context.user_id,
+            },
+            "rag_response": rag_response,
+        }
 
 
 class _RagRepository:
@@ -130,6 +142,23 @@ class _RagExecutor:
 
 
 class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
+    async def test_analysis_port_forwards_pre_admission_without_reacquiring_it(self) -> None:
+        request = _agent_request("ANALYSIS")
+        admission = object()
+        orchestrator = _AnalysisOrchestrator(
+            {"status": "SUCCESS", "turn": {"route": "ANALYSIS"}}
+        )
+        port = AnalysisWorkflowAgentPort(
+            orchestrator,
+            ConcurrentExecutionGate(),
+            _ProgressTracker(),
+            admission=admission,
+        )
+
+        await port.execute(request)
+
+        self.assertIs(orchestrator.calls[0][1]["admission"], admission)
+
     async def test_analysis_port_preserves_result_and_progress_contract(self) -> None:
         request = _agent_request("ANALYSIS")
         orchestrator = _AnalysisOrchestrator(
@@ -172,7 +201,87 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.agent, AgentKind.INTERNAL_GUIDELINE)
         self.assertEqual(result.payload["data"]["type"], "INTERNAL_GUIDELINE")
         self.assertEqual(result.payload["data"]["turn"]["turn_id"], turn_id)
-        self.assertIsNotNone(repository.appended)
+        self.assertIsNone(repository.appended)
+
+    async def test_internal_guideline_port_forwards_pre_admission(self) -> None:
+        request = _agent_request("INTERNAL_GUIDELINE")
+        admission = object()
+        captured: dict = {}
+
+        class Orchestrator:
+            async def execute_internal_guideline_command(
+                self,
+                conversation_id,
+                payload,
+                context,
+                executor,
+                **kwargs,
+            ):
+                captured.update(kwargs)
+                return {
+                    "status": "SUCCESS",
+                    "turn": {"turn_id": uuid4(), "route": "INTERNAL_GUIDELINE"},
+                    "conversation": {"conversation_id": conversation_id},
+                    "rag_response": {"status": "ANSWER"},
+                }
+
+        port = InternalGuidelineAgentPort(
+            Orchestrator(),
+            lambda: None,
+            admission=admission,
+        )
+
+        await port.execute(request)
+
+        self.assertIs(captured["admission"], admission)
+
+    async def test_internal_guideline_port_preserves_admission_error_status(self) -> None:
+        """공통 admission의 권한 오류를 일반 409로 뭉개지 않는다."""
+
+        class RejectedOrchestrator:
+            async def execute_internal_guideline_command(self, *args):
+                return {
+                    "status": "CONFLICT",
+                    "code": "ACCESS_DENIED",
+                    "message": "Conversation 권한 snapshot이 변경되었습니다.",
+                }
+
+        port = InternalGuidelineAgentPort(
+            RejectedOrchestrator(),
+            lambda: None,
+        )
+
+        with self.assertRaises(InternalManualQueryError) as raised:
+            await port.execute(_agent_request("INTERNAL_GUIDELINE"))
+
+        self.assertEqual(raised.exception.code, "ACCESS_DENIED")
+        self.assertEqual(raised.exception.status_code, 403)
+
+    async def test_internal_guideline_replay_does_not_construct_gateway_service(self) -> None:
+        """저장된 terminal replay는 현재 RAG Gateway 구성에 의존하지 않는다."""
+
+        turn_id = uuid4()
+
+        class ReplayOrchestrator:
+            async def execute_internal_guideline_command(self, *args):
+                return {
+                    "status": "SUCCESS",
+                    "turn": {"turn_id": turn_id, "route": "INTERNAL_GUIDELINE"},
+                    "conversation": {"conversation_id": args[0]},
+                    "rag_response": {"status": "ANSWER"},
+                    "is_idempotent_replay": True,
+                }
+
+        def unavailable_factory():
+            raise AssertionError("terminal replay에서 Gateway service를 만들면 안 됩니다.")
+
+        port = InternalGuidelineAgentPort(
+            ReplayOrchestrator(),
+            unavailable_factory,
+        )
+        result = await port.execute(_agent_request("INTERNAL_GUIDELINE"))
+
+        self.assertEqual(result.payload["data"]["turn"]["turn_id"], turn_id)
 
     async def test_internal_manual_followup_uses_only_approved_snapshot(self) -> None:
         conversation_id = uuid4()
@@ -203,6 +312,7 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
             ("MANUAL-SAFETY",),
         )
         self.assertEqual(result["routing"]["context_source"], "APPROVED_RAG_SNAPSHOT")
+        self.assertIsNotNone(repository.appended)
 
     async def test_internal_manual_followup_without_snapshot_fails_closed(self) -> None:
         conversation_id = uuid4()

@@ -7,9 +7,11 @@ CAS(expected_head_turn_id) 검사, 동시성 Lease, Idempotency 보장,
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -24,6 +26,7 @@ if str(BACKEND) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.agent_contracts import AgentDecisionSource, AgentExecutionPhase
 from app.contracts import (
     AnalysisData,
     AnalysisRequest,
@@ -37,12 +40,19 @@ from app.contracts import (
     Role,
 )
 from app.authorization import permission_snapshot_id as compute_permission_snapshot_id
+from app.conversation_contracts import ConversationCommandRequest
+from app.ports.agent import AgentKind, AgentRequest
 from app.ports.data_platform import AssetCandidateSet, NoEntitledAssetsError
+from app.services.agent_supervisor import (
+    AgentDispatchError,
+    SupervisorDecision,
+)
 from app.services.conversation.orchestrator import (
     ConversationOrchestrator,
     _business_terms_for_turn,
     _safe_analysis_observation,
 )
+from app.services.execution_control import ConcurrentExecutionGate
 
 
 TEST_PRODUCT_RELEASE = "product-release:test"
@@ -1769,6 +1779,490 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res1["turn"]["turn_id"], res2["turn"]["turn_id"])
         # Analysis should only have executed once
         self.assertEqual(len(self.submitted_requests), 1)
+
+    async def test_agent_dispatch_admits_once_and_replays_analysis_result(self) -> None:
+        """공개 dispatch는 admission-bound Supervisor를 거치며 replay에서 Agent를 재실행하지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Agent 분석 dispatch",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="2025년 8월 객실 매출",
+                idempotency_key="agent-analysis-replay",
+                expected_head_turn_id=None,
+                requested_route="ANALYSIS",
+            ),
+            context=self.context,
+        )
+        unavailable_factory_calls = 0
+
+        def unavailable_rag_factory():
+            nonlocal unavailable_factory_calls
+            unavailable_factory_calls += 1
+            raise AssertionError("분석 route가 RAG service를 만들면 안 됩니다.")
+
+        first = await self.orchestrator.dispatch_agent_command(
+            request,
+            ConcurrentExecutionGate(),
+            unavailable_rag_factory,
+        )
+        replay = await self.orchestrator.dispatch_agent_command(
+            request,
+            ConcurrentExecutionGate(),
+            unavailable_rag_factory,
+        )
+
+        self.assertEqual(first["status"], "SUCCESS")
+        self.assertEqual(first["data"]["turn"]["route"], "ANALYSIS")
+        self.assertTrue(replay["data"]["is_idempotent_replay"])
+        self.assertEqual(
+            first["data"]["turn"]["turn_id"],
+            replay["data"]["turn"]["turn_id"],
+        )
+        self.assertEqual(len(self.submitted_requests), 1)
+        self.assertEqual(unavailable_factory_calls, 0)
+        self.assertIsNotNone(self.submitted_contexts[0].command_id)
+
+    async def test_agent_dispatch_replays_rag_without_rebuilding_gateway(self) -> None:
+        """명시 RAG도 같은 admission·Turn 계약을 쓰고 terminal replay는 Gateway와 분리된다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Agent RAG dispatch",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="시설 안전 절차를 알려줘",
+                idempotency_key="agent-rag-replay",
+                expected_head_turn_id=None,
+                requested_route="INTERNAL_GUIDELINE",
+            ),
+            context=self.context,
+        )
+        factory_calls = 0
+        execution_contexts: list[RequestContext] = []
+
+        class Service:
+            async def execute(
+                self,
+                query,
+                context: RequestContext,
+                *,
+                persist_turn: bool,
+            ) -> dict[str, Any]:
+                self.assert_query(query, persist_turn)
+                execution_contexts.append(context)
+                return {
+                    "status": "ANSWER",
+                    "routing": {
+                        "snapshot_question": "승인된 시설 안전 절차",
+                        "selected_document_ids": ["MANUAL-SAFETY"],
+                    },
+                }
+
+            @staticmethod
+            def assert_query(query, persist_turn: bool) -> None:
+                if persist_turn or query.mode != "DOCUMENT_ONLY":
+                    raise AssertionError("RAG Agent 실행 계약이 올바르지 않습니다.")
+
+        def service_factory() -> Service:
+            nonlocal factory_calls
+            factory_calls += 1
+            return Service()
+
+        first = await self.orchestrator.dispatch_agent_command(
+            request,
+            ConcurrentExecutionGate(),
+            service_factory,
+        )
+        replay = await self.orchestrator.dispatch_agent_command(
+            request,
+            ConcurrentExecutionGate(),
+            service_factory,
+        )
+
+        self.assertEqual(first["data"]["type"], "INTERNAL_GUIDELINE")
+        self.assertEqual(
+            first["data"]["turn"]["turn_id"],
+            replay["data"]["turn"]["turn_id"],
+        )
+        self.assertEqual(factory_calls, 1)
+        self.assertEqual(len(execution_contexts), 1)
+        self.assertIsNotNone(execution_contexts[0].command_id)
+
+    async def test_agent_route_failure_releases_lease_and_replays_terminal_error(self) -> None:
+        """admission 뒤 route 확정 실패도 RUNNING command를 남기지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Agent route 실패",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="승인된 범위에서 분석해줘",
+                idempotency_key="agent-route-failure",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+        resolver_calls = 0
+
+        class FailingResolver:
+            decision_sources = frozenset(
+                {AgentDecisionSource.GOVERNED_DEFAULT}
+            )
+
+            async def resolve(self, admitted_request: AgentRequest):
+                nonlocal resolver_calls
+                resolver_calls += 1
+                if admitted_request.context.command_id is None:
+                    raise AssertionError("route resolver 전에 admission이 필요합니다.")
+                raise AgentDispatchError(
+                    "AGENT_ROUTE_NOT_RESOLVED",
+                    "요청을 처리할 승인된 Agent를 확정하지 못했습니다.",
+                    evidence_refs=("capability-receipt:none",),
+                )
+
+        with self.assertRaises(AgentDispatchError):
+            await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                route_resolver=FailingResolver(),
+            )
+
+        command = self.repo.commands[
+            (conversation["conversation_id"], "agent-route-failure")
+        ]
+        self.assertEqual(command["status"], "FAILED")
+        self.assertEqual(
+            command["error_response"]["code"],
+            "AGENT_ROUTE_NOT_RESOLVED",
+        )
+        self.assertEqual(
+            command["error_response"]["evidence_refs"],
+            ["capability-receipt:none"],
+        )
+        self.assertIsNone(conversation["active_command_id"])
+
+        replay = await self.orchestrator.dispatch_agent_command(
+            request,
+            ConcurrentExecutionGate(),
+            lambda: None,
+            route_resolver=FailingResolver(),
+        )
+        self.assertEqual(replay["data"]["status"], "FAILED")
+        self.assertTrue(replay["data"]["is_idempotent_replay"])
+        self.assertEqual(resolver_calls, 1)
+
+    async def test_agent_route_renews_lease_before_port_execution(self) -> None:
+        """장시간 resolver 구간도 admitted command lease heartbeat로 보호한다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Agent route heartbeat",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="2025년 8월 객실 매출",
+                idempotency_key="agent-route-heartbeat",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+        renewal_observed = asyncio.Event()
+        renewals: list[tuple[UUID, UUID]] = []
+
+        async def renew_lease(conversation_id: UUID, command_id: UUID) -> bool:
+            renewals.append((conversation_id, command_id))
+            renewal_observed.set()
+            return True
+
+        self.repo.renew_lease = renew_lease
+
+        class WaitingResolver:
+            decision_sources = frozenset(
+                {AgentDecisionSource.GOVERNED_DEFAULT}
+            )
+
+            async def resolve(
+                self,
+                admitted_request: AgentRequest,
+            ) -> SupervisorDecision:
+                await asyncio.wait_for(renewal_observed.wait(), timeout=0.5)
+                return SupervisorDecision(
+                    agent=AgentKind.ANALYSIS_WORKFLOW,
+                    reason="GOVERNED_CONVERSATION_ROUTE",
+                    source=AgentDecisionSource.GOVERNED_DEFAULT,
+                )
+
+        result = await self.orchestrator.dispatch_agent_command(
+            request,
+            ConcurrentExecutionGate(),
+            lambda: None,
+            route_resolver=WaitingResolver(),
+        )
+
+        self.assertEqual(result["data"]["status"], "SUCCESS")
+        self.assertTrue(renewals)
+        self.assertEqual(renewals[0][0], conversation["conversation_id"])
+        self.assertEqual(
+            renewals[0][1],
+            self.repo.commands[
+                (conversation["conversation_id"], "agent-route-heartbeat")
+            ]["command_id"],
+        )
+
+    async def test_agent_route_timeout_releases_admitted_command(self) -> None:
+        """resolver 제한 시간 초과는 port 실행 없이 lease와 command를 종결한다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Agent route timeout",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="승인된 범위에서 분석해줘",
+                idempotency_key="agent-route-timeout",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+
+        class HangingResolver:
+            decision_sources = frozenset(
+                {AgentDecisionSource.GOVERNED_DEFAULT}
+            )
+
+            async def resolve(self, admitted_request: AgentRequest):
+                await asyncio.Event().wait()
+
+        with patch.dict(
+            os.environ,
+            {"CONVERSATION_AGENT_ROUTE_TIMEOUT_SECONDS": "0.01"},
+        ):
+            with self.assertRaises(AgentDispatchError) as raised:
+                await self.orchestrator.dispatch_agent_command(
+                    request,
+                    ConcurrentExecutionGate(),
+                    lambda: None,
+                    route_resolver=HangingResolver(),
+                )
+
+        command = self.repo.commands[
+            (conversation["conversation_id"], "agent-route-timeout")
+        ]
+        self.assertEqual(raised.exception.code, "AGENT_ROUTE_TIMEOUT")
+        self.assertEqual(
+            raised.exception.agent_execution_state.phase,
+            AgentExecutionPhase.FAILED,
+        )
+        self.assertEqual(command["status"], "FAILED")
+        self.assertEqual(command["error_response"]["code"], "AGENT_ROUTE_TIMEOUT")
+        self.assertIsNone(conversation["active_command_id"])
+        self.assertEqual(self.submitted_requests, [])
+
+    async def test_agent_route_lease_loss_blocks_port_execution(self) -> None:
+        """routing heartbeat가 소유권 상실을 감지하면 선택된 port도 실행하지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Agent route lease loss",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="2025년 8월 객실 매출",
+                idempotency_key="agent-route-lease-loss",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+        renewal_attempted = asyncio.Event()
+
+        async def lose_lease(conversation_id: UUID, command_id: UUID) -> bool:
+            renewal_attempted.set()
+            return False
+
+        self.repo.renew_lease = lose_lease
+
+        class WaitingResolver:
+            decision_sources = frozenset(
+                {AgentDecisionSource.GOVERNED_DEFAULT}
+            )
+
+            async def resolve(
+                self,
+                admitted_request: AgentRequest,
+            ) -> SupervisorDecision:
+                await asyncio.wait_for(renewal_attempted.wait(), timeout=0.5)
+                await asyncio.sleep(0)
+                return SupervisorDecision(
+                    agent=AgentKind.ANALYSIS_WORKFLOW,
+                    reason="GOVERNED_CONVERSATION_ROUTE",
+                    source=AgentDecisionSource.GOVERNED_DEFAULT,
+                )
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                route_resolver=WaitingResolver(),
+            )
+
+        self.assertEqual(raised.exception.code, "AGENT_ROUTE_LEASE_LOST")
+        self.assertEqual(self.submitted_requests, [])
+        command = self.repo.commands[
+            (conversation["conversation_id"], "agent-route-lease-loss")
+        ]
+        self.assertEqual(command["status"], "FAILED")
+        self.assertIsNone(conversation["active_command_id"])
+
+    async def test_internal_guideline_uses_shared_command_admission_and_replay(self) -> None:
+        """RAG Agent도 turn_commands terminal 결과를 재생하고 Gateway를 중복 호출하지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "내부지침 멱등성",
+        )
+        conversation_id = conversation["conversation_id"]
+        calls: list[RequestContext] = []
+
+        async def execute_rag(context: RequestContext) -> dict[str, Any]:
+            calls.append(context)
+            return {
+                "status": "ANSWER",
+                "turn_id": "untrusted-gateway-turn",
+                "routing": {
+                    "snapshot_question": "승인된 시설 안전 절차",
+                    "selected_document_ids": ["MANUAL-SAFETY"],
+                },
+            }
+
+        payload = {
+            "user_message": "시설 안전 절차를 알려줘",
+            "idempotency_key": "rag-command-replay",
+            "expected_head_turn_id": None,
+            "requested_route": "INTERNAL_GUIDELINE",
+        }
+        first = await self.orchestrator.execute_internal_guideline_command(
+            conversation_id,
+            payload,
+            self.context,
+            execute_rag,
+        )
+        replay = await self.orchestrator.execute_internal_guideline_command(
+            conversation_id,
+            payload,
+            self.context,
+            execute_rag,
+        )
+
+        self.assertEqual(first["status"], "SUCCESS")
+        self.assertEqual(first["turn"]["route"], "INTERNAL_GUIDELINE")
+        self.assertEqual(first["turn"]["resolved_slots"]["rag"]["status"], "ANSWER")
+        self.assertNotIn("turn_id", first["turn"]["resolved_slots"]["rag"])
+        self.assertEqual(first["rag_response"]["turn_id"], str(first["turn"]["turn_id"]))
+        self.assertTrue(replay["is_idempotent_replay"])
+        self.assertEqual(first["turn"]["turn_id"], replay["turn"]["turn_id"])
+        self.assertEqual(first["rag_response"], replay["rag_response"])
+        self.assertEqual(len(calls), 1)
+        self.assertIsNotNone(calls[0].command_id)
+        command = self.repo.commands[(conversation_id, "rag-command-replay")]
+        self.assertEqual(command["status"], "COMPLETED")
+
+    async def test_internal_guideline_rejects_changed_idempotency_payload(self) -> None:
+        """같은 RAG key에 질문이 달라지면 저장 결과를 재생하지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "내부지침 hash",
+        )
+        conversation_id = conversation["conversation_id"]
+        calls = 0
+
+        async def execute_rag(context: RequestContext) -> dict[str, Any]:
+            nonlocal calls
+            calls += 1
+            return {"status": "ANSWER", "routing": {"snapshot_question": "안전"}}
+
+        base = {
+            "user_message": "안전 절차를 알려줘",
+            "idempotency_key": "rag-command-hash",
+            "expected_head_turn_id": None,
+            "requested_route": "INTERNAL_GUIDELINE",
+        }
+        await self.orchestrator.execute_internal_guideline_command(
+            conversation_id,
+            base,
+            self.context,
+            execute_rag,
+        )
+        conflict = await self.orchestrator.execute_internal_guideline_command(
+            conversation_id,
+            {**base, "user_message": "시설 점검 절차를 알려줘"},
+            self.context,
+            execute_rag,
+        )
+
+        self.assertEqual(conflict["status"], "CONFLICT")
+        self.assertEqual(conflict["code"], ErrorCode.IDEMPOTENCY_CONFLICT.value)
+        self.assertEqual(calls, 1)
+
+    async def test_internal_guideline_failure_is_terminal_and_replayed(self) -> None:
+        """RAG 실행 실패도 lease를 해제하고 같은 key에서 실패를 결정론적으로 재생한다."""
+
+        class RagUnavailable(RuntimeError):
+            code = "RAG_FEATURE_DISABLED"
+            status_code = 503
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "내부지침 실패",
+        )
+        conversation_id = conversation["conversation_id"]
+        calls = 0
+
+        async def execute_rag(context: RequestContext) -> dict[str, Any]:
+            nonlocal calls
+            calls += 1
+            raise RagUnavailable("내부지침 검색 기능이 비활성화되었습니다.")
+
+        payload = {
+            "user_message": "안전 절차를 알려줘",
+            "idempotency_key": "rag-command-failure",
+            "expected_head_turn_id": None,
+            "requested_route": "INTERNAL_GUIDELINE",
+        }
+        with self.assertRaises(RagUnavailable):
+            await self.orchestrator.execute_internal_guideline_command(
+                conversation_id,
+                payload,
+                self.context,
+                execute_rag,
+            )
+        replay = await self.orchestrator.execute_internal_guideline_command(
+            conversation_id,
+            payload,
+            self.context,
+            execute_rag,
+        )
+
+        command = self.repo.commands[(conversation_id, "rag-command-failure")]
+        self.assertEqual(command["status"], "FAILED")
+        self.assertEqual(command["error_response"]["code"], "RAG_FEATURE_DISABLED")
+        self.assertIsNone(self.repo.conversations[conversation_id]["active_command_id"])
+        self.assertEqual(replay["status"], "FAILED")
+        self.assertEqual(replay["_http_status_code"], 503)
+        self.assertEqual(calls, 1)
 
     async def test_command_requires_explicit_idempotency_key_and_head_field(self) -> None:
         """첫 턴도 key와 명시적 null CAS가 없으면 admission 전에 거부한다."""

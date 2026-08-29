@@ -159,8 +159,10 @@ class InternalManualQueryService:
         self,
         query: InternalManualQuery,
         context: RequestContext,
+        *,
+        persist_turn: bool = True,
     ) -> dict[str, Any]:
-        """승인된 문서 문맥만 사용해 RAG 결과와 선택적 Conversation Turn을 반환한다."""
+        """승인 문맥으로 RAG를 실행하고 요청된 경우에만 legacy Turn을 저장한다."""
 
         if not has_capability(context.role, Capability.RUN_ANALYSIS):
             raise InternalManualQueryError(
@@ -232,6 +234,7 @@ class InternalManualQueryService:
             ) from error
 
         result = dict(result)
+        result.pop("turn_id", None)
         result["route"] = "DOCUMENT_ONLY"
         existing_routing = (
             result.get("routing") if isinstance(result.get("routing"), dict) else {}
@@ -250,7 +253,7 @@ class InternalManualQueryService:
             ),
         }
 
-        if query.conversation_id is not None:
+        if query.conversation_id is not None and persist_turn:
             try:
                 turn_id = await self._repository.append_rag_turn(
                     query.conversation_id,

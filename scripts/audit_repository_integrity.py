@@ -130,6 +130,18 @@ ALLOWED_RUNTIME_JSON = {
     "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/selection_trials.json": (
         "synthetic ML candidate training selection evidence"
     ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/feature_contract.json": (
+        "frozen synthetic HGBR optimization candidate feature contract"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/model_manifest.json": (
+        "checksum-bound non-production HGBR optimization candidate manifest"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/release_checksums.json": (
+        "validated non-production HGBR optimization candidate checksums"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/selection.json": (
+        "synthetic HGBR optimization candidate selection evidence"
+    ),
     "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json": (
         "sealed backend deployment retrieval Gate contract"
     ),

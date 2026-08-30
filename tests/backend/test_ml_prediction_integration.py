@@ -19,6 +19,7 @@ if str(BACKEND) not in sys.path:
 
 from app.api.ml_router import RoomDemandRequest, _require_ml_access
 from app.contracts import RequestContext, Role
+from src.ml.room_demand_timeseries.contracts import FEATURE_COLUMNS
 from src.ml.room_demand_timeseries.runtime_api import (
     runtime_estimator_types,
     validate_hgbr_runtime,
@@ -32,6 +33,13 @@ ARTIFACT_DIR = (
     / "ml"
     / "artifacts"
     / "room-demand-timeseries-hgbr-v2.2.0"
+)
+CANDIDATE_DIR = (
+    ROOT
+    / "src"
+    / "ml"
+    / "artifacts"
+    / "room-demand-hgbr-optimization-v3.3.0"
 )
 
 
@@ -65,6 +73,79 @@ def test_ml_release_is_the_integrated_hgbr_runtime() -> None:
     )
 
 
+def test_hgbr_v33_candidate_release_files_match_declared_checksums() -> None:
+    """선택 반영한 v3.3 후보의 증거 파일은 원본 바이트와 일치해야 한다."""
+
+    checksums = json.loads(
+        (CANDIDATE_DIR / "release_checksums.json").read_text(encoding="utf-8")
+    )
+    for entry in checksums["files"]:
+        candidate_path = CANDIDATE_DIR / entry["path"]
+
+        assert candidate_path.is_file(), entry["path"]
+        assert candidate_path.stat().st_size == entry["bytes"]
+        assert hashlib.sha256(candidate_path.read_bytes()).hexdigest() == entry["sha256"]
+
+
+def test_hgbr_v33_candidate_matches_features_but_is_not_a_serving_release() -> None:
+    """v3.3은 입력 계약을 공유하지만 승인·Runtime 변환 전에는 활성화하지 않는다."""
+
+    manifest = json.loads(
+        (CANDIDATE_DIR / "model_manifest.json").read_text(encoding="utf-8")
+    )
+    selection = json.loads(
+        (CANDIDATE_DIR / "selection.json").read_text(encoding="utf-8")
+    )
+    feature_contract = json.loads(
+        (CANDIDATE_DIR / "feature_contract.json").read_text(encoding="utf-8")
+    )
+    package = joblib.load(CANDIDATE_DIR / manifest["artifact_file"])
+
+    assert feature_contract["feature_columns_ordered"] == FEATURE_COLUMNS
+    assert package["feature_columns"] == FEATURE_COLUMNS
+    assert package["target_mode"] == manifest["target_mode"] == "occupancy_rate"
+    assert type(package["model"]).__name__ == "HistGradientBoostingRegressor"
+    assert package["model"].n_features_in_ == len(FEATURE_COLUMNS)
+    assert set(package["category_maps"]) == {"property_id", "room_type_code"}
+    assert manifest["artifact_sha256"] == hashlib.sha256(
+        (CANDIDATE_DIR / manifest["artifact_file"]).read_bytes()
+    ).hexdigest()
+
+    assert selection["selected_operational_family"] == "hgbr"
+    assert selection["observed_accuracy_winner"] == "xgboost"
+    assert selection["production_approved"] is False
+    assert manifest["runtime_integrated"] is False
+    assert manifest["production_approved"] is False
+    assert not (CANDIDATE_DIR / "model.approval.json").exists()
+    assert not hasattr(package, "predict_raw")
+    assert not hasattr(package, "predict")
+
+    runtime_sklearn = next(
+        line
+        for line in (ROOT / "src" / "ml" / "room_demand_v3" / "requirements.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.startswith("scikit-learn==")
+    )
+    candidate_sklearn = next(
+        line
+        for line in (
+            ROOT
+            / "src"
+            / "ml"
+            / "room_demand_timeseries"
+            / "requirements.hgbr-v3.3.txt"
+        )
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.startswith("scikit-learn==")
+    )
+    assert candidate_sklearn == (
+        f"scikit-learn=={manifest['training_runtime_versions']['scikit_learn']}"
+    )
+    assert runtime_sklearn != candidate_sklearn
+
+
 def test_ml_runtime_rejects_a_non_hgbr_manifest() -> None:
     model = joblib.load(ARTIFACT_DIR / "model.joblib")
 
@@ -77,6 +158,8 @@ def test_ml_runtime_has_an_explicit_profile_without_joining_full_by_default() ->
 
     assert "profiles: [ml, ml-candidate]" in compose
     assert "profiles: [ml, ml-candidate, full]" not in compose
+    assert "room-demand-timeseries-hgbr-v2.2.0" in compose
+    assert "room-demand-hgbr-optimization-v3.3.0" not in compose
 
 
 def test_ml_history_preflight_uses_the_contract_table_and_requires_a_row() -> None:

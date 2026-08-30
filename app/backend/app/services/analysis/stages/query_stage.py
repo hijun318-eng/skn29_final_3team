@@ -256,7 +256,14 @@ class AnalysisQueryStage:
         if state.execution_sink is not None:
             # 외부 query가 정상 종료된 시점의 실행 근거다. G3가 Artifact 생성을
             # 차단하더라도 0행·검증 실패 사실 자체는 terminal run에 남아야 한다.
-            state.execution_sink({"plan": plan, "query": query, "package": package})
+            state.execution_sink(
+                {
+                    "plan": plan,
+                    "query": query,
+                    "package": package,
+                    "semantic_candidate_receipt": state.semantic_candidate_receipt,
+                }
+            )
         g3_violation = self._support.g3_violation(query, plan, package)
         if g3_violation:
             if g3_violation == "EMPTY_RESULT":

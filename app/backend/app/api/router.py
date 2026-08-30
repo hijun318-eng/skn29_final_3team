@@ -79,9 +79,16 @@ from app.controllers.analysis_controller import AnalysisController
 from app.ports.agent import AgentKind, AgentRequest
 from app.ports.data_platform import MetadataUnavailableError
 from app.services.analysis import AnalysisService, analysis_progress
+from app.services.analysis.release_receipt import (
+    ActiveReleaseUnavailable,
+    active_product_release_receipt,
+)
 from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
 from app.services.agent_supervisor import AgentDispatchError
-from app.services.conversation.analysis_request import build_replay_analysis_request
+from app.services.conversation.analysis_request import (
+    approved_snapshot_from_definition,
+    build_replay_analysis_request,
+)
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
@@ -110,21 +117,14 @@ execution_gate = ConcurrentExecutionGate()
 async def _active_product_release_receipt() -> tuple[str, str]:
     """Read one executable active product/semantic release pair fail-closed."""
 
-    platform = _controller().data_platform
-    semantic_before = await platform.get_active_context_release()
-    stages, product_release = await platform.get_catalog_readiness()
-    semantic_after = await platform.get_active_context_release()
-    if (
-        semantic_before != semantic_after
-        or not product_release
-        or any(value != "ready" for value in stages.values())
-    ):
+    try:
+        return await active_product_release_receipt(_controller().data_platform)
+    except ActiveReleaseUnavailable as error:
         raise ContextValidationError(
             ErrorCode.DEPENDENCY_UNAVAILABLE,
             "활성 product release receipt를 원자적으로 확정하지 못했습니다.",
             503,
-        )
-    return product_release, semantic_after
+        ) from error
 
 
 @router.get(
@@ -430,23 +430,32 @@ async def replay_analysis_definition(
     definition = await _repository_call(
         lambda: repository.get_definition(definition_id, replay=True)
     )
-    saved_release = str(
-        (definition.get("semantic_request") or {}).get("context_release") or ""
-    )
+    try:
+        snapshot = approved_snapshot_from_definition(definition)
+    except ValueError as error:
+        raise ContextValidationError(
+            ErrorCode.SCHEMA_VERSION_MISMATCH,
+            "이 legacy Analysis Definition에는 재실행 가능한 승인 Semantic Request가 없습니다.",
+            409,
+        ) from error
+    saved_release = snapshot.release_receipt.context_release
     product_release, active_release = await _active_product_release_receipt()
-    if saved_release != active_release:
+    if (
+        saved_release != active_release
+        or snapshot.release_receipt.product_release_id != product_release
+    ):
         raise ContextValidationError(
             ErrorCode.SCHEMA_VERSION_MISMATCH,
             "저장된 Analysis Definition의 context release가 현재 활성 release와 다릅니다.",
             409,
         )
-    unknown_parameters = set(payload.parameters) - set(definition["parameters"])
-    if unknown_parameters:
+    if payload.parameters:
         raise HTTPException(
             status_code=422,
-            detail=f"정의되지 않은 Analysis parameter: {', '.join(sorted(unknown_parameters))}",
+            detail="승인된 Semantic Request parameter는 재실행 시 변경할 수 없습니다.",
         )
-    parameters = {**definition["parameters"], **payload.parameters}
+    parameters = snapshot.parameters
+    replay_request = build_replay_analysis_request(definition, parameters)
     replay_context = context.model_copy(
         update={
             "product_release_id": product_release,
@@ -456,13 +465,15 @@ async def replay_analysis_definition(
             ),
             "semantic_release_id": active_release,
             "require_fresh_query": True,
+            "as_of": snapshot.execution_as_of,
+            "timezone": snapshot.timezone,
         }
     )
     request_id, created = await _repository_call(
         lambda: repository.begin_run(
             definition,
             replay_context,
-            context.as_of,
+            snapshot.execution_as_of,
             payload.idempotency_key,
             parameters,
         )
@@ -489,7 +500,7 @@ async def replay_analysis_definition(
 
     try:
         response = await _controller().submit(
-            build_replay_analysis_request(definition, parameters),
+            replay_request,
             replay_context,
             execution.update,
             context_receipt_sink=_persist_context_receipt,
@@ -507,7 +518,21 @@ async def replay_analysis_definition(
         raise
     finally:
         execution_gate.release()
-    await _repository_call(lambda: repository.finish_run(request_id, response, execution))
+    try:
+        await _repository_call(
+            lambda: repository.finish_run(request_id, response, execution)
+        )
+    except HTTPException as error:
+        try:
+            await repository.fail_run(request_id, "PERSISTENCE")
+        except Exception:
+            pass
+        if error.status_code == 503:
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="승인 Semantic Request 재실행 결과를 저장하지 못했습니다.",
+        ) from error
     return await _repository_call(lambda: repository.get_run(request_id))
 
 

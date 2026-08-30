@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID, uuid4
-from zoneinfo import ZoneInfo
 
 from app.adapters.analysis_repository import (
     AnalysisRepositoryUnavailable,
@@ -28,7 +27,11 @@ from app.contracts import (
     RequestContext,
 )
 from app.controllers.analysis_controller import AnalysisController
-from app.services.conversation.analysis_request import build_replay_analysis_request
+from app.services.analysis.release_receipt import active_product_release_receipt
+from app.services.conversation.analysis_request import (
+    approved_snapshot_from_definition,
+    build_replay_analysis_request,
+)
 from src.report.domain import BlockFailureCode, BlockRunStatus, ReportRun, RunStatus
 
 _PUBLIC_FAILURES = {
@@ -145,6 +148,23 @@ class AnalysisDefinitionReplay:
             definition = await repository.get_definition_for_report(
                 definition_id, definition_version
             )
+            snapshot = approved_snapshot_from_definition(definition)
+            if (
+                product_release_id != snapshot.release_receipt.product_release_id
+                or semantic_release_id != snapshot.release_receipt.semantic_release_id
+            ):
+                raise ValueError("Report replay release differs from Semantic snapshot")
+            active_product_release, active_semantic_release = (
+                await active_product_release_receipt(self._controller.data_platform)
+            )
+            if (
+                active_product_release != snapshot.release_receipt.product_release_id
+                or active_semantic_release
+                != snapshot.release_receipt.semantic_release_id
+            ):
+                raise ValueError(
+                    "Report replay snapshot is outside the active release"
+                )
         except AuthenticationError:
             return _failure(
                 BlockFailureCode.ACCESS_DENIED,
@@ -160,20 +180,22 @@ class AnalysisDefinitionReplay:
                 BlockFailureCode.REPLAY_UNAVAILABLE,
                 "The analysis repository is temporarily unavailable.",
             )
+        except ValueError:
+            return _failure(
+                BlockFailureCode.REPLAY_UNAVAILABLE,
+                "The saved analysis has no valid approved Semantic Request snapshot.",
+            )
 
-        parameters = {
-            key: value
-            for key, value in definition["parameters"].items()
-            if key not in {"period_start", "period_end_exclusive"}
-        }
-        report_date = as_of.astimezone(ZoneInfo("Asia/Seoul")).date()
+        parameters = snapshot.parameters
+        report_date = snapshot.execution_as_of
         context = RequestContext(
             request_id=uuid4(),
             trace_id=uuid4().hex,
+            require_fresh_query=True,
             user_id=owner_id,
             role=owner.role,
             as_of=report_date,
-            timezone="Asia/Seoul",
+            timezone=snapshot.timezone,
             product_release_id=product_release_id,
             permission_snapshot_id=permission_snapshot_id,
             semantic_release_id=semantic_release_id,
@@ -234,7 +256,18 @@ class AnalysisDefinitionReplay:
             finally:
                 self._execution_gate.release()
 
-            await repository.finish_run(request_id, response, execution)
+            try:
+                await repository.finish_run(request_id, response, execution)
+            except (AnalysisRepositoryUnavailable, ValueError):
+                try:
+                    await repository.fail_run(request_id, "PERSISTENCE")
+                except Exception:
+                    pass
+                return _failure(
+                    BlockFailureCode.ARTIFACT_PERSIST_FAILED,
+                    "The replay result could not be persisted.",
+                    request_id=request_id,
+                )
             if response.data.status in {AnalysisStatus.SUCCEEDED, AnalysisStatus.PARTIAL}:
                 artifact = await repository.get_run_artifact(request_id)
                 failure = response.error

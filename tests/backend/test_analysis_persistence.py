@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 from datetime import date, datetime, timezone
 from functools import wraps
@@ -31,9 +32,17 @@ from app.contracts import AnalysisRequest, ErrorCode, RequestContext  # noqa: E4
 from app.controllers.analysis_controller import AnalysisController  # noqa: E402
 from app.services.analysis import AnalysisService  # noqa: E402
 from app.services.routing_service import RoutingService  # noqa: E402
+from app.services.analysis.semantic_request import (  # noqa: E402
+    parse_approved_semantic_request_snapshot,
+)
 from tests.support.analysis_runtime_fixture import (  # noqa: E402
+    AnalysisRuntimeMetadata,
     AnalysisRuntimeDataPlatformFake,
     MetadataDrivenAnalysisModel,
+    default_analysis_runtime_metadata,
+)
+from tests.support.semantic_snapshot_fixture import (  # noqa: E402
+    approved_semantic_snapshot_fixture,
 )
 
 
@@ -98,6 +107,9 @@ class FakeAnalysisRepository:
                 "context_release": "fixture-context-v1",
             },
             "parameter_schema": {"scenario": "string"},
+            "approved_semantic_snapshot": (
+                approved_semantic_snapshot_fixture().model_dump(mode="json")
+            ),
             "created_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
         }
         self.question = "합성 객실 운영 현황을 알려줘"
@@ -202,6 +214,34 @@ def context(owner_id: UUID | None = None) -> RequestContext:
     )
 
 
+def replay_controller(
+    model: MetadataDrivenAnalysisModel | None = None,
+) -> AnalysisController:
+    """compiler-only replay가 가능한 단일 serving view runtime fixture를 만든다."""
+
+    current = default_analysis_runtime_metadata()
+    assets = copy.deepcopy(current.assets)
+    asset = assets[0]
+    asset["fqn"] = "serving.semantic.measure_events"
+    asset["query_policy"]["allowed_catalogs"] = ["serving"]
+    asset["metrics"][0]["asset_fqn"] = asset["fqn"]
+    asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+    asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = asset["fqn"]
+    metadata = AnalysisRuntimeMetadata(
+        assets=tuple(assets),
+        schemas=copy.deepcopy(current.schemas),
+        metric_terms=copy.deepcopy(current.metric_terms),
+        result_rows=copy.deepcopy(current.result_rows),
+    )
+    return AnalysisController(
+        AnalysisService(
+            AnalysisRuntimeDataPlatformFake(metadata),
+            model or MetadataDrivenAnalysisModel(),
+        ),
+        RoutingService(),
+    )
+
+
 def test_definition_request_accepts_only_title_and_source_request_id():
     base = {"title": "객실 운영", "source_request_id": str(uuid4())}
     for field in ("definition_id", "owner_id", "status", "question", "parameters", "result"):
@@ -217,7 +257,10 @@ async def test_definition_routes_are_owner_scoped_repository_calls_without_value
         title="객실 운영",
         source_request_id=uuid4(),
     )
-    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+    with (
+        patch.object(analysis_api, "_analysis_repository", return_value=repository),
+        patch.object(analysis_api, "_controller", return_value=replay_controller()),
+    ):
         created = await analysis_api.create_analysis_definition(request, context(owner))
         listed = (await analysis_api.list_analysis_definitions(context(owner)))["items"]
         fetched = await analysis_api.get_analysis_definition(
@@ -299,9 +342,11 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     first_context = context(owner)
     payload = ReplayAnalysisRequest(
         idempotency_key="run-1",
-        parameters={"scenario": "success_changed"},
     )
-    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+    with (
+        patch.object(analysis_api, "_analysis_repository", return_value=repository),
+        patch.object(analysis_api, "_controller", return_value=replay_controller()),
+    ):
         first = await analysis_api.replay_analysis_definition(
             repository.definition_id, payload, first_context
         )
@@ -311,11 +356,19 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
 
     assert first == second
     assert first["request_id"] == first_context.request_id
-    assert first["status"] == "SUCCEEDED"
+    assert first["status"] == "SUCCEEDED", repository.finished[0].error
     assert first["as_of"] == first_context.as_of
     assert first["artifact_id"]
-    assert repository.parameters == {"scenario": "success_changed"}
-    assert set(repository.finished[1]) == {"plan", "query", "package"}
+    assert repository.parameters == {
+        "window_start": "2026-08-01",
+        "window_end": "2026-08-02",
+    }
+    assert set(repository.finished[1]) == {
+        "plan",
+        "query",
+        "package",
+        "semantic_candidate_receipt",
+    }
     assert repository.finished[0].data.result.evidence.cached is False
     assert repository.run_context is not None
     assert repository.run_context.product_release_id == "fixture-product-release"
@@ -324,6 +377,60 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert repository.run_context.require_fresh_query is True
     assert len(repository.context_receipts) == 1
     assert repository.context_receipts[0][0].request_id == first_context.request_id
+    package_bindings = {
+        item.name: item.value
+        for item in repository.finished[1]["package"].parameter_bindings
+    }
+    assert package_bindings == {
+        "window_start": "2026-08-01",
+        "window_end": "2026-08-02",
+        "record_state_filter": "included",
+    }
+    assert ":record_state_filter" in repository.finished[1]["plan"]["sql"]
+    assert "record_state" in repository.finished[1]["plan"]["sql"]
+    assert "included" in repository.finished[1]["plan"]["executable_sql"]
+
+    class SnapshotReceiptResult:
+        def mappings(self):
+            return self
+
+        def one(self):
+            return {
+                "product_release_id": repository.run_context.product_release_id,
+                "permission_snapshot_id": (
+                    repository.run_context.permission_snapshot_id
+                ),
+                "semantic_release_id": repository.run_context.semantic_release_id,
+            }
+
+    class SnapshotCaptureSession:
+        snapshot_parameters = None
+
+        async def execute(self, statement, parameters):
+            if "SELECT product_release_id" in str(statement):
+                return SnapshotReceiptResult()
+            self.snapshot_parameters = parameters
+            return None
+
+    capture_session = SnapshotCaptureSession()
+    response, execution = repository.finished
+    await PostgresAnalysisRepository._save_semantic_request_snapshot(
+        capture_session,
+        first_context.request_id,
+        uuid4(),
+        uuid4(),
+        owner,
+        response.data.result.evidence,
+        execution,
+    )
+    saved_snapshot = parse_approved_semantic_request_snapshot(
+        json.loads(capture_session.snapshot_parameters["snapshot"])
+    )
+    assert saved_snapshot.parameters == {
+        "window_start": "2026-08-01",
+        "window_end": "2026-08-02",
+    }
+    assert "record_state_filter" not in saved_snapshot.parameters
     assert "result" not in first
     assert "sql" not in first
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
@@ -343,35 +450,17 @@ async def test_replay_uses_saved_resolved_slots_for_context_dependent_question()
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
     repository.question = "4월은?"
-    repository.parameters = {
-        "period_start": "2026-04-01",
-        "period_end_exclusive": "2026-05-01",
-    }
-    repository.definition["semantic_request"] = {
-        "context_release": "fixture-context-v1",
-        "resolved_slots": {
-            "metric_id": "reviewed_measure",
-            "metric_ids": ["reviewed_measure"],
-            "dimension_fields": [],
-            "user_filters": [],
-            "time_range": {
-                "start": "2026-04-01",
-                "end_exclusive": "2026-05-01",
-            },
-            "comparison_time_range": None,
-            "analysis_operation": "aggregate",
-            "analysis_time_bucket": None,
-            "result_limit": None,
-        },
-    }
+    repository.definition["approved_semantic_snapshot"] = (
+        approved_semantic_snapshot_fixture(
+            period_start="2026-05-01",
+            period_end="2026-06-01",
+        ).model_dump(mode="json")
+    )
     model = MetadataDrivenAnalysisModel()
     model.normalize_question = AsyncMock(
         side_effect=AssertionError("saved replay must not reinterpret an elliptical question")
     )
-    controller = AnalysisController(
-        AnalysisService(AnalysisRuntimeDataPlatformFake(), model),
-        RoutingService(),
-    )
+    controller = replay_controller(model)
 
     with (
         patch.object(analysis_api, "_analysis_repository", return_value=repository),
@@ -381,15 +470,11 @@ async def test_replay_uses_saved_resolved_slots_for_context_dependent_question()
             repository.definition_id,
             ReplayAnalysisRequest(
                 idempotency_key="saved-resolved-slots",
-                parameters={
-                    "period_start": "2026-05-01",
-                    "period_end_exclusive": "2026-06-01",
-                },
             ),
             context(owner),
         )
 
-    assert replayed["status"] == "SUCCEEDED"
+    assert replayed["status"] == "SUCCEEDED", repository.finished[0].error
     assert model.normalize_question.await_count == 0
     assert repository.finished[0].data.result.evidence.metrics[0].metric_id == "reviewed_measure"
     assert repository.finished[0].data.result.evidence.period.start.isoformat() == "2026-05-01"
@@ -397,18 +482,108 @@ async def test_replay_uses_saved_resolved_slots_for_context_dependent_question()
         repository.finished[0].data.result.evidence.period.end_exclusive.isoformat()
         == "2026-06-01"
     )
+    assert repository.run_context is not None
+    assert repository.run_context.require_fresh_query is True
+
+
+@async_test
+async def test_replay_snapshot_persistence_failure_closes_run_terminally():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    with (
+        patch.object(analysis_api, "_analysis_repository", return_value=repository),
+        patch.object(analysis_api, "_controller", return_value=replay_controller()),
+        patch.object(
+            repository,
+            "finish_run",
+            side_effect=ValueError("snapshot validation failed"),
+        ),
+        pytest.raises(HTTPException) as caught,
+    ):
+        await analysis_api.replay_analysis_definition(
+            repository.definition_id,
+            ReplayAnalysisRequest(idempotency_key="snapshot-persistence-failed"),
+            context(owner),
+        )
+
+    assert caught.value.status_code == 503
+    assert repository.finished == "PERSISTENCE"
+
+
+def test_definition_public_projection_hides_snapshot_receipts_values_and_lineage():
+    snapshot = approved_semantic_snapshot_fixture()
+    row = {
+        "definition_id": uuid4(),
+        "version": 1,
+        "title": "승인 분석",
+        "question_text_redacted": "승인 분석 질문",
+        "parameters": snapshot.parameters,
+        "semantic_request": snapshot.model_dump(mode="json"),
+        "parameter_schema": {
+            item.name: item.value_type for item in snapshot.parameter_bindings
+        },
+        "created_at": datetime(2026, 8, 31, tzinfo=timezone.utc),
+        "semantic_snapshot_id": snapshot.snapshot_id,
+        "approved_semantic_snapshot": snapshot.model_dump(mode="json"),
+        "approved_snapshot_hash": snapshot.snapshot_hash,
+    }
+
+    public = PostgresAnalysisRepository._definition(row)
+    internal = PostgresAnalysisRepository._definition(row, replay=True)
+
+    assert public["semantic_request"] == {
+        "schema_version": "ANALYSIS-SEMANTIC-SUMMARY-v1",
+        "output_metric_ids": ["reviewed_measure"],
+        "operation": "aggregate",
+        "time_mode": "range",
+        "time_bucket": "none",
+        "dimension_count": 0,
+        "filter_count": 0,
+        "comparison": False,
+    }
+    public_text = json.dumps(public, default=str)
+    for secret in (
+        str(snapshot.lineage.source_request_id),
+        snapshot.release_receipt.permission_snapshot_id,
+        snapshot.release_receipt.catalog_checksum,
+        "serving.semantic.measure_events",
+        "2026-08-01",
+    ):
+        assert secret not in public_text
+    assert internal["approved_semantic_snapshot"] == snapshot.model_dump(mode="json")
+
+
+@async_test
+async def test_replay_legacy_definition_without_snapshot_is_blocked_before_run():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    repository.definition.pop("approved_semantic_snapshot")
+
+    with (
+        patch.object(analysis_api, "_analysis_repository", return_value=repository),
+        pytest.raises(ContextValidationError) as caught,
+    ):
+        await analysis_api.replay_analysis_definition(
+            repository.definition_id,
+            ReplayAnalysisRequest(idempotency_key="legacy-no-snapshot"),
+            context(owner),
+        )
+
+    assert caught.value.status_code == 409
+    assert repository.request_id is None
 
 
 @async_test
 async def test_replay_blocks_saved_definition_from_a_different_context_release():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
-    repository.definition["semantic_request"]["context_release"] = (
-        "walkerhill-v4-schema-2.0.0-catalog-2.0.0"
+    repository.definition["approved_semantic_snapshot"] = (
+        approved_semantic_snapshot_fixture(
+            semantic_release_id="walkerhill-v4-schema-2.0.0-catalog-2.0.0"
+        ).model_dump(mode="json")
     )
     payload = ReplayAnalysisRequest(
         idempotency_key="release-mismatch",
-        parameters={"scenario": "success"},
     )
 
     with (
@@ -506,7 +681,12 @@ async def test_direct_analysis_persists_request_query_and_artifact_when_database
     assert len(repository.context_receipts) == 1
     assert repository.context_receipts[0][0].request_id == request_context.request_id
     assert repository.finished[0] is response
-    assert set(repository.finished[1]) == {"plan", "query", "package"}
+    assert set(repository.finished[1]) == {
+        "plan",
+        "query",
+        "package",
+        "semantic_candidate_receipt",
+    }
 
 
 @async_test

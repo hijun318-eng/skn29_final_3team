@@ -16,6 +16,9 @@ from app.adapters.analysis_repository_common import (
     _parameter_types,
     _uuid,
 )
+from app.services.analysis.semantic_request import (
+    parse_approved_semantic_request_snapshot,
+)
 
 
 class AnalysisDefinitionRepositoryMixin:
@@ -26,16 +29,42 @@ class AnalysisDefinitionRepositoryMixin:
     """
 
     @staticmethod
+    def _public_semantic_summary(value: dict[str, Any]) -> dict[str, Any]:
+        """내부 snapshot에서 사용자에게 필요한 비민감 분석 형태만 투영한다."""
+
+        try:
+            plan = parse_approved_semantic_request_snapshot(value).analysis_plan
+        except (ValueError, TypeError):
+            return {
+                "schema_version": "ANALYSIS-SEMANTIC-SUMMARY-v1",
+                "output_metric_ids": [],
+                "operation": None,
+                "time_mode": None,
+                "time_bucket": None,
+                "dimension_count": 0,
+                "filter_count": 0,
+                "comparison": False,
+            }
+        operation = str(plan["operation"])
+        return {
+            "schema_version": "ANALYSIS-SEMANTIC-SUMMARY-v1",
+            "output_metric_ids": [str(item) for item in plan["output_metric_ids"]],
+            "operation": operation,
+            "time_mode": str(plan["time_mode"]),
+            "time_bucket": plan["time_bucket"],
+            "dimension_count": len(plan["dimension_fields"]),
+            "filter_count": len(plan["filter_fields"]),
+            "comparison": operation == "period_comparison",
+        }
+
+    @staticmethod
     def _definition(
         row,
         *,
         replay: bool = False,
-        resolved_slots: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         parameters = dict(row["parameters"])
         semantic_request = dict(row["semantic_request"])
-        if resolved_slots and not semantic_request.get("resolved_slots"):
-            semantic_request["resolved_slots"] = dict(resolved_slots)
         definition = {
             "contract_version": ANALYSIS_PERSISTENCE_VERSION,
             "definition_id": row["definition_id"],
@@ -44,38 +73,28 @@ class AnalysisDefinitionRepositoryMixin:
             "title": row["title"],
             "question": row["question_text_redacted"],
             "parameter_types": _parameter_types(parameters),
-            "semantic_request": semantic_request,
+            "semantic_request": AnalysisDefinitionRepositoryMixin._public_semantic_summary(
+                semantic_request
+            ),
             "parameter_schema": dict(row["parameter_schema"]),
             "created_at": row["created_at"],
         }
         if replay:
-            definition.update(question=row["question_text_redacted"], parameters=parameters)
-        return definition
-
-    @staticmethod
-    async def _resolved_slots_for_source(
-        session,
-        source_request_id: str | UUID,
-    ) -> dict[str, Any]:
-        """성공한 대화 분석 Turn의 확정 슬롯을 저장 정의용 불변 snapshot으로 읽는다."""
-
-        value = (
-            await session.execute(
-                text(
-                    """
-                    SELECT resolved_slots
-                    FROM chat.turns
-                    WHERE request_id = :request_id
-                      AND route = 'ANALYSIS'
-                      AND artifact_id IS NOT NULL
-                    ORDER BY created_at DESC, turn_id DESC
-                    LIMIT 1
-                    """
-                ),
-                {"request_id": _uuid(source_request_id, "source_request_id")},
+            snapshot = parse_approved_semantic_request_snapshot(
+                row.get("approved_semantic_snapshot")
             )
-        ).scalar_one_or_none()
-        return dict(value) if isinstance(value, dict) else {}
+            if (
+                row.get("semantic_snapshot_id") != snapshot.snapshot_id
+                or row.get("approved_snapshot_hash") != snapshot.snapshot_hash
+                or semantic_request != snapshot.model_dump(mode="json")
+            ):
+                raise ValueError("Analysis Definition의 Semantic snapshot 결속이 일치하지 않습니다.")
+            definition.update(
+                question=row["question_text_redacted"],
+                parameters=parameters,
+                approved_semantic_snapshot=snapshot.model_dump(mode="json"),
+            )
+        return definition
 
     async def create_definition_from_run(self, source_request_id: str | UUID, title: str) -> dict[str, Any]:
         """실행 입력의 소유권과 필드를 검증해 정의 산출물을 생성한다."""
@@ -85,13 +104,23 @@ class AnalysisDefinitionRepositoryMixin:
                 source = (await session.execute(
                     text(
                         """
-                        SELECT d.question_text_redacted, a.evidence_json
+                        SELECT d.question_text_redacted,
+                               s.snapshot_id, s.snapshot_json, s.snapshot_hash,
+                               q.query_execution_id, a.artifact_id
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id AND d.version = l.definition_version
                         JOIN chat.analysis_requests r ON r.request_id = l.request_id
                         JOIN artifact.analysis_artifacts a ON a.request_id = r.request_id
                          AND a.status = 'APPROVED'
+                        JOIN analysis_v1.approved_semantic_request_snapshots s
+                          ON s.source_request_id = l.request_id
+                         AND s.owner_id = d.owner_id
+                         AND s.artifact_id = a.artifact_id
+                        JOIN query.query_executions q
+                          ON q.query_execution_id = s.query_execution_id
+                         AND q.request_id = r.request_id
+                         AND a.query_execution_id = q.query_execution_id
                         WHERE l.request_id = :request_id AND d.owner_id = :owner_id
                           AND r.status IN ('SUCCEEDED', 'PARTIAL')
                         LIMIT 1
@@ -101,44 +130,37 @@ class AnalysisDefinitionRepositoryMixin:
                 )).mappings().one_or_none()
                 if source is None:
                     raise ValueError("성공하거나 허용된 부분 성공 Analysis Artifact만 저장할 수 있습니다.")
-                resolved_slots = await self._resolved_slots_for_source(
-                    session,
-                    source_request_id,
+                approved_snapshot = parse_approved_semantic_request_snapshot(
+                    source["snapshot_json"]
                 )
-                evidence = dict(source["evidence_json"])
-                period = dict(evidence.get("period") or {})
-                snapshot = dict(evidence.get("snapshot") or {})
-                if period and snapshot:
-                    raise ValueError("분석 실행의 시간 증거가 하나의 mode로 확정되지 않았습니다.")
-                parameters = {
-                    "period_start": period.get("start"),
-                    "period_end_exclusive": period.get("end_exclusive"),
+                if (
+                    approved_snapshot.snapshot_id != source["snapshot_id"]
+                    or approved_snapshot.snapshot_hash != source["snapshot_hash"]
+                    or approved_snapshot.lineage.source_request_id
+                    != _uuid(source_request_id, "source_request_id")
+                    or approved_snapshot.lineage.query_execution_id
+                    != source["query_execution_id"]
+                    or approved_snapshot.lineage.artifact_id != source["artifact_id"]
+                ):
+                    raise ValueError("승인 Semantic Request lineage가 원본 run과 일치하지 않습니다.")
+                parameters = approved_snapshot.parameters
+                semantic_request = approved_snapshot.model_dump(mode="json")
+                parameter_schema = {
+                    item.name: item.value_type
+                    for item in approved_snapshot.parameter_bindings
                 }
-                parameters = {key: value for key, value in parameters.items() if value is not None}
-                semantic_request = {
-                    "question": source["question_text_redacted"],
-                    "metric_ids": [item.get("metric_id") for item in evidence.get("metrics", [])],
-                    "filters": evidence.get("filters", {}),
-                    "period": period,
-                    "context_release": evidence.get("context_release"),
-                    "policy_version": evidence.get("policy_version"),
-                    "source_request_id": str(source_request_id),
-                }
-                if snapshot:
-                    semantic_request["snapshot"] = snapshot
-                if resolved_slots:
-                    semantic_request["resolved_slots"] = resolved_slots
-                parameter_schema = {key: "date" for key in parameters}
                 row = (await session.execute(
                     text(
                         """
                         INSERT INTO analysis_v1.analysis_definitions
                             (definition_id, version, owner_id, title,
                              question_text_redacted, parameters_json, parameter_hash,
-                             semantic_request_json, parameter_schema_json, is_saved)
+                             semantic_request_json, parameter_schema_json,
+                             semantic_snapshot_id, is_saved)
                         VALUES (:definition_id, 1, :owner_id, :title,
                                 :question, CAST(:parameters AS jsonb), :parameter_hash,
-                                CAST(:semantic_request AS jsonb), CAST(:parameter_schema AS jsonb), true)
+                                CAST(:semantic_request AS jsonb), CAST(:parameter_schema AS jsonb),
+                                :semantic_snapshot_id, true)
                         RETURNING definition_id, version, title, question_text_redacted,
                                   parameters_json AS parameters,
                                   semantic_request_json AS semantic_request,
@@ -154,6 +176,7 @@ class AnalysisDefinitionRepositoryMixin:
                         "parameter_hash": _hash(parameters),
                         "semantic_request": json.dumps(semantic_request, ensure_ascii=False),
                         "parameter_schema": json.dumps(parameter_schema, ensure_ascii=False),
+                        "semantic_snapshot_id": approved_snapshot.snapshot_id,
                     },
                 )).mappings().one()
         except SQLAlchemyError as error:
@@ -169,7 +192,6 @@ class AnalysisDefinitionRepositoryMixin:
         ``ValueError``, 존재하지 않거나 다른 소유자의 정의는 동일한 ``KeyError``, DB
         장애는 :class:`AnalysisRepositoryUnavailable`로 구분한다.
         """
-        resolved_slots: dict[str, Any] = {}
         try:
             async with self._sessionmaker() as session:
                 row = (await session.execute(
@@ -177,12 +199,17 @@ class AnalysisDefinitionRepositoryMixin:
                         """
                         SELECT definition_id, version, title, question_text_redacted,
                                parameters_json AS parameters,
-                               semantic_request_json AS semantic_request,
-                               parameter_schema_json AS parameter_schema, created_at
-                        FROM analysis_v1.analysis_definitions
-                        WHERE definition_id = :definition_id
-                          AND owner_id = :owner_id
-                          AND is_saved
+                               d.semantic_request_json AS semantic_request,
+                               d.parameter_schema_json AS parameter_schema, d.created_at,
+                               d.semantic_snapshot_id,
+                               s.snapshot_json AS approved_semantic_snapshot,
+                               s.snapshot_hash AS approved_snapshot_hash
+                        FROM analysis_v1.analysis_definitions d
+                        LEFT JOIN analysis_v1.approved_semantic_request_snapshots s
+                          ON s.snapshot_id = d.semantic_snapshot_id AND s.owner_id = d.owner_id
+                        WHERE d.definition_id = :definition_id
+                          AND d.owner_id = :owner_id
+                          AND d.is_saved
                         ORDER BY version DESC LIMIT 1
                         """
                     ),
@@ -191,19 +218,11 @@ class AnalysisDefinitionRepositoryMixin:
                         "owner_id": self._owner_id,
                     },
                 )).mappings().one_or_none()
-                if row is not None:
-                    semantic_request = dict(row["semantic_request"])
-                    source_request_id = semantic_request.get("source_request_id")
-                    if source_request_id and not semantic_request.get("resolved_slots"):
-                        resolved_slots = await self._resolved_slots_for_source(
-                            session,
-                            source_request_id,
-                        )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
         if row is None:
             raise KeyError("Analysis Definition을 찾을 수 없습니다.")
-        return self._definition(row, replay=replay, resolved_slots=resolved_slots)
+        return self._definition(row, replay=replay)
 
     async def get_definition_for_report(
         self,
@@ -214,7 +233,6 @@ class AnalysisDefinitionRepositoryMixin:
 
         Load the exact immutable Analysis version captured by a Report block.
         """
-        resolved_slots: dict[str, Any] = {}
         try:
             async with self._sessionmaker() as session:
                 row = (await session.execute(
@@ -222,13 +240,18 @@ class AnalysisDefinitionRepositoryMixin:
                         """
                         SELECT definition_id, version, title, question_text_redacted,
                                parameters_json AS parameters,
-                               semantic_request_json AS semantic_request,
-                               parameter_schema_json AS parameter_schema, created_at
-                        FROM analysis_v1.analysis_definitions
-                        WHERE definition_id = :definition_id
-                          AND version = :version
-                          AND owner_id = :owner_id
-                          AND status = 'approved'
+                               d.semantic_request_json AS semantic_request,
+                               d.parameter_schema_json AS parameter_schema, d.created_at,
+                               d.semantic_snapshot_id,
+                               s.snapshot_json AS approved_semantic_snapshot,
+                               s.snapshot_hash AS approved_snapshot_hash
+                        FROM analysis_v1.analysis_definitions d
+                        LEFT JOIN analysis_v1.approved_semantic_request_snapshots s
+                          ON s.snapshot_id = d.semantic_snapshot_id AND s.owner_id = d.owner_id
+                        WHERE d.definition_id = :definition_id
+                          AND d.version = :version
+                          AND d.owner_id = :owner_id
+                          AND d.status = 'approved'
                         """
                     ),
                     {
@@ -237,19 +260,11 @@ class AnalysisDefinitionRepositoryMixin:
                         "owner_id": self._owner_id,
                     },
                 )).mappings().one_or_none()
-                if row is not None:
-                    semantic_request = dict(row["semantic_request"])
-                    source_request_id = semantic_request.get("source_request_id")
-                    if source_request_id and not semantic_request.get("resolved_slots"):
-                        resolved_slots = await self._resolved_slots_for_source(
-                            session,
-                            source_request_id,
-                        )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis repository is unavailable.") from error
         if row is None:
             raise KeyError("Analysis Definition not found")
-        return self._definition(row, replay=True, resolved_slots=resolved_slots)
+        return self._definition(row, replay=True)
 
     async def list_definitions(self) -> list[dict[str, Any]]:
         """현재 owner가 명시적으로 저장한 분석 definition만 최신 생성 순서로 반환한다."""

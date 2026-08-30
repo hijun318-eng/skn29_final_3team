@@ -20,6 +20,10 @@ from app.services.analysis.sql_generation_mode import (
     SqlGenerationEvidenceMode,
     plan_generation_evidence_mode,
 )
+from app.services.analysis.semantic_request import (
+    create_approved_semantic_request_snapshot,
+    semantic_plan_parameter_names,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -57,8 +61,8 @@ class AnalysisEvidenceRepositoryMixin:
         try:
             async with self._sessionmaker.begin() as session:
                 await self.finish_run_in_session(session, request_id, response, execution)
-        except SQLAlchemyError as error:
-            logger.error("finish_run DB error: %s", error, exc_info=True)
+        except (SQLAlchemyError, ValueError) as error:
+            logger.error("finish_run persistence error: %s", error, exc_info=True)
             raise AnalysisRepositoryUnavailable("Analysis 실행 결과를 저장할 수 없습니다.") from error
 
     async def finish_run_in_session(
@@ -129,6 +133,16 @@ class AnalysisEvidenceRepositoryMixin:
             query_execution_id, artifact_id = await self._save_evidence(
                 session, request_id, response, execution
             )
+            if artifact_id is not None and execution.get("semantic_candidate_receipt"):
+                await self._save_semantic_request_snapshot(
+                    session,
+                    request_id,
+                    query_execution_id,
+                    artifact_id,
+                    self._owner_id,
+                    terminal_evidence,
+                    execution,
+                )
         else:
             query_execution_id, artifact_id = None, None
         await self._save_audit(
@@ -137,6 +151,100 @@ class AnalysisEvidenceRepositoryMixin:
             response,
             query_execution_id,
             artifact_id,
+        )
+
+    @staticmethod
+    async def _save_semantic_request_snapshot(
+        session: AsyncSession,
+        request_id: UUID,
+        query_execution_id: UUID,
+        artifact_id: UUID,
+        owner_id: UUID,
+        terminal_evidence: object,
+        execution: dict[str, Any],
+    ) -> None:
+        """성공 query의 최종 plan·binding·release·lineage를 독립 불변 row로 저장한다."""
+
+        plan = execution.get("plan")
+        package = execution.get("package")
+        candidate = execution.get("semantic_candidate_receipt")
+        if (
+            not isinstance(plan, dict)
+            or not isinstance(plan.get("analysis_plan"), dict)
+            or package is None
+            or not isinstance(candidate, dict)
+        ):
+            raise ValueError("Approved Semantic Request 생성 근거가 불완전합니다.")
+        receipt = (
+            await session.execute(
+                text(
+                    "SELECT product_release_id, permission_snapshot_id, semantic_release_id "
+                    "FROM chat.analysis_requests WHERE request_id = :request_id"
+                ),
+                {"request_id": request_id},
+            )
+        ).mappings().one()
+        dimension_member_receipts = tuple(
+            getattr(package, "dimension_member_receipts", ())
+        )
+        analysis_plan = plan["analysis_plan"]
+        semantic_parameter_names = semantic_plan_parameter_names(analysis_plan)
+        parameter_bindings = tuple(
+            item
+            for item in getattr(package, "parameter_bindings", ())
+            if getattr(item, "name", None) in semantic_parameter_names
+        )
+        snapshot = create_approved_semantic_request_snapshot(
+            source_request_id=request_id,
+            query_execution_id=query_execution_id,
+            artifact_id=artifact_id,
+            execution_as_of=getattr(terminal_evidence, "as_of"),
+            analysis_plan=analysis_plan,
+            parameter_bindings=parameter_bindings,
+            dimension_member_receipts=dimension_member_receipts,
+            release_receipt={
+                "product_release_id": receipt["product_release_id"],
+                "permission_snapshot_id": receipt["permission_snapshot_id"],
+                "semantic_release_id": receipt["semantic_release_id"],
+                "context_release": getattr(package, "context_release", None),
+                "policy_version": getattr(package, "policy_version", None),
+                "catalog_checksum": candidate.get("catalog_checksum"),
+                "canonical_checksum": candidate.get("canonical_checksum"),
+                "runtime_projection_checksum": candidate.get(
+                    "runtime_projection_checksum"
+                ),
+            },
+        )
+        payload = snapshot.model_dump(mode="json")
+        await session.execute(
+            text(
+                """
+                INSERT INTO analysis_v1.approved_semantic_request_snapshots (
+                    snapshot_id, source_request_id, owner_id, query_execution_id,
+                    artifact_id, schema_version, snapshot_json, snapshot_hash,
+                    product_release_id, permission_snapshot_id, semantic_release_id
+                ) VALUES (
+                    :snapshot_id, :source_request_id, :owner_id, :query_execution_id,
+                    :artifact_id, :schema_version, CAST(:snapshot AS jsonb), :snapshot_hash,
+                    :product_release_id, :permission_snapshot_id, :semantic_release_id
+                )
+                """
+            ),
+            {
+                "snapshot_id": snapshot.snapshot_id,
+                "source_request_id": request_id,
+                "owner_id": owner_id,
+                "query_execution_id": query_execution_id,
+                "artifact_id": artifact_id,
+                "schema_version": snapshot.schema_version,
+                "snapshot": json.dumps(payload, ensure_ascii=False),
+                "snapshot_hash": snapshot.snapshot_hash,
+                "product_release_id": snapshot.release_receipt.product_release_id,
+                "permission_snapshot_id": (
+                    snapshot.release_receipt.permission_snapshot_id
+                ),
+                "semantic_release_id": snapshot.release_receipt.semantic_release_id,
+            },
         )
 
     async def fail_run(self, request_id: UUID, error_type: str = "RECOVERY") -> None:

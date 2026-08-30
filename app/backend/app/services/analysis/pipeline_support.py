@@ -30,6 +30,7 @@ from app.services.context.service import PipelineContextService
 from app.services.context.metric_resolver import MetricResolver
 from app.services.analysis.result_validator import PipelineResultValidator
 from app.services.analysis.logical_plan import AnalysisPlan, build_analysis_plan
+from app.services.analysis.semantic_request import ApprovedSemanticRequestSnapshot
 from app.services.analysis.typed_sql_compiler import compile_typed_sql
 from app.services.sql_guard.guard import apply_guard_decision, validate_plan
 
@@ -158,6 +159,58 @@ class PipelineSupport:
             {
                 **context.model_dump(mode="json"),
                 "parameters": payload.parameters,
+            },
+        )
+        return select_assets_for_metrics(
+            resolved,
+            set(selection.execution_metric_ids),
+            None,
+        )
+
+    async def resolve_snapshot_execution_assets(
+        self,
+        payload: object,
+        context: RequestContext,
+        snapshot: ApprovedSemanticRequestSnapshot,
+    ) -> list[dict[str, object]]:
+        """원문 검색 없이 승인 plan의 ID·필드를 같은 release와 현재 권한에 재결속한다."""
+
+        plan = snapshot.analysis_plan
+        field_references: set[GovernedFieldReference] = set()
+        # 신규 실행과 같은 QueryGovernance selection 계약을 유지한다. time field는
+        # business dimension이 아니며, 선택 Metric의 governed time 계약과 아래
+        # current Context에서 AnalysisPlan을 재빌드할 때 별도로 검증된다.
+        for key in ("dimension_fields", "filter_fields"):
+            for item in plan[key]:
+                field_references.add(
+                    GovernedFieldReference(
+                        asset_fqn=str(item["asset_fqn"]),
+                        column=str(item["column"]),
+                    )
+                )
+        receipt = snapshot.release_receipt
+        try:
+            selection = ExecutionAssetSelection(
+                output_metric_ids=tuple(plan["output_metric_ids"]),
+                execution_metric_ids=tuple(plan["dependency_metric_ids"]),
+                field_references=tuple(sorted(field_references)),
+                receipt_context_release=receipt.context_release,
+                receipt_catalog_checksum=receipt.catalog_checksum,
+                receipt_canonical_checksum=receipt.canonical_checksum,
+                receipt_product_release_id=receipt.product_release_id,
+                receipt_runtime_projection_checksum=(
+                    receipt.runtime_projection_checksum
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise UnsupportedSemanticError(
+                "승인 Semantic Request의 실행 자산 계약이 유효하지 않습니다."
+            ) from error
+        resolved = await self._adapter.resolve_execution_assets(
+            selection,
+            {
+                **context.model_dump(mode="json"),
+                "parameters": dict(getattr(payload, "parameters", {})),
             },
         )
         return select_assets_for_metrics(

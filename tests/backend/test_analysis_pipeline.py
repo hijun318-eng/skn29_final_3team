@@ -500,7 +500,10 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(1, adapter.execute_count)
         self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
-        self.assertEqual({"plan", "query", "package"}, set(execution))
+        self.assertEqual(
+            {"plan", "query", "package", "semantic_candidate_receipt"},
+            set(execution),
+        )
         self.assertTrue(progress)
         self.assertEqual(1, len(admissions))
         self.assertNotIn(PipelineStage.CONTEXT, admissions[0][0])
@@ -599,7 +602,10 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             response.data.evidence.filters,
         )
         self.assertEqual(ASSET_URN, response.data.evidence.sources[0].urn)
-        self.assertEqual({"plan", "query", "package"}, set(execution))
+        self.assertEqual(
+            {"plan", "query", "package", "semantic_candidate_receipt"},
+            set(execution),
+        )
         self.assertEqual([], execution["query"]["rows"])
         self.assertNotIn("node3", [node for node, _ in model.calls])
 

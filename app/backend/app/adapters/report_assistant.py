@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from time import perf_counter
 from typing import Any
 
@@ -25,6 +26,28 @@ from src.modelops.runtime_config import (
 
 
 logger = logging.getLogger("uvicorn.error")
+
+
+_KOREAN_TEXT_PATTERN = re.compile(r"[가-힣]")
+_PATCH_OPERATION_LABELS = {
+    "set_report_title": "보고서 제목 변경",
+    "set_report_orientation": "용지 방향 변경",
+    "set_currency_display_unit": "금액 단위 변경",
+    "compact_report_layout": "보고서 여백 정돈",
+    "add_report_page": "보고서 페이지 추가",
+    "update_block_title": "블록 제목 수정",
+    "resize_block": "블록 크기 조정",
+    "update_chart_settings": "차트 표시 방식 변경",
+    "update_table_settings": "표 표시 방식 변경",
+    "set_block_size_mode": "블록 크기 방식 변경",
+    "add_text": "텍스트 블록 추가",
+    "update_text": "텍스트 내용 수정",
+    "add_artifact_view": "분석 결과 보기 추가",
+    "reposition_block": "블록 위치 조정",
+    "remove_block": "블록 삭제",
+    "duplicate_block": "블록 복제",
+    "restore_previous_revision": "이전 보고서 버전 복구",
+}
 
 
 class ReportAssistantModelError(RuntimeError):
@@ -204,6 +227,26 @@ def report_patch_model_payload(patch: ReportAssistantPatch) -> dict[str, object]
             item["width"] = placement.get("width")
         operations.append(item)
     return {"summary": patch.summary, "operations": operations}
+
+
+def _user_facing_patch_summary(
+    raw_summary: object,
+    operations: list[dict[str, object]],
+) -> str:
+    """영문 모델 요약을 내부 operation 기반의 짧은 한국어 설명으로 대체한다."""
+
+    summary = str(raw_summary or "").strip()
+    if _KOREAN_TEXT_PATTERN.search(summary):
+        return summary
+    labels = list(dict.fromkeys(
+        _PATCH_OPERATION_LABELS.get(str(operation.get("op")), "보고서 구성 변경")
+        for operation in operations
+    ))
+    if not labels:
+        return "보고서 변경안"
+    if len(labels) == 1:
+        return labels[0]
+    return " · ".join(labels[:3])
 
 
 def _normalize_wire_text_operation(
@@ -472,7 +515,12 @@ async def generate_report_change_proposal(
                 )
                 failure_stage = "typed_patch"
                 patch = ReportAssistantPatch.model_validate(
-                    {"summary": raw_patch["summary"], "operations": operations}
+                    {
+                        "summary": _user_facing_patch_summary(
+                            raw_patch["summary"], operations
+                        ),
+                        "operations": operations,
+                    }
                 )
                 failure_stage = "target_type_validation"
                 _validate_patch_target_types(payload, patch)

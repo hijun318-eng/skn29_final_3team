@@ -887,6 +887,50 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, transport.await_count)
         self.assertEqual(1, trace["attempts"])
 
+    async def test_english_patch_summary_gets_operation_based_korean_label(self):
+        """모델이 영문 변경 요약을 반환해도 사용자 검토 화면에는 한국어를 보낸다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["summary"] = (
+            "Add a concise three-sentence summary below the selected artifact block."
+        )
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "add_text",
+            "title": "핵심 요약",
+            "content": "승인된 근거를 세 문장으로 요약했습니다.",
+            "after_block_id": "block-one",
+            "width": "full",
+            "evidence_refs": ["artifact_narrative"],
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        with (
+            patch(
+                "app.adapters.report_assistant.resolve_active_model_routes",
+                return_value=object(),
+            ),
+            patch(
+                "app.adapters.report_assistant.active_route_for_node",
+                return_value=route,
+            ),
+            patch(
+                "app.adapters.report_assistant.openai_transport",
+                new=AsyncMock(return_value=response),
+            ),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual("텍스트 블록 추가", proposal["patch"]["summary"])
+
     async def test_editor_setting_wire_operation_becomes_typed_patch(self):
         """GPT의 strict 차트 설정은 임의 settings 객체 없이 typed 서버 patch로 변환된다."""
 

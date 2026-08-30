@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import base64
 import json
 import unittest
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.mcp_router import (
     HEADER_MISMATCH,
@@ -266,6 +269,21 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         )
         return response.status_code, json.loads(response.body)
 
+    async def _call_tool(
+        self,
+        arguments: object,
+    ) -> tuple[int, dict[str, object]]:
+        """표준 metadata와 mirrored header를 포함한 Tool 호출을 만든다."""
+
+        return await self._post(
+            _request_payload(
+                method="tools/call",
+                extra_params={"name": TOOL_NAME, "arguments": arguments},
+            ),
+            method_header="tools/call",
+            name_header=TOOL_NAME,
+        )
+
     async def test_discovery_is_stateless_and_self_describing(self) -> None:
         status, body = await self._post(_request_payload())
 
@@ -353,10 +371,16 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
     async def test_registry_mismatch_hides_tool_from_list_and_call(self) -> None:
         """전체 registry receipt가 다르면 목록과 직접 호출을 모두 fail-closed 한다."""
 
-        with patch(
-            "app.api.mcp_router._authorized_tool",
-            AsyncMock(return_value=False),
-        ) as authorized:
+        with (
+            patch(
+                "app.api.mcp_router._authorized_tool",
+                AsyncMock(return_value=False),
+            ) as authorized,
+            patch(
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(False, False)),
+            ) as tool_access,
+        ):
             status, listed = await self._post(
                 _request_payload(method="tools/list"),
                 method_header="tools/list",
@@ -378,7 +402,128 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], listed["result"]["tools"])
         self.assertEqual(200, call_status)
         self.assertEqual(-32602, called["error"]["code"])
-        self.assertEqual(2, authorized.await_count)
+        self.assertEqual(1, authorized.await_count)
+        self.assertEqual(1, tool_access.await_count)
+
+    async def test_registry_failure_uses_json_rpc_server_error(self) -> None:
+        """Registry 장애가 FastAPI detail 응답으로 wire 계약을 이탈하지 않는다."""
+
+        @asynccontextmanager
+        async def unavailable_session(*_args, **_kwargs):
+            raise SQLAlchemyError("registry unavailable")
+            yield
+
+        with (
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.session_scope",
+                side_effect=unavailable_session,
+            ),
+        ):
+            status, body = await self._post(
+                _request_payload(method="tools/list"),
+                method_header="tools/list",
+            )
+
+        self.assertEqual(503, status)
+        self.assertEqual(-32603, body["error"]["code"])
+        self.assertEqual(
+            "MCP_REGISTRY_UNAVAILABLE",
+            body["error"]["data"]["code"],
+        )
+
+    async def test_storage_configuration_failure_uses_json_rpc_server_error(self) -> None:
+        """Tool 저장소 설정 장애도 같은 MCP server error envelope를 사용한다."""
+
+        with (
+            patch(
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(True, True)),
+            ),
+            patch.dict("os.environ", {"APP_RUNTIME_DATABASE_URL": ""}),
+        ):
+            status, body = await self._call_tool({"request_id": str(uuid4())})
+
+        self.assertEqual(503, status)
+        self.assertEqual(-32603, body["error"]["code"])
+        self.assertEqual(
+            "MCP_STORAGE_UNAVAILABLE",
+            body["error"]["data"]["code"],
+        )
+
+    async def test_known_tool_permission_denial_is_audited(self) -> None:
+        """숨겨진 Tool 존재는 노출하지 않되 known-tool 권한 거부는 감사한다."""
+
+        with (
+            patch(
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(True, False)),
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": str(uuid4())})
+
+        self.assertEqual(200, status)
+        self.assertEqual(-32602, body["error"]["code"])
+        self.assertEqual("DENIED", record_run.await_args.args[3])
+        self.assertEqual("ACCESS_DENIED", record_run.await_args.args[6])
+
+    async def test_invalid_tool_arguments_are_audited(self) -> None:
+        """활성·허용 Tool의 schema 오류를 실행 실패 감사로 남긴다."""
+
+        with (
+            patch(
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(True, True)),
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": "not-a-uuid"})
+
+        self.assertEqual(200, status)
+        self.assertTrue(body["result"]["isError"])
+        self.assertEqual("FAILED", record_run.await_args.args[3])
+        self.assertEqual("INVALID_ARGUMENT", record_run.await_args.args[6])
+
+    async def test_audit_failure_uses_json_rpc_server_error(self) -> None:
+        """감사 저장 실패 시 Tool 오류를 성공처럼 반환하지 않는다."""
+
+        @asynccontextmanager
+        async def unavailable_session(*_args, **_kwargs):
+            raise SQLAlchemyError("audit unavailable")
+            yield
+
+        with (
+            patch(
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(True, True)),
+            ),
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.session_scope",
+                side_effect=unavailable_session,
+            ),
+        ):
+            status, body = await self._call_tool({"request_id": "not-a-uuid"})
+
+        self.assertEqual(503, status)
+        self.assertEqual(-32603, body["error"]["code"])
+        self.assertEqual(
+            "MCP_AUDIT_UNAVAILABLE",
+            body["error"]["data"]["code"],
+        )
 
     async def test_tool_call_applies_registry_timeout_and_audits_failure(self) -> None:
         """registry의 timeout을 실제 조회에 적용하고 값을 꾸미지 않고 실패한다."""
@@ -389,17 +534,10 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             raise TimeoutError
 
         request_id = str(uuid4())
-        payload = _request_payload(
-            method="tools/call",
-            extra_params={
-                "name": TOOL_NAME,
-                "arguments": {"request_id": request_id},
-            },
-        )
         with (
             patch(
-                "app.api.mcp_router._authorized_tool",
-                AsyncMock(return_value=True),
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(True, True)),
             ),
             patch(
                 "app.api.mcp_router._database_url",
@@ -418,17 +556,69 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(),
             ) as record_run,
         ):
-            status, body = await self._post(
-                payload,
-                method_header="tools/call",
-                name_header=TOOL_NAME,
-            )
+            status, body = await self._call_tool({"request_id": request_id})
 
         self.assertEqual(200, status)
         self.assertTrue(body["result"]["isError"])
         self.assertNotIn("structuredContent", body["result"])
         self.assertEqual("FAILED", record_run.await_args.args[3])
         self.assertEqual("TOOL_TIMEOUT", record_run.await_args.args[6])
+
+    async def test_unexpected_tool_failure_is_audited_without_leaking_details(self) -> None:
+        """예상 밖 실행 예외도 감사하고 내부 오류 문자열은 응답에서 제거한다."""
+
+        request_id = str(uuid4())
+        with (
+            patch(
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(True, True)),
+            ),
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.PostgresAnalysisRepository.get_run",
+                AsyncMock(side_effect=SQLAlchemyError("secret-dsn")),
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": request_id})
+
+        self.assertEqual(200, status)
+        self.assertTrue(body["result"]["isError"])
+        self.assertNotIn("secret-dsn", json.dumps(body))
+        self.assertEqual("FAILED", record_run.await_args.args[3])
+        self.assertEqual("TOOL_EXECUTION_FAILED", record_run.await_args.args[6])
+
+    async def test_tool_cancellation_is_not_converted_to_a_failure(self) -> None:
+        """요청 취소는 일반 실행 실패로 소비하거나 감사하지 않고 상위로 전파한다."""
+
+        with (
+            patch(
+                "app.api.mcp_router._tool_access",
+                AsyncMock(return_value=(True, True)),
+            ),
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.PostgresAnalysisRepository.get_run",
+                AsyncMock(side_effect=asyncio.CancelledError),
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await self._call_tool({"request_id": str(uuid4())})
+
+        record_run.assert_not_awaited()
 
 
 if __name__ == "__main__":

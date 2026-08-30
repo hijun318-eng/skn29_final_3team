@@ -16,6 +16,29 @@ function formatKpiValue(value: unknown, unit?: string | null) {
   return formatMetricValue(value, { includeUnit: false, unit });
 }
 
+function analysisAsOfLabel(asOf?: string | null) {
+  if (!asOf) return "";
+  const [year, month, day] = asOf.split("-");
+  if (year?.length === 4 && month?.length === 2 && day?.length === 2) {
+    return `${year}.${month}.${day}.`;
+  }
+  return asOf;
+}
+
+/** 결과 섹션의 수량과 데이터 기준일을 제목 옆 보조정보로 묶는다. */
+function AnalysisSectionMeta({ run, children, showAsOf = true }: {
+  run: AnalysisRun; children?: React.ReactNode; showAsOf?: boolean;
+}) {
+  const asOf = showAsOf ? run.meta?.asOf : "";
+  if (!children && !asOf) return null;
+  return (
+    <div className="analysis-section-meta">
+      {children}
+      {asOf && <time dateTime={asOf}>데이터 기준 {analysisAsOfLabel(asOf)}</time>}
+    </div>
+  );
+}
+
 /** 대화형 AI 내러티브 요약을 렌더링한다. 데이터 출처 고지는 보고서 artifact 화면이 담당한다. */
 export function AnalysisConversationalSummary({ run, valueScale }: { run: AnalysisRun; valueScale: AnalysisValueScale }) {
   return (
@@ -25,6 +48,7 @@ export function AnalysisConversationalSummary({ run, valueScale }: { run: Analys
           <small>분석 결과</small>
           <h3>{analysisTitle(run)}</h3>
         </div>
+        <AnalysisSectionMeta run={run} />
       </header>
       <div className="analysis-summary-answer">
         <small>핵심 답변</small>
@@ -43,7 +67,7 @@ export function AnalysisUnavailableView({ view }: { view: "KPI" | "CHART" | "TAB
       <Icon size={17} aria-hidden="true" />
       <div>
         <b>현재 분석 결과로는 {label} 보기를 만들 수 없습니다.</b>
-        <p>기존 Artifact에 필요한 데이터가 없어 값을 임의로 생성하지 않았습니다.</p>
+        <p>현재 결과에 필요한 데이터가 없어 값을 임의로 만들지 않았습니다.</p>
       </div>
     </section>
   );
@@ -53,15 +77,18 @@ export function AnalysisUnavailableView({ view }: { view: "KPI" | "CHART" | "TAB
  * Artifact가 명시한 승인 KPI만 카드로 렌더링하며 상세 행을 새 KPI처럼 파생하지 않는다.
  * 금액은 `valueScale`이 결과 한 건 단위로 확정한 통화 배율만 사용하고, 손실 없는 원값은 `title`로 노출한다.
  */
-export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valueScale: AnalysisValueScale }) {
+export function AnalysisKpiSection({ run, valueScale, showAsOf = true }: {
+  run: AnalysisRun; valueScale: AnalysisValueScale; showAsOf?: boolean;
+}) {
+  const headingId = React.useId().replaceAll(":", "");
   if (!run.metrics || run.metrics.length === 0) return null;
 
   return (
-    <section className="analysis-kpi-section" aria-labelledby="analysis-kpi-title">
+    <section className="analysis-kpi-section" aria-labelledby={headingId}>
       {/* 차트·표 섹션과 같은 (eyebrow + 제목 + 우측 메타) 헤더 구조를 공유해 시선 이동을 단순화한다. */}
       <header>
-        <div><small>수치 근거</small><h3 id="analysis-kpi-title">핵심 지표</h3></div>
-        <span>{run.metrics.length}개 지표</span>
+        <div><small>수치 근거</small><h3 id={headingId}>핵심 지표</h3></div>
+        <AnalysisSectionMeta run={run} showAsOf={showAsOf}><span>{run.metrics.length}개 지표</span></AnalysisSectionMeta>
       </header>
       <div className="analysis-metrics">
         {run.metrics.map((metric) => (
@@ -85,16 +112,17 @@ export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valu
 /** 차트 시각화 및 실패 시의 fallback 섹션을 렌더링한다. */
 export function AnalysisVisualSection({
   run, chart, table, canRenderChart, supportedChartType, hasTableColumns, chartTitle, chartDisplayOptions,
-  chartDisplayType, setChartDisplayOverride, chartLines, chartHeight, chartDescription, columnLabel,
-  valueScale, chartCurrencyField,
+  chartDisplayType, showDisplayControls = false, setChartDisplayOverride, chartLines, chartHeight, chartDescription, columnLabel,
+  valueScale, chartCurrencyField, showAsOf = true,
 }: {
   run: AnalysisRun; chart: NonNullable<AnalysisRun["chart"]> | null; table: NonNullable<AnalysisRun["table"]> | null;
   canRenderChart: boolean; supportedChartType: boolean; hasTableColumns: boolean; chartTitle: string;
   chartDisplayOptions: Array<{ type: string; label: string }>; chartDisplayType: string;
+  showDisplayControls?: boolean;
   setChartDisplayOverride: React.Dispatch<React.SetStateAction<string>>;
   chartLines: Array<{ key: string; label: string; color: string; unit?: string }>;
   chartHeight: number; chartDescription: string; columnLabel: (col: string, r: AnalysisRun) => string;
-  valueScale: AnalysisValueScale; chartCurrencyField: string | null;
+  valueScale: AnalysisValueScale; chartCurrencyField: string | null; showAsOf?: boolean;
 }) {
   if (chart && table && canRenderChart) {
     return (
@@ -102,8 +130,8 @@ export function AnalysisVisualSection({
         <header>
           <div><small>차트 시각화</small><h3>{chartTitle}</h3></div>
           <div className="analysis-chart-actions">
-            <span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}개 항목</span>
-            {chartDisplayOptions.length > 0 && (
+            <AnalysisSectionMeta run={run} showAsOf={showAsOf}><span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}개 항목</span></AnalysisSectionMeta>
+            {showDisplayControls && chartDisplayOptions.length > 0 && (
               <div role="group" aria-label="차트 표현 방식">
                 {chartDisplayOptions.map((option) => (
                   <button type="button" key={option.type} aria-pressed={chartDisplayType === option.type} onClick={() => setChartDisplayOverride(option.type)}>
@@ -134,11 +162,11 @@ export function AnalysisVisualSection({
       <section className="analysis-chart-fallback" role="status">
         <AlertTriangle size={16} aria-hidden="true" />
         <div>
-          <b>{supportedChartType ? "차트 메타데이터를 확인할 수 없습니다." : "지원하지 않는 차트 형식입니다."}</b>
+          <b>{supportedChartType ? "그래프 구성 정보를 확인할 수 없습니다." : "현재 지원하지 않는 그래프 형식입니다."}</b>
           <p>
             {supportedChartType
-              ? hasTableColumns ? "차트 필드와 상세 데이터 열이 일치하지 않아 임의로 해석하지 않았습니다. 제공된 데이터는 아래 표에서 확인할 수 있습니다." : "차트와 연결된 상세 데이터가 없어 임의로 시각화하지 않았습니다."
-              : <>데이터를 임의의 차트로 바꾸지 않고 아래 표로 표시합니다. 차트 형식 <code>{chart.chartType || "없음"}</code></>}
+              ? hasTableColumns ? "그래프 구성과 상세 데이터가 일치하지 않아 임의로 해석하지 않았습니다. 제공된 데이터는 아래 표에서 확인할 수 있습니다." : "그래프에 필요한 상세 데이터가 없어 임의로 시각화하지 않았습니다."
+              : "데이터를 임의로 바꾸지 않고 아래 표로 표시합니다."}
           </p>
         </div>
       </section>
@@ -150,7 +178,7 @@ export function AnalysisVisualSection({
 /** 상세 데이터 표 섹션을 렌더링한다. 금액 열은 KPI·차트와 같은 통화 배율(`valueScale`)로 표시한다. */
 export function AnalysisDataSection({
   run, table, resultTitle, tableSort, setTableSort, nextTableSort, numericColumns, visibleRows, columnLabel, columnUnit,
-  valueScale,
+  valueScale, showAsOf = true,
 }: {
   run: AnalysisRun; table: NonNullable<AnalysisRun["table"]> | null; resultTitle: string;
   tableSort: { column: string; direction: "" | "asc" | "desc" };
@@ -158,11 +186,12 @@ export function AnalysisDataSection({
   nextTableSort: (curr: { column: string; direction: "" | "asc" | "desc" }, col: string) => { column: string; direction: "" | "asc" | "desc" };
   numericColumns: Set<string>; visibleRows: Array<Record<string, unknown>>;
   columnLabel: (col: string, r: AnalysisRun) => string; columnUnit: (col: string, r: AnalysisRun) => string | null;
-  valueScale: AnalysisValueScale;
+  valueScale: AnalysisValueScale; showAsOf?: boolean;
 }) {
   if (!table?.columns?.length) return null;
   const isCompactResult = table.columns.length <= 3 && visibleRows.length <= 8;
   const isSingleValueResult = table.columns.length === 1 && visibleRows.length === 1;
+  const isWideResult = table.columns.length > 3;
   const showRowNumbers = visibleRows.length > 1;
   const canSort = visibleRows.length > 1;
   const sortedColumnLabel = tableSort.column ? columnLabel(tableSort.column, run) : "";
@@ -173,14 +202,16 @@ export function AnalysisDataSection({
     : "단일 결과";
   return (
     <section
-      className={`analysis-result-section analysis-data-section${isCompactResult ? " is-compact-result" : ""}${isSingleValueResult ? " is-single-value-result" : ""}`}
-      data-table-density={isSingleValueResult ? "single" : isCompactResult ? "compact" : "full"}
+      className={`analysis-result-section analysis-data-section${isCompactResult ? " is-compact-result" : ""}${isSingleValueResult ? " is-single-value-result" : ""}${isWideResult ? " is-wide-result" : ""}`}
+      data-table-density={isSingleValueResult ? "single" : isWideResult ? "wide" : "regular"}
+      style={isWideResult ? { "--analysis-table-min-width": `${Math.max(760, table.columns.length * 156)}px` } as React.CSSProperties : undefined}
     >
       <header>
         <div><small>데이터</small><h3>상세 데이터</h3></div>
         <div className="analysis-data-meta">
           <span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}행 · {(table?.columns?.length ?? 0).toLocaleString("ko-KR")}열</span>
           <small>{sortDescription}</small>
+          {showAsOf && run.meta?.asOf && <time dateTime={run.meta.asOf}>데이터 기준 {analysisAsOfLabel(run.meta.asOf)}</time>}
         </div>
       </header>
       <div className="analysis-table" tabIndex={0} aria-label="상세 데이터 표">
@@ -255,7 +286,7 @@ export function AnalysisUnifiedToolbar({
           </button>
         )}
         {onOpenEvidence && (
-          <button type="button" className="unified-action-btn" onClick={onOpenEvidence} title="DataHub 거버넌스 및 AST SQL 검증 근거">
+          <button type="button" className="unified-action-btn" onClick={onOpenEvidence} title="승인된 데이터와 계산 근거 확인">
             <Search size={13} /><span>분석 근거</span>
           </button>
         )}

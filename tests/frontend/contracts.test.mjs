@@ -336,7 +336,8 @@ assert.doesNotMatch(source("pages/AgentPage.jsx"), /run-history-panel|listRuns\(
 assert.match(source("components/analysis/AnalysisDashboardViews.tsx"), /<EnterpriseChart/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /label: "기본 제외"|label: "GOLD"/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /chartFieldsMatchTable/);
-assert.match(source("components/analysis/AnalysisDashboardViews.tsx"), /차트 필드와 상세 데이터 열이 일치하지 않아/);
+assert.match(source("components/analysis/AnalysisDashboardViews.tsx"), /그래프 구성과 상세 데이터가 일치하지 않아/);
+assert.doesNotMatch(source("components/analysis/AnalysisDashboardViews.tsx"), /차트 메타데이터|DataHub 거버넌스 및 AST SQL|<code>\{chart\.chartType/);
 assert.match(source("features/reports/components/ReportArtifactContent.jsx"), /dataProvenanceLabel\(/);
 assert.doesNotMatch(source("utils/presentation.ts"), /합성 데모 데이터/);
 assert.match(source("utils/presentation.ts"), /합성 데이터 포함/);

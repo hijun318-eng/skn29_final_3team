@@ -7,7 +7,6 @@ import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
 import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
-import { MetaStrip } from "../components/common/EnterpriseUi";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
@@ -564,8 +563,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       {/* 중앙: 대화 스레드 메인 */}
       <main className="chat-main" inert={Boolean(reportModal)}>
         <div className="chat-scroll-region">
-        {activeEvidenceRun.meta?.asOf && <MetaStrip meta={activeEvidenceRun.meta} />}
-        
         {turns.length === 0 && !submitting && (
           emptyMode === "rag-documents" ? (
             <RagEmptyState

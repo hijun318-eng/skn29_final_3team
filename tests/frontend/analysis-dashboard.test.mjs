@@ -11,6 +11,7 @@ const response = JSON.parse(readFileSync(new URL("./fixtures/analysis-rich-succe
 const processViewModels = JSON.parse(readFileSync(new URL("./fixtures/analysis-process-view-models.json", import.meta.url), "utf8"));
 const stylesSource = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
 const mlWorkspaceStylesSource = readFileSync(new URL("../../app/frontend/src/components/ml/MLPredictionWorkspace.css", import.meta.url), "utf8");
+const mlWorkspaceSource = readFileSync(new URL("../../app/frontend/src/components/ml/MLPredictionWorkspace.jsx", import.meta.url), "utf8");
 const agentSource = readFileSync(new URL("../../app/frontend/src/pages/AgentPage.jsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../app/frontend/src/App.jsx", import.meta.url), "utf8");
 const server = await createServer({
@@ -204,7 +205,17 @@ try {
   assert.match(ragCatalogHtml, /OPERATIONS_MANUAL · v3 · 운영팀/);
   assert.doesNotMatch(ragCatalogHtml, /추천 질문|환불 기준|안전사고 발생 시/);
   assert.match(agentSource, /ragAvailable &&/);
+  assert.match(agentSource, /enabledFeatures\.includes\(SERVICE_FEATURE\.mlPrediction\)/);
+  assert.match(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
   assert.equal(renderToStaticMarkup(createElement(MLPredictionWorkspace)), "");
+  assert.match(mlWorkspaceSource, /horizon_days: Number\(horizon\)/);
+  assert.match(mlWorkspaceSource, /max=\{capability\?\.max_horizon_days \|\| 1\}/);
+  assert.match(mlWorkspaceSource, /현재 모델은/);
+  assert.match(
+    mlWorkspaceStylesSource,
+    /\.ml-workspace__field-hint\s*\{[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1\.5;/s,
+  );
+  assert.doesNotMatch(mlWorkspaceSource, /\[1, 3, 7\]/);
 
   // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));

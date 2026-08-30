@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 import sys
 import unittest
@@ -15,10 +16,16 @@ if str(BACKEND) not in sys.path:
 
 from app.contracts import AnalysisStatus, RequestContext
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentRequest
+from app.ports.agent import (
+    AgentKind,
+    AgentPortReadiness,
+    AgentRequest,
+    MLPredictionInvocation,
+)
 from app.services.conversation_agent_ports import (
     AnalysisWorkflowAgentPort,
     InternalGuidelineAgentPort,
+    MLPredictionAgentPort,
 )
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import (
@@ -140,6 +147,16 @@ class _RagExecutor:
             "routing": {"snapshot_question": kwargs["query"]},
         }
 
+    async def runtime_receipt(self, app_role: str):
+        return {
+            "schema_version": "RagRuntimeReceipt.v1",
+            "tool_code": "internal-manual-search",
+            "tool_version": "1.0.0",
+            "model_revision": "embedding-release:d1536",
+            "embedding_dimension": 1536,
+            "capability_hash": "a" * 64,
+        }
+
 
 class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
     async def test_analysis_port_forwards_pre_admission_without_reacquiring_it(self) -> None:
@@ -202,6 +219,67 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.payload["data"]["type"], "INTERNAL_GUIDELINE")
         self.assertEqual(result.payload["data"]["turn"]["turn_id"], turn_id)
         self.assertIsNone(repository.appended)
+
+    async def test_internal_guideline_readiness_is_runtime_receipted(self) -> None:
+        request = _agent_request("INTERNAL_GUIDELINE")
+        service = InternalManualQueryService(
+            _RagRepository(request.conversation_id, uuid4()),
+            lambda: _RagExecutor(),
+            enabled=True,
+        )
+        port = InternalGuidelineAgentPort(
+            _RagOrchestrator(uuid4()),
+            lambda: service,
+        )
+
+        readiness = await port.readiness(request)
+
+        self.assertEqual(readiness.status, "ready")
+        self.assertTrue(
+            any(ref.startswith("rag-capability:sha256:") for ref in readiness.release_refs)
+        )
+
+    async def test_ml_port_executes_only_the_structured_invocation(self) -> None:
+        class MLService:
+            async def readiness(self):
+                return AgentPortReadiness(
+                    agent=AgentKind.ML_PREDICTION,
+                    status="ready",
+                    capability_version="MLRuntimeCapability.v1",
+                    release_refs=("ml-model:sha256:" + "a" * 64,),
+                )
+
+            async def predict(self, session, payload):
+                self.session = session
+                self.payload = payload
+                return {"status": "SUCCEEDED", "horizon_days": payload["horizon_days"]}
+
+        @asynccontextmanager
+        async def session_factory():
+            yield object()
+
+        request_payload = _agent_request().model_dump()
+        request_payload.update(
+            {
+                "target_agent": AgentKind.ML_PREDICTION,
+                "invocation": MLPredictionInvocation(
+                    property_id="GRAND",
+                    as_of="2026-08-28",
+                    horizon_days=90,
+                ).model_dump(),
+            }
+        )
+        request = AgentRequest.model_validate(request_payload)
+        service = MLService()
+        port = MLPredictionAgentPort(
+            service,  # type: ignore[arg-type]
+            session_factory,  # type: ignore[arg-type]
+        )
+
+        result = await port.execute(request)
+
+        self.assertEqual(result.agent, AgentKind.ML_PREDICTION)
+        self.assertEqual(service.payload["horizon_days"], 90)
 
     async def test_internal_guideline_port_forwards_pre_admission(self) -> None:
         request = _agent_request("INTERNAL_GUIDELINE")

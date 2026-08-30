@@ -19,13 +19,20 @@ if str(BACKEND) not in sys.path:
 from app.agent_contracts import AgentDecisionSource, AgentExecutionPhase
 from app.contracts import RequestContext
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentRequest, AgentResult
+from app.ports.agent import (
+    AgentKind,
+    AgentPortReadiness,
+    AgentRequest,
+    AgentResult,
+    MLPredictionInvocation,
+)
 from app.services.agent_supervisor import (
     AgentCapabilityEvidence,
     AgentDispatchError,
     CapabilityEvidenceRouteResolver,
     CallableAgentPort,
     DeterministicAgentSupervisor,
+    ReadinessGuardedAgentPort,
     SupervisorDecision,
 )
 from app.services.agent_state import checkpoint_agent_state
@@ -37,6 +44,7 @@ def _request(
     conversation_id=None,
     context_conversation_id=None,
     admitted: bool = False,
+    invocation: MLPredictionInvocation | None = None,
 ) -> AgentRequest:
     """테스트용 command와 identity가 결속된 AgentRequest를 만든다."""
 
@@ -59,6 +67,8 @@ def _request(
             product_release_id=("product-release-v1" if admitted else None),
             semantic_release_id=("semantic-release-v1" if admitted else None),
         ),
+        target_agent=(AgentKind.ML_PREDICTION if invocation is not None else None),
+        invocation=invocation,
     )
 
 
@@ -829,6 +839,108 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(probe.calls, 0)
 
+    async def test_ml_route_without_structured_invocation_is_rejected(self) -> None:
+        calls = 0
+
+        class MLResolver:
+            async def resolve(self, request: AgentRequest) -> SupervisorDecision:
+                return SupervisorDecision(
+                    agent=AgentKind.ML_PREDICTION,
+                    reason="STRUCTURED_ML_ROUTE",
+                    source=AgentDecisionSource.GOVERNED_DEFAULT,
+                )
+
+        async def handler(request: AgentRequest):
+            nonlocal calls
+            calls += 1
+            return {"status": "SUCCESS", "data": {}}
+
+        supervisor = DeterministicAgentSupervisor(
+            {
+                AgentKind.ML_PREDICTION: CallableAgentPort(
+                    AgentKind.ML_PREDICTION,
+                    handler,
+                )
+            },
+            route_resolver=MLResolver(),
+        )
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await supervisor.execute(_request(admitted=True))
+
+        self.assertEqual(raised.exception.code, "AGENT_INVOCATION_MISMATCH")
+        self.assertEqual(calls, 0)
+
+    async def test_ml_invocation_cannot_flow_to_a_non_ml_agent(self) -> None:
+        calls = 0
+
+        async def handler(request: AgentRequest):
+            nonlocal calls
+            calls += 1
+            return {"status": "SUCCESS", "data": {}}
+
+        supervisor = DeterministicAgentSupervisor(
+            {
+                AgentKind.ANALYSIS_WORKFLOW: CallableAgentPort(
+                    AgentKind.ANALYSIS_WORKFLOW,
+                    handler,
+                )
+            }
+        )
+        request = _request(
+            admitted=True,
+            invocation=MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=90,
+            ),
+        )
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await supervisor.execute(request)
+
+        self.assertEqual(raised.exception.code, "AGENT_INVOCATION_MISMATCH")
+        self.assertEqual(calls, 0)
+
+    async def test_readiness_guard_blocks_port_execution_without_ready_receipt(self) -> None:
+        calls = 0
+
+        class NotReadyPort:
+            agent = AgentKind.INTERNAL_GUIDELINE
+
+            async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
+                return AgentPortReadiness(
+                    agent=self.agent,
+                    status="not_ready",
+                    capability_version="RagRuntimeReceipt.v1",
+                    reason="runtime unavailable",
+                )
+
+            async def execute(self, request: AgentRequest) -> AgentResult:
+                nonlocal calls
+                calls += 1
+                return AgentResult(agent=self.agent, payload={})
+
+        guarded = ReadinessGuardedAgentPort(NotReadyPort())
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await guarded.execute(_request("INTERNAL_GUIDELINE"))
+
+        self.assertEqual(raised.exception.code, "AGENT_PORT_NOT_READY")
+        self.assertEqual(calls, 0)
+
+    async def test_callable_port_readiness_is_explicitly_test_scoped(self) -> None:
+        async def handler(request: AgentRequest):
+            return {"status": "SUCCESS"}
+
+        readiness = await CallableAgentPort(
+            AgentKind.ANALYSIS_WORKFLOW,
+            handler,
+        ).readiness(_request())
+
+        self.assertEqual(readiness.capability_version, "CallableAgentPort.test.v1")
+        self.assertTrue(readiness.release_refs[0].startswith("agent-port:test-callable:"))
+
     def test_request_rejects_cross_conversation_context(self) -> None:
         """다른 Conversation에 이미 결속된 RequestContext를 재사용하지 못한다."""
 
@@ -837,6 +949,25 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
                 conversation_id=uuid4(),
                 context_conversation_id=uuid4(),
             )
+
+    def test_request_rejects_ml_target_without_prediction_invocation(self) -> None:
+        payload = _request(admitted=True).model_dump()
+        payload["target_agent"] = AgentKind.ML_PREDICTION
+
+        with self.assertRaises(ValidationError):
+            AgentRequest.model_validate(payload)
+
+    def test_request_rejects_prediction_invocation_for_non_ml_target(self) -> None:
+        payload = _request(admitted=True).model_dump()
+        payload["target_agent"] = AgentKind.ANALYSIS_WORKFLOW
+        payload["invocation"] = MLPredictionInvocation(
+            property_id="GRAND",
+            as_of="2026-08-28",
+            horizon_days=90,
+        ).model_dump()
+
+        with self.assertRaises(ValidationError):
+            AgentRequest.model_validate(payload)
 
 
 if __name__ == "__main__":

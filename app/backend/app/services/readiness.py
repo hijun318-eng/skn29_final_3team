@@ -22,6 +22,7 @@ from app.services.analysis.sql_generation_mode import (
     SqlGenerationMode,
     configured_sql_generation_mode,
 )
+from app.services.runtime_feature_availability import runtime_feature_availability
 from src.modelops.runtime_config import ActiveModelRoute, resolve_active_model_routes
 
 
@@ -48,13 +49,14 @@ class AppDatabaseReadiness:
             headers={"Accept": "application/json", "User-Agent": "answervice-readiness/1.0"},
             trust_env=False,
         ) as client:
-            database, trino, datahub, release, model, auth = await asyncio.gather(
+            database, trino, datahub, release, model, auth, optional = await asyncio.gather(
                 self._database_probe(),
                 self._trino_probe(),
                 self._datahub_probe(),
                 self._catalog_release_probe(),
                 self._model_probe(client),
                 self._auth_probe(),
+                runtime_feature_availability.check(),
             )
         probe = database
         probe["trino"] = trino
@@ -62,6 +64,7 @@ class AppDatabaseReadiness:
         probe.update(release)
         probe["model"] = model
         probe["auth_session_store"] = auth
+        probe.update(optional)
         probe["report_scheduler"] = self._report_scheduler_probe()
         probe["conversation_recovery"] = self._conversation_recovery_probe()
         return probe

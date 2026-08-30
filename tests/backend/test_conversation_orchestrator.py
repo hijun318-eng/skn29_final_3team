@@ -41,7 +41,7 @@ from app.contracts import (
 )
 from app.authorization import permission_snapshot_id as compute_permission_snapshot_id
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentRequest
+from app.ports.agent import AgentKind, AgentPortReadiness, AgentRequest
 from app.ports.data_platform import AssetCandidateSet, NoEntitledAssetsError
 from app.services.agent_supervisor import (
     AgentDispatchError,
@@ -1900,6 +1900,17 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         execution_contexts: list[RequestContext] = []
 
         class Service:
+            async def readiness(
+                self,
+                context: RequestContext,
+            ) -> AgentPortReadiness:
+                return AgentPortReadiness(
+                    agent=AgentKind.INTERNAL_GUIDELINE,
+                    status="ready",
+                    capability_version="RagRuntimeReceipt.test.v1",
+                    release_refs=("rag-capability:test",),
+                )
+
             async def execute(
                 self,
                 query,

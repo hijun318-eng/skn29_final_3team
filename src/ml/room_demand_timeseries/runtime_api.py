@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from ..room_demand_v3.trino_client import TrinoClient
-from .contracts import FEATURE_COLUMNS, MAX_HORIZON
+from .contracts import FEATURE_COLUMNS
 from .features import TimeSeriesFeatureBuilder
 
 
@@ -32,7 +32,10 @@ HISTORY_COLUMNS = [
     "cancellation_rate",
     "is_synthetic",
 ]
-REQUEST_MAX_HORIZON = 7
+DEFAULT_RUNTIME_MAX_HORIZON_DAYS = 7
+ABSOLUTE_MAX_HORIZON_DAYS = 366
+ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v1"
+ML_PREDICTION_RESULT_VERSION = "MLRoomDemandPrediction.v1"
 
 
 def runtime_estimator_types(model: Any) -> tuple[str, ...]:
@@ -179,7 +182,11 @@ def sql_literal(value: str) -> str:
 class PredictionRequest(BaseModel):
     property_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     as_of: date
-    horizon: int = Field(default=7, ge=1, le=REQUEST_MAX_HORIZON)
+    horizon_days: int = Field(
+        default=DEFAULT_RUNTIME_MAX_HORIZON_DAYS,
+        ge=1,
+        le=ABSOLUTE_MAX_HORIZON_DAYS,
+    )
 
 
 class TimeSeriesRuntime:
@@ -205,6 +212,27 @@ class TimeSeriesRuntime:
             raise RuntimeError("model approval hash verification failed")
         if feature_contract.get("feature_columns_ordered") != FEATURE_COLUMNS:
             raise RuntimeError("runtime feature contract mismatch")
+        try:
+            model_max_horizon_days = int(self.manifest["max_horizon"])
+            feature_max_horizon_days = int(feature_contract["max_horizon"])
+            runtime_max_horizon_days = int(
+                os.getenv(
+                    "ML_RUNTIME_MAX_HORIZON_DAYS",
+                    str(DEFAULT_RUNTIME_MAX_HORIZON_DAYS),
+                )
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise RuntimeError("ML horizon release contract is invalid") from error
+        if (
+            model_max_horizon_days != feature_max_horizon_days
+            or not 1
+            <= runtime_max_horizon_days
+            <= model_max_horizon_days
+            <= ABSOLUTE_MAX_HORIZON_DAYS
+        ):
+            raise RuntimeError("ML horizon release contract is invalid")
+        self.model_max_horizon_days = model_max_horizon_days
+        self.runtime_max_horizon_days = runtime_max_horizon_days
         decision = self.approval.get("final_decision", self.approval.get("decision"))
         allow_conditional = os.getenv("ML_ALLOW_CONDITIONAL", "false").lower() == "true"
         if decision != "APPROVED" and not (
@@ -267,20 +295,29 @@ ORDER BY property_id
                     "property_id": row["property_id"],
                     "min_as_of": (min_date + timedelta(days=371)).isoformat(),
                     "max_as_of": (
-                        max_date + timedelta(days=MAX_HORIZON - REQUEST_MAX_HORIZON)
+                        max_date
+                        + timedelta(
+                            days=(
+                                self.model_max_horizon_days
+                                - self.runtime_max_horizon_days
+                            )
+                        )
                     ).isoformat(),
                     "feature_max_as_of": max_date.isoformat(),
                     "history_rows": int(row["history_rows"]),
                 }
             )
         return {
+            "schema_version": ML_RUNTIME_CAPABILITY_VERSION,
+            "prediction_contract_version": ML_PREDICTION_RESULT_VERSION,
             "model_version": self.manifest["model_version"],
             "model_hash": self.model_hash,
             "model_type": self.model_type,
             "estimator_type": self.estimator_type,
             "approval": self.approval.get("final_decision"),
-            "max_horizon": REQUEST_MAX_HORIZON,
-            "model_max_horizon": MAX_HORIZON,
+            "min_horizon_days": 1,
+            "max_horizon_days": self.runtime_max_horizon_days,
+            "model_max_horizon_days": self.model_max_horizon_days,
             "properties": properties,
             "synthetic_training_data": bool(self.manifest["synthetic_training_data"]),
             "history_source": self.history_source,
@@ -288,11 +325,16 @@ ORDER BY property_id
         }
 
     def predict(self, request: PredictionRequest) -> dict[str, Any]:
+        if request.horizon_days > self.runtime_max_horizon_days:
+            raise HTTPException(
+                status_code=422,
+                detail="Requested horizon exceeds the active runtime capability",
+            )
         facts, query_id = self.query_history(request)
         feature_cutoff = pd.Timestamp(facts["business_date"].max()).date()
         forecast_start = request.as_of + timedelta(days=1)
-        forecast_end = request.as_of + timedelta(days=request.horizon)
-        if (forecast_end - feature_cutoff).days > MAX_HORIZON:
+        forecast_end = request.as_of + timedelta(days=request.horizon_days)
+        if (forecast_end - feature_cutoff).days > self.model_max_horizon_days:
             raise HTTPException(
                 status_code=422,
                 detail="Requested dates exceed the model horizon from latest facts",
@@ -334,12 +376,13 @@ ORDER BY property_id
                 }
             )
         return {
+            "schema_version": ML_PREDICTION_RESULT_VERSION,
             "status": "SUCCEEDED",
             "execution_id": str(uuid.uuid4()),
             "property_id": request.property_id.upper(),
             "as_of": request.as_of.isoformat(),
             "feature_as_of": feature_cutoff.isoformat(),
-            "horizon": request.horizon,
+            "horizon_days": request.horizon_days,
             "model_version": self.manifest["model_version"],
             "model_hash": self.model_hash,
             "daily_forecasts": daily,

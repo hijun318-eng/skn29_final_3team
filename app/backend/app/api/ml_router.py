@@ -15,6 +15,7 @@ from app.context import session_context
 from app.authorization import has_capability
 from app.contracts import Capability, ContractModel, RequestContext, RuntimeFeature
 from app.runtime_features import runtime_feature_enabled
+from app.ports.agent import ML_ABSOLUTE_MAX_HORIZON_DAYS
 from app.services.ml_prediction_service import MLPredictionService
 
 
@@ -23,7 +24,7 @@ service = MLPredictionService()
 
 
 class RoomDemandRequest(ContractModel):
-    """지원 대상과 기준일 및 최대 7일의 예측 범위를 제한한다."""
+    """지원 대상·기준일·일 단위 horizon을 runtime capability 검증에 전달한다."""
 
     property_id: str = Field(
         min_length=1,
@@ -31,7 +32,11 @@ class RoomDemandRequest(ContractModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     as_of: date
-    horizon: int = Field(default=7, ge=1, le=7)
+    horizon_days: int = Field(
+        default=7,
+        ge=1,
+        le=ML_ABSOLUTE_MAX_HORIZON_DAYS,
+    )
 
 
 def _require_ml_access(context: RequestContext) -> None:

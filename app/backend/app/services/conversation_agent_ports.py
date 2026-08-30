@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 import os
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.context import ContextValidationError
 from app.contracts import AnalysisStatus, ErrorCode
-from app.ports.agent import AgentKind, AgentRequest, AgentResult
+from app.ports.agent import AgentKind, AgentPortReadiness, AgentRequest, AgentResult
 from app.services.analysis import analysis_progress
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import (
@@ -17,6 +20,7 @@ from app.services.internal_manual_query import (
     InternalManualQueryError,
     InternalManualQueryService,
 )
+from app.services.ml_prediction_service import MLPredictionService
 
 
 def analysis_agent_result(result: dict[str, Any]) -> AgentResult:
@@ -115,6 +119,32 @@ class AnalysisWorkflowAgentPort:
         self._progress = progress_tracker
         self._admission = admission
 
+    async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
+        """공통 admission이 고정한 product·semantic release를 실행 근거로 사용한다."""
+
+        context = request.context
+        release_refs = tuple(
+            f"{prefix}:{item}"
+            for prefix, item in (
+                ("product-release", context.product_release_id),
+                ("semantic-release", context.semantic_release_id),
+            )
+            if isinstance(item, str) and item.strip()
+        )
+        if len(release_refs) != 2:
+            return AgentPortReadiness(
+                agent=self.agent,
+                status="not_ready",
+                capability_version="AnalysisWorkflowAgentPort.v1",
+                reason="분석 release admission이 완료되지 않았습니다.",
+            )
+        return AgentPortReadiness(
+            agent=self.agent,
+            status="ready",
+            capability_version="AnalysisWorkflowAgentPort.v1",
+            release_refs=release_refs,
+        )
+
     async def execute(self, request: AgentRequest) -> AgentResult:
         """기존 timeout·progress·충돌 변환을 유지해 단일 command를 실행한다."""
 
@@ -185,7 +215,37 @@ class InternalGuidelineAgentPort:
     ) -> None:
         self._orchestrator = orchestrator
         self._query_service_factory = query_service_factory
+        self._query_service: InternalManualQueryService | None = None
         self._admission = admission
+
+    def _service(self) -> InternalManualQueryService:
+        if self._query_service is None:
+            self._query_service = self._query_service_factory()
+        return self._query_service
+
+    async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
+        """현재 요청 주체로 RAG Gateway release를 실행 직전에 확인한다."""
+
+        try:
+            readiness = await self._service().readiness(request.context)
+        except Exception:
+            return AgentPortReadiness(
+                agent=self.agent,
+                status="not_ready",
+                capability_version="RagRuntimeReceipt.v1",
+                reason="RAG 실행 서비스가 구성되지 않았습니다.",
+            )
+        if (
+            not isinstance(readiness, AgentPortReadiness)
+            or readiness.agent is not self.agent
+        ):
+            return AgentPortReadiness(
+                agent=self.agent,
+                status="not_ready",
+                capability_version="RagRuntimeReceipt.v1",
+                reason="RAG 실행 준비 상태 계약이 올바르지 않습니다.",
+            )
+        return readiness
 
     async def execute(self, request: AgentRequest) -> AgentResult:
         """명시 RAG 요청을 공통 command lifecycle로 실행하고 결과 Turn을 반환한다."""
@@ -193,7 +253,7 @@ class InternalGuidelineAgentPort:
         command = request.command
 
         async def _execute(admitted_context: Any) -> dict[str, Any]:
-            return await self._query_service_factory().execute(
+            return await self._service().execute(
                 InternalManualQuery(
                     question=command.user_message,
                     mode="DOCUMENT_ONLY",
@@ -218,3 +278,42 @@ class InternalGuidelineAgentPort:
             **execution_options,
         )
         return internal_guideline_agent_result(command_result)
+
+
+class MLPredictionAgentPort:
+    """구조화된 ML invocation만 승인 runtime과 감사 DB 경계로 전달한다."""
+
+    agent = AgentKind.ML_PREDICTION
+
+    def __init__(
+        self,
+        service: MLPredictionService,
+        session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
+    ) -> None:
+        self._service = service
+        self._session_factory = session_factory
+
+    async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
+        """모델 release와 capability가 모두 검증된 서비스 영수증을 반환한다."""
+
+        return await self._service.readiness()
+
+    async def execute(self, request: AgentRequest) -> AgentResult:
+        """자연어 재해석 없이 승인 resolver의 구조화 invocation을 실행한다."""
+
+        invocation = request.invocation
+        if invocation is None or invocation.agent is not self.agent:
+            raise ValueError("ML Agent에는 구조화된 prediction invocation이 필요합니다.")
+        async with self._session_factory() as session:
+            prediction = await self._service.predict(
+                session,
+                {
+                    "property_id": invocation.property_id,
+                    "as_of": invocation.as_of.isoformat(),
+                    "horizon_days": invocation.horizon_days,
+                },
+            )
+        return AgentResult(
+            agent=self.agent,
+            payload={"status": "SUCCESS", "data": prediction},
+        )

@@ -51,7 +51,6 @@ from app.contracts import (
 )
 from app.auth import AuthenticationError, create_authenticated_session, revoke_session
 from app.authorization import capabilities_for, has_capability, permission_snapshot_id
-from app.runtime_features import enabled_runtime_features
 from app.conversation_contracts import ConversationCommandRequest
 from app.api.analysis_router_runtime import (
     active_analytics_context_release as _active_analytics_context_release,
@@ -92,6 +91,7 @@ from app.services.conversation.analysis_request import (
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
+from app.services.runtime_feature_availability import available_runtime_features
 
 
 logger = logging.getLogger(__name__)
@@ -182,7 +182,7 @@ async def ready(request: Request) -> ReadinessResponse:
     response_model=SessionResponse,
     operation_id="getAuthenticatedSession",
 )
-def authenticated_session(
+async def authenticated_session(
     request: Request,
     context: Annotated[RequestContext | None, Depends(optional_session_context)],
 ) -> SessionResponse:
@@ -194,7 +194,7 @@ def authenticated_session(
             role=context.role,
             capabilities=capabilities_for(context.role),
             enabled_features=(
-                enabled_runtime_features()
+                await available_runtime_features(context.role)
                 if has_capability(context.role, Capability.RUN_ANALYSIS)
                 else ()
             ),
@@ -243,7 +243,7 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
             role=principal.role,
             capabilities=capabilities_for(principal.role),
             enabled_features=(
-                enabled_runtime_features()
+                await available_runtime_features(principal.role)
                 if has_capability(principal.role, Capability.RUN_ANALYSIS)
                 else ()
             ),

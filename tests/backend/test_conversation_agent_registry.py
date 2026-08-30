@@ -18,7 +18,12 @@ from app.agent_contracts import AgentDecisionSource
 from app.contracts import RequestContext
 from app.conversation_contracts import ConversationCommandRequest
 from app.ports.agent import AgentKind, AgentRequest
-from app.services.agent_supervisor import AgentDispatchError, SupervisorDecision
+from app.services.agent_supervisor import (
+    AgentDispatchError,
+    CallableAgentPort,
+    ReadinessGuardedAgentPort,
+    SupervisorDecision,
+)
 from app.services.conversation_agent_registry import (
     build_conversation_agent_supervisor,
 )
@@ -39,6 +44,10 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             supervisor.registered_agents,
             frozenset({AgentKind.ANALYSIS_WORKFLOW}),
+        )
+        self.assertNotIsInstance(
+            supervisor._ports[AgentKind.ANALYSIS_WORKFLOW],
+            CallableAgentPort,
         )
 
     def test_registry_adds_only_the_explicitly_enabled_rag_agent(self) -> None:
@@ -61,6 +70,11 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.assertIsInstance(
+            supervisor._ports[AgentKind.INTERNAL_GUIDELINE],
+            ReadinessGuardedAgentPort,
+        )
+        self.assertNotIn(AgentKind.ML_PREDICTION, supervisor.registered_agents)
 
     def test_registry_keeps_capability_routing_disabled_by_default(self) -> None:
         """RAG·ML 교체 전에는 capability receipt가 있어도 자동 route를 실행하지 않는다."""

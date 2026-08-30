@@ -14,7 +14,13 @@ from app.agent_contracts import (
     AgentExecutionState,
     AgentStateUpdate,
 )
-from app.ports.agent import AgentKind, AgentPort, AgentRequest, AgentResult
+from app.ports.agent import (
+    AgentKind,
+    AgentPort,
+    AgentPortReadiness,
+    AgentRequest,
+    AgentResult,
+)
 from app.services.agent_state import initial_agent_state, reduce_agent_state
 
 
@@ -321,7 +327,7 @@ class AgentRoutingOutcome:
 
 
 class CallableAgentPort:
-    """전환 기간의 기존 use case 함수를 AgentPort로 감싸는 최소 adapter다."""
+    """테스트·전환 조립에서만 기존 use case 함수를 감싸는 최소 adapter다."""
 
     def __init__(
         self,
@@ -339,6 +345,16 @@ class CallableAgentPort:
 
         return self._agent
 
+    async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
+        """주입된 handler 자체가 test/transition capability임을 명시적으로 고정한다."""
+
+        return AgentPortReadiness(
+            agent=self._agent,
+            status="ready",
+            capability_version="CallableAgentPort.test.v1",
+            release_refs=(f"agent-port:test-callable:v1:{self._agent.value.lower()}",),
+        )
+
     async def execute(self, request: AgentRequest) -> AgentResult:
         """기존 응답 mapping을 검증 가능한 AgentResult로 감싼다."""
 
@@ -349,6 +365,45 @@ class CallableAgentPort:
                 "Agent가 올바른 결과 계약을 반환하지 않았습니다.",
             )
         return AgentResult(agent=self._agent, payload=dict(payload))
+
+
+class ReadinessGuardedAgentPort:
+    """선택 Agent의 typed readiness receipt를 실행 직전에 재검증하는 wrapper다."""
+
+    def __init__(self, port: AgentPort) -> None:
+        self._port = port
+
+    @property
+    def agent(self) -> AgentKind:
+        """하위 Port가 소유한 불변 Agent 종류를 반환한다."""
+
+        return self._port.agent
+
+    async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
+        """하위 Port의 readiness가 종류·release 계약과 일치할 때만 반환한다."""
+
+        readiness = await self._port.readiness(request)
+        if (
+            not isinstance(readiness, AgentPortReadiness)
+            or readiness.agent is not self.agent
+        ):
+            raise AgentDispatchError(
+                "AGENT_PORT_READINESS_INVALID",
+                "Agent 실행 준비 상태 계약이 올바르지 않습니다.",
+            )
+        return readiness
+
+    async def execute(self, request: AgentRequest) -> AgentResult:
+        """ready receipt가 없는 선택 기능은 하위 Port 호출 전에 fail-closed한다."""
+
+        readiness = await self.readiness(request)
+        if readiness.status != "ready":
+            raise AgentDispatchError(
+                "AGENT_PORT_NOT_READY",
+                "요청한 기능의 실행 서비스가 준비되지 않았습니다.",
+                evidence_refs=readiness.release_refs,
+            )
+        return await self._port.execute(request)
 
 
 class DeterministicAgentSupervisor:
@@ -523,6 +578,23 @@ class DeterministicAgentSupervisor:
             )
 
         decision = routing.decision
+        has_ml_invocation = request.invocation is not None
+        if (
+            (decision.agent is AgentKind.ML_PREDICTION) != has_ml_invocation
+            or (
+                request.target_agent is not None
+                and decision.agent is not request.target_agent
+            )
+        ):
+            state = reduce_agent_state(
+                state,
+                AgentStateUpdate(event="FAIL", code="AGENT_INVOCATION_MISMATCH"),
+            )
+            raise AgentDispatchError(
+                "AGENT_INVOCATION_MISMATCH",
+                "선택된 Agent와 구조화 실행 요청이 일치하지 않습니다.",
+                state=state,
+            )
         port = self._ports.get(decision.agent)
         if port is None:
             state = reduce_agent_state(

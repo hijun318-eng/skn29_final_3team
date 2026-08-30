@@ -12,6 +12,7 @@ from app.services.agent_supervisor import (
     AgentDispatchError,
     AgentRouteResolver,
     DeterministicAgentSupervisor,
+    ReadinessGuardedAgentPort,
 )
 from app.services.conversation_agent_ports import (
     AnalysisWorkflowAgentPort,
@@ -74,10 +75,12 @@ def build_conversation_agent_supervisor(
         ),
     }
     if runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE):
-        ports[AgentKind.INTERNAL_GUIDELINE] = InternalGuidelineAgentPort(
-            orchestrator,
-            internal_manual_query_service_factory,
-            admission=admission,
+        ports[AgentKind.INTERNAL_GUIDELINE] = ReadinessGuardedAgentPort(
+            InternalGuidelineAgentPort(
+                orchestrator,
+                internal_manual_query_service_factory,
+                admission=admission,
+            )
         )
 
     return DeterministicAgentSupervisor(

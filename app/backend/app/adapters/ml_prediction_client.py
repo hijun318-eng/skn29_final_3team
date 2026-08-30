@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from typing import Any
 
@@ -16,9 +17,13 @@ class MLPredictionClient:
             "ML_RUNTIME_URL",
             "http://ml-runtime:8000",
         ).rstrip("/")
-        self._timeout = float(
-            os.getenv("ML_RUNTIME_TIMEOUT_SECONDS", "45")
-        )
+        try:
+            timeout = float(os.getenv("ML_RUNTIME_TIMEOUT_SECONDS", "45"))
+        except ValueError as error:
+            raise RuntimeError("ML_RUNTIME_TIMEOUT_SECONDS is invalid") from error
+        if not math.isfinite(timeout) or not 0.1 <= timeout <= 300:
+            raise RuntimeError("ML_RUNTIME_TIMEOUT_SECONDS is invalid")
+        self._timeout = timeout
         endpoint = httpx.URL(self._base_url)
         if endpoint.scheme not in {"http", "https"} or not endpoint.host or endpoint.userinfo:
             raise RuntimeError("ML_RUNTIME_URL is invalid")

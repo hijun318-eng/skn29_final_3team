@@ -62,6 +62,9 @@ export default function MLPredictionWorkspace() {
       .then((data) => {
         if (!active) return;
         setCapability(data);
+        const minimumHorizon = Number(data.min_horizon_days || 1);
+        const maximumHorizon = Number(data.max_horizon_days || minimumHorizon);
+        setHorizon(Math.min(maximumHorizon, Math.max(minimumHorizon, 7)));
         const first = data.properties?.[0];
         if (first) {
           setPropertyId(String(first.property_id));
@@ -104,7 +107,7 @@ export default function MLPredictionWorkspace() {
         body: JSON.stringify({
           property_id: propertyId,
           as_of: asOf,
-          horizon: Number(horizon),
+          horizon_days: Number(horizon),
         }),
       });
       setResult(data);
@@ -185,17 +188,19 @@ export default function MLPredictionWorkspace() {
             </label>
             <label>
               예측 기간
-              <select
+              <input
+                type="number"
                 value={horizon}
                 onChange={(event) => setHorizon(event.target.value)}
+                min={capability?.min_horizon_days || 1}
+                max={capability?.max_horizon_days || 1}
                 disabled={loading}
-              >
-                {[1, 3, 7].map((days) => (
-                  <option key={days} value={days}>
-                    향후 {days}일
-                  </option>
-                ))}
-              </select>
+                required
+              />
+              <small className="ml-workspace__field-hint">
+                현재 모델은 {capability?.min_horizon_days || 1}일부터{" "}
+                {capability?.max_horizon_days || 1}일까지 예측할 수 있습니다.
+              </small>
             </label>
             <button
               className="ml-workspace__submit"

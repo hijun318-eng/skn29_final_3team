@@ -23,6 +23,8 @@ from app.database import session_scope
 RAG_TOOL_ID = UUID("8edce655-e454-5b76-b56f-5e49aa2884d4")
 RAG_TOOL_CODE = "rag.answer"
 RAG_CAPABILITY_CANDIDATE_VERSION = "RagCapabilityCandidate.v1"
+RAG_RUNTIME_RECEIPT_VERSION = "RagRuntimeReceipt.v1"
+RAG_MAX_EMBEDDING_DIMENSION = 65536
 _RAG_MANUAL_ID_PATTERN = re.compile(r"[A-Z][A-Z0-9-]{1,99}")
 _ROLE_MAP = {
     "analyst": "STAFF",
@@ -71,7 +73,19 @@ class InternalManualAgent:
         self._database_url = database_url
         self._base_url = os.getenv("RAG_API_URL", "http://rag-api:8000").rstrip("/")
         self._secret = os.getenv("RAG_GATEWAY_HMAC_SECRET", "")
-        self._timeout = float(os.getenv("RAG_TOOL_TIMEOUT_SECONDS", "30"))
+        try:
+            timeout = float(os.getenv("RAG_TOOL_TIMEOUT_SECONDS", "30"))
+        except ValueError as error:
+            raise RagToolError(
+                "RAG_CONFIG_INVALID",
+                "RAG Tool 제한 시간이 올바르지 않습니다.",
+            ) from error
+        if not math.isfinite(timeout) or not 0.1 <= timeout <= 300:
+            raise RagToolError(
+                "RAG_CONFIG_INVALID",
+                "RAG Tool 제한 시간이 올바르지 않습니다.",
+            )
+        self._timeout = timeout
         endpoint = httpx.URL(self._base_url)
         if endpoint.scheme not in {"http", "https"} or not endpoint.host or endpoint.userinfo:
             raise RagToolError("RAG_CONFIG_INVALID", "RAG API 주소가 올바르지 않습니다.")
@@ -384,6 +398,11 @@ class InternalManualAgent:
         execution_state = search.get("execution_state")
         tool = search.get("tool")
         retrieval_release = search.get("retrieval_release")
+        embedding_dimension = (
+            retrieval_release.get("embedding_dimension")
+            if isinstance(retrieval_release, dict)
+            else None
+        )
         if (
             not isinstance(execution_state, dict)
             or execution_state.get("p2_gate") != "TECHNICALLY_VALIDATED"
@@ -392,13 +411,15 @@ class InternalManualAgent:
             or not isinstance(tool, dict)
             or tool.get("tool_code") != "internal-manual-search"
             or not isinstance(tool.get("semantic_version"), str)
-            or not tool["semantic_version"].strip()
+            or not re.fullmatch(r"[A-Za-z0-9._+-]{1,80}", tool["semantic_version"])
             or not isinstance(retrieval_release, dict)
             or retrieval_release.get("schema_version")
             != "RagRetrievalRelease.v1"
             or not isinstance(retrieval_release.get("model_revision"), str)
             or not retrieval_release["model_revision"].strip()
-            or retrieval_release.get("embedding_dimension") != 1024
+            or isinstance(embedding_dimension, bool)
+            or not isinstance(embedding_dimension, int)
+            or not 1 <= embedding_dimension <= RAG_MAX_EMBEDDING_DIMENSION
         ):
             raise RagToolError(
                 "RAG_CAPABILITY_RELEASE_INVALID",
@@ -426,7 +447,7 @@ class InternalManualAgent:
                 "tool_code": tool["tool_code"],
                 "tool_version": tool["semantic_version"],
                 "model_revision": retrieval_release["model_revision"],
-                "embedding_dimension": 1024,
+                "embedding_dimension": embedding_dimension,
                 "evidence_ids": [],
                 "document_ids": [],
                 "maximum_score": None,
@@ -487,7 +508,7 @@ class InternalManualAgent:
             "tool_code": tool["tool_code"],
             "tool_version": tool["semantic_version"],
             "model_revision": retrieval_release["model_revision"],
-            "embedding_dimension": 1024,
+            "embedding_dimension": embedding_dimension,
             "evidence_ids": list(unique_evidence_ids),
             "document_ids": list(unique_document_ids),
             "maximum_score": maximum_score,
@@ -515,6 +536,102 @@ class InternalManualAgent:
             result = response.json()
         if not isinstance(result, dict):
             raise RagToolError("RAG_OUTPUT_INVALID", "RAG 응답 형식이 올바르지 않습니다.")
+        return result
+
+    async def runtime_receipt(self, app_role: str) -> dict[str, Any]:
+        """DB 승인, runtime health와 실제 HMAC 서명 endpoint를 함께 검증한다."""
+
+        rag_role = _ROLE_MAP.get(app_role)
+        if rag_role is None:
+            raise RagToolError(
+                "RAG_ACCESS_DENIED",
+                "RAG 실행 준비 상태를 확인할 권한이 없습니다.",
+                403,
+            )
+        await self._assert_enabled(app_role)
+        try:
+            health = await self._get_json("/health/ready")
+            catalog = await self._signed_post(
+                "/v1/tools/internal-manual-catalog",
+                {},
+                rag_role,
+            )
+        except RagToolError:
+            raise
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+            raise RagToolError(
+                "RAG_RUNTIME_NOT_READY",
+                "RAG 실행 서비스를 확인하지 못했습니다.",
+            ) from error
+
+        execution_state = health.get("execution_state")
+        tool = health.get("tool")
+        dimension = health.get("expected_dimension")
+        documents = catalog.get("documents")
+        if (
+            health.get("status") != "healthy"
+            or health.get("embedding_api_configured") is not True
+            or not isinstance(execution_state, dict)
+            or execution_state.get("p2_gate") != "TECHNICALLY_VALIDATED"
+            or execution_state.get("production_integration")
+            != "LOCAL_DOCKER_VALIDATED"
+            or not isinstance(tool, dict)
+            or tool.get("tool_code") != "internal-manual-search"
+            or not isinstance(tool.get("semantic_version"), str)
+            or not tool["semantic_version"].strip()
+            or tool.get("read_only") is not True
+            or tool.get("destructive") is not False
+            or not isinstance(health.get("model_revision"), str)
+            or not re.fullmatch(
+                r"[A-Za-z0-9._:/+-]{1,160}",
+                health["model_revision"],
+            )
+            or isinstance(dimension, bool)
+            or not isinstance(dimension, int)
+            or not 1 <= dimension <= RAG_MAX_EMBEDDING_DIMENSION
+            or not isinstance(documents, list)
+        ):
+            raise RagToolError(
+                "RAG_RUNTIME_RECEIPT_INVALID",
+                "RAG 실행 준비 상태 계약이 올바르지 않습니다.",
+            )
+        canonical = json.dumps(
+            {
+                "schema_version": RAG_RUNTIME_RECEIPT_VERSION,
+                "tool_code": tool["tool_code"],
+                "tool_version": tool["semantic_version"],
+                "model_revision": health["model_revision"],
+                "embedding_dimension": dimension,
+                "document_count": len(documents),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        return {
+            "schema_version": RAG_RUNTIME_RECEIPT_VERSION,
+            "tool_code": tool["tool_code"],
+            "tool_version": tool["semantic_version"],
+            "model_revision": health["model_revision"],
+            "embedding_dimension": dimension,
+            "capability_hash": hashlib.sha256(
+                canonical.encode("utf-8")
+            ).hexdigest(),
+        }
+
+    async def _get_json(self, path: str) -> dict[str, Any]:
+        """공개 health endpoint도 bounded transport와 object 계약으로만 읽는다."""
+
+        async with httpx.AsyncClient(timeout=self._timeout, trust_env=False) as client:
+            response = await client.get(f"{self._base_url}{path}")
+            response.raise_for_status()
+            result = response.json()
+        if not isinstance(result, dict):
+            raise RagToolError(
+                "RAG_OUTPUT_INVALID",
+                "RAG 응답 형식이 올바르지 않습니다.",
+            )
         return result
 
     async def fetch_catalog(self, app_role: str) -> list[dict[str, Any]]:

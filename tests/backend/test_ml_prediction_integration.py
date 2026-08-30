@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date, timedelta
 import hashlib
 import json
 from pathlib import Path
@@ -47,13 +48,16 @@ CANDIDATE_DIR = (
 
 def _runtime_capabilities() -> dict[str, object]:
     return {
+        "schema_version": "MLRuntimeCapability.v1",
+        "prediction_contract_version": "MLRoomDemandPrediction.v1",
         "model_version": "room-demand-timeseries-hgbr-v2.2.0",
         "model_hash": "a" * 64,
         "model_type": "historical-only-direct-multi-horizon-hgbr",
         "estimator_type": "HistGradientBoostingRegressor",
         "approval": "CONDITIONAL_PASS",
-        "max_horizon": 7,
-        "model_max_horizon": 10,
+        "min_horizon_days": 1,
+        "max_horizon_days": 7,
+        "model_max_horizon_days": 10,
         "properties": [
             {
                 "property_id": "GRAND",
@@ -79,18 +83,43 @@ def _runtime_capabilities() -> dict[str, object]:
     }
 
 
-def _prediction_result() -> dict[str, object]:
+def _prediction_result(horizon_days: int = 7) -> dict[str, object]:
+    as_of = date(2026, 8, 28)
+    targets = [
+        as_of + timedelta(days=offset)
+        for offset in range(1, horizon_days + 1)
+    ]
     return {
+        "schema_version": "MLRoomDemandPrediction.v1",
         "status": "SUCCEEDED",
-        "execution_id": "prediction-execution-1",
+        "execution_id": "fdcb43b6-5479-4c1b-8745-55e370180071",
         "property_id": "GRAND",
-        "as_of": "2026-08-28",
-        "feature_as_of": "2026-08-28",
-        "horizon": 7,
+        "as_of": as_of.isoformat(),
+        "feature_as_of": as_of.isoformat(),
+        "horizon_days": horizon_days,
         "model_version": "room-demand-timeseries-hgbr-v2.2.0",
         "model_hash": "a" * 64,
-        "daily_forecasts": [],
-        "room_type_forecasts": [],
+        "daily_forecasts": [
+            {
+                "target_date": target.isoformat(),
+                "total_available_rooms": 100.0,
+                "predicted_occupied_rooms": 60.0,
+                "predicted_available_rooms": 40.0,
+                "predicted_occupancy_rate": 0.6,
+            }
+            for target in targets
+        ],
+        "room_type_forecasts": [
+            {
+                "target_date": target.isoformat(),
+                "room_type_code": "STANDARD",
+                "available_rooms": 100.0,
+                "predicted_rooms_raw": 60.0,
+                "predicted_rooms": 60.0,
+                "occupancy_rate": 0.6,
+            }
+            for target in targets
+        ],
         "provenance": {
             "source": "TRINO_HISTORICAL_DAILY_FACTS",
             "history_table": "pms.ml_evaluation.approved_history",
@@ -267,7 +296,7 @@ def test_prediction_release_drift_is_blocked_before_audit_storage() -> None:
         asyncio.run(
             service.predict(  # type: ignore[arg-type]
                 session,
-                {"property_id": "GRAND", "as_of": "2026-08-28", "horizon": 7},
+                {"property_id": "GRAND", "as_of": "2026-08-28", "horizon_days": 7},
             )
         )
 
@@ -283,12 +312,37 @@ def test_matching_prediction_release_is_saved_once() -> None:
     result = asyncio.run(
         service.predict(  # type: ignore[arg-type]
             session,
-            {"property_id": "grand", "as_of": "2026-08-28", "horizon": 7},
+            {"property_id": "grand", "as_of": "2026-08-28", "horizon_days": 7},
         )
     )
 
     assert result["status"] == "SUCCEEDED"
     assert session.execute_calls == 1
+
+
+def test_inconsistent_prediction_values_are_blocked_before_audit_storage() -> None:
+    changed = _prediction_result()
+    daily = changed["daily_forecasts"]
+    assert isinstance(daily, list)
+    first = daily[0]
+    assert isinstance(first, dict)
+    first["predicted_available_rooms"] = 99.0
+    client = _StubMLClient(_runtime_capabilities(), changed)
+    session = _RecordingSession()
+
+    with pytest.raises(RuntimeError, match="prediction response is invalid"):
+        asyncio.run(
+            MLPredictionService(client).predict(  # type: ignore[arg-type]
+                session,
+                {
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-28",
+                    "horizon_days": 7,
+                },
+            )
+        )
+
+    assert session.execute_calls == 0
 
 
 def test_prediction_history_source_drift_is_blocked_before_audit_storage() -> None:
@@ -305,7 +359,7 @@ def test_prediction_history_source_drift_is_blocked_before_audit_storage() -> No
         asyncio.run(
             service.predict(  # type: ignore[arg-type]
                 session,
-                {"property_id": "GRAND", "as_of": "2026-08-28", "horizon": 7},
+                {"property_id": "GRAND", "as_of": "2026-08-28", "horizon_days": 7},
             )
         )
 
@@ -486,6 +540,68 @@ def test_ml_request_rejects_unimplemented_conversation_binding() -> None:
         RoomDemandRequest(
             property_id="GRAND",
             as_of="2026-08-28",
-            horizon=7,
+            horizon_days=7,
             conversation_id="not-yet-supported",
         )
+
+
+def test_ml_request_global_contract_accepts_a_ninety_day_model_window() -> None:
+    request = RoomDemandRequest(
+        property_id="GRAND",
+        as_of="2026-08-28",
+        horizon_days=90,
+    )
+
+    assert request.horizon_days == 90
+
+
+def test_backend_uses_runtime_capability_as_the_effective_horizon_limit() -> None:
+    client = _StubMLClient(_runtime_capabilities())
+    service = MLPredictionService(client)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="unsupported ML prediction horizon_days"):
+        asyncio.run(
+            service.predict(  # type: ignore[arg-type]
+                _RecordingSession(),
+                {
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-28",
+                    "horizon_days": 90,
+                },
+            )
+        )
+
+    assert client.prediction_calls == 0
+
+
+def test_backend_accepts_a_ninety_day_replacement_model_without_code_changes() -> None:
+    capability = _runtime_capabilities()
+    capability.update(
+        {
+            "model_version": "approved-demand-release-vnext",
+            "model_type": "approved-room-demand-regressor",
+            "estimator_type": "ApprovedRegressor",
+            "max_horizon_days": 90,
+            "model_max_horizon_days": 90,
+        }
+    )
+    prediction = _prediction_result(horizon_days=90)
+    prediction["model_version"] = capability["model_version"]
+    client = _StubMLClient(capability, prediction)
+    session = _RecordingSession()
+
+    result = asyncio.run(
+        MLPredictionService(client).predict(  # type: ignore[arg-type]
+            session,
+            {
+                "property_id": "GRAND",
+                "as_of": "2026-08-28",
+                "horizon_days": 90,
+            },
+        )
+    )
+
+    assert result["horizon_days"] == 90
+    assert len(result["daily_forecasts"]) == 90
+    assert client.prediction_calls == 1
+    assert session.execute_calls == 1

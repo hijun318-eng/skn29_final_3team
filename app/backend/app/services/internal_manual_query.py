@@ -10,7 +10,8 @@ from uuid import UUID
 
 from app.authorization import has_capability
 from app.contracts import Capability, RequestContext
-from app.services.rag_gateway import RagToolError
+from app.ports.agent import AgentKind, AgentPortReadiness
+from app.services.rag_gateway import RAG_RUNTIME_RECEIPT_VERSION, RagToolError
 
 
 _MANUAL_ID = re.compile(r"[A-Z][A-Z0-9-]{1,99}")
@@ -87,6 +88,11 @@ class InternalManualExecutor(Protocol):
 
         ...
 
+    async def runtime_receipt(self, app_role: str) -> dict[str, Any]:
+        """DB registry·HMAC·runtime release를 확인한 비밀 없는 영수증을 반환한다."""
+
+        ...
+
 
 def rag_document_ids(rag_result: dict[str, Any]) -> tuple[str, ...]:
     """저장된 서버 RAG 결과에서 검증 가능한 문서 ID를 최대 두 개 복원한다."""
@@ -154,6 +160,60 @@ class InternalManualQueryService:
         self._repository = repository
         self._executor_factory = executor_factory
         self._enabled = enabled
+
+    async def readiness(self, context: RequestContext) -> AgentPortReadiness:
+        """권한과 현재 Gateway release가 모두 유효할 때만 RAG Port를 연다."""
+
+        unavailable = lambda reason: AgentPortReadiness(
+            agent=AgentKind.INTERNAL_GUIDELINE,
+            status="not_ready",
+            capability_version=RAG_RUNTIME_RECEIPT_VERSION,
+            reason=reason,
+        )
+        if not has_capability(context.role, Capability.RUN_ANALYSIS):
+            return unavailable("RAG 실행 권한이 없습니다.")
+        if not self._enabled or self._executor_factory is None:
+            return unavailable("RAG 실행 기능이 준비되지 않았습니다.")
+        try:
+            receipt = await self._executor_factory().runtime_receipt(
+                context.role.value
+            )
+        except RagToolError:
+            return unavailable("RAG 실행 서비스를 확인하지 못했습니다.")
+        expected_keys = {
+            "schema_version",
+            "tool_code",
+            "tool_version",
+            "model_revision",
+            "embedding_dimension",
+            "capability_hash",
+        }
+        if (
+            not isinstance(receipt, dict)
+            or set(receipt) != expected_keys
+            or receipt["schema_version"] != RAG_RUNTIME_RECEIPT_VERSION
+            or receipt["tool_code"] != "internal-manual-search"
+            or not isinstance(receipt["tool_version"], str)
+            or not receipt["tool_version"].strip()
+            or not isinstance(receipt["model_revision"], str)
+            or not receipt["model_revision"].strip()
+            or isinstance(receipt["embedding_dimension"], bool)
+            or not isinstance(receipt["embedding_dimension"], int)
+            or receipt["embedding_dimension"] < 1
+            or not isinstance(receipt["capability_hash"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", receipt["capability_hash"])
+        ):
+            return unavailable("RAG 실행 준비 상태 계약이 올바르지 않습니다.")
+        return AgentPortReadiness(
+            agent=AgentKind.INTERNAL_GUIDELINE,
+            status="ready",
+            capability_version=receipt["schema_version"],
+            release_refs=(
+                f"rag-tool:{receipt['tool_code']}:{receipt['tool_version']}",
+                f"rag-retrieval:{receipt['model_revision']}:{receipt['embedding_dimension']}",
+                f"rag-capability:sha256:{receipt['capability_hash']}",
+            ),
+        )
 
     async def execute(
         self,

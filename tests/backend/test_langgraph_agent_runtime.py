@@ -17,7 +17,12 @@ for path in (ROOT, BACKEND):
 from app.agent_contracts import AgentDecisionSource, AgentExecutionPhase  # noqa: E402
 from app.contracts import RequestContext  # noqa: E402
 from app.conversation_contracts import ConversationCommandRequest  # noqa: E402
-from app.ports.agent import AgentKind, AgentRequest, AgentResult  # noqa: E402
+from app.ports.agent import (  # noqa: E402
+    AgentKind,
+    AgentRequest,
+    AgentResult,
+    MLPredictionInvocation,
+)
 from app.services.agent_supervisor import (  # noqa: E402
     AgentDispatchError,
     DeterministicAgentSupervisor,
@@ -30,7 +35,11 @@ from app.services.langgraph_agent_runtime import (  # noqa: E402
 )
 
 
-def _request(requested_route: str | None = None) -> AgentRequest:
+def _request(
+    requested_route: str | None = None,
+    *,
+    ml_invocation: bool = False,
+) -> AgentRequest:
     """공통 admission receipt가 결속된 테스트용 AgentRequest를 만든다."""
 
     conversation_id = uuid4()
@@ -48,6 +57,16 @@ def _request(requested_route: str | None = None) -> AgentRequest:
             permission_snapshot_id="permission-receipt-v1",
             product_release_id="product-release-v1",
             semantic_release_id="semantic-release-v1",
+        ),
+        target_agent=(AgentKind.ML_PREDICTION if ml_invocation else None),
+        invocation=(
+            MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=90,
+            )
+            if ml_invocation
+            else None
         ),
     )
 
@@ -197,7 +216,9 @@ class LangGraphAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        outcome = await LangGraphAgentRuntime(supervisor).execute(_request())
+        outcome = await LangGraphAgentRuntime(supervisor).execute(
+            _request(ml_invocation=True)
+        )
 
         self.assertEqual(_agent_node_name(AgentKind.ML_PREDICTION), ML_PREDICTION_AGENT_NODE)
         self.assertEqual(calls, [AgentKind.ML_PREDICTION.value])

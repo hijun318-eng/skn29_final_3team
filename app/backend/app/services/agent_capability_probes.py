@@ -27,6 +27,8 @@ from app.services.agent_supervisor import (
     AgentCapabilityEvidence,
     AgentDispatchError,
 )
+from app.services.ml_prediction_service import MLRuntimeCapability
+from app.services.rag_gateway import RAG_MAX_EMBEDDING_DIMENSION
 
 
 ANALYSIS_CAPABILITY_PROBE_VERSION = "GovernedAnalysisCapabilityProbe.v1"
@@ -35,6 +37,7 @@ INTERNAL_GUIDELINE_CAPABILITY_PROBE_VERSION = (
 )
 _EVIDENCE_REFERENCE_PREFIX = "agent-capability:v1:analysis-workflow:"
 _RAG_EVIDENCE_REFERENCE_PREFIX = "agent-capability:v1:internal-guideline:"
+_ML_EVIDENCE_REFERENCE_PREFIX = "agent-capability:v1:ml-prediction:"
 _APPROVED_SOURCE_AUTHORITIES = frozenset(
     {
         "DATAHUB_NATIVE_METRIC_V1",
@@ -78,6 +81,15 @@ class InternalGuidelineCapabilitySearcher(Protocol):
         app_role: str,
     ) -> dict[str, Any]:
         """원문을 제외한 versioned capability 후보를 반환한다."""
+
+        ...
+
+
+class MLPredictionCapabilityReader(Protocol):
+    """예측을 실행하지 않고 현재 ML release 범위만 읽는 경계다."""
+
+    async def capabilities(self) -> dict[str, Any]:
+        """versioned 모델·property·기간 capability를 반환한다."""
 
         ...
 
@@ -309,7 +321,11 @@ class InternalGuidelineCapabilityProbe:
             or not candidate["tool_version"].strip()
             or not isinstance(candidate["model_revision"], str)
             or not candidate["model_revision"].strip()
-            or candidate["embedding_dimension"] != 1024
+            or isinstance(candidate["embedding_dimension"], bool)
+            or not isinstance(candidate["embedding_dimension"], int)
+            or not 1
+            <= candidate["embedding_dimension"]
+            <= RAG_MAX_EMBEDDING_DIMENSION
             or not isinstance(evidence_ids, list)
             or not isinstance(document_ids, list)
             or len(evidence_ids) != len(set(evidence_ids))
@@ -393,4 +409,144 @@ class InternalGuidelineCapabilityProbe:
                 else "RAG_CAPABILITY_NOT_MATCHED"
             ),
             evidence_refs=(f"{_RAG_EVIDENCE_REFERENCE_PREFIX}{digest}",),
+        )
+
+
+class MLPredictionCapabilityProbe:
+    """구조화 invocation과 현재 모델 capability만 비교하는 search-only probe다."""
+
+    agent = AgentKind.ML_PREDICTION
+
+    def __init__(self, reader: MLPredictionCapabilityReader) -> None:
+        self._reader = reader
+
+    async def probe(self, request: AgentRequest) -> AgentCapabilityEvidence:
+        """자연어·예측 실행 없이 property·date·horizon 범위 적합성만 판정한다."""
+
+        _validate_admitted_request(request)
+        invocation = request.invocation
+        if (
+            invocation is None
+            or not has_capability(request.context.role, Capability.RUN_ANALYSIS)
+        ):
+            return self._evidence(
+                request,
+                matched=False,
+                outcome=(
+                    "STRUCTURED_INVOCATION_MISSING"
+                    if invocation is None
+                    else "ROLE_NOT_ENTITLED"
+                ),
+            )
+        try:
+            capability = MLRuntimeCapability.model_validate(
+                await self._reader.capabilities()
+            )
+        except Exception as error:
+            raise AgentDispatchError(
+                "AGENT_CAPABILITY_EVIDENCE_INVALID",
+                "ML capability 후보 근거가 올바르지 않습니다.",
+            ) from error
+
+        property_capability = next(
+            (
+                item
+                for item in capability.properties
+                if item.property_id.upper() == invocation.property_id.upper()
+            ),
+            None,
+        )
+        matched = bool(
+            property_capability is not None
+            and capability.min_horizon_days
+            <= invocation.horizon_days
+            <= capability.max_horizon_days
+            and property_capability.min_as_of
+            <= invocation.as_of
+            <= property_capability.max_as_of
+        )
+        capability_payload = capability.model_dump(mode="json")
+        capability_digest = hashlib.sha256(
+            json.dumps(
+                capability_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        return self._evidence(
+            request,
+            matched=matched,
+            outcome=(
+                "ML_CAPABILITY_MATCH"
+                if matched
+                else "ML_CAPABILITY_NOT_MATCHED"
+            ),
+            capability_receipt={
+                "schema_version": capability.schema_version,
+                "model_hash": capability.model_hash,
+                "capability_sha256": capability_digest,
+            },
+        )
+
+    @classmethod
+    def _evidence(
+        cls,
+        request: AgentRequest,
+        *,
+        matched: bool,
+        outcome: str,
+        capability_receipt: dict[str, str] | None = None,
+    ) -> AgentCapabilityEvidence:
+        """구조화 입력 원문 대신 canonical hash와 release receipt만 봉인한다."""
+
+        context = request.context
+        invocation = request.invocation
+        invocation_hash = (
+            hashlib.sha256(
+                json.dumps(
+                    invocation.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            if invocation is not None
+            else None
+        )
+        canonical = {
+            "schema_version": "MLPredictionCapabilityProbe.v1",
+            "agent": cls.agent.value,
+            "request_id": str(context.request_id),
+            "conversation_id": str(request.conversation_id),
+            "command_id": str(context.command_id),
+            "effective_subject_id": str(context.user_id),
+            "permission_snapshot_id": context.permission_snapshot_id,
+            "product_release_id": context.product_release_id,
+            "semantic_release_id": context.semantic_release_id,
+            "invocation_sha256": invocation_hash,
+            "matched": matched,
+            "outcome": outcome,
+            "capability_receipt": capability_receipt,
+        }
+        digest = hashlib.sha256(
+            json.dumps(
+                canonical,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        return AgentCapabilityEvidence(
+            agent=cls.agent,
+            matched=matched,
+            reason=(
+                "ML_CAPABILITY_MATCH"
+                if matched
+                else "ML_CAPABILITY_NOT_MATCHED"
+            ),
+            evidence_refs=(f"{_ML_EVIDENCE_REFERENCE_PREFIX}{digest}",),
         )

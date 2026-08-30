@@ -89,6 +89,13 @@
   font-weight: 700;
 }
 
+.ml-workspace__field-hint {
+  color: var(--ml-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
 .ml-workspace__form select,
 .ml-workspace__form input {
   min-width: 0;

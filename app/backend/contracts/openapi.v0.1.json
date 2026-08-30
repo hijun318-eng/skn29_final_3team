@@ -5518,18 +5518,18 @@
       },
       "RoomDemandRequest": {
         "additionalProperties": false,
-        "description": "지원 대상과 기준일 및 최대 7일의 예측 범위를 제한한다.",
+        "description": "지원 대상·기준일·일 단위 horizon을 runtime capability 검증에 전달한다.",
         "properties": {
           "as_of": {
             "format": "date",
             "title": "As Of",
             "type": "string"
           },
-          "horizon": {
+          "horizon_days": {
             "default": 7,
-            "maximum": 7.0,
+            "maximum": 366.0,
             "minimum": 1.0,
-            "title": "Horizon",
+            "title": "Horizon Days",
             "type": "integer"
           },
           "property_id": {

@@ -17,7 +17,11 @@ if str(BACKEND) not in sys.path:
 from app.authorization import permission_snapshot_id
 from app.contracts import RequestContext, Role
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentRequest
+from app.ports.agent import (
+    AgentKind,
+    AgentRequest,
+    MLPredictionInvocation,
+)
 from app.ports.data_platform import (
     AssetCandidateSet,
     MetadataUnavailableError,
@@ -26,6 +30,7 @@ from app.ports.data_platform import (
 from app.services.agent_capability_probes import (
     GovernedAnalysisCapabilityProbe,
     InternalGuidelineCapabilityProbe,
+    MLPredictionCapabilityProbe,
 )
 from app.services.agent_supervisor import AgentDispatchError
 
@@ -66,11 +71,22 @@ class _GuidelineSearcher:
         return self.candidate
 
 
+class _MLCapabilityReader:
+    def __init__(self, capability: dict[str, object]) -> None:
+        self.capability = capability
+        self.calls = 0
+
+    async def capabilities(self) -> dict[str, object]:
+        self.calls += 1
+        return self.capability
+
+
 def _request(
     *,
     question: str = "2026년 6월 객실 매출을 분석해줘",
     role: Role = Role.ANALYST,
     admitted: bool = True,
+    invocation: MLPredictionInvocation | None = None,
 ) -> AgentRequest:
     conversation_id = uuid4()
     user_id = uuid4()
@@ -93,6 +109,8 @@ def _request(
             expected_head_turn_id=None,
         ),
         context=context,
+        target_agent=(AgentKind.ML_PREDICTION if invocation is not None else None),
+        invocation=invocation,
     )
 
 
@@ -138,6 +156,43 @@ def _rag_candidate(*, matched: bool = True) -> dict[str, object]:
         "evidence_ids": ["POL-PRIVACY-001:1.0:1:chunk-1"] if matched else [],
         "document_ids": ["POL-PRIVACY-001"] if matched else [],
         "maximum_score": 0.87 if matched else None,
+    }
+
+
+def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
+    return {
+        "schema_version": "MLRuntimeCapability.v1",
+        "prediction_contract_version": "MLRoomDemandPrediction.v1",
+        "model_version": "approved-demand-release",
+        "model_hash": "a" * 64,
+        "model_type": "daily-demand-forecast",
+        "estimator_type": "ApprovedRegressor",
+        "approval": "APPROVED",
+        "min_horizon_days": 1,
+        "max_horizon_days": max_horizon_days,
+        "model_max_horizon_days": max_horizon_days,
+        "properties": [
+            {
+                "property_id": "GRAND",
+                "min_as_of": "2025-01-01",
+                "max_as_of": "2026-12-31",
+                "feature_max_as_of": "2026-08-28",
+                "history_rows": 500,
+            }
+        ],
+        "synthetic_training_data": False,
+        "history_source": {
+            "table": "pms.ml_evaluation.approved_history",
+            "row_count": 500,
+            "property_count": 1,
+            "series_count": 1,
+            "min_date": "2024-01-01",
+            "max_date": "2026-08-28",
+            "synthetic_only": False,
+            "summary_query_id": "summary-query",
+            "continuity_query_id": "continuity-query",
+        },
+        "query_id": "capability-query",
     }
 
 
@@ -297,6 +352,51 @@ class InternalGuidelineCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
             raised.exception.code,
             "AGENT_CAPABILITY_EVIDENCE_INVALID",
         )
+
+
+class MLPredictionCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_structured_ninety_day_invocation_matches_runtime_receipt(self) -> None:
+        reader = _MLCapabilityReader(_ml_capability(max_horizon_days=90))
+        request = _request(
+            invocation=MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=90,
+            )
+        )
+
+        evidence = await MLPredictionCapabilityProbe(reader).probe(request)
+
+        self.assertTrue(evidence.matched)
+        self.assertEqual(evidence.agent, AgentKind.ML_PREDICTION)
+        self.assertRegex(
+            evidence.evidence_refs[0],
+            r"^agent-capability:v1:ml-prediction:[0-9a-f]{64}$",
+        )
+        self.assertEqual(reader.calls, 1)
+
+    async def test_missing_structured_invocation_never_calls_ml_runtime(self) -> None:
+        reader = _MLCapabilityReader(_ml_capability())
+
+        evidence = await MLPredictionCapabilityProbe(reader).probe(_request())
+
+        self.assertFalse(evidence.matched)
+        self.assertEqual(reader.calls, 0)
+
+    async def test_runtime_horizon_is_the_effective_probe_limit(self) -> None:
+        reader = _MLCapabilityReader(_ml_capability(max_horizon_days=7))
+        request = _request(
+            invocation=MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=90,
+            )
+        )
+
+        evidence = await MLPredictionCapabilityProbe(reader).probe(request)
+
+        self.assertFalse(evidence.matched)
+        self.assertEqual(reader.calls, 1)
 
 if __name__ == "__main__":
     unittest.main()

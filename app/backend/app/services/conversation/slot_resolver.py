@@ -373,8 +373,11 @@ class ConversationSlotResolver:
         # 어떤 집계 형태·시간 버킷을 쓸지 중 하나라도 바뀌면 재사용으로 답할 수 없다.
         # 이 중 하나라도 후보가 오면 신호와 무관하게 모든 게이트를 거치는 ANALYSIS로
         # 보낸다. 그러지 않으면 사용자가 요청한 재집계가 조용히 사라진다.
+        candidate_changes_metric = bool(candidate_metric_ids) and (
+            frozenset(candidate_metric_ids) != frozenset(stored_analysis_metric_ids)
+        )
         changes_query_shape = bool(
-            candidate_metric_ids
+            candidate_changes_metric
             or node1_output.get("dimension_fields")
             or node1_output.get("filter_fields")
             or (
@@ -773,7 +776,8 @@ class ConversationSlotResolver:
     ) -> str:
         """ANALYSIS 라우트에서 질문이 명시한 초기 시각화 타입을 확정합니다.
 
-        표현을 지목하지 않은 질문은 확정된 연산과 출력 지표 unit으로 기본 표현을 정한다.
+        표현을 지목하지 않은 질문은 결과에 집중하도록 요약 뷰로 시작한다. 표현 요청은
+        질문 문구를 서버에서 다시 파싱하지 않고 Node1의 typed 신호만 사용한다.
 
         Args:
             msg: 사용자 발화(현재 분기 판단에는 쓰지 않으며 추적용으로 유지)
@@ -782,39 +786,9 @@ class ConversationSlotResolver:
         Returns:
             허용 목록에 속하는 뷰 타입
         """
-        signal = cls._presentation_signal(node1_output)
-        if signal is not None:
-            return signal
-        if not node1_output:
-            return "SUMMARY"
-        operation = node1_output.get("analysis_operation")
-        if operation == "time_trend":
-            return "LINE"
-        if operation in {"period_comparison", "top_n", "bottom_n"}:
-            return "BAR"
-        if operation != "breakdown":
-            return "SUMMARY"
-
-        raw_ids = node1_output.get("selected_metric_ids")
-        metric_ids = (
-            [item for item in raw_ids if isinstance(item, str) and item]
-            if isinstance(raw_ids, (list, tuple))
-            else []
-        )
-        raw_terms = node1_output.get("metric_terms")
-        units = []
-        if metric_ids and isinstance(raw_terms, dict):
-            for metric_id in metric_ids:
-                term = raw_terms.get(metric_id)
-                unit = term.get("unit") if isinstance(term, dict) else None
-                if not isinstance(unit, str) or not unit.strip():
-                    units = []
-                    break
-                units.append(unit.strip().casefold())
-        rate_or_per_unit = bool(units) and all(
-            unit == "ratio" or "_per_" in unit for unit in units
-        )
-        return "SUMMARY" if rate_or_per_unit else "BAR"
+        # prompt 계약상 presentation_type은 사용자가 표현을 명시한 경우에만 반환된다.
+        # 연산 종류를 근거로 서버가 차트를 추정하지 않으며, 신호가 없으면 요약으로 닫는다.
+        return cls._presentation_signal(node1_output) or "SUMMARY"
 
     @classmethod
     def _presentation_signal(cls, node1_output: dict[str, Any] | None) -> str | None:

@@ -36,7 +36,12 @@ from app.conversation_contracts import (
     canonical_command_input_hash,
 )
 from app.contracts import AnalysisRequest, AnalysisStatus, Capability, ErrorCode, RequestContext, ResolvedSlots
-from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
+from app.ports.data_platform import (
+    DataPlatformAdapter,
+    MetadataUnavailableError,
+    NoEntitledAssetsError,
+    ReleaseReceiptChangedError,
+)
 from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
 from app.services.context.model_signals import client_action_signals
 from app.services.conversation.analysis_request import (
@@ -589,7 +594,7 @@ class ConversationOrchestrator:
                     or observed_semantic != semantic_release_id
                     or any(value != "ready" for value in stages.values())
                 ):
-                    raise RuntimeError(
+                    raise ReleaseReceiptChangedError(
                         "pinned product release is no longer executable"
                     )
                 return product_release_id, str(observed_semantic)
@@ -602,7 +607,9 @@ class ConversationOrchestrator:
             or not product_release
             or any(value != "ready" for value in stages.values())
         ):
-            raise RuntimeError("active product release receipt를 원자적으로 확정하지 못했습니다.")
+            raise ReleaseReceiptChangedError(
+                "active product release receipt를 원자적으로 확정하지 못했습니다."
+            )
         return product_release, semantic_after
 
     async def create_conversation(
@@ -751,7 +758,7 @@ class ConversationOrchestrator:
                 str(conversation["product_release_id"]),
                 str(conversation["semantic_release_id"]),
             )
-        except RuntimeError:
+        except MetadataUnavailableError:
             return None, {
                 "status": "CONFLICT",
                 "code": ErrorCode.RESOURCE_CONFLICT.value,

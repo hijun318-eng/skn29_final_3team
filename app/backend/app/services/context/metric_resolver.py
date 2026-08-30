@@ -154,9 +154,11 @@ def _reconcile_comparison_axis(
     """검증된 기간 수와 일반 비교 결과 형태의 중복 신호를 일관되게 결속한다.
 
     질문 문자열을 다시 파싱하지 않고 이미 검증된 구조만 사용한다. 정확히 두 기간과
-    comparison 관계가 확정됐는데 일반 aggregate/breakdown으로 남은 응답은
-    period_comparison으로 좁힌다. 반대로 서로 다른 측정값이 둘 이상 확정됐지만 두 번째
-    기간이 없으면 하나의 공유 기간에서 지표들을 나란히 조회하는 일반 형태로 복구한다.
+    서로 다른 두 기간이 확정됐는데 일반 aggregate/breakdown으로 남은 응답은
+    period_comparison으로 좁힌다. 이때 모델이 두 기간을 모두 반환하고도 관계만 single로
+    잘못 표기한 경우까지 구조적으로 보정한다. 반대로 서로 다른 측정값이 둘 이상
+    확정됐지만 두 번째 기간이 없으면 하나의 공유 기간에서 지표들을 나란히 조회하는
+    일반 형태로 복구한다.
     추이·순위처럼 별도 의미가 있는 충돌과 시간 모호성은 보정하지 않고 후속 검증이
     fail-closed하도록 둔다.
     """
@@ -164,9 +166,15 @@ def _reconcile_comparison_axis(
     is_ambiguous = (
         isinstance(ambiguity, dict) and ambiguity.get("is_ambiguous") is True
     )
+    distinct_periods = {
+        (period.get("start"), period.get("end_exclusive"))
+        for period in periods
+        if isinstance(period, dict)
+    }
     if (
-        relationship == "comparison"
+        relationship in {"single", "comparison"}
         and len(periods) == 2
+        and len(distinct_periods) == 2
         and analysis_operation in {"aggregate", "breakdown"}
         and intents == [analysis_operation]
         and bool(selected_metric_ids)
@@ -174,7 +182,7 @@ def _reconcile_comparison_axis(
         and result_limit is None
         and not is_ambiguous
     ):
-        return "period_comparison", relationship, ["period_comparison"]
+        return "period_comparison", "comparison", ["period_comparison"]
     if not (
         analysis_operation == "period_comparison"
         and relationship == "comparison"

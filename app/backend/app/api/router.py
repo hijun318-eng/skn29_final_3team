@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 from typing import Annotated, Any
@@ -76,6 +77,7 @@ from app.api.analysis_router_support import (
 )
 from app.controllers.analysis_controller import AnalysisController
 from app.ports.agent import AgentKind, AgentRequest
+from app.ports.data_platform import MetadataUnavailableError
 from app.services.analysis import AnalysisService, analysis_progress
 from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
 from app.services.agent_supervisor import AgentDispatchError
@@ -83,6 +85,9 @@ from app.services.conversation.analysis_request import build_replay_analysis_req
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
+
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -522,7 +527,19 @@ async def create_conversation(
     from app.api.analysis_router_runtime import conversation_orchestrator
     title = str(payload.get("title") or "새 분석 대화").strip()
     orch = conversation_orchestrator(_controller())
-    conv = await orch.create_conversation(context, title)
+    try:
+        conv = await orch.create_conversation(context, title)
+    except MetadataUnavailableError as error:
+        logger.warning(
+            "conversation release receipt is unavailable: type=%s detail=%s",
+            type(error).__name__,
+            error,
+        )
+        raise ContextValidationError(
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            "분석 데이터 연결을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.",
+            503,
+        ) from error
     return {"status": "SUCCESS", "data": conv}
 
 

@@ -1550,6 +1550,29 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             third["turn"]["resolved_slots"]["comparison_time_range"]["start"],
         )
 
+        searches_after_comparison = len(self.data_platform.queries)
+        node1_calls_after_comparison = len(self.support.questions)
+        table = await self.execute_command(
+            conversation_id=conv_id,
+            payload={
+                "user_message": "표로 보여줘",
+                "expected_head_turn_id": str(third["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("SUCCESS", table["status"])
+        self.assertEqual("PRESENTATION", table["turn"]["route"])
+        self.assertEqual("TABLE", table["turn"]["view_type"])
+        self.assertEqual(third["turn"]["artifact_id"], table["turn"]["artifact_id"])
+        self.assertEqual(3, len(self.submitted_requests))
+        self.assertEqual(searches_after_comparison + 1, len(self.data_platform.queries))
+        self.assertEqual(node1_calls_after_comparison + 1, len(self.support.questions))
+        self.assertEqual(
+            third["turn"]["resolved_slots"]["comparison_time_range"],
+            table["turn"]["resolved_slots"]["comparison_time_range"],
+        )
+
     async def test_golden_dialogue_view_sequence_and_two_report_blocks(self) -> None:
         """GD-02는 한 Artifact에서 line→bar→table 후 마지막 두 View만 보고서에 담는다."""
 
@@ -1642,7 +1665,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_presentation_route_creates_view_spec_with_zero_queries(self) -> None:
-        """PRESENTATION 라우트 실행 시 추가 쿼리 없이 선행 아티팩트의 ViewSpec을 생성하는지 검증."""
+        """자연어 보기 명령도 추가 해석·쿼리 없이 선행 Artifact를 재사용하는지 검증."""
         conv = await self.repo.create_conversation(self.user_id, "시각화 전환")
         conv_id = conv["conversation_id"]
 
@@ -1654,6 +1677,8 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         )
         head1 = res1["turn"]["turn_id"]
         art_id = res1["turn"]["artifact_id"]
+        searches_after_analysis = len(self.data_platform.queries)
+        node1_calls_after_analysis = len(self.support.questions)
 
         # Turn 2: PRESENTATION ("표로 보여줘")
         res2 = await self.execute_command(
@@ -1681,6 +1706,8 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         )
         # submit_analysis는 Turn 1에서만 1회 호출됨
         self.assertEqual(len(self.submitted_requests), 1)
+        self.assertEqual(searches_after_analysis + 1, len(self.data_platform.queries))
+        self.assertEqual(node1_calls_after_analysis + 1, len(self.support.questions))
 
     async def test_incompatible_presentation_commits_blocked_turn_without_focus_change(self) -> None:
         """시간축 없는 Artifact의 LINE 요청은 typed BLOCKED 이력으로 닫는다."""

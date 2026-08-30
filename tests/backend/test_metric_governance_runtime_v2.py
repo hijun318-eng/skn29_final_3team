@@ -1367,12 +1367,17 @@ class _TwoPeriodMultiMetricNormalizer(_CrossMetricComparisonNormalizer):
 
 
 @pytest.mark.parametrize(
-    ("operation", "dimensions"),
-    (("aggregate", []), ("breakdown", ["observation_segment"])),
+    ("operation", "dimensions", "relationship"),
+    (
+        ("aggregate", [], "comparison"),
+        ("breakdown", ["observation_segment"], "comparison"),
+        ("aggregate", [], "single"),
+    ),
 )
 def test_verified_two_period_axis_reconciles_only_general_result_shapes(
     operation: str,
     dimensions: list[str],
+    relationship: str,
 ) -> None:
     periods = [
         {"start": "2042-05-01", "end_exclusive": "2042-06-01"},
@@ -1381,7 +1386,7 @@ def test_verified_two_period_axis_reconciles_only_general_result_shapes(
 
     reconciled = _reconcile_comparison_axis(
         analysis_operation=operation,
-        relationship="comparison",
+        relationship=relationship,
         intents=[operation],
         periods=periods,
         selected_metric_ids=["measure_alpha", "measure_beta"],
@@ -1396,6 +1401,24 @@ def test_verified_two_period_axis_reconciles_only_general_result_shapes(
         "comparison",
         ["period_comparison"],
     )
+
+
+def test_duplicate_periods_do_not_promote_single_axis_to_comparison() -> None:
+    period = {"start": "2042-05-01", "end_exclusive": "2042-06-01"}
+
+    reconciled = _reconcile_comparison_axis(
+        analysis_operation="aggregate",
+        relationship="single",
+        intents=["aggregate"],
+        periods=[period, dict(period)],
+        selected_metric_ids=["measure_alpha"],
+        measurement_source_texts=["Measure Alpha"],
+        selected_dimensions=[],
+        result_limit=None,
+        ambiguity={"is_ambiguous": False},
+    )
+
+    assert reconciled == ("aggregate", "single", ["aggregate"])
 
 
 @pytest.mark.parametrize("operation", ("time_trend", "top_n"))

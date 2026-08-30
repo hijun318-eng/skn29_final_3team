@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 import json
 from hashlib import sha256
 from typing import Literal
@@ -14,6 +15,22 @@ from app.contract_core import ContractModel, RequestContext
 
 CONVERSATION_COMMAND_VERSION = "ConversationCommand.v1"
 CONVERSATION_CAPABILITY_VERSION = "1.0.0"
+ML_PREDICTION_ABSOLUTE_MAX_HORIZON_DAYS = 366
+
+
+class MLPredictionAction(ContractModel):
+    """클라이언트가 명시적으로 요청하는 객실 수요 예측의 typed 입력이다."""
+
+    property_id: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    as_of: date
+    horizon_days: int = Field(
+        ge=1,
+        le=ML_PREDICTION_ABSOLUTE_MAX_HORIZON_DAYS,
+    )
 
 
 class ConversationCommandRequest(ContractModel):
@@ -27,12 +44,17 @@ class ConversationCommandRequest(ContractModel):
     idempotency_key: str = Field(min_length=1, max_length=128)
     expected_head_turn_id: UUID | None
     requested_route: Literal[
-        "ANALYSIS", "PRESENTATION", "REPORT_ACTION", "INTERNAL_GUIDELINE"
+        "ANALYSIS",
+        "PRESENTATION",
+        "REPORT_ACTION",
+        "INTERNAL_GUIDELINE",
+        "ML_PREDICTION",
     ] | None = None
     inherit_previous_context: bool = False
     presentation_type: Literal[
         "SUMMARY", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT"
     ] | None = None
+    ml_prediction: MLPredictionAction | None = None
 
     @field_validator("user_message", "idempotency_key", mode="before")
     @classmethod
@@ -44,12 +66,17 @@ class ConversationCommandRequest(ContractModel):
         return value
 
     @model_validator(mode="after")
-    def validate_context_inheritance_route(self) -> "ConversationCommandRequest":
-        """저장된 RAG snapshot 상속은 명시적 내부지침 경로에서만 허용한다."""
+    def validate_route_payloads(self) -> "ConversationCommandRequest":
+        """RAG 상속과 ML action이 각 명시 route에만 결속되게 한다."""
 
         if self.inherit_previous_context and self.requested_route != "INTERNAL_GUIDELINE":
             raise ValueError(
                 "inherit_previous_context requires requested_route=INTERNAL_GUIDELINE"
+            )
+        has_ml_action = self.ml_prediction is not None
+        if (self.requested_route == "ML_PREDICTION") != has_ml_action:
+            raise ValueError(
+                "requested_route=ML_PREDICTION requires exactly one ml_prediction payload"
             )
         return self
 
@@ -94,6 +121,11 @@ def canonical_command_input_hash(
             "requested_route": command.requested_route,
             "inherit_previous_context": command.inherit_previous_context,
             "presentation_type": command.presentation_type,
+            "ml_prediction": (
+                command.ml_prediction.model_dump(mode="json")
+                if command.ml_prediction is not None
+                else None
+            ),
         },
     }
     canonical = json.dumps(

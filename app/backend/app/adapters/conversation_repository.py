@@ -211,7 +211,7 @@ class ConversationRepository:
         enforce_expected_head: bool = False,
     ) -> UUID | None:
         """Agent 응답을 예상 head와 대조한 뒤 새 불변 턴으로 저장한다."""
-        if route not in {"ANALYSIS", "INTERNAL_GUIDELINE"}:
+        if route not in {"ANALYSIS", "INTERNAL_GUIDELINE", "ML_PREDICTION"}:
             raise ValueError("지원하지 않는 Agent route입니다.")
         if terminal_status not in {"SUCCEEDED", "BLOCKED", "FAILED"}:
             raise ValueError("지원하지 않는 대화 턴 상태입니다.")

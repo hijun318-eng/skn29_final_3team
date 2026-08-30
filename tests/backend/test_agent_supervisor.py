@@ -60,7 +60,18 @@ def _request(
             user_message="승인된 범위에서 처리해줘",
             idempotency_key=uuid4().hex,
             expected_head_turn_id=None,
-            requested_route=requested_route,
+            requested_route=(
+                "ML_PREDICTION" if invocation is not None else requested_route
+            ),
+            ml_prediction=(
+                {
+                    "property_id": invocation.property_id,
+                    "as_of": invocation.as_of,
+                    "horizon_days": invocation.horizon_days,
+                }
+                if invocation is not None
+                else None
+            ),
         ),
         context=RequestContext(
             conversation_id=context_id,
@@ -459,9 +470,10 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
             **routed_request.invocation.model_dump(mode="python"),
             "horizon_days": 90,
         }
+        changed_payload["command"]["ml_prediction"]["horizon_days"] = 90
         changed_request = AgentRequest.model_validate(changed_payload)
 
-        self.assertEqual(
+        self.assertNotEqual(
             routed_request.command,
             changed_request.command,
         )
@@ -972,6 +984,14 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_ml_invocation_cannot_flow_to_a_non_ml_agent(self) -> None:
         calls = 0
 
+        class AnalysisResolver:
+            async def resolve(self, request: AgentRequest) -> SupervisorDecision:
+                return SupervisorDecision(
+                    agent=AgentKind.ANALYSIS_WORKFLOW,
+                    reason="INVALID_CROSS_AGENT_ROUTE",
+                    source=AgentDecisionSource.GOVERNED_DEFAULT,
+                )
+
         async def handler(request: AgentRequest):
             nonlocal calls
             calls += 1
@@ -983,7 +1003,8 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
                     AgentKind.ANALYSIS_WORKFLOW,
                     handler,
                 )
-            }
+            },
+            route_resolver=AnalysisResolver(),
         )
         request = _request(
             admitted=True,
@@ -1066,6 +1087,44 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(ValidationError):
             AgentRequest.model_validate(payload)
+
+    def test_command_requires_typed_action_for_ml_route(self) -> None:
+        with self.assertRaises(ValidationError):
+            ConversationCommandRequest(
+                user_message="객실 수요를 예측해줘",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=None,
+                requested_route="ML_PREDICTION",
+            )
+
+    def test_command_rejects_ml_action_on_another_route(self) -> None:
+        with self.assertRaises(ValidationError):
+            ConversationCommandRequest(
+                user_message="객실 수요를 예측해줘",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=None,
+                requested_route="ANALYSIS",
+                ml_prediction={
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-28",
+                    "horizon_days": 30,
+                },
+            )
+
+    def test_command_rejects_untyped_ml_fields_and_unbounded_horizon(self) -> None:
+        with self.assertRaises(ValidationError):
+            ConversationCommandRequest(
+                user_message="객실 수요를 예측해줘",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=None,
+                requested_route="ML_PREDICTION",
+                ml_prediction={
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-28",
+                    "horizon_days": 367,
+                    "question": "이 문장으로 route해줘",
+                },
+            )
 
 
 if __name__ == "__main__":

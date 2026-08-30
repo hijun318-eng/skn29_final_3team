@@ -907,6 +907,41 @@ class ConversationOrchestrator:
             },
         }
 
+    async def _hydrate_ml_prediction_replay(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """저장된 ML terminal Turn에서 검증된 예측 payload만 재구성한다."""
+
+        if result.get("status") != "SUCCESS":
+            return result
+        turn = result.get("turn")
+        slots = turn.get("resolved_slots") if isinstance(turn, dict) else None
+        prediction = slots.get("ml_prediction") if isinstance(slots, dict) else None
+        if (
+            not isinstance(turn, dict)
+            or turn.get("route") != "ML_PREDICTION"
+            or not isinstance(prediction, dict)
+        ):
+            return {
+                "status": "FAILED",
+                "code": "ML_PREDICTION_REPLAY_STATE_INVALID",
+                "message": "저장된 ML 예측 실행 결과를 검증하지 못했습니다.",
+                "retryable": False,
+                "required_action": "CONTACT_SUPPORT",
+                "is_idempotent_replay": True,
+            }
+        return {
+            **result,
+            "conversation": await self._repo.get_conversation(
+                conversation_id,
+                user_id,
+            ),
+            "ml_prediction": prediction,
+        }
+
     async def _release_agent_dispatch_failure(
         self,
         conversation_id: UUID,
@@ -929,6 +964,13 @@ class ConversationOrchestrator:
         status_code = (
             raw_status_code
             if isinstance(raw_status_code, int)
+            else 422
+            if code
+            in {
+                "AGENT_ROUTE_NOT_RESOLVED",
+                "AGENT_ROUTE_AMBIGUOUS",
+                "AGENT_INVOCATION_MISMATCH",
+            }
             else 504
             if isinstance(error, (asyncio.CancelledError, TimeoutError))
             else 503
@@ -982,12 +1024,12 @@ class ConversationOrchestrator:
         *,
         route_resolver: "AgentRouteResolver | None" = None,
         capability_routing_enabled: bool = False,
+        ml_prediction_service_factory: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
         """공통 admission 후 명시적으로 승인된 Supervisor 결정만 실행한다.
 
-        ``capability_routing_enabled``는 교체 AgentPort·probe가 함께 승인된 조립
-        지점에서만 전달하는 code gate다. 공개 API의 기본 경로는 이 값을 넘기지 않아
-        기존 명시 route와 governed analysis 기본 경로만 유지한다.
+        일반 입력은 기존 governed analysis 기본 route를 유지한다. 선택 기능은 feature
+        flag와 capability/readiness 영수증이 함께 유효한 명시 route에서만 실행한다.
         """
 
         from app.ports.agent import AgentRequest
@@ -995,6 +1037,7 @@ class ConversationOrchestrator:
         from app.services.conversation_agent_ports import (
             analysis_agent_result,
             internal_guideline_agent_result,
+            ml_prediction_agent_result,
         )
         from app.services.conversation_agent_registry import (
             build_conversation_agent_supervisor,
@@ -1022,6 +1065,17 @@ class ConversationOrchestrator:
                     early_result,
                 )
                 return internal_guideline_agent_result(hydrated).payload
+            is_ml_prediction = (
+                stored_route == "ML_PREDICTION"
+                or request.command.requested_route == "ML_PREDICTION"
+            )
+            if is_ml_prediction:
+                hydrated = await self._hydrate_ml_prediction_replay(
+                    request.conversation_id,
+                    request.context.user_id,
+                    early_result,
+                )
+                return ml_prediction_agent_result(hydrated).payload
             return analysis_agent_result(early_result).payload
         if admission is None:
             raise RuntimeError("Agent command admission 결과가 없습니다.")
@@ -1053,6 +1107,7 @@ class ConversationOrchestrator:
                 route_resolver=route_resolver,
                 admission=admission,
                 capability_routing_enabled=capability_routing_enabled,
+                ml_prediction_service_factory=ml_prediction_service_factory,
             )
             route_lease_stop = asyncio.Event()
             route_lease_lost = asyncio.Event()
@@ -1270,6 +1325,128 @@ class ConversationOrchestrator:
                     ),
                     "status_code": status_code,
                 }
+            )
+            raise
+        finally:
+            lease_stop.set()
+            if lease_task is not None:
+                lease_task.cancel()
+                try:
+                    await lease_task
+                except asyncio.CancelledError:
+                    pass
+
+    async def execute_ml_prediction_command(
+        self,
+        conversation_id: UUID,
+        payload: dict[str, Any],
+        context: RequestContext,
+        executor: Callable[[RequestContext], Awaitable[dict[str, Any]]],
+        persister: Callable[[Any, dict[str, Any]], Awaitable[None]],
+        *,
+        admission: _AdmittedConversationCommand | None = None,
+    ) -> dict[str, Any]:
+        """typed ML 예측과 감사 이벤트·Conversation Turn을 하나의 terminal로 확정한다."""
+
+        command = ConversationCommandRequest.model_validate(payload)
+        if command.requested_route != "ML_PREDICTION" or command.ml_prediction is None:
+            raise ValueError("ML command는 명시적 ML_PREDICTION action이 필요합니다.")
+        early_result: dict[str, Any] | None = None
+        if admission is None:
+            admission, early_result = await self._admit_command(
+                conversation_id,
+                command,
+                context,
+            )
+        else:
+            self._validate_admitted_command(
+                conversation_id,
+                command,
+                context,
+                admission,
+            )
+        if early_result is not None:
+            return await self._hydrate_ml_prediction_replay(
+                conversation_id,
+                context.user_id,
+                early_result,
+            )
+        if admission is None:
+            raise RuntimeError("ML command admission 결과가 없습니다.")
+
+        previous_turns = await self._repo.list_turns(conversation_id)
+        lease_stop = asyncio.Event()
+        lease_lost = asyncio.Event()
+        renew_lease = getattr(self._repo, "renew_lease", None)
+        lease_task = (
+            asyncio.create_task(
+                self._renew_command_lease(
+                    conversation_id,
+                    admission.command_id,
+                    lease_stop,
+                    lease_lost,
+                ),
+                name=f"conversation-ml-lease-{admission.command_id}",
+            )
+            if callable(renew_lease)
+            else None
+        )
+        try:
+            prediction = dict(await executor(admission.context))
+            if lease_lost.is_set():
+                raise RuntimeError("ML command lease 소유권을 잃었습니다.")
+
+            async def _write_ml_terminal(session: Any) -> None:
+                await persister(session, prediction)
+
+            turn_id = uuid4()
+            await self._repo.commit_turn(
+                conversation_id=conversation_id,
+                command_id=admission.command_id,
+                turn_id=turn_id,
+                turn_index=len(previous_turns),
+                user_message=command.user_message,
+                route="ML_PREDICTION",
+                source_turn_ids=[],
+                request_id=None,
+                artifact_id=None,
+                view_spec_id=None,
+                report_definition_id=None,
+                resolved_slots={"ml_prediction": prediction},
+                product_release_id=admission.product_release_id,
+                permission_snapshot_id=admission.permission_snapshot_id,
+                semantic_release_id=admission.semantic_release_id,
+                terminal_writer=_write_ml_terminal,
+            )
+            updated_turns = await self._repo.list_turns(conversation_id)
+            target_turn = next(
+                (turn for turn in updated_turns if turn["turn_id"] == turn_id),
+                None,
+            )
+            if target_turn is None:
+                raise RuntimeError("확정된 ML 예측 Turn을 다시 조회하지 못했습니다.")
+            return {
+                "status": "SUCCESS",
+                "turn": target_turn,
+                "conversation": await self._repo.get_conversation(
+                    conversation_id,
+                    admission.context.user_id,
+                ),
+                "ml_prediction": prediction,
+                "is_idempotent_replay": False,
+            }
+        except asyncio.CancelledError as error:
+            await self._release_agent_dispatch_failure(
+                conversation_id,
+                admission,
+                error,
+            )
+            raise
+        except Exception as error:
+            await self._release_agent_dispatch_failure(
+                conversation_id,
+                admission,
+                error,
             )
             raise
         finally:

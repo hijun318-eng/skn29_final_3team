@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from enum import Enum
 from hashlib import sha256
 import json
@@ -12,22 +11,25 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, model_validator
 
 from app.contract_core import ContractModel, RequestContext
-from app.conversation_contracts import ConversationCommandRequest
+from app.conversation_contracts import (
+    ML_PREDICTION_ABSOLUTE_MAX_HORIZON_DAYS,
+    ConversationCommandRequest,
+    MLPredictionAction,
+)
 
 
 AGENT_REQUEST_VERSION = "AgentRequest.v1"
 AGENT_RESULT_VERSION = "AgentResult.v1"
 AGENT_PORT_READINESS_VERSION = "AgentPortReadiness.v1"
 ML_PREDICTION_INVOCATION_VERSION = "MLPredictionInvocation.v1"
-ML_ABSOLUTE_MAX_HORIZON_DAYS = 366
+ML_ABSOLUTE_MAX_HORIZON_DAYS = ML_PREDICTION_ABSOLUTE_MAX_HORIZON_DAYS
 
 
 class AgentKind(str, Enum):
     """Conversation Supervisor가 식별할 수 있는 Agent 실행 종류다.
 
-    ML 종류는 교체 runtime의 ``AgentPort``와 capability probe가 승인되기 전까지
-    production registry에 등록하지 않는다. 종류를 미리 고정해 두면 교체 시 공통
-    AgentRequest·상태·LangGraph 계약을 다시 변경하지 않고 port만 추가할 수 있다.
+    선택 Agent는 해당 feature flag가 켜지고 runtime capability·readiness
+    영수증을 통과한 경우에만 production registry에서 실행한다.
     """
 
     ANALYSIS_WORKFLOW = "ANALYSIS_WORKFLOW"
@@ -35,7 +37,7 @@ class AgentKind(str, Enum):
     ML_PREDICTION = "ML_PREDICTION"
 
 
-class MLPredictionInvocation(ContractModel):
+class MLPredictionInvocation(MLPredictionAction):
     """승인 resolver가 ML Agent에 전달할 구조화된 예측 요청이다.
 
     사용자 자연어를 이 모델로 바꾸는 책임은 이 계약에 없다. Runtime capability가
@@ -49,13 +51,6 @@ class MLPredictionInvocation(ContractModel):
     )
     agent: Literal[AgentKind.ML_PREDICTION] = AgentKind.ML_PREDICTION
     task: Literal["ROOM_DEMAND_FORECAST"] = "ROOM_DEMAND_FORECAST"
-    property_id: str = Field(
-        min_length=1,
-        max_length=64,
-        pattern=r"^[A-Za-z0-9_-]+$",
-    )
-    as_of: date
-    horizon_days: int = Field(ge=1, le=ML_ABSOLUTE_MAX_HORIZON_DAYS)
 
 
 class AgentRequest(ContractModel):
@@ -83,6 +78,16 @@ class AgentRequest(ContractModel):
             )
         if self.invocation is not None and self.invocation.agent is not self.target_agent:
             raise ValueError("AgentRequest invocation 종류가 target Agent와 다릅니다.")
+        command_action = self.command.ml_prediction
+        if (command_action is not None) != has_ml_invocation:
+            raise ValueError(
+                "AgentRequest ML command action과 invocation은 함께 지정해야 합니다."
+            )
+        if self.invocation is not None and command_action is not None:
+            if self.invocation != MLPredictionInvocation(
+                **command_action.model_dump(mode="python")
+            ):
+                raise ValueError("AgentRequest ML invocation이 command action과 다릅니다.")
         return self
 
 

@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager
 import os
 from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context import ContextValidationError
 from app.contracts import AnalysisStatus, ErrorCode
 from app.ports.agent import AgentKind, AgentPortReadiness, AgentRequest, AgentResult
+from app.services.agent_supervisor import AgentDispatchError
 from app.services.analysis import analysis_progress
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import (
@@ -97,6 +95,32 @@ def internal_guideline_agent_result(command_result: dict[str, Any]) -> AgentResu
                 "turn": command_result.get("turn"),
                 "conversation": command_result.get("conversation"),
                 "rag_response": command_result.get("rag_response"),
+            },
+        },
+    )
+
+
+def ml_prediction_agent_result(command_result: dict[str, Any]) -> AgentResult:
+    """ML command terminal 결과를 Conversation 공개 응답 계약으로 변환한다."""
+
+    if command_result.get("status") != "SUCCESS":
+        raise AgentDispatchError(
+            str(command_result.get("code") or "ML_PREDICTION_COMMAND_FAILED"),
+            str(command_result.get("message") or "ML 예측 명령을 완료하지 못했습니다."),
+        )
+    return AgentResult(
+        agent=AgentKind.ML_PREDICTION,
+        payload={
+            "status": "SUCCESS",
+            "data": {
+                "status": "COMPLETED",
+                "type": "ML_PREDICTION",
+                "turn": command_result.get("turn"),
+                "conversation": command_result.get("conversation"),
+                "ml_prediction": command_result.get("ml_prediction"),
+                "is_idempotent_replay": bool(
+                    command_result.get("is_idempotent_replay", False)
+                ),
             },
         },
     )
@@ -287,11 +311,13 @@ class MLPredictionAgentPort:
 
     def __init__(
         self,
+        orchestrator: Any,
         service: MLPredictionService,
-        session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
+        admission: Any | None = None,
     ) -> None:
+        self._orchestrator = orchestrator
         self._service = service
-        self._session_factory = session_factory
+        self._admission = admission
 
     async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
         """모델 release와 capability가 모두 검증된 서비스 영수증을 반환한다."""
@@ -304,16 +330,48 @@ class MLPredictionAgentPort:
         invocation = request.invocation
         if invocation is None or invocation.agent is not self.agent:
             raise ValueError("ML Agent에는 구조화된 prediction invocation이 필요합니다.")
-        async with self._session_factory() as session:
-            prediction = await self._service.predict(
-                session,
-                {
-                    "property_id": invocation.property_id,
-                    "as_of": invocation.as_of.isoformat(),
-                    "horizon_days": invocation.horizon_days,
-                },
-            )
-        return AgentResult(
-            agent=self.agent,
-            payload={"status": "SUCCESS", "data": prediction},
+        payload = {
+            "property_id": invocation.property_id,
+            "as_of": invocation.as_of.isoformat(),
+            "horizon_days": invocation.horizon_days,
+        }
+
+        async def _generate(_context: Any) -> dict[str, Any]:
+            try:
+                return await self._service.generate_prediction(payload)
+            except ValueError as error:
+                raise AgentDispatchError(
+                    "AGENT_ROUTE_NOT_RESOLVED",
+                    "요청한 ML 예측 범위는 현재 지원되지 않습니다.",
+                ) from error
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                raise AgentDispatchError(
+                    "AGENT_PORT_NOT_READY",
+                    "ML 예측 실행 서비스를 확인하지 못했습니다.",
+                ) from error
+
+        async def _persist(session: Any, prediction: dict[str, Any]) -> None:
+            try:
+                await self._service.persist_prediction(session, prediction)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                raise AgentDispatchError(
+                    "AGENT_PORT_NOT_READY",
+                    "ML 예측 감사 결과를 저장하지 못했습니다.",
+                ) from error
+
+        execution_options = {}
+        if self._admission is not None:
+            execution_options["admission"] = self._admission
+        command_result = await self._orchestrator.execute_ml_prediction_command(
+            request.conversation_id,
+            request.command.model_dump(mode="python"),
+            request.context,
+            _generate,
+            _persist,
+            **execution_options,
         )
+        return ml_prediction_agent_result(command_result)

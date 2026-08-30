@@ -107,6 +107,18 @@ def _request(
             user_message=question,
             idempotency_key=uuid4().hex,
             expected_head_turn_id=None,
+            requested_route=(
+                "ML_PREDICTION" if invocation is not None else None
+            ),
+            ml_prediction=(
+                {
+                    "property_id": invocation.property_id,
+                    "as_of": invocation.as_of,
+                    "horizon_days": invocation.horizon_days,
+                }
+                if invocation is not None
+                else None
+            ),
         ),
         context=context,
         target_agent=(AgentKind.ML_PREDICTION if invocation is not None else None),

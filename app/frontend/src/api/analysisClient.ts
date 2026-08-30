@@ -15,7 +15,17 @@ export interface ConversationCommandPayload {
   user_message: string;
   expected_head_turn_id?: string | null;
   idempotency_key?: string;
-  requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
+  requested_route?:
+    | "ANALYSIS"
+    | "PRESENTATION"
+    | "REPORT_ACTION"
+    | "INTERNAL_GUIDELINE"
+    | "ML_PREDICTION";
+  ml_prediction?: {
+    property_id: string;
+    as_of: string;
+    horizon_days: number;
+  };
   inherit_previous_context?: boolean;
   presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
 }
@@ -82,7 +92,13 @@ export interface ConversationTurnWire {
   conversation_id: string;
   turn_index: number;
   user_message: string;
-  route: "OUT_OF_SCOPE" | "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION" | "INTERNAL_GUIDELINE";
+  route:
+    | "OUT_OF_SCOPE"
+    | "ANALYSIS"
+    | "PRESENTATION"
+    | "REPORT_ACTION"
+    | "INTERNAL_GUIDELINE"
+    | "ML_PREDICTION";
   source_turn_ids: string[];
   reply_to_turn_id: string | null;
   clarifies_turn_id: string | null;
@@ -98,6 +114,7 @@ export interface ConversationTurnWire {
       reason?: string;
     };
     rag?: Record<string, unknown>;
+    ml_prediction?: Record<string, unknown>;
     business_terms?: string[];
     metric_id?: string | null;
     metric_ids?: string[];

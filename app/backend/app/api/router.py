@@ -75,7 +75,11 @@ from app.api.analysis_router_support import (
     list_analysis_runs,
 )
 from app.controllers.analysis_controller import AnalysisController
-from app.ports.agent import AgentKind, AgentRequest
+from app.ports.agent import (
+    AgentKind,
+    AgentRequest,
+    MLPredictionInvocation,
+)
 from app.ports.data_platform import MetadataUnavailableError
 from app.services.analysis import AnalysisService, analysis_progress
 from app.services.analysis.release_receipt import (
@@ -613,10 +617,19 @@ async def execute_conversation_command(
             "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
             409,
         )
+    ml_invocation = (
+        MLPredictionInvocation(**payload.ml_prediction.model_dump(mode="python"))
+        if payload.ml_prediction is not None
+        else None
+    )
     agent_request = AgentRequest(
         conversation_id=conversation_id,
         command=payload,
         context=context,
+        target_agent=(
+            AgentKind.ML_PREDICTION if ml_invocation is not None else None
+        ),
+        invocation=ml_invocation,
     )
     try:
         result = await orch.dispatch_agent_command(
@@ -650,6 +663,27 @@ async def execute_conversation_command(
             detail=str(error),
         ) from error
     except AgentDispatchError as error:
+        if error.code in {
+            "AGENT_ROUTE_NOT_RESOLVED",
+            "AGENT_ROUTE_AMBIGUOUS",
+            "AGENT_INVOCATION_MISMATCH",
+        }:
+            raise ContextValidationError(
+                ErrorCode.CONTEXT_INCOMPLETE,
+                str(error),
+                422,
+            ) from error
+        if error.code in {
+            "AGENT_NOT_CONFIGURED",
+            "AGENT_CAPABILITY_NOT_CONFIGURED",
+            "AGENT_CAPABILITY_PROBE_FAILED",
+            "AGENT_PORT_NOT_READY",
+        }:
+            raise ContextValidationError(
+                ErrorCode.SOURCE_NOT_READY,
+                "요청한 기능의 실행 서비스가 현재 준비되지 않았습니다.",
+                503,
+            ) from error
         raise ContextValidationError(
             ErrorCode.CONTEXT_SOURCE_FAILED,
             "요청을 처리할 승인된 Agent를 확정하지 못했습니다.",

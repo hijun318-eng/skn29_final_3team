@@ -41,7 +41,12 @@ from app.contracts import (
 )
 from app.authorization import permission_snapshot_id as compute_permission_snapshot_id
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentPortReadiness, AgentRequest
+from app.ports.agent import (
+    AgentKind,
+    AgentPortReadiness,
+    AgentRequest,
+    MLPredictionInvocation,
+)
 from app.ports.data_platform import AssetCandidateSet, NoEntitledAssetsError
 from app.services.agent_supervisor import (
     AgentDispatchError,
@@ -1959,6 +1964,198 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(execution_contexts), 1)
         self.assertIsNotNone(execution_contexts[0].command_id)
 
+    async def test_agent_dispatch_persists_typed_ml_result_once_and_replays(self) -> None:
+        """명시 ML action은 capability·readiness 후 예측·감사 저장을 한 턴으로 확정한다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Agent ML dispatch",
+        )
+        invocation = MLPredictionInvocation(
+            property_id="GRAND",
+            as_of="2026-08-18",
+            horizon_days=30,
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="30일 객실 수요를 예측해줘",
+                idempotency_key="agent-ml-replay",
+                expected_head_turn_id=None,
+                requested_route="ML_PREDICTION",
+                ml_prediction={
+                    "property_id": invocation.property_id,
+                    "as_of": invocation.as_of,
+                    "horizon_days": invocation.horizon_days,
+                },
+            ),
+            context=self.context,
+            target_agent=AgentKind.ML_PREDICTION,
+            invocation=invocation,
+        )
+        factory_calls = 0
+        capability_calls = 0
+        readiness_calls = 0
+        generation_calls = 0
+        persisted: list[dict[str, Any]] = []
+
+        class Service:
+            async def capabilities(self) -> dict[str, Any]:
+                nonlocal capability_calls
+                capability_calls += 1
+                return {
+                    "schema_version": "MLRuntimeCapability.v1",
+                    "prediction_contract_version": "MLRoomDemandPrediction.v1",
+                    "model_version": "approved-demand-release",
+                    "model_hash": "a" * 64,
+                    "model_type": "daily-demand-forecast",
+                    "estimator_type": "ApprovedRegressor",
+                    "approval": "APPROVED",
+                    "min_horizon_days": 1,
+                    "max_horizon_days": 90,
+                    "model_max_horizon_days": 90,
+                    "properties": [
+                        {
+                            "property_id": "GRAND",
+                            "min_as_of": "2025-01-01",
+                            "max_as_of": "2026-12-31",
+                            "feature_max_as_of": "2026-08-18",
+                            "history_rows": 500,
+                        }
+                    ],
+                    "synthetic_training_data": False,
+                    "history_source": {
+                        "table": "pms.ml_evaluation.approved_history",
+                        "row_count": 500,
+                        "property_count": 1,
+                        "series_count": 1,
+                        "min_date": "2024-01-01",
+                        "max_date": "2026-08-18",
+                        "synthetic_only": False,
+                        "summary_query_id": "summary-query",
+                        "continuity_query_id": "continuity-query",
+                    },
+                    "query_id": "capability-query",
+                }
+
+            async def readiness(self) -> AgentPortReadiness:
+                nonlocal readiness_calls
+                readiness_calls += 1
+                return AgentPortReadiness(
+                    agent=AgentKind.ML_PREDICTION,
+                    status="ready",
+                    capability_version="MLRuntimeCapability.v1",
+                    release_refs=("ml-model:sha256:" + "a" * 64,),
+                )
+
+            async def generate_prediction(
+                self,
+                payload: dict[str, Any],
+            ) -> dict[str, Any]:
+                nonlocal generation_calls
+                generation_calls += 1
+                return {
+                    "schema_version": "MLRoomDemandPrediction.v1",
+                    "status": "SUCCEEDED",
+                    **payload,
+                }
+
+            async def persist_prediction(
+                self,
+                session: Any,
+                prediction: dict[str, Any],
+            ) -> None:
+                persisted.append(dict(prediction))
+
+        def service_factory() -> Service:
+            nonlocal factory_calls
+            factory_calls += 1
+            return Service()
+
+        with patch.dict(
+            os.environ,
+            {"RAG_FEATURE_ENABLED": "0", "ML_FEATURE_ENABLED": "1"},
+        ):
+            first = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                ml_prediction_service_factory=service_factory,
+            )
+            replay = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                ml_prediction_service_factory=service_factory,
+            )
+
+        self.assertEqual(first["data"]["type"], "ML_PREDICTION")
+        self.assertEqual(first["data"]["turn"]["route"], "ML_PREDICTION")
+        self.assertEqual(
+            first["data"]["turn"]["resolved_slots"]["ml_prediction"],
+            first["data"]["ml_prediction"],
+        )
+        self.assertEqual(
+            first["data"]["turn"]["turn_id"],
+            replay["data"]["turn"]["turn_id"],
+        )
+        self.assertTrue(replay["data"]["is_idempotent_replay"])
+        self.assertEqual(factory_calls, 1)
+        self.assertEqual(capability_calls, 1)
+        self.assertEqual(readiness_calls, 1)
+        self.assertEqual(generation_calls, 1)
+        self.assertEqual(persisted, [first["data"]["ml_prediction"]])
+
+    async def test_ml_audit_failure_does_not_commit_partial_turn(self) -> None:
+        """감사 저장 실패를 예측 턴 성공으로 남기지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "ML audit failure",
+        )
+
+        async def generate(_context: RequestContext) -> dict[str, Any]:
+            return {
+                "schema_version": "MLRoomDemandPrediction.v1",
+                "status": "SUCCEEDED",
+                "property_id": "GRAND",
+                "as_of": "2026-08-18",
+                "horizon_days": 30,
+            }
+
+        async def persist(_session: Any, _prediction: dict[str, Any]) -> None:
+            raise RuntimeError("audit write failed")
+
+        with self.assertRaises(RuntimeError):
+            await self.orchestrator.execute_ml_prediction_command(
+                conversation["conversation_id"],
+                {
+                    "user_message": "30일 객실 수요를 예측해줘",
+                    "idempotency_key": "agent-ml-audit-failure",
+                    "expected_head_turn_id": None,
+                    "requested_route": "ML_PREDICTION",
+                    "ml_prediction": {
+                        "property_id": "GRAND",
+                        "as_of": "2026-08-18",
+                        "horizon_days": 30,
+                    },
+                },
+                self.context,
+                generate,
+                persist,
+            )
+
+        self.assertEqual(self.repo.turns[conversation["conversation_id"]], [])
+        self.assertIsNone(conversation["active_command_id"])
+        command = self.repo.commands[
+            (conversation["conversation_id"], "agent-ml-audit-failure")
+        ]
+        self.assertEqual(command["status"], "FAILED")
+        self.assertEqual(
+            command["error_response"]["code"],
+            "AGENT_DISPATCH_FAILED",
+        )
+
     async def test_agent_route_failure_releases_lease_and_replays_terminal_error(self) -> None:
         """admission 뒤 route 확정 실패도 RUNNING command를 남기지 않는다."""
 
@@ -2012,6 +2209,12 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             command["error_response"]["evidence_refs"],
             ["capability-receipt:none"],
+        )
+        self.assertEqual(command["error_response"]["status_code"], 422)
+        self.assertFalse(command["error_response"]["retryable"])
+        self.assertEqual(
+            command["error_response"]["required_action"],
+            "MODIFY_REQUEST",
         )
         self.assertIsNone(conversation["active_command_id"])
 

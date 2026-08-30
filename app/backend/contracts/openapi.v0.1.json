@@ -1745,6 +1745,16 @@
             "title": "Inherit Previous Context",
             "type": "boolean"
           },
+          "ml_prediction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MLPredictionAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "presentation_type": {
             "anyOf": [
               {
@@ -1772,7 +1782,8 @@
                   "ANALYSIS",
                   "PRESENTATION",
                   "REPORT_ACTION",
-                  "INTERNAL_GUIDELINE"
+                  "INTERNAL_GUIDELINE",
+                  "ML_PREDICTION"
                 ],
                 "type": "string"
               },
@@ -2742,6 +2753,37 @@
           "meta"
         ],
         "title": "LoginResponse",
+        "type": "object"
+      },
+      "MLPredictionAction": {
+        "additionalProperties": false,
+        "description": "클라이언트가 명시적으로 요청하는 객실 수요 예측의 typed 입력이다.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Horizon Days",
+            "type": "integer"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "as_of",
+          "horizon_days"
+        ],
+        "title": "MLPredictionAction",
         "type": "object"
       },
       "ManualRunCommandResponse": {

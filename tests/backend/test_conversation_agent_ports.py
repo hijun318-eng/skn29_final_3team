@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from pathlib import Path
 import sys
 import unittest
@@ -249,37 +248,67 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
                     release_refs=("ml-model:sha256:" + "a" * 64,),
                 )
 
-            async def predict(self, session, payload):
-                self.session = session
+            async def generate_prediction(self, payload):
                 self.payload = payload
                 return {"status": "SUCCEEDED", "horizon_days": payload["horizon_days"]}
 
-        @asynccontextmanager
-        async def session_factory():
-            yield object()
+            async def persist_prediction(self, session, prediction):
+                self.session = session
+                self.persisted = prediction
 
-        request_payload = _agent_request().model_dump()
-        request_payload.update(
-            {
-                "target_agent": AgentKind.ML_PREDICTION,
-                "invocation": MLPredictionInvocation(
-                    property_id="GRAND",
-                    as_of="2026-08-28",
-                    horizon_days=90,
-                ).model_dump(),
-            }
+        class MLOrchestrator:
+            async def execute_ml_prediction_command(
+                self,
+                conversation_id,
+                payload,
+                context,
+                executor,
+                persister,
+            ):
+                prediction = await executor(context)
+                await persister(object(), prediction)
+                return {
+                    "status": "SUCCESS",
+                    "turn": {"turn_id": uuid4(), "route": "ML_PREDICTION"},
+                    "conversation": {"conversation_id": conversation_id},
+                    "ml_prediction": prediction,
+                    "is_idempotent_replay": False,
+                }
+
+        conversation_id = uuid4()
+        invocation = MLPredictionInvocation(
+            property_id="GRAND",
+            as_of="2026-08-28",
+            horizon_days=90,
         )
-        request = AgentRequest.model_validate(request_payload)
+        request = AgentRequest(
+            conversation_id=conversation_id,
+            command=ConversationCommandRequest(
+                user_message="90일 객실 수요를 예측해줘",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=None,
+                requested_route="ML_PREDICTION",
+                ml_prediction={
+                    "property_id": invocation.property_id,
+                    "as_of": invocation.as_of,
+                    "horizon_days": invocation.horizon_days,
+                },
+            ),
+            context=RequestContext(conversation_id=conversation_id),
+            target_agent=AgentKind.ML_PREDICTION,
+            invocation=invocation,
+        )
         service = MLService()
         port = MLPredictionAgentPort(
+            MLOrchestrator(),
             service,  # type: ignore[arg-type]
-            session_factory,  # type: ignore[arg-type]
         )
 
         result = await port.execute(request)
 
         self.assertEqual(result.agent, AgentKind.ML_PREDICTION)
         self.assertEqual(service.payload["horizon_days"], 90)
+        self.assertEqual(service.persisted, result.payload["data"]["ml_prediction"])
 
     async def test_internal_guideline_port_forwards_pre_admission(self) -> None:
         request = _agent_request("INTERNAL_GUIDELINE")

@@ -49,7 +49,18 @@ def _request(
             user_message="승인된 범위에서 처리해줘",
             idempotency_key=f"graph-{uuid4()}",
             expected_head_turn_id=None,
-            requested_route=requested_route,
+            requested_route=(
+                "ML_PREDICTION" if ml_invocation else requested_route
+            ),
+            ml_prediction=(
+                {
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-28",
+                    "horizon_days": 90,
+                }
+                if ml_invocation
+                else None
+            ),
         ),
         context=RequestContext(
             conversation_id=conversation_id,

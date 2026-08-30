@@ -283,7 +283,14 @@ class MLPredictionService:
         self,
         client: MLPredictionClient | None = None,
     ) -> None:
-        self._client = client or MLPredictionClient()
+        self._client = client
+
+    def _runtime_client(self) -> MLPredictionClient:
+        """선택 기능이 실제 호출될 때만 환경 검증과 HTTP client를 구성한다."""
+
+        if self._client is None:
+            self._client = MLPredictionClient()
+        return self._client
 
     async def capabilities(self) -> dict[str, Any]:
         """모델·승인·기간·호텔 범위가 완전한 Runtime receipt만 반환한다."""
@@ -295,7 +302,7 @@ class MLPredictionService:
 
         try:
             capabilities = MLRuntimeCapability.model_validate(
-                await self._client.capabilities()
+                await self._runtime_client().capabilities()
             )
         except ValidationError as error:
             raise RuntimeError("ML capability response is invalid") from error
@@ -337,6 +344,14 @@ class MLPredictionService:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         """지원 대상만 예측하고 RAG 격리 근거가 있는 결과만 저장한다."""
+
+        result = await self.generate_prediction(payload)
+        await self.persist_prediction(session, result)
+        return result
+
+    async def generate_prediction(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """외부 호출과 결과 검증을 끝내되 caller의 DB transaction은 열지 않는다."""
+
         try:
             prediction_request = MLPredictionRequest.model_validate(payload)
         except ValidationError as error:
@@ -366,7 +381,7 @@ class MLPredictionService:
             raise ValueError("unsupported ML prediction as_of")
         request_payload = prediction_request.model_dump(mode="json")
         request_payload["property_id"] = property_id
-        raw_result = await self._client.predict(request_payload)
+        raw_result = await self._runtime_client().predict(request_payload)
         try:
             prediction = MLRoomDemandPrediction.model_validate(raw_result)
         except ValidationError as error:
@@ -393,6 +408,26 @@ class MLPredictionService:
             raise RuntimeError(
                 "ML response provenance is incomplete or did not prove RAG isolation"
             )
+        return result
+
+    @staticmethod
+    async def persist_prediction(
+        session: AsyncSession,
+        result: dict[str, Any],
+    ) -> None:
+        """검증된 예측 감사 이벤트를 caller의 terminal transaction에 추가한다."""
+
+        try:
+            prediction = MLRoomDemandPrediction.model_validate(result)
+        except ValidationError as error:
+            raise RuntimeError("ML prediction audit payload is invalid") from error
+        canonical_result = prediction.model_dump(mode="json")
+        request_payload = {
+            "property_id": prediction.property_id,
+            "as_of": prediction.as_of.isoformat(),
+            "horizon_days": prediction.horizon_days,
+        }
+        provenance = canonical_result["provenance"]
         await session.execute(
             text(
                 """
@@ -417,11 +452,10 @@ class MLPredictionService:
                 """
             ),
             {
-                "execution_id": result["execution_id"],
+                "execution_id": canonical_result["execution_id"],
                 "request_payload": json.dumps(request_payload, allow_nan=False),
-                "result_payload": json.dumps(result, allow_nan=False),
+                "result_payload": json.dumps(canonical_result, allow_nan=False),
                 "provenance": json.dumps(provenance, allow_nan=False),
-                "status": result["status"],
+                "status": canonical_result["status"],
             },
         )
-        return result

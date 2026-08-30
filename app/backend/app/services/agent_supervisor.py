@@ -166,6 +166,12 @@ class ExplicitAgentRouteResolver:
                 reason="EXPLICIT_INTERNAL_GUIDELINE_ROUTE",
                 source=AgentDecisionSource.EXPLICIT_COMMAND,
             )
+        if request.command.requested_route == "ML_PREDICTION":
+            return SupervisorDecision(
+                agent=AgentKind.ML_PREDICTION,
+                reason="EXPLICIT_ML_PREDICTION_ROUTE",
+                source=AgentDecisionSource.EXPLICIT_COMMAND,
+            )
         return SupervisorDecision(
             agent=AgentKind.ANALYSIS_WORKFLOW,
             reason="GOVERNED_CONVERSATION_ROUTE",
@@ -186,11 +192,19 @@ class CapabilityEvidenceRouteResolver:
         self,
         probes: Mapping[AgentKind, AgentCapabilityProbe],
         explicit_resolver: AgentRouteResolver | None = None,
+        *,
+        automatic_routing_enabled: bool = True,
     ) -> None:
         """빈 registry와 key·probe identity 불일치를 시작 전에 차단한다."""
 
         self._probes = dict(probes)
         self._explicit_resolver = explicit_resolver or ExplicitAgentRouteResolver()
+        if type(automatic_routing_enabled) is not bool:
+            raise AgentDispatchError(
+                "AGENT_CAPABILITY_ROUTING_FLAG_INVALID",
+                "자동 capability route 설정이 올바르지 않습니다.",
+            )
+        self._automatic_routing_enabled = automatic_routing_enabled
         if not self._probes or any(
             kind is not probe.agent for kind, probe in self._probes.items()
         ):
@@ -203,7 +217,35 @@ class CapabilityEvidenceRouteResolver:
         """명시 route를 우선하고 일반 입력만 probe receipt로 fail-closed 판정한다."""
 
         if request.command.requested_route is not None:
+            explicit = await self._explicit_resolver.resolve(request)
+            if request.target_agent is None:
+                return explicit
+            if explicit.agent is not request.target_agent:
+                raise AgentDispatchError(
+                    "AGENT_INVOCATION_MISMATCH",
+                    "명시 route와 구조화 실행 요청이 일치하지 않습니다.",
+                )
+            probe = self._probes.get(explicit.agent)
+            if probe is None:
+                raise AgentDispatchError(
+                    "AGENT_CAPABILITY_NOT_CONFIGURED",
+                    "요청한 기능의 capability 검증 경계가 구성되지 않았습니다.",
+                )
+            return await self._resolve_probe_entries(
+                request,
+                ((explicit.agent, probe),),
+            )
+        if not self._automatic_routing_enabled:
             return await self._explicit_resolver.resolve(request)
+        return await self._resolve_probe_entries(request, tuple(self._probes.items()))
+
+    async def _resolve_probe_entries(
+        self,
+        request: AgentRequest,
+        probe_entries: tuple[tuple[AgentKind, AgentCapabilityProbe], ...],
+    ) -> SupervisorDecision:
+        """선택 가능한 probe 집합에서 정확히 한 receipt-backed 결정을 만든다."""
+
         context = request.context
         if (
             context.conversation_id != request.conversation_id
@@ -217,7 +259,6 @@ class CapabilityEvidenceRouteResolver:
                 "자동 Agent route에는 승인된 command context가 필요합니다.",
             )
 
-        probe_entries = tuple(self._probes.items())
         try:
             results = await asyncio.gather(
                 *(probe.probe(request) for _agent, probe in probe_entries),

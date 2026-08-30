@@ -10,6 +10,8 @@ ACTION_PINS = {
 }
 JOB_TIMEOUTS = {
     "python-tests": 25,
+    "rag-tests": 15,
+    "node2-serverless-tests": 10,
     "frontend": 20,
     "compose-config": 10,
     "quality": 5,
@@ -22,7 +24,7 @@ def _workflow() -> str:
 
 def test_actions_use_immutable_official_pins_with_exact_version_comments():
     uses = re.findall(r"(?m)^\s*- uses: ([^\s#]+)\s+#\s+(v\d+\.\d+\.\d+)\s*$", _workflow())
-    assert len(uses) == 5
+    assert len(uses) == 9
     for reference, comment in uses:
         action, separator, sha = reference.partition("@")
         assert separator and action in ACTION_PINS
@@ -70,5 +72,21 @@ def test_workflow_keeps_read_only_permission_and_common_quality_gate():
     assert 'python-version: "3.12"' in source
     assert source.count("app/backend/requirements.lock.txt") == 2
     assert "--constraint app/backend/requirements.lock.txt" in source
-    assert "needs: [python-tests, frontend, compose-config]" in source
+    for required_job in (
+        "python-tests",
+        "rag-tests",
+        "node2-serverless-tests",
+        "frontend",
+        "compose-config",
+    ):
+        assert required_job in source
     assert 'if [[ "$result" != "success" ]]; then' in source
+
+
+def test_inactive_node2_candidate_evidence_is_visible_but_not_a_core_gate():
+    source = _workflow()
+
+    assert "--ignore=tests/ai/test_training_dataset.py" in source
+    assert source.count("continue-on-error: true") == 2
+    assert "Node2 inactive image receipt" in source
+    assert "Node2 inactive training contract" in source

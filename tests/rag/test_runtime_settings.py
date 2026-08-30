@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from src.rag.runtime_device import RuntimeDeviceSelector
 from src.rag.vector_settings import VectorSettings
@@ -25,16 +26,29 @@ class RuntimeSettingsTest(unittest.TestCase):
 
         self.assertEqual(settings.device, "cpu")
 
-    @patch("src.rag.runtime_device.torch.cuda.is_available", return_value=True)
-    def test_auto_prefers_cuda_when_available(self, _cuda_available: object) -> None:
-        self.assertEqual(RuntimeDeviceSelector.resolve("auto"), "cuda")
+    def test_auto_prefers_cuda_when_available(self) -> None:
+        torch_runtime = SimpleNamespace(
+            cuda=SimpleNamespace(is_available=Mock(return_value=True)),
+            backends=SimpleNamespace(),
+        )
 
-    @patch("src.rag.runtime_device.torch.cuda.is_available", return_value=False)
-    @patch("src.rag.runtime_device.torch.backends.mps.is_available", return_value=False)
-    def test_auto_falls_back_to_cpu(
-        self, _mps_available: object, _cuda_available: object
-    ) -> None:
-        self.assertEqual(RuntimeDeviceSelector.resolve("auto"), "cpu")
+        self.assertEqual(
+            RuntimeDeviceSelector.resolve("auto", torch_runtime=torch_runtime),
+            "cuda",
+        )
+
+    def test_auto_falls_back_to_cpu(self) -> None:
+        torch_runtime = SimpleNamespace(
+            cuda=SimpleNamespace(is_available=Mock(return_value=False)),
+            backends=SimpleNamespace(
+                mps=SimpleNamespace(is_available=Mock(return_value=False))
+            ),
+        )
+
+        self.assertEqual(
+            RuntimeDeviceSelector.resolve("auto", torch_runtime=torch_runtime),
+            "cpu",
+        )
 
 
 if __name__ == "__main__":

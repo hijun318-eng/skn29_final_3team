@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import time
@@ -21,6 +22,8 @@ from app.database import session_scope
 
 RAG_TOOL_ID = UUID("8edce655-e454-5b76-b56f-5e49aa2884d4")
 RAG_TOOL_CODE = "rag.answer"
+RAG_CAPABILITY_CANDIDATE_VERSION = "RagCapabilityCandidate.v1"
+_RAG_MANUAL_ID_PATTERN = re.compile(r"[A-Z][A-Z0-9-]{1,99}")
 _ROLE_MAP = {
     "analyst": "STAFF",
     "report_admin": "MANAGER",
@@ -284,6 +287,211 @@ class InternalManualAgent:
                 _DEPENDENCY_FAILURE_MESSAGE,
                 ["DEPENDENCY_FAILED"],
             )
+
+    async def search_capability(
+        self,
+        query: str,
+        app_role: str,
+    ) -> dict[str, Any]:
+        """답변 생성 없이 승인 registry와 RAG 검색 근거만 capability 후보로 축약한다."""
+
+        normalized = query.strip()
+        if not 2 <= len(normalized) <= 500:
+            raise RagToolError(
+                "RAG_INPUT_INVALID",
+                "질문은 2자 이상 500자 이하여야 합니다.",
+                422,
+            )
+        rag_role = _ROLE_MAP.get(app_role)
+        if rag_role is None:
+            raise RagToolError(
+                "RAG_ACCESS_DENIED",
+                "RAG 검색 권한이 없습니다.",
+                403,
+            )
+        await self._assert_enabled(app_role)
+        try:
+            search = await self._signed_post(
+                "/v1/tools/internal-manual-search",
+                {
+                    "query": normalized,
+                    "resolved_question": normalized,
+                    "domains": [],
+                    "intent": "REGULATION_CHECK",
+                    "top_k": 3,
+                    "recent_utterances": [],
+                    "selected_document_ids": [],
+                },
+                rag_role,
+            )
+        except RagToolError:
+            raise
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+            raise RagToolError(
+                "RAG_CAPABILITY_UNAVAILABLE",
+                "RAG capability를 확인하지 못했습니다.",
+            ) from error
+        return self._capability_candidate(
+            search,
+            expected_query_hash=self._capability_query_hash(normalized),
+        )
+
+    @staticmethod
+    def _capability_query_hash(query: str) -> str:
+        """RAG 검색 감사 hash를 답변 없는 probe의 고정 입력과 동일하게 계산한다."""
+
+        canonical = json.dumps(
+            {
+                "query": query,
+                "resolved_question": query,
+                "domains": [],
+                "intent": "REGULATION_CHECK",
+                "recent_utterances": [],
+                "selected_document_ids": [],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _capability_candidate(
+        search: dict[str, Any],
+        *,
+        expected_query_hash: str,
+    ) -> dict[str, Any]:
+        """검색 원문을 버리고 route receipt에 필요한 식별자·release만 검증한다."""
+
+        request_id = str(search.get("request_id") or "").strip()
+        query_hash = str(search.get("query_hash") or "").strip().lower()
+        try:
+            UUID(request_id)
+        except ValueError as error:
+            raise RagToolError(
+                "RAG_CAPABILITY_EVIDENCE_INVALID",
+                "RAG capability 요청 식별자가 올바르지 않습니다.",
+            ) from error
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", query_hash)
+            or query_hash != expected_query_hash
+        ):
+            raise RagToolError(
+                "RAG_CAPABILITY_EVIDENCE_INVALID",
+                "RAG capability 검색 hash가 올바르지 않습니다.",
+            )
+
+        execution_state = search.get("execution_state")
+        tool = search.get("tool")
+        retrieval_release = search.get("retrieval_release")
+        if (
+            not isinstance(execution_state, dict)
+            or execution_state.get("p2_gate") != "TECHNICALLY_VALIDATED"
+            or execution_state.get("production_integration")
+            != "LOCAL_DOCKER_VALIDATED"
+            or not isinstance(tool, dict)
+            or tool.get("tool_code") != "internal-manual-search"
+            or not isinstance(tool.get("semantic_version"), str)
+            or not tool["semantic_version"].strip()
+            or not isinstance(retrieval_release, dict)
+            or retrieval_release.get("schema_version")
+            != "RagRetrievalRelease.v1"
+            or not isinstance(retrieval_release.get("model_revision"), str)
+            or not retrieval_release["model_revision"].strip()
+            or retrieval_release.get("embedding_dimension") != 1024
+        ):
+            raise RagToolError(
+                "RAG_CAPABILITY_RELEASE_INVALID",
+                "RAG capability release 근거가 올바르지 않습니다.",
+            )
+
+        raw_results = search.get("results")
+        no_evidence = search.get("no_evidence")
+        if type(no_evidence) is not bool or not isinstance(raw_results, list):
+            raise RagToolError(
+                "RAG_CAPABILITY_EVIDENCE_INVALID",
+                "RAG capability 검색 결과가 올바르지 않습니다.",
+            )
+        if no_evidence:
+            if raw_results:
+                raise RagToolError(
+                    "RAG_CAPABILITY_EVIDENCE_INVALID",
+                    "RAG capability의 근거 없음 상태가 결과와 충돌합니다.",
+                )
+            return {
+                "schema_version": RAG_CAPABILITY_CANDIDATE_VERSION,
+                "matched": False,
+                "retrieval_request_id": request_id,
+                "query_hash": query_hash,
+                "tool_code": tool["tool_code"],
+                "tool_version": tool["semantic_version"],
+                "model_revision": retrieval_release["model_revision"],
+                "embedding_dimension": 1024,
+                "evidence_ids": [],
+                "document_ids": [],
+                "maximum_score": None,
+            }
+        if not raw_results or len(raw_results) > 50:
+            raise RagToolError(
+                "RAG_CAPABILITY_EVIDENCE_INVALID",
+                "RAG capability 근거 수가 올바르지 않습니다.",
+            )
+
+        evidence_ids: list[str] = []
+        document_ids: list[str] = []
+        scores: list[float] = []
+        for item in raw_results:
+            if not isinstance(item, dict):
+                raise RagToolError(
+                    "RAG_CAPABILITY_EVIDENCE_INVALID",
+                    "RAG capability 근거 형식이 올바르지 않습니다.",
+                )
+            evidence_id = str(item.get("evidence_id") or "").strip()
+            document_id = str(item.get("manual_id") or "").strip()
+            raw_score = item.get("score")
+            try:
+                score = float(raw_score)
+            except (TypeError, ValueError) as error:
+                raise RagToolError(
+                    "RAG_CAPABILITY_EVIDENCE_INVALID",
+                    "RAG capability 검색 점수가 올바르지 않습니다.",
+                ) from error
+            if (
+                not evidence_id
+                or not _RAG_MANUAL_ID_PATTERN.fullmatch(document_id)
+                or item.get("approval_status") != "APPROVED"
+                or item.get("document_status") != "WORKING_KNOWLEDGE"
+                or not math.isfinite(score)
+                or not 0 <= score <= 1
+            ):
+                raise RagToolError(
+                    "RAG_CAPABILITY_EVIDENCE_INVALID",
+                    "RAG capability 근거가 승인된 검색 계약과 일치하지 않습니다.",
+                )
+            evidence_ids.append(evidence_id)
+            document_ids.append(document_id)
+            scores.append(score)
+        unique_evidence_ids = tuple(dict.fromkeys(evidence_ids))
+        unique_document_ids = tuple(dict.fromkeys(document_ids))
+        maximum_score = max(scores)
+        if len(unique_evidence_ids) != len(evidence_ids) or maximum_score <= 0:
+            raise RagToolError(
+                "RAG_CAPABILITY_EVIDENCE_INVALID",
+                "RAG capability 근거가 중복되었거나 관련성 점수가 없습니다.",
+            )
+        return {
+            "schema_version": RAG_CAPABILITY_CANDIDATE_VERSION,
+            "matched": True,
+            "retrieval_request_id": request_id,
+            "query_hash": query_hash,
+            "tool_code": tool["tool_code"],
+            "tool_version": tool["semantic_version"],
+            "model_revision": retrieval_release["model_revision"],
+            "embedding_dimension": 1024,
+            "evidence_ids": list(unique_evidence_ids),
+            "document_ids": list(unique_document_ids),
+            "maximum_score": maximum_score,
+        }
 
     async def _signed_post(self, path: str, payload: dict[str, Any], role: str) -> dict[str, Any]:
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

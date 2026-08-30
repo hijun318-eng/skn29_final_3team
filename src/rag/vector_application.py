@@ -244,6 +244,8 @@ class VectorRagApplication:
             domains=domains,
             intent=intent,
             resolved_with_context=bool(resolved_question and resolved_question.strip() != query.strip()),
+            model_revision=self._settings.model_revision,
+            embedding_dimension=self._settings.dimension,
         )
         payload["agent"] = "INTERNAL_GUIDELINE"
         payload["processing_steps"] = [

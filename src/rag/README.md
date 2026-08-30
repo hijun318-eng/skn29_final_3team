@@ -6,16 +6,22 @@
 
 | 항목 | 값 |
 |---|---|
-| 구현 상태 | `INTEGRATED_CANDIDATE` |
-| P2 Gate | `NOT_APPROVED` |
-| Tool 등록 | `DISABLED` |
-| 운영 통합 | `DEFAULT_OFF` |
+| 구현 상태 | `INTEGRATED_RC` |
+| 기술 Gate | `TECHNICALLY_VALIDATED` |
+| 내부 HTTP | `AVAILABLE` |
+| 제품 Tool 활성화 | `DISABLED` |
+| 로컬 통합 | `LOCAL_DOCKER_VALIDATED` |
 | P0/P1 완료 판정 영향 | 없음 |
 
 `004_p2_contract_foundation.sql`은 Tool Registry, SQL·문서 Evidence 분리 계약,
 요청 추적 필드와 문서 유효기간 필드를 준비한다. Registry의 검색 Tool은 migration 후에도
 `enabled=false`, `approval_status=NOT_APPROVED`로 유지되며 MCP `tools/list`·`tools/call`이나
 기존 backend router를 활성화하지 않는다.
+
+2026-08-30 현재 통합 checkout에서 `text-embedding-3-large:d1024`, 승인 후보 문서 17개·
+363 chunk로 서명 검색→근거 제한 답변 E2E와 정상 서명·재전송·미등록 역할·만료 서명 4개
+보안 경로를 실제 Docker에서 확인했다. 이 결과는 기술 후보 검증이며 제품 feature flag,
+App Tool Registry, MCP `rag.answer` 또는 자동 Agent route를 승인하지 않는다.
 
 ## Embedding 후보 선택 원칙
 
@@ -43,6 +49,7 @@ revision으로 다시 적재한다. 모델 선택과 무관하게 `RAG_FEATURE_E
 | `PgToolRegistryRepository` | Tool 버전·승인·활성·허용 역할을 DB에서 읽기 |
 | `EvidenceCoordinator` | Tool별 권한 확인, 부분 실패 처리, Evidence 유형 분리 |
 | `LocalRagEvidenceAdapter` | 승인된 역할 매핑 후 OpenAI embedding 기반 검색 호출 |
+| `InternalGuidelineCapabilityProbe` | 답변 생성 없이 승인 검색 결과의 release·evidence 식별자만 route receipt로 봉인 |
 | `ApprovedSqlEvidenceAdapter` | 승인 SQL·G2 token만 기존 DataPlatform으로 실행 |
 | `DevP2EvidenceBridge` | 최신 `dev RequestContext`와 통합 Coordinator 연결 |
 | `McpJsonRpcDispatcher` | 네트워크 listener 없이 MCP `tools/list`·`tools/call` 계약 처리 |
@@ -50,7 +57,9 @@ revision으로 다시 적재한다. 모델 선택과 무관하게 `RAG_FEATURE_E
 
 이 모듈은 검색 근거를 구조화할 뿐 답변 문장을 생성하지 않는다. Registry가 승인·활성화되지
 않으면 호출을 차단하며, 역할 매핑도 담당자가 `approved=true`로 제공하기 전에는 실패한다.
-현재 일반 분석 요청을 RAG로 임의 전환하지 않으며, 명시적으로 승인된 내부 지침 capability에서만 호출한다.
+현재 일반 분석 요청을 RAG로 임의 전환하지 않는다. 검색 전용 probe는 구현됐지만 production
+registry와 `CapabilityEvidenceRouteResolver`에는 연결하지 않았으며, 제품 Tool 활성화와
+0개·복수 매칭 사용자 계약을 검증한 뒤에만 자동 route Gate를 열 수 있다.
 MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint는 열지 않는다.
 
 ## 저장소 경로

@@ -20,6 +20,7 @@ from .request_auth import (
 )
 from .vector_application import VectorRagApplication
 from .security_audit_repository import SecurityAuditRepository
+from .p2_contracts import RagToolContract
 
 
 class ManualSearchRequest(BaseModel):
@@ -44,7 +45,10 @@ def create_app(project_root: Path | None = None) -> FastAPI:
     service = VectorRagApplication(root)
     audit = SecurityAuditRepository(service.database_url)
     authenticator = GatewayRequestAuthenticator(os.getenv("RAG_GATEWAY_HMAC_SECRET"))
-    app = FastAPI(title="Answervice Internal Manual Tool API", version="0.5.0-poc")
+    app = FastAPI(
+        title="Answervice Internal Manual Tool API",
+        version=RagToolContract().semantic_version,
+    )
 
     @app.get("/health/live")
     def liveness() -> dict[str, str]:

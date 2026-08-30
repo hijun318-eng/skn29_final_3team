@@ -25,6 +25,7 @@ from src.rag.request_auth import (
 from src.rag.text_processing import SecurityScanner
 from src.rag.vector_settings import VectorSettings
 from src.rag.vector_application import VectorRagApplication
+from src.rag.vector_search_payload import build_search_payload
 from src.rag.p2_contracts import (
     EvidenceType,
     P2GateStatus,
@@ -133,6 +134,30 @@ class OperationalControlTest(unittest.TestCase):
     def test_top_k_is_bounded_by_server_policy(self) -> None:
         self.assertEqual(self.policy.decide("SYSTEM_ADMIN", 999).top_k, 10)
 
+    def test_search_payload_binds_embedding_release(self) -> None:
+        payload = build_search_payload(
+            query_hash="a" * 64,
+            decision=self.policy.decide("MANAGER", 3),
+            results=[],
+            latency_ms=1.0,
+            request_id="request-1",
+            trace_id="trace-1",
+            as_of=None,
+            recent_utterance_count=0,
+            selected_document_ids=(),
+            model_revision="text-embedding-3-large:d1024",
+            embedding_dimension=1024,
+        )
+
+        self.assertEqual(
+            payload["retrieval_release"],
+            {
+                "schema_version": "RagRetrievalRelease.v1",
+                "model_revision": "text-embedding-3-large:d1024",
+                "embedding_dimension": 1024,
+            },
+        )
+
     def test_approved_two_document_snapshot_wins_over_new_vector_rank(self) -> None:
         self.assertEqual(
             2,
@@ -167,6 +192,7 @@ class OperationalControlTest(unittest.TestCase):
     @patch.dict(os.environ, {"RAG_DATABASE_URL": "postgresql://rag_test@localhost/rag_test"})
     def test_api_does_not_expose_unresolved_override(self) -> None:
         schema = create_app(PROJECT_ROOT).openapi()
+        self.assertEqual(schema["info"]["version"], "1.0.0-rc1")
         properties = schema["components"]["schemas"]["ManualSearchRequest"]["properties"]
         self.assertNotIn("allow_unresolved_validity", properties)
         self.assertNotIn("role", properties)
@@ -262,15 +288,20 @@ class OperationalControlTest(unittest.TestCase):
     def test_p2_gate_and_tool_registration_fail_closed(self) -> None:
         gate = P2GateStatus()
         tool = RagToolContract()
-        self.assertEqual(gate.implementation_state, "INTEGRATED_CANDIDATE")
+        self.assertEqual(gate.implementation_state, "INTEGRATED_RC")
         self.assertEqual(
             gate.production_integration,
-            "CURRENT_INTEGRATION_E2E_PENDING",
+            "LOCAL_DOCKER_VALIDATED",
         )
-        self.assertEqual(gate.p2_gate, "NOT_APPROVED")
+        self.assertEqual(gate.p2_gate, "TECHNICALLY_VALIDATED")
+        self.assertEqual(gate.tool_registration, "INTERNAL_HTTP_AVAILABLE")
         self.assertFalse(gate.affects_p0_p1_completion)
         self.assertFalse(tool.enabled)
-        self.assertEqual(tool.approval_status, "NOT_APPROVED")
+        self.assertEqual(
+            tool.approval_status,
+            "PENDING_BUSINESS_OWNER_APPROVAL",
+        )
+        self.assertEqual(tool.health_status, "HEALTH_ENDPOINT_AVAILABLE")
 
     def test_retrieval_contract_keeps_sql_and_document_evidence_separate(self) -> None:
         result = {

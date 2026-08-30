@@ -25,6 +25,7 @@ from app.ports.data_platform import (
 )
 from app.services.agent_capability_probes import (
     GovernedAnalysisCapabilityProbe,
+    InternalGuidelineCapabilityProbe,
 )
 from app.services.agent_supervisor import AgentDispatchError
 
@@ -47,6 +48,22 @@ class _CandidatePlatform:
             raise self.error
         assert self.candidates is not None
         return self.candidates
+
+
+class _GuidelineSearcher:
+    """원문 없는 RAG capability 후보를 반환하는 test double이다."""
+
+    def __init__(self, candidate: dict[str, object]) -> None:
+        self.candidate = candidate
+        self.calls: list[tuple[str, str]] = []
+
+    async def search_capability(
+        self,
+        query: str,
+        app_role: str,
+    ) -> dict[str, object]:
+        self.calls.append((query, app_role))
+        return self.candidate
 
 
 def _request(
@@ -106,6 +123,22 @@ def _candidates(
         source_authority="DATAHUB_NATIVE_METRIC_V1",
         retrieval_mode="datahub_lexical",
     )
+
+
+def _rag_candidate(*, matched: bool = True) -> dict[str, object]:
+    return {
+        "schema_version": "RagCapabilityCandidate.v1",
+        "matched": matched,
+        "retrieval_request_id": str(uuid4()),
+        "query_hash": "d" * 64,
+        "tool_code": "internal-manual-search",
+        "tool_version": "1.0.0-rc1",
+        "model_revision": "text-embedding-3-large:d1024",
+        "embedding_dimension": 1024,
+        "evidence_ids": ["POL-PRIVACY-001:1.0:1:chunk-1"] if matched else [],
+        "document_ids": ["POL-PRIVACY-001"] if matched else [],
+        "maximum_score": 0.87 if matched else None,
+    }
 
 
 class GovernedAnalysisCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
@@ -204,6 +237,66 @@ class GovernedAnalysisCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(MetadataUnavailableError):
             await GovernedAnalysisCapabilityProbe(platform).probe(_request())
 
+
+class InternalGuidelineCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
+    """RAG probe가 답변 없이 승인 검색 후보만 receipt로 봉인하는지 확인한다."""
+
+    async def test_matching_search_returns_deterministic_checksum_reference(self) -> None:
+        request = _request(question="개인정보 유출 시 보고 절차를 알려줘")
+        searcher = _GuidelineSearcher(_rag_candidate())
+        probe = InternalGuidelineCapabilityProbe(searcher)
+
+        first = await probe.probe(request)
+        second = await probe.probe(request)
+
+        self.assertTrue(first.matched)
+        self.assertEqual(first.agent, AgentKind.INTERNAL_GUIDELINE)
+        self.assertEqual(first.reason, "RAG_CAPABILITY_MATCH")
+        self.assertEqual(first.evidence_refs, second.evidence_refs)
+        self.assertRegex(
+            first.evidence_refs[0],
+            r"^agent-capability:v1:internal-guideline:[0-9a-f]{64}$",
+        )
+        self.assertNotIn(request.command.user_message, first.evidence_refs[0])
+        self.assertEqual(
+            searcher.calls[0],
+            (request.command.user_message, "analyst"),
+        )
+
+    async def test_no_evidence_is_a_receipted_non_match(self) -> None:
+        searcher = _GuidelineSearcher(_rag_candidate(matched=False))
+
+        evidence = await InternalGuidelineCapabilityProbe(searcher).probe(
+            _request(question="승인 문서에 없는 질문")
+        )
+
+        self.assertFalse(evidence.matched)
+        self.assertEqual(evidence.reason, "RAG_CAPABILITY_NOT_MATCHED")
+        self.assertRegex(evidence.evidence_refs[0], r"[0-9a-f]{64}$")
+
+    async def test_role_without_capability_does_not_call_rag_search(self) -> None:
+        searcher = _GuidelineSearcher(_rag_candidate())
+
+        evidence = await InternalGuidelineCapabilityProbe(searcher).probe(
+            _request(role=Role.REPORT_ADMIN)
+        )
+
+        self.assertFalse(evidence.matched)
+        self.assertEqual(searcher.calls, [])
+
+    async def test_candidate_with_unexpected_raw_field_is_rejected(self) -> None:
+        candidate = _rag_candidate()
+        candidate["content"] = "route receipt에 들어가면 안 되는 원문"
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await InternalGuidelineCapabilityProbe(
+                _GuidelineSearcher(candidate)
+            ).probe(_request())
+
+        self.assertEqual(
+            raised.exception.code,
+            "AGENT_CAPABILITY_EVIDENCE_INVALID",
+        )
 
 if __name__ == "__main__":
     unittest.main()

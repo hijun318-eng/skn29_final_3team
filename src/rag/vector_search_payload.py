@@ -46,12 +46,19 @@ def build_search_payload(
     domains: tuple[str, ...] = (),
     intent: str = "REGULATION_CHECK",
     resolved_with_context: bool = False,
+    model_revision: str | None = None,
+    embedding_dimension: int | None = None,
 ) -> dict[str, object]:
     return {
         "request_id": request_id,
         "trace_id": trace_id or request_id,
         "execution_state": asdict(P2GateStatus()),
         "tool": RagToolContract().public_metadata(),
+        "retrieval_release": {
+            "schema_version": "RagRetrievalRelease.v1",
+            "model_revision": model_revision,
+            "embedding_dimension": embedding_dimension,
+        },
         "query_hash": query_hash,
         "search_mode": retrieval_mode,
         "context": {

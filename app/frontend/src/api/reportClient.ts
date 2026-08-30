@@ -89,6 +89,8 @@ function assertAssistantSession(
     ? session.patch_preview
     : (session.patch_operations || []).map((operation, index) => ({
         index,
+        depends_on_indexes: [],
+        page_index: null,
         operation,
         target: operation,
         before: null,
@@ -102,6 +104,15 @@ function assertAssistantSession(
     || patchPreview.some((item, index) => (
       item.index !== index
       || item.operation !== session.patch_operations[index]
+      || !Array.isArray(item.depends_on_indexes)
+      || item.depends_on_indexes.some((dependencyIndex, position, dependencies) => (
+        !Number.isInteger(dependencyIndex)
+        || dependencyIndex < 0
+        || dependencyIndex >= index
+        || (position > 0 && dependencies[position - 1] >= dependencyIndex)
+      ))
+      || (item.page_index !== null
+        && (!Number.isInteger(item.page_index) || item.page_index < 1))
       || typeof item.target !== "string"
       || !item.target.trim()
       || !ASSISTANT_PATCH_IMPACT_CATEGORIES.includes(item.impact_category)

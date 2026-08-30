@@ -9,6 +9,11 @@ import {
   reduceReportAssistantScope,
   reportAssistantMessagesFromTurnHistory,
 } from "../reportAssistantUiState";
+import {
+  closeReportPatchSelection,
+  groupReportPatchItemsByPage,
+  removeReportPatchSelection,
+} from "../reportAssistantPatchSelection";
 import { formatSeoulTime } from "../reportPageLabels";
 
 /** 내부 실행 정보는 기본 대화에서 숨기고 사용자가 펼친 경우에만 확인할 수 있게 한다. */
@@ -220,13 +225,14 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
       setSelectedIndexes([]);
       return;
     }
-    setSelectedIndexes(
+    const initialIndexes = (
       preview.approvedIndexes?.length
         ? [...preview.approvedIndexes]
         : preview.items
             .filter((item) => item.impact_category !== "DESTRUCTIVE")
-            .map((item) => item.index),
+            .map((item) => item.index)
     );
+    setSelectedIndexes(closeReportPatchSelection(preview.items, initialIndexes));
   }, [preview?.requestId]);
   useEffect(() => {
     if (preview && errorCode) approvalRef.current?.focus();
@@ -240,10 +246,11 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
   const evidenceRequired = selectedItems.filter((item) => item.evidence_required).length;
   const evidenceCited = selectedItems.filter((item) => item.evidence_required && item.evidence_count > 0).length;
   const hasDestructiveItems = preview.items.some((item) => item.impact_category === "DESTRUCTIVE");
+  const pageGroups = groupReportPatchItemsByPage(preview.items);
   const toggleOperation = (index) => setSelectedIndexes((current) => (
     current.includes(index)
-      ? current.filter((item) => item !== index)
-      : [...current, index].sort((left, right) => left - right)
+      ? removeReportPatchSelection(preview.items, current, index)
+      : closeReportPatchSelection(preview.items, [...current, index])
   ));
   return <section ref={approvalRef} tabIndex={-1} className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label={titleOnly ? "AI 보고서 제목 제안" : "AI 보고서 변경안"}>
     <header><ShieldCheck size={15} aria-hidden="true" /><span><b>{waiting ? titleOnly ? "제목 제안 확인" : "AI 변경안 검토 필요" : "저장 재개"}</b><small>승인 전에는 현재 보고서를 변경하지 않습니다.</small></span></header>
@@ -269,23 +276,29 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
     </div>}
     {hasDestructiveItems && waiting ? <p className="report-assistant-patch-safety-note"><ShieldCheck size={13} aria-hidden="true" />삭제·복원 작업은 안전을 위해 자동 선택하지 않습니다. 적용할 항목을 직접 확인해 주세요.</p> : null}
     <div className="report-assistant-patch-items" aria-label="적용할 변경 선택">
-      {preview.items.map((item) => {
-        const inputId = `${operationIdPrefix}-operation-${item.index}`;
-        return <div className="report-assistant-patch-item" key={`${preview.requestId}-${item.index}`}>
-        <input
-          id={inputId}
-          type="checkbox"
-          checked={selectedIndexes.includes(item.index)}
-          disabled={titleOnly || !waiting || pending}
-          onChange={() => toggleOperation(item.index)}
-        />
-        <label htmlFor={inputId}><span><b>{PATCH_OPERATION_LABEL[item.operation] || item.operation} · {item.target}</b>
-          {item.before == null ? null : <PatchValue label="변경 전" value={item.before} />}
-          {item.after == null ? null : <PatchValue label="변경 후" value={item.after} />}
-        </span>
-        </label>
-      </div>;
-      })}
+      {pageGroups.map((group) => <section className="report-assistant-patch-page" key={group.key}>
+        <header><b>{group.pageIndex == null ? "보고서 전체" : `${group.pageIndex}페이지`}</b><small>{group.items.length}개 변경</small></header>
+        <div>
+          {group.items.map((item) => {
+            const inputId = `${operationIdPrefix}-operation-${item.index}`;
+            return <div className="report-assistant-patch-item" key={`${preview.requestId}-${item.index}`}>
+              <input
+                id={inputId}
+                type="checkbox"
+                checked={selectedIndexes.includes(item.index)}
+                disabled={titleOnly || !waiting || pending}
+                onChange={() => toggleOperation(item.index)}
+              />
+              <label htmlFor={inputId}><span><b>{PATCH_OPERATION_LABEL[item.operation] || item.operation} · {item.target}</b>
+                {item.depends_on_indexes.length > 0 ? <small className="report-assistant-patch-dependency">필요한 선행 작업 {item.depends_on_indexes.length}개가 함께 적용됩니다.</small> : null}
+                {item.before == null ? null : <PatchValue label="변경 전" value={item.before} />}
+                {item.after == null ? null : <PatchValue label="변경 후" value={item.after} />}
+              </span>
+              </label>
+            </div>;
+          })}
+        </div>
+      </section>)}
     </div>
     <nav aria-label={titleOnly ? "제목 제안 결정" : "AI 변경안 결정"}>
       {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />취소</button>}

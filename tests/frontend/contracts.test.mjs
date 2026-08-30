@@ -1126,7 +1126,8 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     patch_operations: ["set_report_title"],
     patch_evidence_refs: [],
     patch_preview: [{
-      index: 0, operation: "set_report_title", target: "보고서 제목",
+      index: 0, depends_on_indexes: [], page_index: null,
+      operation: "set_report_title", target: "보고서 제목",
       before: "기존 제목", after: "새 제목",
       impact_category: "CONTENT", evidence_required: false, evidence_count: 0,
     }],
@@ -1171,7 +1172,8 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
       patch_request_id: "patch-1", patch_summary: "표 제목 변경",
       patch_operations: ["set_report_title"], patch_evidence_refs: [],
       patch_preview: [{
-        index: 0, operation: "set_report_title", target: "보고서 제목",
+        index: 0, depends_on_indexes: [], page_index: null,
+        operation: "set_report_title", target: "보고서 제목",
         before: "기존 제목", after: "새 제목",
         impact_category: "CONTENT", evidence_required: false, evidence_count: 0,
       }],
@@ -1337,6 +1339,25 @@ const invalidTurnHistoryClient = createReportClient("http://backend.test", async
 await assert.rejects(
   () => invalidTurnHistoryClient.getAssistantSession("assistant-1"),
   /대화 이력 계약이 올바르지 않습니다/,
+);
+
+const invalidPatchDependencyClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
+  assistant_request_id: "assistant-1", phase: "waiting_patch_approval", operation_scope: "full_report",
+  definition_id: "definition-1", definition_version: 2, base_revision: 2,
+  artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
+  patch_request_id: "patch-1", patch_summary: "두 번째 페이지 구성",
+  patch_operations: ["add_report_page", "add_text"], patch_evidence_refs: [],
+  patch_preview: [
+    { index: 0, depends_on_indexes: [], page_index: 2, operation: "add_report_page", target: "보고서 끝", before: null, after: "2페이지", impact_category: "LAYOUT", evidence_required: false, evidence_count: 0 },
+    { index: 1, depends_on_indexes: [1], page_index: 2, operation: "add_text", target: "요약", before: null, after: "내용", impact_category: "CONTENT", evidence_required: false, evidence_count: 0 },
+  ],
+  approved_operation_indexes: [], result_artifact_id: null, result_revision: null,
+  error_code: null, retryable: false, required_action: "REVIEW_PATCH",
+  retry_of_assistant_request_id: null, turn_history: [],
+}), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
+await assert.rejects(
+  () => invalidPatchDependencyClient.getAssistantSession("assistant-1"),
+  /patch 미리보기·선택 계약이 올바르지 않습니다/,
 );
 
 console.log("frontend contract tests passed");

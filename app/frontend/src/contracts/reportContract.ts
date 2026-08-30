@@ -299,6 +299,9 @@ export interface ReportAssistantAnalysisPlan {
 /** 내부 식별자 없이 공개하는 patch operation 한 건의 변경 전후다. */
 export interface ReportAssistantPatchPreviewItem {
   readonly index: number;
+  readonly depends_on_indexes: readonly number[];
+  /** 서버 renderer가 확정한 1-based 페이지이며 보고서 공통 변경은 null이다. */
+  readonly page_index: number | null;
   readonly operation:
     | "set_report_title" | "set_report_orientation" | "set_currency_display_unit"
     | "compact_report_layout" | "add_report_page" | "update_block_title" | "resize_block"

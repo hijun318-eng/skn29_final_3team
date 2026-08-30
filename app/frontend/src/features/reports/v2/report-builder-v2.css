@@ -398,12 +398,20 @@
 [data-report-builder="v2"] .report-assistant-patch-safety-note{min-width:0;margin:8px 0 0;padding:8px;display:flex;align-items:flex-start;gap:6px;color:#ffd0c4;border:1px solid var(--builder-danger-border);border-radius:var(--builder-radius-control);background:var(--builder-danger-bg);font-size:10px;line-height:1.5;overflow-wrap:anywhere}
 [data-report-builder="v2"] .report-assistant-patch-safety-note>svg{margin-top:1px;flex:none;color:var(--builder-danger)}
 [data-report-builder="v2"] .report-assistant-patch-items{margin-top:8px;display:grid;gap:5px}
+[data-report-builder="v2"] .report-assistant-patch-page{min-width:0;overflow:hidden;border:1px solid rgba(239,189,92,.18);border-radius:7px;background:rgba(0,0,0,.1)}
+[data-report-builder="v2"] .report-assistant-patch-page>header{min-height:34px;padding:7px 9px;display:flex;align-items:center;justify-content:space-between;gap:8px;color:#d8c28f;border-bottom:1px solid rgba(239,189,92,.14);background:rgba(255,255,255,.025)}
+[data-report-builder="v2"] .report-assistant-patch-page>header b{min-width:0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-report-builder="v2"] .report-assistant-patch-page>header small{flex:none;color:#9b855b;font-size:9px}
+[data-report-builder="v2"] .report-assistant-patch-page>div{display:grid}
 [data-report-builder="v2"] .report-assistant-patch-item{min-width:0;padding:7px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:flex-start;gap:6px;border:1px solid rgba(239,189,92,.18);border-radius:5px;background:rgba(0,0,0,.13)}
+[data-report-builder="v2"] .report-assistant-patch-page .report-assistant-patch-item{padding:9px;border:0;border-radius:0;background:transparent}
+[data-report-builder="v2"] .report-assistant-patch-page .report-assistant-patch-item+.report-assistant-patch-item{border-top:1px solid rgba(239,189,92,.12)}
 [data-report-builder="v2"] .report-assistant-patch-item>label{min-width:0;cursor:pointer}
 [data-report-builder="v2"] .report-assistant-patch-items input{margin-top:2px;accent-color:#176fe5}
 [data-report-builder="v2"] .report-assistant-patch-items span,[data-report-builder="v2"] .report-assistant-patch-items b,[data-report-builder="v2"] .report-assistant-patch-items small{display:block;min-width:0}
 [data-report-builder="v2"] .report-assistant-patch-items b{color:#e5d8be;font-size:11px}
 [data-report-builder="v2"] .report-assistant-patch-items small{margin-top:4px;color:#bda77e;font-size:10px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+[data-report-builder="v2"] .report-assistant-patch-items .report-assistant-patch-dependency{color:#8cb5e7}
 [data-report-builder="v2"] .report-assistant-patch-items em{display:inline;margin-right:4px;color:#7e9fca;font-style:normal}
 [data-report-builder="v2"] .report-assistant-patch-detail{min-width:0;margin-top:4px;color:#bda77e;font-size:10px}
 [data-report-builder="v2"] .report-assistant-patch-detail summary{cursor:pointer;overflow-wrap:anywhere}
@@ -583,8 +591,14 @@
 .theme-light [data-report-builder="v2"] .report-assistant-approval dl>div{border-color:#eddbb5;background:#fffdf7}
 .theme-light [data-report-builder="v2"] .report-assistant-approval dd{color:#55472f}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-item{border-color:#eddbb5;background:#fffdf7}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-page{border-color:#e6d3aa;background:#fffdf8}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-page>header{color:#65512d;border-color:#eddbb5;background:#fff9eb}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-page>header small{color:#8c7040}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-page .report-assistant-patch-item{background:transparent}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-page .report-assistant-patch-item+.report-assistant-patch-item{border-color:#efe1c4}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-items b{color:#55472f}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-items small{color:#76654a}
+.theme-light [data-report-builder="v2"] .report-assistant-patch-items .report-assistant-patch-dependency{color:#3f6f9f}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-safety-note{color:#733226}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-impact .warning{border-color:#dda998;background:#fff0eb}
 .theme-light [data-report-builder="v2"] .report-assistant-patch-impact .warning dt{color:#a43a27}

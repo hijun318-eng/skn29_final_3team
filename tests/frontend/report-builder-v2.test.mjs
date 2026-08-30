@@ -302,6 +302,14 @@ assert.match(assistant, /preview\.items\.filter\(\(item\) => selectedIndexes\.in
 assert.match(assistant, /evidenceRequired/);
 assert.match(assistant, /impactCategories\.includes\("DESTRUCTIVE"\)/);
 assert.match(assistant, /새 버전으로 저장되어 이전 버전을 유지합니다/);
+assert.match(assistant, /closeReportPatchSelection/);
+assert.match(assistant, /removeReportPatchSelection/);
+assert.match(assistant, /groupReportPatchItemsByPage/);
+assert.match(assistant, /group\.pageIndex == null \? "보고서 전체" : `\$\{group\.pageIndex\}페이지`/);
+assert.match(assistant, /필요한 선행 작업 \{item\.depends_on_indexes\.length\}개가 함께 적용됩니다/);
+assert.match(builderStyles, /\.report-assistant-patch-page\{[^}]*overflow:hidden;[^}]*border-radius:7px/);
+assert.match(builderStyles, /\.report-assistant-patch-page>header\{[^}]*justify-content:space-between/);
+assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-assistant-patch-page/);
 assert.match(builderStyles, /:focus-visible/);
 assert.match(builderStyles, /@media\(prefers-reduced-motion:reduce\)/);
 assert.match(builderStyles, /@media\(max-width:480px\)/);

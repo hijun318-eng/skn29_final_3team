@@ -123,7 +123,8 @@ assert.match(builderStyles, /\.report-orientation-switch button\[aria-pressed="t
 assert.match(builderStyles, /\.answer-report-page \.notion-markdown-input\{min-height:42px!important/);
 assert.match(builderStyles, /\.answer-report-page \.report-markdown-toolbar\{min-height:32px/);
 assert.match(builderStyles, /\.answer-report-page \.report-markdown-hint\{display:none\}/);
-assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.notion-block \.report-drag-handle[^\n]*background:#f1f5fa/);
+assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-block-actions\{[^}]*background:rgba\(255,255,255,\.96\)/);
+assert.match(builderStyles, /\.report-block-actions \.report-drag-handle[^\n]*background:transparent/);
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-block-menu-popover\{[^}]*color:#29445f[^}]*background:#fff/);
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-artifact-library-tile\{[^}]*background:#fff/);
 assert.match(builderStyles, /\.theme-light \.report-template-overlay\{[^}]*color:#17324f[^}]*background:#fff/);
@@ -138,6 +139,7 @@ assert.match(builderStyles, /\.report-presentation\.theme-light>main\{[^}]*radia
 assert.match(builderStyles, /\.report-api-state,[^\n]*overflow-wrap:anywhere/);
 assert.match(builderStyles, /\.report-property-evidence code\{[^}]*white-space:normal[^}]*overflow-wrap:anywhere/);
 assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 이동`\}/);
+assert.match(editorBlock, /className="report-block-actions" role="toolbar" aria-label=\{`\$\{block\.title\} 블록 조작`\}/);
 assert.match(editorBlock, /block\.type === "artifact" \? "분석 결과"/);
 assert.doesNotMatch(editorBlock, /block\.type === "artifact" \? "Artifact 전체"/);
 assert.match(editorBlock, /const RESIZE_DIRECTIONS = \[/);

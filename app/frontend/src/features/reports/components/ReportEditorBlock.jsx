@@ -317,7 +317,13 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     >
       <header className="report-block-chrome">
         <div className="report-block-title">
-          {isDraft && !locked && (
+          {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
+          <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "분석 결과" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
+          {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
+        </div>
+        {isDraft && (
+          <div className="report-block-actions" role="toolbar" aria-label={`${block.title} 블록 조작`}>
+            {!locked && (
             <button
               ref={setActivatorNodeRef}
               type="button"
@@ -329,23 +335,19 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
             >
               <GripVertical size={17} />
             </button>
-          )}
-          {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
-          <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "분석 결과" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
-          {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
-        </div>
-        {isDraft && (
-          <ReportBlockMenu
-            block={block}
-            artifact={artifact}
-            locked={locked}
-            onMove={moveBlock}
-            onResize={resizeBlock}
-            onSetting={setBlockSetting}
-            onDuplicate={duplicateBlock}
-            onDelete={deleteBlock}
-            onToggleLock={toggleLock}
-          />
+            )}
+            <ReportBlockMenu
+              block={block}
+              artifact={artifact}
+              locked={locked}
+              onMove={moveBlock}
+              onResize={resizeBlock}
+              onSetting={setBlockSetting}
+              onDuplicate={duplicateBlock}
+              onDelete={deleteBlock}
+              onToggleLock={toggleLock}
+            />
+          </div>
         )}
       </header>
       {isDraft ? (

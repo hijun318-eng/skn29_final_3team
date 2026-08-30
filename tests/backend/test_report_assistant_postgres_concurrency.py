@@ -16,9 +16,15 @@ from app.main import app as _app  # noqa: F401
 from app.adapters.report_repository import PostgresReportRepository
 from tests.e2e.prepare_report_assistant_e2e import (
     E2E_DATABASE,
+    E2E_PERMISSION_SNAPSHOT_ID,
+    E2E_PRODUCT_RELEASE_ID,
+    E2E_SEMANTIC_RELEASE_ID,
     _analyst_subject,
+    _canonical_sha256,
     _deployment_values,
     _dsn,
+    _release_fixture,
+    _seed,
 )
 
 
@@ -710,6 +716,42 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
 
 class ReportAssistantPostgresFixtureContractTest(unittest.TestCase):
     """실제 DB가 없어 skip돼도 fixture의 release receipt·binding 정리를 정적으로 검증한다."""
+
+    def test_prepare_fixture_seals_one_complete_e2e_release_receipt(self) -> None:
+        """prepare fixture의 product·permission·semantic receipt는 하나의 manifest와 일치한다."""
+
+        release = _release_fixture()
+        manifest = release["manifest"]
+        self.assertIsInstance(manifest, dict)
+        checksum_payload = {
+            key: manifest[key]
+            for key in ("schema_version", "product_release_id", "evidence", "created_at")
+        }
+        self.assertEqual(E2E_PRODUCT_RELEASE_ID, release["product_release_id"])
+        self.assertEqual(
+            E2E_PERMISSION_SNAPSHOT_ID,
+            release["permission_snapshot_id"],
+        )
+        self.assertEqual(E2E_SEMANTIC_RELEASE_ID, release["semantic_release_id"])
+        self.assertEqual(
+            E2E_SEMANTIC_RELEASE_ID,
+            manifest["evidence"]["release_vector"]["semantic_release_id"],
+        )
+        self.assertEqual(_canonical_sha256(checksum_payload), manifest["manifest_sha256"])
+
+    def test_prepare_seed_is_guarded_and_binds_artifact_and_report(self) -> None:
+        """fixture write는 격리 DB guard 뒤 complete receipt와 두 object binding을 저장한다."""
+
+        source = inspect.getsource(_seed)
+        self.assertIn("_require_e2e_connection(connection)", source)
+        self.assertIn("governance.product_release_manifests", source)
+        for field in (
+            "product_release_id", "permission_snapshot_id", "semantic_release_id",
+        ):
+            self.assertIn(field, source)
+        self.assertIn('(\"ARTIFACT\", str(ids[\"artifact\"])', source)
+        self.assertIn('"REPORT",', source)
+        self.assertIn("count(binding.binding_id) = 2", source)
 
     def test_fixture_pins_receipt_and_removes_report_bindings(self) -> None:
         prepare = inspect.getsource(ReportAssistantPostgresConcurrencyTest._prepare_report)

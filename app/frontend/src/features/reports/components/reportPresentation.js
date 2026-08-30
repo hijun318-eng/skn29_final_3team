@@ -7,6 +7,7 @@ import {
   frontendTextBlockLayout,
 } from "../reportDraftV2";
 import { isCurrencyMetricUnit } from "../reportCurrency";
+import { metricDisplayLabel } from "../../../utils/presentation";
 
 /** 보고서 컴포넌트가 공유하는 표시·pagination·키보드 순수 계약이다. */
 export { reportEvidenceReady } from "../reportArtifactEvidence";
@@ -117,8 +118,8 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
 
 /** governed artifact 전체 view를 삽입하는 일반 template이다. */ export const WHOLE_ARTIFACT_TEMPLATE = {
   id: "artifact-whole",
-  title: "Artifact 전체",
-  description: "요약·KPI·차트·표를 한 블록으로",
+  title: "분석 결과",
+  description: "요약·핵심 지표·차트·표를 한 블록으로",
   icon: FileBarChart,
 };
 
@@ -155,7 +156,8 @@ function humanizeColumnIdentifier(column) {
 
 /** governed metric label을 우선하고 없으면 canonical column을 일반 표시형으로만 바꾼다. */
 export function reportColumnLabel(artifact, column) {
-  const governedLabel = artifactMetric(artifact, column)?.label;
+  const governedMetric = artifactMetric(artifact, column);
+  const governedLabel = governedMetric ? metricDisplayLabel(governedMetric) : "";
   return typeof governedLabel === "string" && governedLabel.trim()
     ? governedLabel.trim()
     : humanizeColumnIdentifier(column);

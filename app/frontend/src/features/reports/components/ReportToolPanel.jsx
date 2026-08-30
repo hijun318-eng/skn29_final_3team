@@ -85,19 +85,10 @@ export const ReportToolPanel = memo(function ReportToolPanel({
   );
   const hasSearchResults = visibleQuickTemplates.length || visibleReportTemplates.length
     || visibleArtifacts.length || visibleArtifactTemplates.length || visibleOutline.length;
-  const selectedTimeLabel = analysisTimeLabel(
+  const selectedTimeDescription = analysisTimeLabel(
     selectedArtifact?.evidence,
     selectedArtifactPeriod || {},
   );
-  const hasPeriodTime = Boolean(
-    selectedArtifact?.evidence?.period?.start
-      && selectedArtifact?.evidence?.period?.end_exclusive,
-  ) || Boolean(
-    selectedArtifactPeriod?.start && selectedArtifactPeriod?.end_exclusive,
-  );
-  const selectedTimeDescription = hasPeriodTime && selectedTimeLabel
-    ? `${selectedTimeLabel} 미포함`
-    : selectedTimeLabel;
 
   return <aside ref={panelRef} tabIndex={-1} className="editor-library notion-editor-sidebar" aria-label="블록 도구">
     <header><div><p>보고서 구성</p><h2>블록 추가</h2><span>필요한 항목만 열어 클릭하거나 캔버스로 끌어 놓으세요.</span></div><button type="button" className="editor-library-close" aria-label="블록 도구 닫기" onClick={onClose}><PanelLeftClose size={16} aria-hidden="true" /></button></header>

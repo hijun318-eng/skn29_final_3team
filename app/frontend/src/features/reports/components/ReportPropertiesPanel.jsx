@@ -31,7 +31,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
     .filter((id) => editorTools.lockedBlockIds.has(id)).length;
 
   return <aside className="report-properties-panel" aria-label="보고서 속성">
-    <header><div><p>REPORT SETTINGS</p><h2>속성</h2></div><span>{selectedCount ? `${selectedCount}개 선택` : "선택 없음"}</span></header>
+    <header><div><p>보고서 설정</p><h2>속성</h2></div><span>{selectedCount ? `${selectedCount}개 선택` : "선택 없음"}</span></header>
 
     {selectedCount > 1 && <section className="report-batch-actions">
       <h3>선택 블록 정렬</h3>
@@ -64,7 +64,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
         <label><span>차트 유형</span><select value={settings.chartType || artifact?.chart?.chart_type || "bar"} disabled={!canEdit || blockLocked} onChange={(event) => onSetting(block.id, "chartType", event.target.value)}>{REPORT_CHART_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <label className="report-property-check"><input type="checkbox" checked={settings.showLegend !== false} disabled={!canEdit || blockLocked} onChange={(event) => onSetting(block.id, "showLegend", event.target.checked)} /><span>범례 표시</span></label>
       </>}
-      {block.type !== "text" && <div className="report-property-evidence"><span>Source / Evidence</span><b>{sourceLabel(artifact)}</b><small>{block.artifactId ? "검증된 Artifact 연결" : "연결 없음"}</small></div>}
+      {block.type !== "text" && <div className="report-property-evidence"><span>데이터 출처</span><b>{sourceLabel(artifact)}</b>{!block.artifactId && <small>연결된 분석 결과 없음</small>}</div>}
       {block.type === "text" && block.evidenceRefs?.length ? <div className="report-property-evidence"><span>AI 검증 근거</span><b>{block.evidenceRefs.map(reportEvidenceLabel).join(" · ")}</b><small>본문을 직접 수정하면 이 근거 표시는 해제됩니다.</small></div> : null}
       <div className="report-property-actions"><button type="button" onClick={() => { editorTools.copySelected(); editorTools.pasteBlocks(); }} disabled={!canEdit}><Copy size={14} />복제</button><button type="button" className="danger" onClick={() => editorTools.deleteBlock(block.id)} disabled={!canEdit || blockLocked}><Trash2 size={14} />삭제</button></div>
     </section> : <section className="report-properties-empty"><dl><div><dt>용지 방향</dt><dd>{orientation === "landscape" ? "A4 가로" : "A4 세로"}</dd></div><div><dt>페이지</dt><dd>{pageCount}페이지</dd></div></dl><p>보고서 블록을 선택하면 크기와 표현 속성을 편집할 수 있습니다.</p></section>}

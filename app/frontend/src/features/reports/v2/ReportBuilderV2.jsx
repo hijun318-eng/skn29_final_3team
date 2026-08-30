@@ -79,7 +79,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
 
   return <div
     ref={rootRef}
-    className={`${libraryOpen ? "" : "library-collapsed"} ${propertiesOpen ? "" : "properties-collapsed"}`.trim()}
+    className={`${libraryOpen ? "library-open" : "library-collapsed"} ${propertiesOpen ? "inspector-open" : "properties-collapsed"}`.trim()}
     data-report-builder="v2"
     onKeyDown={onKeyDown}
     onPointerMoveCapture={onPointerMove}

@@ -1,10 +1,14 @@
 /** 저장 분석 실행과 보고서 artifact library 사이의 근거 보존 adapter 모듈이다. */
+import { metricDisplayLabel, userFacingPeriodLabel } from "../../utils/presentation.ts";
 function analysisPeriodLabel(period = {}) {
-  const start = String(period.start || period.period_start || "").slice(0, 10);
-  const end = String(
-    period.endExclusive || period.end_exclusive || period.period_end_exclusive || "",
+  const start = String(
+    period.start || period.periodStart || period.period_start || "",
   ).slice(0, 10);
-  return start && end ? `${start}\u2013${end}` : "";
+  const end = String(
+    period.endExclusive || period.periodEndExclusive || period.end_exclusive
+      || period.period_end_exclusive || "",
+  ).slice(0, 10);
+  return userFacingPeriodLabel(start, end);
 }
 
 function analysisSnapshotLabel(snapshot = {}) {
@@ -29,7 +33,7 @@ export function analysisArtifactTitle(artifact, preferredTitle = "", fallbackPer
   if (savedTitle) return savedTitle;
   const definitions = artifact?.metrics?.length ? artifact.metrics : artifact?.evidence?.metrics || [];
   const labels = [...new Set(definitions
-    .map((metric) => String(metric.label || "").trim())
+    .map((metric) => metricDisplayLabel(metric))
     .filter(Boolean))];
   const metricLabel = labels.length > 1
     ? `${labels[0]} \uc678 ${labels.length - 1}\uac1c \uc9c0\ud45c`
@@ -71,6 +75,7 @@ export function analysisRunArtifactSources(runs = [], definitions = []) {
         title: analysisArtifactTitle(null, definitionTitle, run),
         periodStart: run.period_start || undefined,
         periodEndExclusive: run.period_end_exclusive || undefined,
+        completedAt: run.completed_at || undefined,
         snapshotCutoff: run.snapshot_cutoff || undefined,
         snapshotSelection: run.snapshot_selection || undefined,
       }];
@@ -105,9 +110,11 @@ function analysisMetricToReport(metric) {
     metric_id: metric.metricId,
     result_field: metric.resultField,
     label: metric.label,
+    display_label: metric.displayLabel ?? metric.display_label ?? null,
     definition: metric.definition,
     value: metric.value,
     unit: metric.unit ?? null,
+    display_unit: metric.displayUnit ?? metric.display_unit ?? null,
   };
 }
 

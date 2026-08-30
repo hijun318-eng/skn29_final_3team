@@ -286,12 +286,12 @@ export function useReportDraftState(
       placement: position?.placement || { type: "end", pageId: position?.pageId },
     }, reportContext());
     if (!result.ok) {
-      optionsRef.current.onError?.(result.errors?.[0] || "Artifact 전체 블록을 추가하지 못했습니다.");
+      optionsRef.current.onError?.(result.errors?.[0] || "분석 결과 전체 블록을 추가하지 못했습니다.");
       return false;
     }
     if (!commitBlocks(result.blocks)) return false;
     selectBlock(blockId);
-    optionsRef.current.onNotice?.("Artifact 전체를 요약·KPI·차트·표가 포함된 하나의 블록으로 추가했습니다.");
+    optionsRef.current.onNotice?.("분석 결과 전체를 요약·핵심 지표·차트·표가 포함된 하나의 블록으로 추가했습니다.");
     return true;
   }, [commitBlocks, reportContext, selectBlock]);
 

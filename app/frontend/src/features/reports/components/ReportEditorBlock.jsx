@@ -288,7 +288,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           <div>
             <small>{dataProvenanceLabel(artifact?.evidence?.sources ?? []) ?? "분석 데이터"}</small>
             <b>{block.type === "chart" ? "분석 차트 보기" : "분석 데이터 표 보기"}</b>
-            <span>Artifact에서 선택한 하나의 보기입니다.</span>
+            <span>분석 결과에서 선택한 하나의 보기입니다.</span>
           </div>
         </div>
         <ReportArtifactContent
@@ -331,7 +331,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
             </button>
           )}
           {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
-          <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "Artifact 전체" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
+          <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "분석 결과" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
           {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
         </div>
         {isDraft && (

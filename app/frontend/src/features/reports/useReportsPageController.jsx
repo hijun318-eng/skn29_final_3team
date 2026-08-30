@@ -526,8 +526,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const artifactStateFor = useCallback((artifactId) => artifactId
     ? artifacts.artifactStates[artifactId] || { status: "loading", message: "" }
     : null, [artifacts.artifactStates]);
-  const renderHeader = useCallback(({ pageNumber, pageCount }) => <><div className="answer-report-page-title"><small>ANSWERVICE · GOVERNED REPORT</small><h1>{lifecycle.selectedDefinition?.title || "보고서"}</h1><p>{lifecycle.assistantTrace ? "AI 초안 · 검토 필요" : reportStatusLabel(lifecycle.selectedDefinition?.status)} · v{lifecycle.selectedDefinition?.version} · {pageNumber}/{pageCount}페이지</p></div><span className="answer-report-draft-mark">{lifecycle.selectedDefinition?.status === "approved" ? "확정본" : "HTML 편집 초안"}</span></>, [lifecycle.assistantTrace, lifecycle.selectedDefinition]);
-  const renderFooter = useCallback(() => <span>분석 근거 연결 · HTML 편집본</span>, []);
+  const renderHeader = useCallback(({ pageNumber, pageCount }) => <><div className="answer-report-page-title"><small>ANSWERVICE · 분석 보고서</small><h1>{lifecycle.selectedDefinition?.title || "보고서"}</h1><p>{lifecycle.assistantTrace ? "AI 초안 · 검토 필요" : reportStatusLabel(lifecycle.selectedDefinition?.status)} · v{lifecycle.selectedDefinition?.version} · {pageNumber}/{pageCount}페이지</p></div>{lifecycle.selectedDefinition?.status === "approved" && <span className="answer-report-draft-mark">확정본</span>}</>, [lifecycle.assistantTrace, lifecycle.selectedDefinition]);
+  const renderFooter = useCallback(() => null, []);
   const renderPreviewBlock = useCallback((layoutBlock) => {
     const block = layoutBlock.sourceBlock || layoutBlock;
     return <GeneratedReportBlock block={block} number={reportBlockNumbers.get(block.id)} rowOffset={0} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} orientation={draft.reportOrientation} onRetry={block.artifactId ? () => artifacts.retryArtifact(block.artifactId) : undefined} />;

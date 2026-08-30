@@ -146,10 +146,15 @@ const analysisSources = analysisRunArtifactSources(
   analysisLibraryFixture.definitions,
 );
 assert.deepEqual(analysisSources.map(({ artifactId, requestId, title }) => [artifactId, requestId, title]), [
-  ["artifact-occupancy", "request-occupancy", "2026-06-01–2026-07-01 주요 지표 분석"],
+  ["artifact-occupancy", "request-occupancy", "2026년 6월 1일부터 30일까지 주요 지표 분석"],
   ["artifact-revenue", "request-revenue-new", "월간 객실 매출 추이"],
 ]);
 assert.equal(analysisSources.some((source) => Object.hasOwn(source, "question")), false);
+assert.equal(analysisSources[0].completedAt, "2026-07-03T00:00:02Z");
+assert.equal(
+  analysisTimeLabel({}, { periodStart: "2026-03-01", periodEndExclusive: "2026-08-30" }),
+  "2026년 3월 1일부터 8월 29일까지",
+);
 
 const manyAssistantOptions = Array.from({ length: 222 }, (_, index) => ({
   artifactId: `artifact-${index + 1}`,
@@ -190,8 +195,29 @@ assert.equal(adaptedAnalysisArtifact.evidence.sources[0].synthetic, true);
 assert.equal(adaptedAnalysisArtifact.metrics[0].result_field, "room_revenue");
 assert.equal(Object.hasOwn(adaptedAnalysisArtifact, "question"), false);
 assert.deepEqual(analysisLibraryFixture.artifact, analysisArtifactBefore, "analysis adaptation must not mutate the API result");
-assert.equal(analysisArtifactTitle(adaptedAnalysisArtifact), "2026-01-01–2026-07-01 객실 매출 분석");
+assert.equal(analysisArtifactTitle(adaptedAnalysisArtifact), "2026년 1월 1일부터 6월 30일까지 객실 매출 분석");
 assert.equal(adaptAnalysisRunArtifact({ ...analysisLibraryFixture.artifact, evidenceReady: false }), null);
+
+const presentationRun = structuredClone(analysisLibraryFixture.artifact);
+presentationRun.metrics[0] = {
+  ...presentationRun.metrics[0],
+  label: "Room Revenue",
+  displayLabel: "객실 매출",
+  unit: "KRW",
+  displayUnit: "원",
+};
+presentationRun.evidence.metrics[0] = {
+  ...presentationRun.evidence.metrics[0],
+  label: "Room Revenue",
+  displayLabel: "객실 매출",
+  unit: "KRW",
+  displayUnit: "원",
+};
+const presentationArtifact = adaptAnalysisRunArtifact(presentationRun);
+assert.equal(presentationArtifact.metrics[0].display_label, "객실 매출");
+assert.equal(presentationArtifact.metrics[0].display_unit, "원");
+assert.equal(presentationArtifact.evidence.metrics[0].display_label, "객실 매출");
+assert.equal(presentationArtifact.evidence.metrics[0].display_unit, "원");
 
 const snapshotRun = structuredClone(analysisLibraryFixture.artifact);
 delete snapshotRun.evidence.period;

@@ -43,7 +43,7 @@ export function ReportPresentation({ orientation, pages, renderBlock, renderFoot
 
   const overlayThemeClass = theme === "dark" ? "ppt-theme theme-dark" : "theme-light";
   const overlay = open && <div className={`report-presentation ${overlayThemeClass}`} role="dialog" aria-modal="true" aria-label={`${reportTitle || "보고서"} 발표`} onKeyDown={navigate}>
-      <header><div><small>ANSWERVICE · GOVERNED REPORT</small><b>{reportTitle || "보고서"}</b></div><nav><span>{pageIndex + 1} / {pageCount}</span><button type="button" onClick={() => move(-1)} disabled={pageIndex === 0} aria-label="이전 페이지"><ChevronLeft size={18} /></button><button type="button" onClick={() => move(1)} disabled={pageIndex >= pageCount - 1} aria-label="다음 페이지"><ChevronRight size={18} /></button><button ref={closeRef} type="button" onClick={close} aria-label="발표 닫기"><X size={18} /></button></nav></header>
+      <header><div><small>ANSWERVICE · 분석 보고서</small><b>{reportTitle || "보고서"}</b></div><nav><span>{pageIndex + 1} / {pageCount}</span><button type="button" onClick={() => move(-1)} disabled={pageIndex === 0} aria-label="이전 페이지"><ChevronLeft size={18} /></button><button type="button" onClick={() => move(1)} disabled={pageIndex >= pageCount - 1} aria-label="다음 페이지"><ChevronRight size={18} /></button><button ref={closeRef} type="button" onClick={close} aria-label="발표 닫기"><X size={18} /></button></nav></header>
       <main>
         <ReportPageCanvas
           pages={pages[pageIndex] ? [pages[pageIndex]] : []}

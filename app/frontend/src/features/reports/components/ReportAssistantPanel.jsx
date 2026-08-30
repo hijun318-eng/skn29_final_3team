@@ -2,6 +2,8 @@
 import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Bot, Check, Database, LoaderCircle, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import { reportEvidenceLabel } from "../../../contracts/report";
+import { analysisTimeLabel } from "../reportAnalysisArtifacts";
+import { formatSeoulTime } from "../reportPageLabels";
 
 /** 실제 assistant API가 반환한 모델·시도 횟수·처리 시간만 성공 영수증으로 표시하며 trace가 없으면 렌더링하지 않는다. */
 function AssistantReceipt({ trace }) {
@@ -64,6 +66,14 @@ const REVIEW_CATEGORY_LABEL = {
   inconsistent_metric_expression: "지표 표현 불일치",
   unsupported_claim: "근거 확인 필요",
 };
+
+/** 동일 제목·기간의 승인 Artifact를 내부 ID 없이 구분할 수 있는 표시 근거를 만든다. */
+function assistantArtifactOptionDisplay(option) {
+  const title = option.title || "승인 Artifact";
+  const period = analysisTimeLabel({}, option);
+  const completed = option.completedAt ? `${formatSeoulTime(option.completedAt)} 생성` : "";
+  return { period, completed, key: `${title}|${period}|${completed}` };
+}
 
 /** 품질 finding을 보여 주되 선택은 입력창에 수정 지시만 채우고 저장이나 모델 호출을 하지 않는다. */
 function AssistantQualityReview({ review, onSelect, pending }) {
@@ -275,6 +285,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   const canRefinePatch = Boolean(patchPreview) && workflowStatus === "waiting_patch_approval";
   const composerBlocked = workflowActive && !canRefinePatch;
   const disabled = !canEdit || !artifact || !instruction.trim() || Boolean(pending) || composerBlocked;
+  const artifactOptionDisplays = artifactOptions.map(assistantArtifactOptionDisplay);
 
   useEffect(() => {
     if (!evidencePickerOpen) setDraftArtifactIds(assistantArtifactIds);
@@ -357,10 +368,19 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
       </header>
       <p>대표 근거를 포함해 최대 5개까지 선택할 수 있습니다. 선택한 근거만 검증해 Assistant에 전달합니다.</p>
       <div className="report-assistant-evidence-options">
-        {artifactOptions.map((option) => {
+        {artifactOptions.map((option, optionIndex) => {
           const primary = option.artifactId === assistantArtifactIds[0];
           const checked = draftArtifactIds.includes(option.artifactId);
-          const period = [option.periodStart, option.periodEndExclusive].filter(Boolean).join(" – ");
+          const display = artifactOptionDisplays[optionIndex];
+          const matchingOptions = artifactOptionDisplays.filter((candidate) => candidate.key === display.key);
+          const duplicateOrder = matchingOptions.length > 1
+            ? artifactOptionDisplays.slice(0, optionIndex + 1)
+                .filter((candidate) => candidate.key === display.key).length
+            : 0;
+          const duplicateLabel = duplicateOrder
+            ? `동일 조건 ${duplicateOrder}/${matchingOptions.length}`
+            : "";
+          const detail = [display.period, display.completed, duplicateLabel].filter(Boolean).join(" · ");
           return <label key={option.artifactId} title={option.title || "승인 Artifact"}>
             <input
               type="checkbox"
@@ -368,7 +388,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
               disabled={primary || evidencePickerPending || (!checked && draftArtifactIds.length >= 5)}
               onChange={() => toggleDraftArtifact(option.artifactId)}
             />
-            <span><b>{option.title || "승인 Artifact"}</b><small>{primary ? "대표 근거 · 필수" : period || "승인된 분석 결과"}</small></span>
+            <span><b>{option.title || "승인 Artifact"}</b><small>{primary ? "대표 근거 · 필수" : detail || "승인된 분석 결과"}</small></span>
           </label>;
         })}
       </div>

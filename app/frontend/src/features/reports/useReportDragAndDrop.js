@@ -102,9 +102,9 @@ export function useReportDragAndDrop({
   const dragLabel = useCallback((activeId) => {
     const id = String(activeId);
     if (id.startsWith("template:")) return `${reportTemplateMap.get(id.slice("template:".length))?.title || "새"} 블록`;
-    if (id.startsWith("artifact:")) return `${artifactOptions.find((item) => item.artifactId === id.slice("artifact:".length))?.title || "분석 결과"} Artifact 전체 블록`;
+    if (id.startsWith("artifact:")) return `${artifactOptions.find((item) => item.artifactId === id.slice("artifact:".length))?.title || "분석 결과"} 전체 블록`;
     const block = blocksRef.current.find((item) => item.id === id);
-    const type = block?.type === "artifact" ? "Artifact 전체" : block?.type === "chart" ? "차트" : block?.type === "table" ? "표" : "텍스트";
+    const type = block?.type === "artifact" ? "분석 결과" : block?.type === "chart" ? "차트" : block?.type === "table" ? "표" : "텍스트";
     return `${block?.title || "제목 없음"} ${type} 블록`;
   }, [artifactOptions, blocksRef, reportTemplateMap]);
 

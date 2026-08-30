@@ -302,7 +302,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   >
     {editor}
     <DragOverlay dropAnimation={{ duration: 160, easing: "ease-out" }}>
-      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeArtifactSource?.title || page.activeInsert.title}</b><small>{page.activeArtifactSource ? "Artifact 전체로 추가" : "캔버스에 놓아 추가"}</small></span></div>}
+      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeArtifactSource?.title || page.activeInsert.title}</b><small>{page.activeArtifactSource ? "분석 결과 전체로 추가" : "캔버스에 놓아 추가"}</small></span></div>}
     </DragOverlay>
   </DndContext>;
 }

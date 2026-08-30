@@ -4,6 +4,7 @@ import {
   ENTERPRISE_SERIES_COLORS,
   analysisTitle,
   formatCompactNumber,
+  formatMetricDisplayValue,
   formatMetricValue,
   isNumericValue,
   localizeAnalysisSummary,
@@ -13,6 +14,7 @@ import {
   metricUnitLabel,
   reportTitleForAnalysis,
   seriesColor,
+  userFacingPeriodLabel,
 } from "../../app/frontend/src/utils/presentation.ts";
 
 const structuredRun = {
@@ -38,6 +40,10 @@ assert.equal(analysisTitle({
 assert.equal(reportTitleForAnalysis(structuredRun), "2026년 7월 객실 매출 분석 보고서");
 assert.doesNotMatch(reportTitleForAnalysis(structuredRun), /이 문장을 제목으로 쓰지 마세요/);
 assert.equal(reportTitleForAnalysis({ question: "원문 질문" }), "분석 결과 보고서");
+assert.equal(userFacingPeriodLabel("2026-05-01", "2026-06-01"), "2026년 5월 1일부터 31일까지");
+assert.equal(userFacingPeriodLabel("2026-12-15", "2027-01-03"), "2026년 12월 15일부터 2027년 1월 2일까지");
+assert.equal(userFacingPeriodLabel("2026-06-01", "2026-06-01"), "");
+assert.equal(userFacingPeriodLabel("invalid", "2026-06-01"), "");
 
 assert.equal(formatMetricValue(0), "0");
 assert.equal(formatMetricValue(null, { unit: "원" }), "—");
@@ -46,6 +52,10 @@ assert.equal(formatMetricValue(0.652306318, { unit: "ratio" }), "65.23%");
 assert.equal(formatMetricValue(0.652306318, { unit: "ratio", includeUnit: false }), "65.23");
 assert.equal(formatMetricValue(-12.345, { maximumFractionDigits: 1 }), "-12.3");
 assert.equal(formatMetricValue("계산 불가", { unit: "원" }), "계산 불가");
+assert.equal(formatMetricDisplayValue(29, { unit: "count" }), "29 건");
+assert.equal(formatMetricDisplayValue(0.652306318, { unit: "ratio" }), "65.23%");
+assert.equal(formatMetricDisplayValue(6114218700, { unit: "KRW", displayUnit: "원" }), "6,114,218,700 원");
+assert.equal(formatMetricDisplayValue("계산 불가", { unit: "count" }), "계산 불가");
 assert.equal(formatCompactNumber(125000000), "1.3억");
 assert.equal(isNumericValue("0"), true);
 assert.equal(isNumericValue(""), false);

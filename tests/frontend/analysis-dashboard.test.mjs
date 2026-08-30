@@ -54,7 +54,7 @@ try {
   const localizedSummaryHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run: {
       ...run,
-      summary: "2026-06-01부터 2026-07-01 전까지의 Room Revenue 합계 계산 결과는 6,632,629,550 KRW입니다.",
+      summary: "2026년 6월 1일 전부터 2026년 7월 1일 전까지의 Room Revenue 합계 계산 결과는 6,632,629,550 KRW입니다.",
       evidence: {
         ...run.evidence,
         period: { start: "2026-06-01", endExclusive: "2026-07-01" },

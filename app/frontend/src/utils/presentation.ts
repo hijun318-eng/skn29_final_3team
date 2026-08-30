@@ -101,8 +101,84 @@ export function metricDisplayUnit(unit?: string | null, approvedDisplayUnit?: st
   return unit;
 }
 
+/** 계산용 원본 단위로 수치를 해석하고 승인된 화면 단위만 사용자에게 붙인다. */
+export function formatMetricDisplayValue(value: unknown, metric: MetricLike = {}): string {
+  const rendered = formatMetricValue(value, {
+    includeUnit: false,
+    unit: metric.unit,
+  });
+  if (numericValue(value) === null) return rendered;
+  const displayUnit = metricDisplayUnit(
+    metric.unit,
+    metric.displayUnit ?? metric.display_unit,
+  );
+  if (!displayUnit) return rendered;
+  return `${rendered}${displayUnit === "%" ? "" : " "}${displayUnit}`;
+}
+
 function escapedPattern(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function koreanDateLabel(value?: string | null): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
+  return match
+    ? `${Number(match[1])}년 ${Number(match[2])}월 ${Number(match[3])}일`
+    : "";
+}
+
+/** 서버의 `[start, endExclusive)` 기간을 사용자 화면에서만 포함 종료일로 표현한다. */
+export function userFacingPeriodLabel(
+  start?: string | null,
+  endExclusive?: string | null,
+): string {
+  const startMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(start ?? "");
+  const endMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(endExclusive ?? "");
+  if (!startMatch || !endMatch) return "";
+  const startDate = new Date(Date.UTC(Number(startMatch[1]), Number(startMatch[2]) - 1, Number(startMatch[3])));
+  const endInclusive = new Date(Date.UTC(Number(endMatch[1]), Number(endMatch[2]) - 1, Number(endMatch[3])));
+  endInclusive.setUTCDate(endInclusive.getUTCDate() - 1);
+  if (endInclusive < startDate) return "";
+
+  const startYear = startDate.getUTCFullYear();
+  const startMonth = startDate.getUTCMonth() + 1;
+  const startDay = startDate.getUTCDate();
+  const endYear = endInclusive.getUTCFullYear();
+  const endMonth = endInclusive.getUTCMonth() + 1;
+  const endDay = endInclusive.getUTCDate();
+  if (startYear === endYear && startMonth === endMonth) {
+    return `${startYear}년 ${startMonth}월 ${startDay}일부터 ${endDay}일까지`;
+  }
+  if (startYear === endYear) {
+    return `${startYear}년 ${startMonth}월 ${startDay}일부터 ${endMonth}월 ${endDay}일까지`;
+  }
+  return `${startYear}년 ${startMonth}월 ${startDay}일부터 ${endYear}년 ${endMonth}월 ${endDay}일까지`;
+}
+
+/** 서버 요약의 배타 종료일 문구만 같은 기간 계약의 사용자용 표현으로 치환한다. */
+export function localizeAnalysisPeriod(
+  text: string,
+  start?: string | null,
+  endExclusive?: string | null,
+): string {
+  const label = userFacingPeriodLabel(start, endExclusive);
+  const startKorean = koreanDateLabel(start);
+  const endKorean = koreanDateLabel(endExclusive);
+  if (!label || !start || !endExclusive || !startKorean || !endKorean) return text;
+  const patterns = [
+    `${start}부터 ${endExclusive} 전까지`,
+    `${start}부터 ${endExclusive} 이전`,
+    `${start} ~ ${endExclusive} 미포함`,
+    `${start}–${endExclusive} 미포함`,
+    `${startKorean} 전부터 ${endKorean} 전까지`,
+    `${startKorean}부터 ${endKorean} 전까지`,
+    `${startKorean}부터 ${endKorean} 이전`,
+    `${startKorean} ~ ${endKorean} 미포함`,
+  ];
+  return patterns.reduce(
+    (current, pattern) => current.replace(new RegExp(escapedPattern(pattern), "g"), label),
+    text,
+  );
 }
 
 function hasKoreanFinalConsonant(label: string): boolean {

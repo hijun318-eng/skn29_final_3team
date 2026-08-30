@@ -43,7 +43,7 @@ assert.doesNotMatch(
   /["'](?:month|business_date|stay_date|room_revenue|total_guest_revenue|recognized_room_revenue)["']/,
   "column labels must not be a scenario-specific identifier map",
 );
-assert.match(reportSources.presentation, /artifactMetric\(artifact, column\)\?\.label/);
+assert.match(reportSources.presentation, /metricDisplayLabel\(governedMetric\)/);
 assert.match(reportSources.presentation, /humanizeColumnIdentifier\(column\)/);
 
 console.log("frontend report page architecture tests passed");

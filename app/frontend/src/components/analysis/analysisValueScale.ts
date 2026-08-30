@@ -13,9 +13,13 @@ import {
   isCurrencyMetricUnit,
 } from "../../features/reports/reportCurrency";
 import type { AnalysisRun } from "../../contracts/analysis";
-import { formatCompactNumber, formatMetricValue, isNumericValue, localizeAnalysisSummary, metricDisplayUnit } from "../../utils/presentation";
+import { formatCompactNumber, formatMetricValue, isNumericValue, localizeAnalysisPeriod, localizeAnalysisSummary, metricDisplayUnit } from "../../utils/presentation";
 
 type ResolvedUnit = "hundredMillion" | "one";
+
+function escapedSummaryToken(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /**
  * 카드·표 한 칸에 들어가야 하므로 배율은 `억 원`과 `원` 두 가지만 쓴다.
@@ -50,51 +54,12 @@ export interface AnalysisValueScale {
   sharedCurrencyLabel(fields: readonly string[]): string | null;
 }
 
-function escapedSummaryToken(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** 서버의 `[start, endExclusive)` 기간을 사용자에게 읽기 쉬운 포함 종료일 문장으로 바꾼다. */
-function userFacingPeriodSentence(period?: { start?: string | null; endExclusive?: string | null } | null) {
-  const startMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(period?.start ?? "");
-  const endMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(period?.endExclusive ?? "");
-  if (!startMatch || !endMatch) return null;
-  const startDate = new Date(Date.UTC(Number(startMatch[1]), Number(startMatch[2]) - 1, Number(startMatch[3])));
-  const endInclusive = new Date(Date.UTC(Number(endMatch[1]), Number(endMatch[2]) - 1, Number(endMatch[3])));
-  endInclusive.setUTCDate(endInclusive.getUTCDate() - 1);
-  if (endInclusive < startDate) return null;
-
-  const startYear = startDate.getUTCFullYear();
-  const startMonth = startDate.getUTCMonth() + 1;
-  const startDay = startDate.getUTCDate();
-  const endYear = endInclusive.getUTCFullYear();
-  const endMonth = endInclusive.getUTCMonth() + 1;
-  const endDay = endInclusive.getUTCDate();
-  if (startYear === endYear && startMonth === endMonth) {
-    return `${startYear}년 ${startMonth}월 ${startDay}일부터 ${endDay}일까지`;
-  }
-  if (startYear === endYear) {
-    return `${startYear}년 ${startMonth}월 ${startDay}일부터 ${endMonth}월 ${endDay}일까지`;
-  }
-  return `${startYear}년 ${startMonth}월 ${startDay}일부터 ${endYear}년 ${endMonth}월 ${endDay}일까지`;
-}
-
 /** 요약 카드와 근거 서랍이 같은 한국어 label·금액 배율 문구를 사용하게 한다. */
 export function userFacingAnalysisSummary(run: AnalysisRun, valueScale: AnalysisValueScale): string {
   const metrics = run.metrics?.length ? run.metrics : run.evidence?.metrics ?? [];
   let summary = localizeAnalysisSummary(run.summary || "선택한 조건의 지표 계산이 완료되었습니다.", metrics);
   const period = run.evidence?.period;
-  const periodSentence = userFacingPeriodSentence(period);
-  if (periodSentence && period?.start && period.endExclusive) {
-    const periodPatterns = [
-      `${period.start}부터 ${period.endExclusive} 전까지`,
-      `${period.start}부터 ${period.endExclusive} 이전`,
-      `${period.start} ~ ${period.endExclusive} 미포함`,
-    ];
-    for (const pattern of periodPatterns) {
-      summary = summary.replace(new RegExp(escapedSummaryToken(pattern), "g"), periodSentence);
-    }
-  }
+  summary = localizeAnalysisPeriod(summary, period?.start, period?.endExclusive);
   for (const metric of run.metrics ?? []) {
     if (!isNumericValue(metric.value)) continue;
     const unit = valueScale.unitLabel(metric.unit, metric.resultField) ?? metricDisplayUnit(metric.unit);

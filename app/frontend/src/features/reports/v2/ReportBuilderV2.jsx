@@ -1,6 +1,6 @@
 /** 기존 보고서 상태와 명령을 캔버스 중심 편집 화면과 온디맨드 패널에 배치하는 어댑터다. */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Expand, HelpCircle, PanelRightClose, Settings2, Shrink, Sparkles } from "lucide-react";
+import { HelpCircle, PanelRightClose, Settings2, Sparkles } from "lucide-react";
 
 import { ReportShortcutHelp } from "./ReportShortcutHelp";
 import "./report-builder-v2.css";
@@ -15,7 +15,6 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   onPointerMove,
   orientation,
   pages,
-  presentation,
   properties,
   toolbar,
 }) {
@@ -25,15 +24,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState("properties");
-  const [fullscreen, setFullscreen] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
-  const fullscreenSupported = typeof document !== "undefined" && Boolean(document.fullscreenEnabled);
-
-  useEffect(() => {
-    const syncFullscreen = () => setFullscreen(document.fullscreenElement === rootRef.current);
-    document.addEventListener("fullscreenchange", syncFullscreen);
-    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
-  }, []);
 
   useEffect(() => {
     if (activePageIndex >= pages.length) setActivePageIndex(Math.max(0, pages.length - 1));
@@ -59,15 +50,6 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
     setActivePageIndex(Number(nearest.dataset.reportPageIndex || 0));
   }, []);
 
-  const toggleFullscreen = useCallback(async () => {
-    if (!fullscreenSupported || !rootRef.current) return;
-    try {
-      if (document.fullscreenElement === rootRef.current) await document.exitFullscreen();
-      else await rootRef.current.requestFullscreen();
-    } catch {
-      setFullscreen(false);
-    }
-  }, [fullscreenSupported]);
   const closeShortcutHelp = useCallback(() => {
     setShortcutHelpOpen(false);
     window.requestAnimationFrame(() => shortcutTriggerRef.current?.focus());
@@ -108,10 +90,8 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
           <div className="builder-workspace-context"><b>{String(activePageIndex + 1).padStart(2, "0")} / {String(pages.length).padStart(2, "0")}</b><span>{orientation === "landscape" ? "가로" : "세로"}</span></div>
           <nav aria-label="작업 화면 설정">
             <button ref={shortcutTriggerRef} type="button" onClick={() => setShortcutHelpOpen(true)} aria-haspopup="dialog" aria-label="편집 단축키"><HelpCircle size={14} /><span>도움말</span></button>
-            {presentation}
             {assistant && <button type="button" onClick={() => toggleRightPanel("assistant")} aria-label={propertiesOpen && rightPanel === "assistant" ? "AI 도우미 닫기" : "AI 도우미 열기"} aria-pressed={propertiesOpen && rightPanel === "assistant"}><Sparkles size={14} /><span>AI 도우미</span></button>}
             <button type="button" onClick={() => toggleRightPanel("properties")} aria-label={propertiesOpen && rightPanel === "properties" ? "속성 닫기" : "속성 열기"} aria-pressed={propertiesOpen && rightPanel === "properties"}>{propertiesOpen && rightPanel === "properties" ? <PanelRightClose size={14} /> : <Settings2 size={14} />}<span>속성</span></button>
-            {fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}
           </nav>
         </div>
         {canvas}

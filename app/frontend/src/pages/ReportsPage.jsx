@@ -86,6 +86,15 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       orientation={draft.reportOrientation}
       pages={page.reportPages}
       pending={lifecycle.pending}
+      presentation={<ReportPresentation
+        orientation={draft.reportOrientation}
+        pages={page.reportPages}
+        renderBlock={page.renderPreviewBlock}
+        renderFooter={page.renderFooter}
+        renderHeader={page.renderHeader}
+        reportTitle={lifecycle.selectedDefinition?.title}
+        theme={theme}
+      />}
       renderBlock={page.renderPreviewBlock}
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
@@ -271,15 +280,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onPointerMove={dnd.handlePointerMove}
     orientation={draft.reportOrientation}
     pages={page.reportPages}
-    presentation={<ReportPresentation
-      orientation={draft.reportOrientation}
-      pages={page.reportPages}
-      renderBlock={page.renderPreviewBlock}
-      renderFooter={page.renderFooter}
-      renderHeader={page.renderHeader}
-      reportTitle={lifecycle.selectedDefinition?.title}
-      theme={theme}
-    />}
     properties={properties}
     toolbar={toolbar}
   /> : <div

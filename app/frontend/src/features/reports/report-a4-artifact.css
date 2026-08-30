@@ -29,7 +29,7 @@
 .report-artifact-library-add,
 .report-artifact-library-drag {
   min-width: 0;
-  min-height: 50px;
+  min-height: 72px;
   color: #dce8f7 !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -38,16 +38,17 @@
 }
 
 .report-artifact-library-add {
-  padding: 8px 6px 8px 9px !important;
+  padding: 10px 8px 10px 10px !important;
   display: grid !important;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
   text-align: left;
 }
 
 .report-artifact-library-icon {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   color: #75adf3;
@@ -64,13 +65,21 @@
 
 .report-artifact-library-add b,
 .report-artifact-library-add small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.report-artifact-library-add b { font-size: 12px; }
-.report-artifact-library-add small { color: #8fa2ba; font-size: 10px; }
+.report-artifact-library-add b {
+  display: -webkit-box;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.report-artifact-library-add small { color: #8fa2ba; font-size: 9.5px; line-height: 1.4; }
+.report-artifact-library-add .report-artifact-library-period { color: #b8c8da; font-weight: 680; }
 .report-artifact-library-drag { border-left: 1px solid #25374e !important; cursor: grab; }
 .report-artifact-library-empty { margin: 0; padding: 10px; color: #91a3ba; font-size: 11px; }
 

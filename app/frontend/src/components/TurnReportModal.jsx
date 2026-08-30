@@ -5,7 +5,7 @@ import React from "react";
 import { Check, FileText, X } from "lucide-react";
 import { AnalysisStatePanel } from "./analysis/AnalysisStatePanel";
 import { createAnalysisValueScale, userFacingAnalysisSummary } from "./analysis/analysisValueScale";
-import { formatMetricValue, metricDisplayLabel, metricDisplayUnit } from "../utils/presentation";
+import { analysisTitle, formatMetricValue, metricDisplayLabel, metricDisplayUnit } from "../utils/presentation";
 import "./TurnReportModal.css";
 
 /**
@@ -80,7 +80,7 @@ export function TurnReportModal({
                 <header>
                   <div>
                     <small>선택한 분석</small>
-                    <h3>{run.question}</h3>
+                    <h3>{analysisTitle(run)}</h3>
                   </div>
                   {metrics.length > 0 && <span>{metrics.length}개 지표</span>}
                 </header>

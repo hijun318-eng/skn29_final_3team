@@ -21,7 +21,7 @@ const server = await createServer({
 try {
   const { TurnReportModal } = await server.ssrLoadModule("/src/components/TurnReportModal.jsx");
   const run = {
-    question: "5월 객실 매출",
+    question: "표로 보여줘",
     summary: "2026-05-01부터 2026-06-01 전까지의 Room Revenue 합계 계산 결과는 6,114,218,700 KRW입니다.",
     metrics: [{
       metricId: "room_revenue",
@@ -54,6 +54,8 @@ try {
   assert.match(html, /class="report-transfer-modal__body"/);
   assert.match(html, /보고서 제목/);
   assert.match(html, /선택한 분석/);
+  assert.match(html, /2026년 5월 객실 매출 분석/);
+  assert.doesNotMatch(html, /표로 보여줘/);
   assert.match(html, /객실 매출/);
   assert.match(html, /61\.1/);
   assert.match(html, /억 원/);

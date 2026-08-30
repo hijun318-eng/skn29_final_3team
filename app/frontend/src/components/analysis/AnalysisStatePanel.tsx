@@ -90,6 +90,11 @@ export function AnalysisStatePanel({
   const hasMetrics = Boolean(run.metrics?.length);
   const hasTableRows = Boolean(table?.columns?.length && table?.rows?.length);
   const isPresentationPending = Boolean(artifactReuse?.pending);
+  const widthClass = !showResult || isPresentationPending
+    ? "analysis-state--compact-width"
+    : (isChartMode || isTableMode || isFullMode)
+      ? "analysis-state--wide-width"
+      : "analysis-state--content-width";
   const displayedProcessViewModel = processViewModel ?? createAnalysisProcessViewModel({
     kind: isPresentationPending ? "PRESENTATION" : "ANALYSIS",
     status: "running",
@@ -184,7 +189,7 @@ export function AnalysisStatePanel({
 
   if (viewState === "LOADING" || viewState === "DELAYED") {
     return (
-      <section className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite" aria-busy="true">
+      <section className={`analysis-state analysis-state--${viewState.toLowerCase()} ${widthClass}`} aria-live="polite" aria-busy="true">
         <header>
           <LoaderCircle className="spin" size={18} aria-hidden="true" />
           <div><b>{copy.title}</b></div>
@@ -200,7 +205,7 @@ export function AnalysisStatePanel({
   }
 
   return (
-    <section ref={terminalStateRef} tabIndex={-1} className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite">
+    <section ref={terminalStateRef} tabIndex={-1} className={`analysis-state analysis-state--${viewState.toLowerCase()} ${widthClass}`} aria-live="polite">
       {!showResult && (
         <AnalysisFailureState
           run={run}

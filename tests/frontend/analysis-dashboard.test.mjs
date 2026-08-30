@@ -75,6 +75,38 @@ try {
   assert.match(localizedSummaryHtml, /title="6,632,629,550 원"/);
   assert.doesNotMatch(localizedSummaryHtml, /Room Revenue|KRW|ADR|RevPAR/);
 
+  const comparisonSummaryHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: {
+      ...run,
+      summary: "2026년 4월 기준 계산 결과는 Room Revenue 5,600,000,000 KRW. 2026년 6월 기준 계산 결과는 Room Revenue 6,632,629,550 KRW.",
+      evidence: {
+        ...run.evidence,
+        period: { start: "2026-04-01", endExclusive: "2026-05-01" },
+        comparisonPeriod: { start: "2026-06-01", endExclusive: "2026-07-01" },
+      },
+      metrics: [{
+        ...run.metrics[0],
+        metricId: "room_revenue",
+        resultField: "room_revenue",
+        label: "Room Revenue",
+        displayLabel: "객실 매출",
+        value: 5600000000,
+        unit: "KRW",
+        displayUnit: "원",
+      }],
+      table: {
+        columns: ["period", "room_revenue"],
+        rows: [
+          { period: "2026-04-01", room_revenue: 5600000000 },
+          { period: "2026-06-01", room_revenue: 6632629550 },
+        ],
+      },
+    },
+  }));
+  assert.match(comparisonSummaryHtml, /객실 매출 56억 원/);
+  assert.match(comparisonSummaryHtml, /객실 매출 66\.3억 원/);
+  assert.doesNotMatch(comparisonSummaryHtml, /6,632,629,550 원|Room Revenue|KRW/);
+
   const analysisProcessHtml = renderToStaticMarkup(createElement(AnalysisProgress, { model: processViewModels.analysisActive }));
   assert.match(analysisProcessHtml, /data-process-kind="ANALYSIS"/);
   assert.match(analysisProcessHtml, /data-process-flow="vertical"/);
@@ -262,8 +294,9 @@ try {
   assert.match(stylesSource, /\.message\.message--agent\{justify-content:flex-start\}/);
   assert.match(stylesSource, /\.chat-layout \.message\.message--agent>\.agent-response-container\{[^}]*padding:0[^}]*border:0[^}]*background:transparent/);
   assert.match(stylesSource, /\.chat-layout \.analysis-state--loading,\.chat-layout \.analysis-state--delayed\{[^}]*grid-template-columns:minmax\(0,1fr\) auto[^}]*border-radius:12px/);
-  assert.match(stylesSource, /\.chat-layout \.run-history-panel\{[^}]*border:1px solid #26364a[^}]*border-radius:10px/);
-  assert.match(stylesSource, /\.chat-layout \.conversation,\.chat-layout \.meta-strip,\.chat-layout \.run-history-panel,\.chat-layout \.analysis-notice\{width:min\(100%,var\(--analysis-thread-width\)\)/);
+  assert.doesNotMatch(stylesSource, /\.chat-layout \.run-history-panel\{/);
+  assert.doesNotMatch(agentSource, /className="run-history-panel"/);
+  assert.match(stylesSource, /\.chat-layout \.conversation,\.chat-layout \.meta-strip,\.chat-layout \.analysis-notice\{width:min\(100%,var\(--analysis-thread-width\)\)/);
   assert.doesNotMatch(agentSource, /verified=\{/);
   assert.doesNotMatch(agentSource, /question-help/);
   assert.doesNotMatch(agentSource, /호텔 운영 데이터 분석과 후속 질문을 한 대화에서 이어갈 수 있습니다/);

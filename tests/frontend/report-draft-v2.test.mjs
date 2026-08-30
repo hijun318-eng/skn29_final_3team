@@ -345,6 +345,8 @@ assert.equal(artifactViewBlockSettings(legacyChart).sizeMode, "auto");
 assert.equal(artifactViewBlockSettings(legacyMonthlyTable).sizeMode, "auto");
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyChart, monthlyArtifact, { orientation: "landscape" }), { width: 6, height: 8 });
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyMonthlyTable, monthlyArtifact, { orientation: "landscape" }), { width: 6, height: 10 });
+assert.deepEqual(estimateArtifactViewBlockLayout({ type: "chart" }, monthlyArtifact, { orientation: "landscape", autoWidth: true }), { width: 8, height: 8 });
+assert.deepEqual(estimateArtifactViewBlockLayout({ type: "table" }, monthlyArtifact, { orientation: "landscape", autoWidth: true }), { width: 6, height: 11 });
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyChannelTable, channelArtifact, { orientation: "landscape" }), { width: 6, height: 8 });
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyMonthlyTable, monthlyArtifact, { orientation: "portrait" }), { width: 6, height: 11 });
 assert.deepEqual(estimateArtifactViewBlockLayout({ ...legacyChannelTable, w: 12, columns: 12 }, channelArtifact, { orientation: "portrait" }), { width: 12, height: 9 });

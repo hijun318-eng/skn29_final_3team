@@ -7,6 +7,7 @@ import {
   artifactViewBlockSettings,
   deleteFrontendBlock,
   estimateArtifactBlockLayout,
+  estimateArtifactViewBlockLayout,
   fitFrontendArtifactBlock,
   fitFrontendArtifactViewBlock,
   frontendTextBlockLayout,
@@ -317,7 +318,12 @@ export function useReportDraftState(
         return false;
       }
       const defaultY = current.reduce((bottom, item) => Math.max(bottom, item.y + item.h), 0);
-      const width = position?.w ?? template.w;
+      const adaptiveLayout = estimateArtifactViewBlockLayout(
+        { type },
+        artifact,
+        { orientation: orientationRef.current, autoWidth: true },
+      );
+      const width = adaptiveLayout.width;
       block = fitFrontendArtifactViewBlock({
         ...source,
         id: createUuid(),
@@ -326,7 +332,7 @@ export function useReportDraftState(
         content: type === "chart"
           ? JSON.stringify({ showLegend: true, sizeMode: "auto", ...(settings.chartType ? { chartType: settings.chartType } : {}) })
           : JSON.stringify({ density: "comfortable", sizeMode: "auto" }),
-        x: position?.x ?? 0,
+        x: Math.min(position?.x ?? 0, 12 - width),
         y: position?.y ?? defaultY,
         w: width,
         columns: width,

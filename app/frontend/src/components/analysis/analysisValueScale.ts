@@ -61,27 +61,32 @@ export function userFacingAnalysisSummary(run: AnalysisRun, valueScale: Analysis
   const period = run.evidence?.period;
   summary = localizeAnalysisPeriod(summary, period?.start, period?.endExclusive);
   for (const metric of run.metrics ?? []) {
-    if (!isNumericValue(metric.value)) continue;
     const unit = valueScale.unitLabel(metric.unit, metric.resultField) ?? metricDisplayUnit(metric.unit);
     if (!unit) continue;
-    const numeric = Number(metric.value);
-    const formatted = valueScale.isCurrency(metric.unit)
-      ? valueScale.format(metric.value, metric.unit, metric.resultField)
-      : Math.abs(numeric) >= 100_000_000
-        ? formatCompactNumber(numeric)
-        : formatMetricValue(metric.value, { includeUnit: false, unit: metric.unit });
-    const replacement = `${formatted}${unit}`;
-    const valueTokens = [...new Set([
-      String(metric.value),
-      numeric.toLocaleString("ko-KR", { maximumFractionDigits: 20 }),
-    ])];
-    const unitTokens = [...new Set([metricDisplayUnit(metric.unit), metric.unit].filter(Boolean) as string[])];
-    for (const valueToken of valueTokens) {
-      for (const unitToken of unitTokens) {
-        summary = summary.replace(
-          new RegExp(`${escapedSummaryToken(valueToken)}\\s*${escapedSummaryToken(unitToken)}`, "gi"),
-          replacement,
-        );
+    const observedValues = [
+      metric.value,
+      ...(run.table?.rows ?? []).map((row) => row[metric.resultField]),
+    ].filter(isNumericValue);
+    for (const observedValue of new Set(observedValues)) {
+      const numeric = Number(observedValue);
+      const formatted = valueScale.isCurrency(metric.unit)
+        ? valueScale.format(observedValue, metric.unit, metric.resultField)
+        : Math.abs(numeric) >= 100_000_000
+          ? formatCompactNumber(numeric)
+          : formatMetricValue(observedValue, { includeUnit: false, unit: metric.unit });
+      const replacement = `${formatted}${unit}`;
+      const valueTokens = [...new Set([
+        String(observedValue),
+        numeric.toLocaleString("ko-KR", { maximumFractionDigits: 20 }),
+      ])];
+      const unitTokens = [...new Set([metricDisplayUnit(metric.unit), metric.unit].filter(Boolean) as string[])];
+      for (const valueToken of valueTokens) {
+        for (const unitToken of unitTokens) {
+          summary = summary.replace(
+            new RegExp(`${escapedSummaryToken(valueToken)}\\s*${escapedSummaryToken(unitToken)}`, "gi"),
+            replacement,
+          );
+        }
       }
     }
   }

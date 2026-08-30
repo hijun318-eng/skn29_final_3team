@@ -26,16 +26,26 @@ export function ReportArtifactLibraryTile({ source, artifact, disabled = false, 
     disabled,
     data: { kind: "artifact", artifactId: source.artifactId },
   });
+  const metrics = artifactMetricCards(artifact);
+  const metricLabels = [...new Set(metrics.map((metric) => metricDisplayLabel(metric)).filter(Boolean))];
+  const primaryLabel = metricLabels.length > 1
+    ? `${metricLabels[0]} 외 ${metricLabels.length - 1}개 지표`
+    : metricLabels[0] || source.title || source.definitionTitle || "분석 결과";
+  const periodLabel = analysisTimeLabel(artifact?.evidence, source);
   const availableViews = [
     artifact?.summary && "요약",
-    artifactMetricCards(artifact).length && "핵심 지표",
+    metrics.length && "핵심 지표",
     artifact?.chart && "차트",
     artifact?.table && "표",
   ].filter(Boolean);
   return <article ref={setNodeRef} className={`report-artifact-library-tile ${isDragging ? "is-dragging" : ""}`}>
     <button type="button" className="report-artifact-library-add" disabled={disabled} onClick={() => onAdd(source.artifactId)}>
       <span className="report-artifact-library-icon"><Layers3 size={16} aria-hidden="true" /></span>
-      <span><b>{source.title || source.definitionTitle || "분석 결과"}</b><small>{availableViews.length ? availableViews.join(" · ") : "분석 보기 확인 중"}</small></span>
+      <span>
+        <b>{primaryLabel}</b>
+        {periodLabel && <small className="report-artifact-library-period">{periodLabel}</small>}
+        <small>{availableViews.length ? availableViews.join(" · ") : "분석 보기 확인 중"}</small>
+      </span>
     </button>
     <button ref={setActivatorNodeRef} type="button" className="report-artifact-library-drag" disabled={disabled} aria-label={`${source.title || "분석 결과"} 전체 끌어서 추가`} title="분석 결과 전체를 캔버스에 끌어서 추가" {...listeners} {...attributes}><GripVertical size={15} aria-hidden="true" /></button>
   </article>;

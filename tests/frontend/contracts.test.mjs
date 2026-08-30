@@ -328,7 +328,7 @@ assert.match(reportSources.documentView, /legacy-report-document generated-previ
 assert.match(reportSources.lifecycle, /createNextDraft/);
 assert.match(reportSources.lifecycle, /const blocks: ReportBlockRequest\[\] = initialContent \? \[\{/);
 assert.match(reportSources.controller, /blocks: \[\{ id: result\.blockId, title: "운영 요약"/);
-assert.match(source("pages/AgentPage.jsx"), /savedRuns\.slice\(0, visibleRunCount\)/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /run-history-panel|listRuns\(/);
 assert.match(source("components/analysis/AnalysisDashboardViews.tsx"), /<EnterpriseChart/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /label: "기본 제외"|label: "GOLD"/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /chartFieldsMatchTable/);
@@ -364,7 +364,7 @@ assert.match(reportSources.operationsPanel, /<details><summary>기술 정보<\/s
 assert.match(source("authorization.ts"), /호텔 분석가/);
 assert.match(source("authorization.ts"), /플랫폼 관리자/);
 assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
-assert.match(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
 assert.match(source("pages/AgentPage.jsx"), /className="analysis-notice"/);
 assert.match(source("pages/AgentPage.jsx"), /reportTitleForAnalysis/);
 assert.match(source("pages/AgentPage.jsx"), /createDraftFromArtifact\(artId, reportTitle\.trim\(\) \|\| reportTitleForAnalysis\(reportModalRun\)\)/);

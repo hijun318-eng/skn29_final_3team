@@ -1,6 +1,6 @@
 /** 대화형 분석 워크스페이스의 세션·멀티턴 상태·증적 서랍·보고서 연계를 통합 관리하는 모듈이다. */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, FilePlus2, History, MessageSquareText, Plus, Save, Send, Sparkles, TableProperties } from "lucide-react";
+import { Eye, FilePlus2, MessageSquareText, Plus, Save, Send, Sparkles, TableProperties } from "lucide-react";
 import { AnalysisApiError, createAnalysisClient, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
@@ -14,9 +14,8 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, savedRunStatus, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
-const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
@@ -42,8 +41,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [definitions, setDefinitions] = useState([]);
   const [definitionQuery, setDefinitionQuery] = useState("");
   const [visibleDefinitionCount, setVisibleDefinitionCount] = useState(10);
-  const [savedRuns, setSavedRuns] = useState([]);
-  const [visibleRunCount, setVisibleRunCount] = useState(RUN_HISTORY_PAGE_SIZE);
   const requestInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const activeTraceId = useRef("");
@@ -66,7 +63,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
 
   const exampleQuestions = useMemo(() => exampleQuestionsFromDefinitions(definitions), [definitions]);
   const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
-  const visibleRuns = savedRuns.slice(0, visibleRunCount);
   const latestArtifactTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
     [turns],
@@ -78,9 +74,8 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     && ragCatalog.documents.length > 0;
 
   const refreshSaved = async () => {
-    const [nextDefs, nextRuns] = await Promise.all([analysisClient.listDefinitions(), analysisClient.listRuns()]);
+    const nextDefs = await analysisClient.listDefinitions();
     setDefinitions(nextDefs);
-    setSavedRuns(nextRuns);
   };
 
   useEffect(() => {
@@ -694,35 +689,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
 
         {message && <p className="analysis-notice" role="status">{message}</p>}
 
-        {savedRuns.length > 0 && (
-          <details className="run-history-panel">
-            <summary><History size={15} /><span>최근 실행</span><b>{savedRuns.length}</b></summary>
-            <ul>
-              {visibleRuns.map((item) => (
-                <li key={item.request_id}>
-                  <span>
-                    <b>{savedRunStatus(item.status)}</b>
-                    <small>{formatSeoulDateTime(item.completed_at || item.started_at)}</small>
-                    <small>{item.question}</small>
-                    <small>{item.period_start && item.period_end_exclusive
-                      ? `${item.period_start} ~ ${item.period_end_exclusive} 미포함`
-                      : item.snapshot_cutoff && item.snapshot_selection === "max_source_value_lt_as_of"
-                        ? `${item.snapshot_cutoff} 이전 최신 스냅샷`
-                        : "시간 기준 없음"}</small>
-                  </span>
-                  {item.artifact_id && (
-                    <button type="button" disabled={savedBusy} onClick={() => void replaySavedDefinition(item)}>
-                      다시 실행
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {savedRuns.length > visibleRunCount && (
-              <button type="button" onClick={() => setVisibleRunCount((c) => c + RUN_HISTORY_PAGE_SIZE)}>더 보기</button>
-            )}
-          </details>
-        )}
         </div>
 
         {/* 대화 결과를 덮지 않는 중앙 하단 입력 영역 */}

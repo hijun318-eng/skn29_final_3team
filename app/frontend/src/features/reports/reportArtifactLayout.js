@@ -158,12 +158,17 @@ export function artifactViewBlockSettings(block) {
 export function estimateArtifactViewBlockLayout(block, artifact, options = {}) {
   const type = block?.type === "chart" ? "chart" : "table";
   const orientation = options.orientation === "portrait" ? "portrait" : "landscape";
-  const width = Math.min(12, Math.max(6, Math.round(block?.w ?? block?.columns ?? 12)));
   const rowCount = Array.isArray(artifact?.table?.rows) ? artifact.table.rows.length : 0;
   const columnCount = Array.isArray(artifact?.table?.columns) ? artifact.table.columns.length : 0;
   const seriesCount = Array.isArray(artifact?.chart?.y_fields)
     ? artifact.chart.y_fields.length
     : Array.isArray(artifact?.chart?.yFields) ? artifact.chart.yFields.length : 0;
+  const preferredWidth = type === "table"
+    ? columnCount <= 3 && rowCount <= 8 ? 6 : columnCount <= 5 && rowCount <= 12 ? 8 : 12
+    : seriesCount <= 2 && rowCount <= 12 ? 8 : 12;
+  const width = Math.min(12, Math.max(6, Math.round(
+    options.autoWidth ? preferredWidth : block?.w ?? block?.columns ?? preferredWidth,
+  )));
   let height;
   if (type === "chart") {
     height = 8

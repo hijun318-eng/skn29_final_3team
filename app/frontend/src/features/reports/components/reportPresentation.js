@@ -22,7 +22,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: Type,
     blockTitle: "새 텍스트",
     content: "새 문단을 작성하세요.",
-    w: 12,
+    w: 8,
     h: 3,
   },
   {
@@ -32,7 +32,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: Heading2,
     blockTitle: "새 섹션",
     content: "## 새 섹션\n섹션 내용을 입력하세요.",
-    w: 12,
+    w: 8,
     h: 3,
   },
   {
@@ -42,7 +42,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: Sparkles,
     blockTitle: "경영진 요약",
     content: "## 핵심 결론\n가장 중요한 결과를 한 문장으로 정리하세요.\n\n## 비즈니스 영향\n의사결정에 미치는 영향을 작성하세요.",
-    w: 12,
+    w: 8,
     h: 5,
   },
   {
@@ -52,7 +52,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: FileBarChart,
     blockTitle: "월간 경영 보고서",
     content: "## 월간 경영 보고서\n\n핵심 성과와 전월 대비 변동 요인을 정리하세요.",
-    w: 12,
+    w: 8,
     h: 3,
   },
   {
@@ -62,7 +62,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: FileBarChart,
     blockTitle: "호텔 매출 보고서",
     content: "## 호텔 매출 보고서\n\n객실·F&B·연회 부문의 주요 실적을 정리하세요.",
-    w: 12,
+    w: 8,
     h: 3,
   },
   {
@@ -103,7 +103,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     title: "표 보기만",
     description: "Artifact의 상세 행만 삽입",
     icon: Table2,
-    w: 12,
+    w: 6,
     h: 5,
   },
   {
@@ -111,7 +111,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     title: "차트 보기만",
     description: "Artifact의 차트만 삽입",
     icon: FileBarChart,
-    w: 12,
+    w: 8,
     h: 7,
   },
 ];

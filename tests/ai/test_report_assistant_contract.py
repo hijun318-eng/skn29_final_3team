@@ -472,7 +472,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 단일 Artifact 묶음은 과거 clarification·분해 operation보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.10.0", prompt.version)
+        self.assertEqual("PROMPT-v1.11.0", prompt.version)
         self.assertIn("operation_scope is server-owned authority", prompt.text)
         self.assertIn("exactly one set_report_title operation", prompt.text)
         self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
@@ -488,7 +488,9 @@ class ReportAssistantContractTests(unittest.TestCase):
         self.assertIn("do not treat preserve or stay unchanged as a no-op", prompt.text)
         self.assertIn("Evidence refs and their ordering are server-managed", prompt.text)
         self.assertIn("never reinterpret it as block movement", prompt.text)
-        self.assertIn("Use update_block_title for any existing text, chart, table, or Artifact block title", prompt.text)
+        self.assertIn("Use update_block_title only for an existing text block title", prompt.text)
+        self.assertIn("Artifact block titles are immutable source labels", prompt.text)
+        self.assertIn("use set_report_title when the user asks to change the report document title", prompt.text)
         self.assertIn("Use update_chart_settings only for chart blocks", prompt.text)
         self.assertIn("Every add_text must include a non-empty title", prompt.text)
         self.assertIn("duplicate_block is an exact copy", prompt.text)
@@ -784,10 +786,13 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, transport.await_count)
         self.assertEqual(1, _trace["attempts"])
 
-    async def test_non_text_title_only_update_becomes_block_title_update(self):
-        """비-text 제목 변경은 본문 연산 대신 공통 block 제목 연산으로 정규화한다."""
+    async def test_non_text_title_only_update_is_rejected(self):
+        """비-text 제목 변경은 source label 변조가 되므로 재시도 후 계약 실패로 닫는다."""
 
-        from app.adapters.report_assistant import generate_report_change_proposal
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            generate_report_change_proposal,
+        )
 
         response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
         response["patch"]["operations"] = [{
@@ -804,6 +809,7 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             model="test-model",
             provider="openai",
         )
+        transport = AsyncMock(return_value=response)
         with (
             patch(
                 "app.adapters.report_assistant.resolve_active_model_routes",
@@ -815,21 +821,15 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "app.adapters.report_assistant.openai_transport",
-                new=AsyncMock(return_value=response),
+                new=transport,
             ),
         ):
-            proposal, _trace = await generate_report_change_proposal(
-                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
-            )
+            with self.assertRaises(ReportAssistantModelError):
+                await generate_report_change_proposal(
+                    copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+                )
 
-        self.assertEqual(
-            {
-                "op": "update_block_title",
-                "block_id": "block-one",
-                "title": "월간 매출 차트",
-            },
-            proposal["patch"]["operations"][0],
-        )
+        self.assertEqual(2, transport.await_count)
 
     async def test_existing_text_block_update_is_preserved(self):
         """실제 text block에 대한 수정은 기존 update_text 의미를 유지한다."""

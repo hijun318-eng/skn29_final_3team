@@ -1,5 +1,5 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.49.0",
+  "manifest_version": "MODEL-RELEASE-v1.50.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
   "schema_version": "MODEL-v1.30.0",
@@ -48,8 +48,8 @@
     },
     "report_assistant_turn": {
       "prompt_id": "report.assistant.turn",
-      "prompt_version": "PROMPT-v1.10.0",
-      "prompt_sha256": "5cd9a5c795e156952611003de21627a808003f918a8f27cd6ac40c9c242cf876",
+      "prompt_version": "PROMPT-v1.11.0",
+      "prompt_sha256": "0fb428279637f6954812cebebb1c9b7edef7e0436ad869fcd34afefcc21628a4",
       "request_definition": "report_assistant_turn_request",
       "response_definition": "report_assistant_turn_response"
     },

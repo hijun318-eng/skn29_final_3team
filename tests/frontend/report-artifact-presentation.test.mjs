@@ -21,6 +21,9 @@ try {
   const { ReportArtifactContent } = await server.ssrLoadModule(
     "/src/features/reports/components/ReportArtifactContent.jsx",
   );
+  const { ReportEditorBlock } = await server.ssrLoadModule(
+    "/src/features/reports/components/ReportEditorBlock.jsx",
+  );
   const { reportColumnLabel } = await server.ssrLoadModule(
     "/src/features/reports/components/reportPresentation.js",
   );
@@ -110,6 +113,46 @@ try {
   assert.match(countTableHtml, /합성 취소 연회 건수.*건/s);
   assert.match(countTableHtml, /report-table-sort-label/);
   assert.doesNotMatch(`${countKpiHtml}${countTableHtml}`, />count<|\(count\)/);
+
+  const editorCallbacks = {
+    onSelect() {}, onUpdate() {}, onMove() {}, onResize() {}, onSetting() {},
+    onDuplicate() {}, onDelete() {}, onToggleLock() {}, onRetryArtifact() {},
+  };
+  const artifactEditorHtml = renderToStaticMarkup(createElement(ReportEditorBlock, {
+    block: {
+      id: "artifact-table", title: "객실 매출 상세", type: "table",
+      artifactId: "artifact-one", content: "{}", x: 0, y: 0, w: 6, columns: 6, h: 5,
+    },
+    rowOffset: 0,
+    artifact,
+    artifactState: { status: "success" },
+    currency: { label: "억 원", unit: "billion", policy: {} },
+    isDraft: true,
+    selected: false,
+    primary: false,
+    dragging: false,
+    groupTransform: null,
+    ...editorCallbacks,
+  }));
+  const textEditorHtml = renderToStaticMarkup(createElement(ReportEditorBlock, {
+    block: {
+      id: "text-one", title: "사용자 요약", type: "text", content: "작성한 본문",
+      x: 0, y: 0, w: 6, columns: 6, h: 4,
+    },
+    rowOffset: 0,
+    artifact: null,
+    artifactState: null,
+    currency: { label: "억 원", unit: "billion", policy: {} },
+    isDraft: true,
+    selected: false,
+    primary: false,
+    dragging: false,
+    groupTransform: null,
+    ...editorCallbacks,
+  }));
+  assert.match(artifactEditorHtml, /<h2 class="notion-block-title notion-block-title--readonly">객실 매출 상세<\/h2>/);
+  assert.doesNotMatch(artifactEditorHtml, /<input[^>]+class="notion-block-title"/);
+  assert.match(textEditorHtml, /<input class="notion-block-title"/);
 
   console.log("frontend report artifact presentation tests passed");
 } finally {

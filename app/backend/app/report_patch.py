@@ -299,6 +299,8 @@ def apply_report_assistant_patch(
                 raise ValueError("Report patch의 설정 대상 block을 찾을 수 없습니다.")
             source = blocks[index]
             if operation.op == "update_block_title":
+                if source.type is not BlockType.TEXT:
+                    raise ValueError("분석 Artifact view block 제목은 변경할 수 없습니다.")
                 if source.title == operation.title:
                     raise ReportPatchNoChangesError("블록 제목 operation이 실제 변경을 만들지 않습니다.")
                 blocks[index] = _replace_block(source, title=operation.title)

@@ -178,6 +178,7 @@
 [data-report-builder="v2"] .report-block-actions .report-drag-handle,[data-report-builder="v2"] .report-block-actions .report-block-menu>summary{width:26px;height:26px;color:#9eafc2;border:0;border-radius:5px;background:transparent;box-shadow:none;opacity:1}
 [data-report-builder="v2"] .report-block-actions .report-drag-handle:hover,[data-report-builder="v2"] .report-block-actions .report-block-menu>summary:hover,[data-report-builder="v2"] .report-block-actions .report-block-menu[open]>summary{color:#fff;background:#176fe5}
 [data-report-builder="v2"] .answer-report-page .notion-block-title{min-height:0;margin-block-end:1.2mm;padding:0;color:#203047;font-size:14px;line-height:1.3}
+[data-report-builder="v2"] .answer-report-page .notion-block-title--readonly{margin-block-start:0;cursor:default}
 [data-report-builder="v2"] .answer-report-page .notion-markdown-input{min-height:42px!important;margin-top:3px;resize:none!important;color:#4b5d73;font-size:11px;line-height:1.55}
 [data-report-builder="v2"] .answer-report-page .report-markdown-toolbar{min-height:32px;margin:4px 0 3px;opacity:0;transition:opacity .14s}
 [data-report-builder="v2"] .answer-report-page .report-markdown-toolbar button{width:28px;height:28px;min-height:28px!important}

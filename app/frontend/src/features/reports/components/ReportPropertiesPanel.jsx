@@ -55,7 +55,9 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
 
     {block ? <section className="report-block-properties" key={block.id}>
       <h3>선택 블록</h3>
-      <label><span>제목</span><input defaultValue={block.title} disabled={!canEdit || blockLocked} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== block.title) onUpdate(block.id, { title }); }} /></label>
+      {block.type === "text"
+        ? <label><span>텍스트 제목</span><input defaultValue={block.title} disabled={!canEdit || blockLocked} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== block.title) onUpdate(block.id, { title }); }} /></label>
+        : <div className="report-property-evidence report-property-readonly-title"><span>분석 요소 제목</span><b>{block.title}</b><small>원본 분석 결과의 식별 제목으로 유지됩니다.</small></div>}
       <dl><div><dt>유형</dt><dd>{block.type}</dd></div><div><dt>위치</dt><dd>{(block.x ?? 0) + 1}열 · {(block.y ?? 0) + 1}행</dd></div><div><dt>크기</dt><dd>{block.w ?? block.columns}/12 · {block.h}단</dd></div><div><dt>상태</dt><dd>{blockLocked ? "잠김" : "편집 가능"}</dd></div></dl>
       <div className="report-property-lock"><button type="button" onClick={() => editorTools.toggleBlockLock(block.id)} disabled={!canEdit}>{blockLocked ? <><Unlock size={14} />잠금 해제</> : <><Lock size={14} />블록 잠금</>}</button></div>
       <span className="report-property-label">8단계 크기</span>

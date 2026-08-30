@@ -350,7 +350,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           </div>
         )}
       </header>
-      {isDraft ? (
+      {isDraft && block.type === "text" ? (
         <input
           className="notion-block-title"
           aria-label={`${block.title || "제목 없음"} 제목`}
@@ -367,7 +367,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           }}
           placeholder="블록 제목을 입력하세요"
         />
-      ) : <h2>{block.title}</h2>}
+      ) : <h2 className="notion-block-title notion-block-title--readonly">{block.title}</h2>}
       {body}
       {isDraft && !locked && primary && RESIZE_DIRECTIONS.map(([direction, label]) => (
         <button

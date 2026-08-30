@@ -214,9 +214,17 @@ class ReportRouter:
             current_blocks = {block.block_id: block for block in current.blocks}
             blocks = self._blocks(payload["blocks"])
             for block in blocks:
+                previous = current_blocks.get(block.block_id)
+                if (
+                    previous is not None
+                    and previous.type is not BlockType.TEXT
+                    and previous.title != block.title
+                ):
+                    raise ValueError(
+                        "분석 Artifact view block 제목은 변경할 수 없습니다."
+                    )
                 if not block.evidence_refs:
                     continue
-                previous = current_blocks.get(block.block_id)
                 if previous is None or (
                     previous.content != block.content
                     or previous.evidence_refs != block.evidence_refs

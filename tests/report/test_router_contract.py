@@ -136,6 +136,44 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
                     await self.router.create_manual_run_command({**payload, forbidden: "client-value"})
                 self.assertEqual(422, untrusted.exception.status_code)
 
+    async def test_artifact_view_title_is_immutable_during_manual_save(self):
+        """일반 저장 API도 기존 분석 view의 source 식별 제목 변조를 거부한다."""
+
+        await self.router.create_definition({
+            "definition_id": "report-artifact-title",
+            "title": "분석 보고서",
+            "blocks": [{
+                "block_id": "chart-1",
+                "title": "객실 매출 추이",
+                "artifact_id": "artifact-1",
+                "type": "chart",
+                "columns": 12,
+                "w": 12,
+                "h": 7,
+            }],
+        })
+
+        with self.assertRaises(ReportRouteError) as immutable:
+            await self.router.replace_draft_blocks(
+                "report-artifact-title",
+                1,
+                {
+                    "blocks": [{
+                        "block_id": "chart-1",
+                        "title": "사용자가 바꾼 제목",
+                        "artifact_id": "artifact-1",
+                        "type": "chart",
+                        "columns": 12,
+                        "w": 12,
+                        "h": 7,
+                    }],
+                    "expected_draft_revision": 1,
+                },
+            )
+
+        self.assertEqual(409, immutable.exception.status_code)
+        self.assertIn("Artifact view block 제목", str(immutable.exception.detail))
+
     async def test_router_rejects_unknown_fields(self):
         with self.assertRaises(ReportRouteError) as invalid:
             await self.router.create_definition({

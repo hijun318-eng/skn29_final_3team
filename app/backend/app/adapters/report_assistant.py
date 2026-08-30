@@ -342,6 +342,7 @@ def _validate_patch_target_types(
     }
     required_types = {
         "update_text": frozenset({"text"}),
+        "update_block_title": frozenset({"text"}),
         "update_chart_settings": frozenset({"chart"}),
         "update_table_settings": frozenset({"table"}),
         "set_block_size_mode": frozenset({"artifact", "chart", "table"}),

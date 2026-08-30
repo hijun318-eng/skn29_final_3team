@@ -753,7 +753,7 @@ class ReportAssistantAddPageOperation(ReportContractModel):
 
 
 class ReportAssistantUpdateBlockTitleOperation(ReportContractModel):
-    """현재 draft의 모든 block 유형에 공통인 사용자 표시 제목을 교체한다."""
+    """현재 draft의 사용자 작성 text block 제목만 교체한다."""
 
     op: Literal["update_block_title"]
     block_id: str = Field(min_length=1)

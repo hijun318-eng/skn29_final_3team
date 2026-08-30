@@ -236,13 +236,13 @@ class ReportAssistantPatchTest(unittest.TestCase):
         self.assertEqual("auto", gapped.currency_display_unit)
         self.assertEqual(20, gapped.blocks[1].y)
 
-    def test_block_title_resize_and_view_settings_preserve_lineage(self) -> None:
-        """공통 제목·크기와 chart 설정은 허용 필드만 바꾸고 lineage를 보존한다."""
+    def test_text_title_and_chart_settings_preserve_lineage(self) -> None:
+        """text 제목과 chart 설정은 허용 필드만 바꾸고 lineage를 보존한다."""
 
         patch = ReportAssistantPatch.model_validate({
             "summary": "차트 제목과 크기 및 표현을 변경합니다.",
             "operations": [
-                {"op": "update_block_title", "block_id": "current-chart", "title": "월간 매출 추이"},
+                {"op": "update_block_title", "block_id": "summary", "title": "월간 운영 요약"},
                 {"op": "resize_block", "block_id": "current-chart", "block_width": 6, "block_height": 9},
                 {
                     "op": "update_chart_settings", "block_id": "current-chart",
@@ -255,7 +255,8 @@ class ReportAssistantPatchTest(unittest.TestCase):
         chart = next(block for block in result.blocks if block.block_id == "current-chart")
         settings = json.loads(chart.content)
 
-        self.assertEqual("월간 매출 추이", chart.title)
+        self.assertEqual("월간 운영 요약", result.blocks[0].title)
+        self.assertEqual("현재 실적", chart.title)
         self.assertEqual((6, 9), (chart.w, chart.h))
         self.assertEqual("artifact-old", chart.artifact_id)
         self.assertEqual("query-old", chart.query_id)
@@ -264,6 +265,21 @@ class ReportAssistantPatchTest(unittest.TestCase):
             settings,
         )
         self.assertEqual("현재 실적", self.definition.blocks[1].title)
+
+    def test_artifact_view_title_change_is_rejected(self) -> None:
+        """chart·table·Artifact 제목은 승인 근거 식별값이므로 patch로 바꿀 수 없다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "차트 제목을 변경합니다.",
+            "operations": [{
+                "op": "update_block_title",
+                "block_id": "current-chart",
+                "title": "월간 매출 추이",
+            }],
+        })
+
+        with self.assertRaisesRegex(ValueError, "Artifact view block 제목"):
+            apply_report_assistant_patch(self.definition, patch, self.bindings)
 
     def test_table_settings_and_artifact_view_presentation_are_typed(self) -> None:
         """표와 신규 Artifact view는 해당 view에 허용된 renderer 설정만 저장한다."""

@@ -1,96 +1,69 @@
-"""ANSWERVICE 핵심 비즈니스 도메인 서비스 패키지.
+"""ANSWERVICE 비즈니스 서비스의 side-effect 없는 namespace 패키지다.
 
-[5대 핵심 하위 도메인 패키지]
-- conversation: 대화 턴 수명주기, 슬롯 결정, 시간 대수, CAS 오케스트레이션
-- sql_guard: AST 기반 SQL 거버넌스 가드, 스키마/지표/조인/시간 검증
-- context: DataHub 메타데이터 기반 컨텍스트 패키지 빌더, 3대 쿼리 전략, 지표/필터 해석기
-- analysis: 4단계(Context -> Plan -> Query -> Result) 분석 파이프라인 및 실행 서비스
-- report: 보고서 렌더링(HTML/PDF), A4 그리드 레이아웃, SVG 차트, 멱등 재생 및 스케줄러
+분석·대화·컨텍스트·보고서·SQL Guard는 서로의 구체 구현을 package import 시점에
+조립하지 않는다. 호출자는 필요한 하위 모듈에서 명시적으로 import해야 하며, 실제
+애플리케이션 조립은 API runtime과 controller 경계가 담당한다. 이 원칙은 adapter가
+가벼운 도메인 계약을 읽을 때 Report 실행기까지 역으로 불러오는 순환 import를 막는다.
 """
 
-from app.services.analysis import AnalysisPipeline, AnalysisService, analysis_progress
-from app.services.context import (
-    ContextAsset,
-    ContextMetric,
-    ContextPackage,
-    ContextPackageBuilder,
-    ContextRegistryService,
-    GovernedJoin,
-    PipelineContextService,
-    RuntimeContextPackage,
-)
-from app.services.conversation import (
-    AnalysisChangeSet,
-    ChangeOperation,
-    ConversationOrchestrator,
-    ConversationSlotResolver,
-    SlotChange,
-    SlotResolver,
-    TimeAlgebraEngine,
-    apply_dimension_changes,
-    apply_metric_change,
-    derive_dimension_changes,
-    derive_metric_change,
-    execute_report_action,
-)
-from app.services.report import (
-    AnalysisDefinitionReplay,
-    RenderedReportDocument,
-    ReportDocumentRenderError,
-    ReportExecutionService,
-    ReportScheduler,
-    approve_report_document,
-    build_report_html,
-    render_report_document,
-    report_scheduler,
-)
-from app.services.sql_guard import (
-    GuardDecision,
-    SemanticDecision,
-    validate_parsed_semantics,
-    validate_plan,
-)
-
-__all__ = [
+_PUBLIC_EXPORTS: dict[str, str] = {
     # conversation
-    "ConversationOrchestrator",
-    "ConversationSlotResolver",
-    "SlotResolver",
-    "TimeAlgebraEngine",
-    "AnalysisChangeSet",
-    "ChangeOperation",
-    "SlotChange",
-    "derive_metric_change",
-    "apply_metric_change",
-    "derive_dimension_changes",
-    "apply_dimension_changes",
-    "execute_report_action",
+    "ConversationOrchestrator": "app.services.conversation",
+    "ConversationSlotResolver": "app.services.conversation",
+    "SlotResolver": "app.services.conversation",
+    "TimeAlgebraEngine": "app.services.conversation",
+    "AnalysisChangeSet": "app.services.conversation",
+    "ChangeOperation": "app.services.conversation",
+    "SlotChange": "app.services.conversation",
+    "derive_metric_change": "app.services.conversation",
+    "apply_metric_change": "app.services.conversation",
+    "derive_dimension_changes": "app.services.conversation",
+    "apply_dimension_changes": "app.services.conversation",
+    "execute_report_action": "app.services.conversation",
     # sql_guard
-    "validate_plan",
-    "validate_parsed_semantics",
-    "GuardDecision",
-    "SemanticDecision",
+    "validate_plan": "app.services.sql_guard",
+    "validate_parsed_semantics": "app.services.sql_guard",
+    "GuardDecision": "app.services.sql_guard",
+    "SemanticDecision": "app.services.sql_guard",
     # context
-    "ContextPackageBuilder",
-    "ContextPackage",
-    "ContextAsset",
-    "ContextMetric",
-    "GovernedJoin",
-    "RuntimeContextPackage",
-    "PipelineContextService",
-    "ContextRegistryService",
+    "ContextPackageBuilder": "app.services.context",
+    "ContextPackage": "app.services.context",
+    "ContextAsset": "app.services.context",
+    "ContextMetric": "app.services.context",
+    "GovernedJoin": "app.services.context",
+    "RuntimeContextPackage": "app.services.context",
+    "PipelineContextService": "app.services.context",
+    "ContextRegistryService": "app.services.context",
     # analysis
-    "AnalysisPipeline",
-    "AnalysisService",
-    "analysis_progress",
+    "AnalysisPipeline": "app.services.analysis",
+    "AnalysisService": "app.services.analysis",
+    "analysis_progress": "app.services.analysis",
     # report
-    "RenderedReportDocument",
-    "ReportDocumentRenderError",
-    "build_report_html",
-    "render_report_document",
-    "approve_report_document",
-    "AnalysisDefinitionReplay",
-    "ReportExecutionService",
-    "ReportScheduler",
-    "report_scheduler",
-]
+    "RenderedReportDocument": "app.services.report",
+    "ReportDocumentRenderError": "app.services.report",
+    "build_report_html": "app.services.report",
+    "render_report_document": "app.services.report",
+    "approve_report_document": "app.services.report",
+    "AnalysisDefinitionReplay": "app.services.report",
+    "ReportExecutionService": "app.services.report",
+    "ReportScheduler": "app.services.report",
+    "report_scheduler": "app.services.report",
+}
+
+__all__ = tuple(_PUBLIC_EXPORTS)
+
+
+def __getattr__(name: str) -> object:
+    """기존 공개 계약을 보존하되 요청된 하위 도메인만 지연 로딩한다."""
+
+    module_name = _PUBLIC_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = __import__(module_name, fromlist=(name,))
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted((*globals(), *__all__))

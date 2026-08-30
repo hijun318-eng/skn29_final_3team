@@ -1,13 +1,55 @@
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 from scripts.lint_architectural_invariants import (
     ArchitecturalInvariantVisitor,
     REPOSITORY_ROOT,
     _is_source_file,
 )
+
+
+def test_services_namespace_has_no_eager_domain_imports() -> None:
+    """Fresh adapter/MCP import를 깨는 서비스 package 초기화 side effect를 금지한다."""
+
+    source = REPOSITORY_ROOT / "app/backend/app/services/__init__.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    eager_domain_imports = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
+    assert eager_domain_imports == []
+
+    environment = os.environ.copy()
+    backend = str(REPOSITORY_ROOT / "app/backend")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        value
+        for value in (backend, str(REPOSITORY_ROOT), environment.get("PYTHONPATH", ""))
+        if value
+    )
+    imported = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import app.api.mcp_router; "
+                "from app.services import AnalysisService; "
+                "assert AnalysisService.__name__ == 'AnalysisService'"
+            ),
+        ],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert imported.returncode == 0, imported.stderr
 
 
 def _bans(source: str, path: str = "app/backend/app/example.py") -> set[str]:

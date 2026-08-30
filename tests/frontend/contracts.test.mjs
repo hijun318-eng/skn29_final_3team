@@ -48,6 +48,20 @@ assert.match(frontendCompose, /VITE_BACKEND_BASE_URL: "\$\{VITE_BACKEND_BASE_URL
 assert.match(frontendDockerfile, /ARG VITE_BACKEND_BASE_URL=\/api/);
 assert.match(frontendDockerfile, /^FROM node:24-alpine@sha256:[a-f0-9]{64} AS build$/m);
 assert.match(frontendDockerfile, /^FROM nginx:1\.28-alpine@sha256:[a-f0-9]{64}$/m);
+for (const key of [
+  "ANSWERVICE_SOURCE_REVISION",
+  "ANSWERVICE_SOURCE_DIRTY",
+  "ANSWERVICE_SOURCE_FINGERPRINT",
+]) {
+  assert.match(frontendCompose, new RegExp(`${key}: \\S*\\$\\{${key}:-\\}`));
+  assert.match(frontendDockerfile, new RegExp(`^ARG ${key}$`, "m"));
+}
+assert.match(frontendDockerfile, /org\.opencontainers\.image\.revision="\$\{ANSWERVICE_SOURCE_REVISION\}"/);
+assert.match(frontendDockerfile, /io\.answervice\.source\.dirty="\$\{ANSWERVICE_SOURCE_DIRTY\}"/);
+assert.match(frontendDockerfile, /io\.answervice\.source\.fingerprint="\$\{ANSWERVICE_SOURCE_FINGERPRINT\}"/);
+assert.match(frontendDockerfile, /grep -Eq '\^\[0-9a-f\]\{40\}\$'/);
+assert.match(frontendDockerfile, /grep -Eq '\^\(true\|false\)\$'/);
+assert.match(frontendDockerfile, /grep -Eq '\^\[0-9a-f\]\{64\}\$'/);
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(resolveRoute("/").path, "/agent");
 assert.equal(resolveRoute("/agent").page, "chat");

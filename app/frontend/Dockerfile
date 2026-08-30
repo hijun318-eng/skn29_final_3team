@@ -11,6 +11,18 @@ RUN npm run build
 
 FROM nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
 
+ARG ANSWERVICE_SOURCE_REVISION
+ARG ANSWERVICE_SOURCE_DIRTY
+ARG ANSWERVICE_SOURCE_FINGERPRINT
+
+RUN printf '%s\n' "$ANSWERVICE_SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$' \
+    && printf '%s\n' "$ANSWERVICE_SOURCE_DIRTY" | grep -Eq '^(true|false)$' \
+    && printf '%s\n' "$ANSWERVICE_SOURCE_FINGERPRINT" | grep -Eq '^[0-9a-f]{64}$'
+
+LABEL org.opencontainers.image.revision="${ANSWERVICE_SOURCE_REVISION}" \
+    io.answervice.source.dirty="${ANSWERVICE_SOURCE_DIRTY}" \
+    io.answervice.source.fingerprint="${ANSWERVICE_SOURCE_FINGERPRINT}"
+
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 

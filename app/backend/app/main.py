@@ -28,6 +28,7 @@ from app.contracts import (
     OPENAPI_DOCUMENT_VERSION,
     response_meta,
 )
+from app.report_contracts import report_assistant_retry_policy
 from app.services.report.scheduler import report_scheduler
 from app.services.report.scheduler import _enabled as report_scheduler_enabled
 from app.services.conversation.reconciler import conversation_recovery_worker
@@ -45,6 +46,52 @@ _HTTP_ERROR_MAP = {
     429: (ErrorCode.RATE_LIMITED, "요청이 많습니다. 잠시 후 다시 시도해 주세요."),
     503: (ErrorCode.DEPENDENCY_UNAVAILABLE, "필수 서비스가 준비되지 않았습니다."),
 }
+
+_REPORT_ASSISTANT_MODEL_ERROR_CODES = frozenset(
+    {
+        ErrorCode.REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_RATE_LIMITED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_REQUEST_REJECTED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_TIMEOUT,
+        ErrorCode.REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_CONTRACT_INVALID,
+        ErrorCode.REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID,
+        ErrorCode.REPORT_ASSISTANT_TURN_MODEL_FAILED,
+        ErrorCode.REPORT_ASSISTANT_TURN_MODEL_INVALID,
+    }
+)
+
+
+def _public_report_assistant_model_error(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> ErrorBody | None:
+    """승인된 Assistant 모델 실패만 내부 detail 없이 공개 재시도 계약으로 변환한다."""
+
+    path_parts = request.url.path.split("/")
+    if (
+        exc.status_code != 502
+        or len(path_parts) != 6
+        or path_parts[:4] != ["", "reports", "assistant", "sessions"]
+        or not path_parts[4]
+        or path_parts[5] not in {"messages", "review"}
+        or not isinstance(exc.detail, dict)
+    ):
+        return None
+    try:
+        code = ErrorCode(exc.detail.get("code"))
+    except (TypeError, ValueError):
+        return None
+    if code not in _REPORT_ASSISTANT_MODEL_ERROR_CODES:
+        return None
+
+    policy = report_assistant_retry_policy(code.value)
+    return ErrorBody(
+        code=code,
+        message="보고서 AI 요청을 처리하지 못했습니다.",
+        retryable=policy.retryable,
+        required_action=policy.required_action.value,
+    )
 
 
 def _allowed_origins() -> list[str]:
@@ -200,14 +247,17 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
 async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """내부 HTTP detail을 노출하지 않고 상태별 공개 error code와 메시지로 정규화한다."""
     context = request_context(request)
-    code, message = _HTTP_ERROR_MAP.get(
-        exc.status_code,
-        (ErrorCode.INTERNAL_ERROR, "요청을 처리하지 못했습니다."),
-    )
+    error = _public_report_assistant_model_error(request, exc)
+    if error is None:
+        code, message = _HTTP_ERROR_MAP.get(
+            exc.status_code,
+            (ErrorCode.INTERNAL_ERROR, "요청을 처리하지 못했습니다."),
+        )
+        error = ErrorBody(code=code, message=message)
     body = ErrorResponse(
         data=EmptyData(),
         meta=response_meta(context),
-        error=ErrorBody(code=code, message=message),
+        error=error,
     )
     return JSONResponse(
         status_code=exc.status_code,

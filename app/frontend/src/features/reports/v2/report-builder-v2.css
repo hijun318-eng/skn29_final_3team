@@ -4,6 +4,7 @@
   --builder-library:300px;
   --builder-properties:360px;
   --builder-bg:#151a22;
+  --builder-toolbar-surface:#05090f;
   --builder-panel:#09101a;
   --builder-panel-raised:#0e1724;
   --builder-line:#1c293a;
@@ -47,7 +48,7 @@
   column-gap:16px;
   border:0;
   border-bottom:1px solid var(--builder-line);
-  background:#05090f;
+  background:var(--builder-toolbar-surface);
   box-shadow:0 8px 24px rgba(0,0,0,.22);
 }
 [data-report-builder="v2"]>.notion-editor-topbar>.editor-navigation-actions{min-width:0;overflow:hidden;flex-wrap:nowrap}
@@ -59,7 +60,7 @@
 [data-report-builder="v2"] .report-builder-heading{min-width:0;display:flex;align-items:center;gap:13px}
 [data-report-builder="v2"] .report-builder-heading>button{margin:0}
 [data-report-builder="v2"] .report-builder-heading>div{min-width:0}
-[data-report-builder="v2"] .report-builder-heading small{display:block;color:#6da9f8;font-size:10px;font-weight:800;letter-spacing:.14em}
+[data-report-builder="v2"] .report-builder-heading small{display:block;flex:none;color:#6da9f8;font-size:10px;font-weight:800;letter-spacing:.14em;white-space:nowrap}
 [data-report-builder="v2"] .report-builder-heading h1{max-width:min(430px,36vw);margin:3px 0 1px;overflow:hidden;color:#f6f8fb;font-size:18px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
 [data-report-builder="v2"] .report-builder-title-input{width:min(430px,34vw);margin:3px -6px 1px;padding:2px 6px;overflow:hidden;color:#f6f8fb;border:1px solid transparent;border-radius:5px;outline:0;background:transparent;font-size:20px;font-weight:750;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
 [data-report-builder="v2"] .report-builder-title-input:hover{border-color:#26384f;background:#0a111c}
@@ -418,7 +419,7 @@
 }
 
 /* 라이트 모드는 흰 A4와 경쟁하지 않는 청회색 작업면·종이색 패널·짙은 잉크 계층을 사용한다. */
-.theme-light [data-report-builder="v2"]{--builder-bg:#e8eef6;--builder-panel:#f8fafc;--builder-panel-raised:#fff;--builder-line:#d6e0eb;--builder-muted:#66798f;--builder-text:#2c4662;--builder-text-muted:#62778e;--builder-success:#187a3b;--builder-success-border:#b9dfc4;--builder-success-bg:#eef9f1;--builder-warning:#8c671f;--builder-warning-border:#e6ca8f;--builder-warning-bg:#fff8e8;--builder-danger:#a43a27;--builder-danger-border:#dda998;--builder-danger-bg:#fff0eb;color:#172b45;background:#f3f6fa}
+.theme-light [data-report-builder="v2"]{--builder-bg:#e8eef6;--builder-toolbar-surface:#f9fbfd;--builder-panel:#f8fafc;--builder-panel-raised:#fff;--builder-line:#d6e0eb;--builder-muted:#66798f;--builder-text:#2c4662;--builder-text-muted:#62778e;--builder-success:#187a3b;--builder-success-border:#b9dfc4;--builder-success-bg:#eef9f1;--builder-warning:#8c671f;--builder-warning-border:#e6ca8f;--builder-warning-bg:#fff8e8;--builder-danger:#a43a27;--builder-danger-border:#dda998;--builder-danger-bg:#fff0eb;color:#172b45;background:#f3f6fa}
 .theme-light [data-report-builder="v2"]>.notion-editor-topbar{border-color:#d6e0eb;background:rgba(249,251,253,.97);box-shadow:0 8px 24px rgba(36,58,86,.08)}
 .theme-light [data-report-builder="v2"] .report-builder-heading small{color:#176fe5}
 .theme-light [data-report-builder="v2"] .report-builder-heading h1,.theme-light [data-report-builder="v2"] .report-builder-title-input{color:#142942}
@@ -638,10 +639,13 @@
   [data-report-builder="v2"]{--builder-header:116px;--builder-library:300px;--builder-properties:360px}
   [data-report-builder="v2"]>.notion-editor-topbar{padding:9px 12px;grid-template-columns:minmax(0,1fr);align-items:start;row-gap:7px}
   [data-report-builder="v2"]>.notion-editor-topbar>.editor-navigation-actions{width:100%}
-  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{width:100%;margin-left:0;padding-bottom:2px;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{width:100%;margin-left:0;padding-bottom:2px;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions::-webkit-scrollbar{display:none}
   [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions>*{flex:0 0 auto}
-  [data-report-builder="v2"] .report-builder-heading h1{max-width:calc(100vw - 100px)}
-  [data-report-builder="v2"] .report-builder-title-input{width:calc(100vw - 100px);max-width:100%}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions>.primary{position:sticky;z-index:2;right:0;margin-left:auto;box-shadow:-12px 0 12px var(--builder-toolbar-surface)}
+  [data-report-builder="v2"] .report-builder-heading{min-width:0;flex:1 1 auto}
+  [data-report-builder="v2"] .report-builder-heading h1{max-width:none;min-width:0;flex:1 1 auto}
+  [data-report-builder="v2"] .report-builder-title-input{width:auto;max-width:none;min-width:0;flex:1 1 auto}
   [data-report-builder="v2"] .builder-workspace-toolbar small{display:none}
   [data-report-builder="v2"] .report-assistant-patch-selection{max-width:100%}
 }
@@ -650,6 +654,12 @@
   [data-report-builder="v2"] .report-builder-heading h1{margin:0;font-size:16px}
   [data-report-builder="v2"] .report-builder-title-input{margin:0;font-size:16px}
   [data-report-builder="v2"]>.notion-editor-topbar .editor-save-state{display:none}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{gap:5px}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions>button:not(.primary){width:44px;padding-inline:0!important;justify-content:center;font-size:0!important}
+  [data-report-builder="v2"]>.notion-editor-topbar .editor-history-actions button{width:44px;padding-inline:0!important;justify-content:center}
+  [data-report-builder="v2"]>.notion-editor-topbar .report-view-menu>summary{width:44px;height:44px;padding:0;justify-content:center}
+  [data-report-builder="v2"]>.notion-editor-topbar .report-view-menu>summary span{display:none}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions>.primary{min-width:68px;padding-inline:12px!important;justify-content:center}
   [data-report-builder="v2"] .builder-workspace-toolbar{align-items:stretch;flex-direction:column;gap:6px}
   [data-report-builder="v2"] .builder-workspace-toolbar>div{justify-content:space-between}
   [data-report-builder="v2"] .builder-workspace-toolbar>div>span{display:none}

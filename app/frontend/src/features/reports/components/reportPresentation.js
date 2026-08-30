@@ -145,6 +145,7 @@ export function artifactMetric(artifact, resultField) {
 }
 
 function humanizeColumnIdentifier(column) {
+  if (String(column ?? "").trim().toLowerCase() === "period") return "기간";
   const words = String(column ?? "")
     .trim()
     .split("_")

@@ -61,6 +61,7 @@ try {
   }));
 
   assert.equal(reportColumnLabel(artifact, "room_revenue"), "객실 매출");
+  assert.equal(reportColumnLabel(artifact, "period"), "기간");
   assert.match(html, /분석 결과/);
   assert.match(html, /요약 · 핵심 지표/);
   assert.match(html, /객실 매출/);
@@ -107,6 +108,7 @@ try {
   }));
   assert.match(countKpiHtml, /29 건/);
   assert.match(countTableHtml, /합성 취소 연회 건수.*건/s);
+  assert.match(countTableHtml, /report-table-sort-label/);
   assert.doesNotMatch(`${countKpiHtml}${countTableHtml}`, />count<|\(count\)/);
 
   console.log("frontend report artifact presentation tests passed");

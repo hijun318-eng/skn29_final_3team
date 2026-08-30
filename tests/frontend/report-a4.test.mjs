@@ -45,6 +45,10 @@ assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.noti
 assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.notion-data-embed:has\(> \.generated-report-table\)\s*\{[\s\S]*overflow: hidden;/);
 assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.generated-report-table table\s*\{[\s\S]*inline-size: 100%;[\s\S]*table-layout: fixed;/);
 assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.generated-report-table th,[\s\S]*text-overflow: ellipsis;/);
+assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.generated-report-table thead th\s*\{[\s\S]*background: #eef3f8 !important;/);
+assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.generated-report-table \.report-table-sort-label\s*\{[\s\S]*display: inline-flex;/);
+assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.generated-report-table \.analysis-column-unit\s*\{[\s\S]*display: inline-flex;/);
+assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.generated-report-table th\.is-numeric \.report-table-sort\s*\{[\s\S]*justify-content: flex-end;/);
 assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.markdown-copy table\s*\{[\s\S]*table-layout: fixed;/);
 assert.match(styles, /overflow-x: clip/);
 

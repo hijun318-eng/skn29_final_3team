@@ -429,6 +429,8 @@
   margin-block-start: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-color: #aab8c8 transparent;
+  scrollbar-width: thin;
 }
 
 .answer-report-page .generated-report-table table {
@@ -436,19 +438,118 @@
   max-inline-size: 100%;
   min-inline-size: 0;
   table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .answer-report-page .generated-report-table th,
 .answer-report-page .generated-report-table td {
+  block-size: 8mm;
   min-inline-size: 0;
+  padding: 0 2.2mm !important;
   overflow: hidden;
+  vertical-align: middle;
+  border-block-start: 0 !important;
+  border-block-end: 0.2mm solid #e4ebf2 !important;
+  border-inline: 0 !important;
   text-overflow: ellipsis;
 }
 
-.answer-report-page .generated-report-table .report-table-sort > span {
+.answer-report-page .generated-report-table thead th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  color: #314963 !important;
+  background: #eef3f8 !important;
+  box-shadow: inset 0 -0.2mm #d6e0eb;
+  font-size: 7.2pt;
+  font-weight: 760;
+}
+
+.answer-report-page .generated-report-table tbody td,
+.answer-report-page .generated-report-table tbody th,
+.ppt-theme .answer-report-page .generated-report-table tbody tr:nth-child(even) td {
+  background: #fff !important;
+}
+
+.answer-report-page .generated-report-table tbody tr:hover td,
+.answer-report-page .generated-report-table tbody tr:hover th {
+  background: #f5f9fe !important;
+}
+
+.answer-report-page .generated-report-table .report-table-sort {
+  width: 100%;
+  min-block-size: 8mm;
+  block-size: 8mm;
+  padding: 0 !important;
+  justify-content: flex-start;
+  gap: 1mm;
+  color: #314963 !important;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: left;
+}
+
+.answer-report-page .generated-report-table th.is-numeric .report-table-sort {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.answer-report-page .generated-report-table .report-table-sort-label {
   min-inline-size: 0;
+  display: inline-flex;
+  align-items: center;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.answer-report-page .generated-report-table .analysis-column-unit {
+  margin: 0 0 0 1mm;
+  padding-inline-start: 1mm;
+  display: inline-flex;
+  align-items: center;
+  color: #6b7d94;
+  border-inline-start: 0.2mm solid #c9d4e0;
+  font-size: 6.4pt;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.answer-report-page .generated-report-table .report-table-sort svg {
+  color: #74869b;
+  opacity: 0.42;
+}
+
+.answer-report-page .generated-report-table .report-table-sort:hover,
+.answer-report-page .generated-report-table .report-table-sort:focus-visible {
+  color: #125fbd !important;
+  background: transparent !important;
+}
+
+.answer-report-page .generated-report-table .report-table-sort:hover svg,
+.answer-report-page .generated-report-table .report-table-sort:focus-visible svg,
+.answer-report-page .generated-report-table th[aria-sort="ascending"] .report-table-sort svg,
+.answer-report-page .generated-report-table th[aria-sort="descending"] .report-table-sort svg {
+  color: #176fe5;
+  opacity: 1;
+}
+
+.answer-report-page .generated-report-table::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.answer-report-page .generated-report-table::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #aab8c8;
+}
+
+.answer-report-page .generated-report-table::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .answer-report-page .markdown-copy {

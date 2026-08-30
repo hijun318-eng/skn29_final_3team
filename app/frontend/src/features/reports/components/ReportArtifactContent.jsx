@@ -207,7 +207,10 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
                       aria-label={`${metricUnitLabel(label, unit)} 열 정렬`}
                       onClick={() => setSorting((current) => nextTableSort(current, column))}
                     >
-                      <span>{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
+                      <span className="report-table-sort-label">
+                        {label}
+                        {unit && <small className="analysis-column-unit">{unit}</small>}
+                      </span>
                       <ArrowUpDown size={12} aria-hidden="true" />
                     </button>
                   </th>

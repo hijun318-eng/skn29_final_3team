@@ -51,7 +51,10 @@ from app.contracts import (
     response_meta,
 )
 from app.report_contracts import (
+    CreateReportDefinitionRequest,
     CreateReportAssistantSessionRequest,
+    ReplaceReportBlocksRequest,
+    ReportDefinitionResponse,
     ReportAssistantAnalysisPlan,
     ReportAssistantMessageRequest,
     ReportAssistantReviewRequest,
@@ -138,6 +141,7 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         )
 
         validate_payload("report_assistant_turn_request", payload)
+        self.assertEqual(1, payload["report"]["page_count"])
         public_artifact = payload["artifact"]
         snapshot = public_artifact["table_snapshot"]
         self.assertEqual(["summary", "kpi", "chart", "table"], public_artifact["available_views"])
@@ -154,6 +158,38 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         self.assertNotIn("private-trino-query", repr(payload))
         self.assertNotIn("private-evidence-query", repr(payload))
         self.assertNotIn("a" * 64, repr(payload))
+
+    def test_report_api_and_model_input_share_the_100_block_fail_closed_limit(self) -> None:
+        """create·replace·response와 모델 입력이 모두 같은 100-block 상한을 공개한다."""
+
+        for contract in (
+            CreateReportDefinitionRequest,
+            ReplaceReportBlocksRequest,
+            ReportDefinitionResponse,
+        ):
+            with self.subTest(contract=contract.__name__):
+                self.assertEqual(
+                    100,
+                    contract.model_json_schema()["properties"]["blocks"]["maxItems"],
+                )
+
+        oversized = ReportDefinitionVersion(
+            str(uuid4()), 1, DefinitionStatus.DRAFT, "과대 보고서",
+            tuple(
+                ReportBlock(
+                    f"block-{index}", f"본문 {index}", None, 12, None,
+                    BlockType.TEXT, 0, index, 12, 1, "본문",
+                )
+                for index in range(101)
+            ),
+        )
+        artifact = {
+            "artifact_id": uuid4(), "title": "승인 분석",
+            "narrative_markdown": "승인 결과", "evidence_json": {},
+            "chart_spec_json": None, "data_snapshot_json": None,
+        }
+        with self.assertRaisesRegex(ValueError, "REPORT_BLOCK_LIMIT_EXCEEDED"):
+            _report_turn_payload(oversized, artifact, "보고서를 수정해 줘")
 
     def test_ready_session_round_trips_without_analysis_plan(self) -> None:
         """ready 세션은 정의·artifact·base revision만으로 공개 계약을 만족한다."""
@@ -220,6 +256,53 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         self.assertEqual("report_title", response["operation_scope"])
         self.assertFalse(response["patch_preview"][0]["evidence_required"])
         self.assertEqual(0, response["patch_preview"][0]["evidence_count"])
+        self.assertEqual((), response["patch_preview"][0]["depends_on_indexes"])
+        self.assertIsNone(response["patch_preview"][0]["page_index"])
+
+    def test_stored_preview_dependencies_are_recomputed_from_typed_patch(self) -> None:
+        """legacy 저장 preview의 누락·위조 dependency는 원본 typed patch에서 다시 계산한다."""
+
+        response = _assistant_session_response({
+            "assistant_request_id": uuid4(),
+            "phase": "waiting_patch_approval",
+            "session_definition_id": uuid4(),
+            "session_definition_version": 2,
+            "base_revision": 2,
+            "artifact_id": uuid4(),
+            "analysis_plan_json": None,
+            "patch_request_id": uuid4(),
+            "report_patch_json": {
+                "summary": "새 페이지에 요약을 추가합니다.",
+                "operations": [
+                    {"op": "add_report_page"},
+                    {
+                        "op": "add_text", "title": "페이지 요약", "content": "근거 요약",
+                        "evidence_refs": ["artifact_narrative"],
+                    },
+                ],
+            },
+            "patch_preview_json": [
+                {
+                    "index": 0, "operation": "add_report_page", "target": "보고서 끝",
+                    "before": "현재 1페이지", "after": "2페이지",
+                    "depends_on_indexes": [11],
+                },
+                {
+                    "index": 1, "operation": "add_text", "target": "페이지 요약",
+                    "before": None, "after": "근거 요약",
+                    "depends_on_indexes": [],
+                },
+            ],
+            "result_artifact_id": None,
+            "result_revision": None,
+            "error_code": None,
+            "instruction_hash": "0" * 64,
+        })
+
+        self.assertEqual(
+            ((), (0,)),
+            tuple(item["depends_on_indexes"] for item in response["patch_preview"]),
+        )
 
     def test_session_rejects_incomplete_or_out_of_order_turn_history(self) -> None:
         """복구 이력은 사용자·Assistant 메시지가 한 쌍을 이룬 순서만 허용한다."""
@@ -2060,6 +2143,76 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
         repository.decide_existing_assistant_patch.assert_not_awaited()
         repository.finalize_existing_assistant_patch.assert_not_awaited()
 
+    async def test_explicit_empty_selection_never_becomes_full_approval(self) -> None:
+        """검증 경계를 우회한 명시 빈 선택도 legacy None 전체 승인으로 해석하지 않는다."""
+
+        waiting = self._session()
+        repository = SimpleNamespace(
+            decide_existing_assistant_patch=AsyncMock(),
+            finalize_existing_assistant_patch=AsyncMock(),
+        )
+        payload = ReportAssistantPatchApprovalRequest.model_construct(
+            request_id=waiting["patch_request_id"],
+            approved=True,
+            operation_indexes=(),
+        )
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch(
+                "app.api.report_router._recover_and_get_assistant_session",
+                new=AsyncMock(return_value=waiting),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await decide_assistant_patch(
+                    str(waiting["assistant_request_id"]), payload, object()
+                )
+
+        self.assertEqual(409, raised.exception.status_code)
+        self.assertEqual("ASSISTANT_STATE_CONFLICT", raised.exception.detail["code"])
+        repository.decide_existing_assistant_patch.assert_not_awaited()
+        repository.finalize_existing_assistant_patch.assert_not_awaited()
+
+    async def test_missing_page_dependency_is_rejected_before_claim(self) -> None:
+        """새 페이지 내용만 고르는 선택은 CAS claim 전에 409로 닫힌다."""
+
+        waiting = self._session()
+        waiting["report_patch_json"] = {
+            "summary": "새 페이지에 요약을 추가합니다.",
+            "operations": [
+                {"op": "add_report_page"},
+                {
+                    "op": "add_text", "title": "페이지 요약", "content": "승인 근거 요약",
+                    "evidence_refs": ["artifact_narrative"],
+                },
+            ],
+        }
+        repository = SimpleNamespace(
+            decide_existing_assistant_patch=AsyncMock(),
+            finalize_existing_assistant_patch=AsyncMock(),
+        )
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch(
+                "app.api.report_router._recover_and_get_assistant_session",
+                new=AsyncMock(return_value=waiting),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await decide_assistant_patch(
+                    str(waiting["assistant_request_id"]),
+                    ReportAssistantPatchApprovalRequest(
+                        request_id=waiting["patch_request_id"], approved=True,
+                        operation_indexes=(1,),
+                    ),
+                    object(),
+                )
+
+        self.assertEqual(409, raised.exception.status_code)
+        self.assertEqual("ASSISTANT_STATE_CONFLICT", raised.exception.detail["code"])
+        repository.decide_existing_assistant_patch.assert_not_awaited()
+        repository.finalize_existing_assistant_patch.assert_not_awaited()
+
     async def test_conflicting_selection_is_rejected_before_claim(self) -> None:
         """같은 block의 수정·삭제 조합은 승인 claim과 Revision 저장 전에 거부한다."""
 
@@ -2246,6 +2399,7 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
         preview = _report_patch_preview(definition, patch_value)
 
         self.assertEqual((0, 1), tuple(item["index"] for item in preview))
+        self.assertEqual(((), ()), tuple(item["depends_on_indexes"] for item in preview))
         self.assertEqual(("CONTENT", "LAYOUT"), tuple(item["impact_category"] for item in preview))
         self.assertTrue(all(item["evidence_count"] == 0 for item in preview))
         public_text = str(preview)
@@ -2329,9 +2483,46 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("add_report_page", preview[0]["operation"])
         self.assertEqual("보고서 끝", preview[0]["target"])
-        self.assertEqual("빈 A4 페이지 1장 추가", preview[0]["after"])
+        self.assertEqual("현재 1페이지", preview[0]["before"])
+        self.assertEqual("2페이지 · 빈 A4 페이지 1장 추가", preview[0]["after"])
+        self.assertEqual((), preview[0]["depends_on_indexes"])
+        self.assertEqual(2, preview[0]["page_index"])
         self.assertEqual("LAYOUT", preview[0]["impact_category"])
         self.assertNotIn("page_break", str(preview))
+
+    def test_multi_page_preview_groups_content_by_server_page_index(self) -> None:
+        """다중 page와 후속 content는 target 문구가 아닌 1-based renderer page로 묶인다."""
+
+        definition = ReportDefinitionVersion(
+            str(uuid4()), 2, DefinitionStatus.DRAFT, "기존 제목",
+            (ReportBlock(
+                "summary", "요약", None, 12, None,
+                BlockType.TEXT, 0, 0, 12, 4, "본문",
+            ),),
+        )
+        patch_value = ReportAssistantPatch.model_validate({
+            "summary": "두 페이지 구성 추가",
+            "operations": [
+                {"op": "add_report_page"},
+                {
+                    "op": "add_text", "title": "2페이지 요약", "content": "근거 요약",
+                    "evidence_refs": ["artifact_narrative"],
+                },
+                {"op": "add_report_page"},
+                {
+                    "op": "add_text", "title": "3페이지 요약", "content": "근거 요약",
+                    "evidence_refs": ["artifact_narrative"],
+                },
+            ],
+        })
+
+        preview = _report_patch_preview(definition, patch_value)
+
+        self.assertEqual((2, 2, 3, 3), tuple(item["page_index"] for item in preview))
+        self.assertEqual(
+            ((), (0,), (0,), (2,)),
+            tuple(item["depends_on_indexes"] for item in preview),
+        )
 
 
 class ReportAssistantComposeTest(unittest.IsolatedAsyncioTestCase):
@@ -3169,6 +3360,7 @@ class ReportAssistantApprovalTest(unittest.IsolatedAsyncioTestCase):
                 "title": "현재 보고서",
                 "orientation": "portrait",
                 "currency_display_unit": "auto",
+                "page_count": 1,
                 "blocks": [],
             },
             "history": [],

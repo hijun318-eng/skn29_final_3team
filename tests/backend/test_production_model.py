@@ -12,6 +12,7 @@ import pytest
 
 from app.adapters.contract_model import ContractModelAdapter, _openai_payload, _qwen_payload
 from app.adapters.model_schemas import (
+    bounded_node_output_limit,
     canonical_model_input,
     serving_schema,
     sql_only_serving_schema,
@@ -257,6 +258,27 @@ def test_openai_and_qwen_use_identical_canonical_messages() -> None:
     assert openai["max_completion_tokens"] == 1_280
     assert qwen["max_tokens"] == 1_024
     assert qwen["seed"] == 0
+
+
+def test_report_assistant_turn_allows_1280_tokens_for_both_provider_builders() -> None:
+    """OpenAI·Qwen payload가 공유하는 node bound는 다중 페이지 JSON에 1,280토큰을 허용한다."""
+
+    assert bounded_node_output_limit("report_assistant_turn", 4_096) == 1_280
+    assert bounded_node_output_limit("report_assistant_turn", 1_280) == 1_280
+    capacity = SimpleNamespace(runtime_max_output_tokens=4_096)
+    manifest = SimpleNamespace(capacity_for=lambda _model, provider: capacity)
+    with patch(
+        "app.adapters.model_schemas.load_model_runtime_manifest",
+        return_value=manifest,
+    ):
+        openai = _openai_payload(
+            "report-openai", "report_assistant_turn", {"input": "bounded"}
+        )
+        qwen = _qwen_payload(
+            "report-qwen", "report_assistant_turn", {"input": "bounded"}
+        )
+    assert openai["max_completion_tokens"] == 1_280
+    assert qwen["max_tokens"] == 1_280
 
 
 def test_openai_and_qwen_schema_dual_adaptation() -> None:

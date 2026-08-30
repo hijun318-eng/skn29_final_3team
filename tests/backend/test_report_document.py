@@ -355,6 +355,31 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["summary"], [block["block_id"] for block in pages[0]])
         self.assertEqual([], pages[1])
 
+    def test_page_count_uses_orientation_specific_overflow_contract(self):
+        """같은 세 행도 renderer의 세로·가로 row 상한에 따라 실제 페이지 수가 달라진다."""
+
+        blocks = [
+            {
+                "block_id": f"section-{index}", "type": "text", "title": "본문",
+                "content": "내용", "x": 0, "y": index * 10, "w": 12, "h": 10,
+            }
+            for index in range(3)
+        ]
+
+        portrait = _paginate_layout(blocks, "portrait")
+        landscape = _paginate_layout(blocks, "landscape")
+
+        self.assertEqual(1, len(portrait))
+        self.assertEqual(3, len(landscape))
+        self.assertEqual(
+            [["section-0", "section-1", "section-2"]],
+            [[block["block_id"] for block in page] for page in portrait],
+        )
+        self.assertEqual(
+            [["section-0"], ["section-1"], ["section-2"]],
+            [[block["block_id"] for block in page] for page in landscape],
+        )
+
     def test_bar_chart_handles_negative_values_without_negative_svg_height(self):
         report_source = deepcopy(source())
         artifact = report_source["blocks"][1]["artifact"]

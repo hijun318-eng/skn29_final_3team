@@ -67,6 +67,7 @@ REPORT_ASSISTANT_TURN_REQUEST = {
         "title": "현재 보고서",
         "orientation": "portrait",
         "currency_display_unit": "auto",
+        "page_count": 1,
         "blocks": [{
             "block_id": "block-one",
             "title": "현재 차트",
@@ -230,6 +231,15 @@ class ReportAssistantContractTests(unittest.TestCase):
                 invalid["operation_scope"] = invalid_scope
             with self.subTest(operation_scope=invalid_scope), self.assertRaises(ContractError):
                 validate_payload("report_assistant_turn_request", invalid)
+
+    def test_turn_report_context_is_bounded_to_100_server_blocks(self):
+        """모델 report context도 Backend API와 같은 100-block 상한을 갖는다."""
+
+        request_schema = schema_definition("report_assistant_turn_request")
+        self.assertEqual(
+            100,
+            request_schema["properties"]["report"]["properties"]["blocks"]["maxItems"],
+        )
 
     def test_review_contract_is_read_only_and_rejects_hidden_outputs(self):
         """품질 검토는 기존 안전 입력을 재사용하고 patch·SQL·원시 응답을 출력하지 못한다."""
@@ -473,6 +483,32 @@ class ReportAssistantContractTests(unittest.TestCase):
         }]
         validate_payload("report_assistant_turn_response", response)
 
+    def test_existing_turn_supports_ordered_multi_page_content_without_model_dependencies(self):
+        """모델은 다중 page+content를 순서로만 내고 서버 dependency 필드는 만들지 못한다."""
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [
+            {**REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_report_page"},
+            {
+                **REPORT_ASSISTANT_WIRE_OPERATION,
+                "op": "add_text", "title": "두 번째 페이지 요약",
+                "content": "승인 근거 요약", "evidence_refs": ["artifact_narrative"],
+                "width": "full",
+            },
+            {**REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_report_page"},
+            {
+                **REPORT_ASSISTANT_WIRE_OPERATION,
+                "op": "add_artifact_view", "artifact_ref": "source_artifact",
+                "view": "chart", "width": "full",
+            },
+        ]
+        validate_payload("report_assistant_turn_response", response)
+
+        forged = copy.deepcopy(response)
+        forged["patch"]["operations"][1]["depends_on_indexes"] = [0]
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", forged)
+
     def test_turn_history_is_bounded_and_clarification_has_no_action(self):
         """최근 대화는 role/content만 허용하고 clarification은 실행 계획과 patch를 갖지 않는다."""
 
@@ -497,7 +533,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 원자 Artifact view는 과거 clarification보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.12.0", prompt.version)
+        self.assertEqual("PROMPT-v1.13.0", prompt.version)
         self.assertIn("operation_scope is server-owned authority", prompt.text)
         self.assertIn("exactly one set_report_title operation", prompt.text)
         self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
@@ -507,7 +543,10 @@ class ReportAssistantContractTests(unittest.TestCase):
         self.assertIn("Never emit view artifact", prompt.text)
         self.assertIn("wire title field to null", prompt.text)
         self.assertIn("Use set_report_orientation with portrait or landscape", prompt.text)
-        self.assertIn("return exactly one operation total: add_report_page", prompt.text)
+        self.assertIn("two- or three-page composition", prompt.text)
+        self.assertIn("never emit dependency fields", prompt.text)
+        self.assertIn("Never update, remove, duplicate, or reposition a page_break block", prompt.text)
+        self.assertIn("page_count is server-owned renderer output", prompt.text)
         self.assertIn("Account for every requested effect", prompt.text)
         self.assertIn("never silently omit the unsupported part", prompt.text)
         self.assertIn("a block is positioned relative to itself", prompt.text)

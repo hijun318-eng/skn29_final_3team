@@ -40,6 +40,7 @@ from app.contracts import (
     RequestContext,
 )
 from app.report_contracts import (
+    REPORT_MAX_BLOCKS,
     ApproveReportVersionRequest,
     CreateReportAssistantSessionRequest,
     CreateManualRunRequest,
@@ -130,9 +131,14 @@ def _legacy_patch_preview(patch: ReportAssistantPatch | None) -> tuple[dict[str,
 
     if patch is None:
         return ()
+    from app.report_patch import report_patch_operation_dependencies
+
+    dependencies = report_patch_operation_dependencies(patch)
     return tuple(
         {
             "index": index,
+            "depends_on_indexes": dependencies[index],
+            "page_index": None,
             "operation": operation.op,
             "target": _PATCH_OPERATION_LABELS[operation.op],
             "before": None,
@@ -174,11 +180,21 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
         binding["artifact_id"] for binding in session.get("artifact_bindings", ())
     ) or (session["artifact_id"],)
     patch_preview = tuple(session.get("patch_preview_json") or ())
-    if patch and not patch_preview:
+    if patch and len(patch_preview) != len(patch.operations):
         patch_preview = _legacy_patch_preview(patch)
     elif patch:
+        from app.report_patch import report_patch_operation_dependencies
+
+        dependencies = report_patch_operation_dependencies(patch)
         patch_preview = tuple(
-            {**item, **_patch_operation_impact(patch.operations[index])}
+            {
+                **item,
+                "index": index,
+                "operation": patch.operations[index].op,
+                "depends_on_indexes": dependencies[index],
+                "page_index": item.get("page_index"),
+                **_patch_operation_impact(patch.operations[index]),
+            }
             for index, item in enumerate(patch_preview)
         )
     response = {
@@ -374,6 +390,8 @@ def _report_turn_payload(
         )
         for index, artifact in enumerate(artifact_items, start=1)
     }
+    if len(definition.blocks) > REPORT_MAX_BLOCKS:
+        raise ValueError("REPORT_BLOCK_LIMIT_EXCEEDED")
     selected_block = None
     if selected_block_id is not None:
         block = next(
@@ -406,6 +424,7 @@ def _report_turn_payload(
             "title": definition.title,
             "orientation": definition.orientation,
             "currency_display_unit": definition.currency_display_unit,
+            "page_count": _report_page_count(definition),
             "blocks": [
                 {
                     "block_id": block.block_id,
@@ -532,6 +551,49 @@ def _preview_block_settings(block: Any) -> dict[str, Any]:
     return {key: value for key, value in parsed.items() if key in allowed}
 
 
+def _report_layout_pages(
+    definition: Any,
+    orientation: str | None = None,
+) -> list[list[dict[str, Any]]]:
+    """renderer와 같은 paginate 계약으로 현재 draft의 실제 A4 페이지를 계산한다."""
+
+    from app.services.report.layout import _paginate_layout
+
+    blocks = [
+        {
+            "block_id": block.block_id,
+            "type": block.type.value,
+            "x": block.x,
+            "y": block.y,
+            "w": block.w,
+            "h": block.h,
+        }
+        for block in definition.blocks
+    ]
+    return _paginate_layout(blocks, orientation or definition.orientation)
+
+
+def _report_page_count(definition: Any, orientation: str | None = None) -> int:
+    """renderer paginate 결과에서 1 이상의 실제 A4 페이지 수를 반환한다."""
+
+    return len(_report_layout_pages(definition, orientation))
+
+
+def _report_block_page_indexes(
+    definition: Any,
+    orientation: str | None = None,
+) -> dict[str, int]:
+    """renderer에 실제 배치되는 현재 block의 1-based 페이지를 서버에서 계산한다."""
+
+    return {
+        str(block["block_id"]): page_index
+        for page_index, page in enumerate(
+            _report_layout_pages(definition, orientation), start=1
+        )
+        for block in page
+    }
+
+
 def _report_patch_preview(
     definition: Any,
     patch: ReportAssistantPatch,
@@ -547,15 +609,29 @@ def _report_patch_preview(
         "table": "표",
         "artifact": "복합 보기",
     }
+    from app.report_patch import report_patch_operation_dependencies
+
+    dependencies = report_patch_operation_dependencies(patch)
+    preview_orientation = definition.orientation
+    added_page_count = 0
+    page_count = _report_page_count(definition, preview_orientation)
+    block_page_indexes = _report_block_page_indexes(definition, preview_orientation)
+    latest_added_page_index: int | None = None
     for index, operation in enumerate(patch.operations):
         target = _PATCH_OPERATION_LABELS[operation.op]
         before: str | None = None
         after: str | None = None
+        page_index: int | None = None
         if operation.op == "set_report_title":
             before, after = definition.title, operation.title
         elif operation.op == "set_report_orientation":
             labels = {"portrait": "A4 세로", "landscape": "A4 가로"}
             before, after = labels[definition.orientation], labels[operation.orientation]
+            preview_orientation = operation.orientation
+            page_count = _report_page_count(definition, preview_orientation) + added_page_count
+            block_page_indexes = _report_block_page_indexes(
+                definition, preview_orientation
+            )
         elif operation.op == "set_currency_display_unit":
             labels = {
                 "auto": "자동", "one": "원", "thousand": "천원", "million": "백만원",
@@ -566,7 +642,12 @@ def _report_patch_preview(
         elif operation.op == "compact_report_layout":
             target, before, after = "보고서 전체", "현재 블록 배치", "빈 공간 없이 정리"
         elif operation.op == "add_report_page":
-            target, before, after = "보고서 끝", "현재 페이지 수 유지", "빈 A4 페이지 1장 추가"
+            target, before = "보고서 끝", f"현재 {page_count}페이지"
+            added_page_count += 1
+            page_count += 1
+            latest_added_page_index = page_count
+            page_index = latest_added_page_index
+            after = f"{page_count}페이지 · 빈 A4 페이지 1장 추가"
         elif operation.op == "update_block_title":
             source = blocks[operation.block_id]
             target, before, after = source.title, source.title, operation.title
@@ -619,6 +700,12 @@ def _report_patch_preview(
             after = "내용에 맞춤" if operation.size_mode == "auto" else "수동 크기"
         elif operation.op == "add_text":
             target, after = operation.title, operation.content
+            if operation.placement.after_block_id is not None:
+                page_index = block_page_indexes.get(
+                    operation.placement.after_block_id
+                )
+            elif latest_added_page_index is not None:
+                page_index = latest_added_page_index
         elif operation.op == "update_text":
             source = blocks[operation.block_id]
             target = source.title
@@ -633,6 +720,12 @@ def _report_patch_preview(
             before, after = "\n".join(before_parts), "\n".join(after_parts)
         elif operation.op == "add_artifact_view":
             target = operation.title
+            if operation.placement.after_block_id is not None:
+                page_index = block_page_indexes.get(
+                    operation.placement.after_block_id
+                )
+            elif latest_added_page_index is not None:
+                page_index = latest_added_page_index
             details = [f"{view_labels[operation.view]} 블록 추가"]
             if operation.chart_type is not None:
                 details.append(f"차트 유형 {operation.chart_type}")
@@ -665,6 +758,10 @@ def _report_patch_preview(
                 f"{'6/12' if operation.width == 'half' else '12/12'} 폭 · "
                 f"{anchor.title + ' 뒤' if anchor else '보고서 끝'}"
             )
+            if operation.after_block_id is not None:
+                page_index = block_page_indexes.get(operation.after_block_id)
+            elif latest_added_page_index is not None:
+                page_index = latest_added_page_index
         elif operation.op == "remove_block":
             target = blocks[operation.block_id].title
             before, after = "현재 블록 유지", "블록 삭제"
@@ -675,9 +772,15 @@ def _report_patch_preview(
             target = "보고서 전체"
             before = f"현재 Revision {definition.version}"
             after = f"Revision {definition.version - 1} 내용으로 복원"
+        if page_index is None:
+            target_block_id = getattr(operation, "block_id", None)
+            if target_block_id is not None and operation.op != "reposition_block":
+                page_index = block_page_indexes.get(target_block_id)
         items.append(
             {
                 "index": index,
+                "depends_on_indexes": dependencies[index],
+                "page_index": page_index,
                 "operation": operation.op,
                 "target": target,
                 "before": _patch_preview_text(before),
@@ -2100,11 +2203,16 @@ async def decide_assistant_patch(
         try:
             original_patch = ReportAssistantPatch.model_validate(session.get("report_patch_json"))
             requested_indexes = getattr(payload, "operation_indexes", None)
-            selected_indexes = requested_indexes or tuple(
-                range(len(original_patch.operations))
+            selected_indexes = (
+                tuple(range(len(original_patch.operations)))
+                if requested_indexes is None
+                else requested_indexes
             )
             if any(index >= len(original_patch.operations) for index in selected_indexes):
                 raise ValueError("ASSISTANT_STATE_CONFLICT")
+            from app.report_patch import validate_report_patch_dependency_selection
+
+            validate_report_patch_dependency_selection(original_patch, selected_indexes)
             selected_patch = ReportAssistantPatch(
                 summary=original_patch.summary,
                 operations=tuple(original_patch.operations[index] for index in selected_indexes),

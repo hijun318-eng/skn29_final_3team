@@ -23,6 +23,7 @@ ReportChartType = Literal[
     "bar", "horizontal-bar", "line", "area", "stacked-bar", "donut", "pie"
 ]
 ReportBlockSizeMode = Literal["auto", "manual"]
+REPORT_MAX_BLOCKS = 100
 
 
 class ReportContractModel(BaseModel):
@@ -62,7 +63,9 @@ class CreateReportDefinitionRequest(ReportContractModel):
     """새 보고서 정의의 식별자·제목·블록과 페이지 방향·통화 표시 단위를 입력받는다."""
     definition_id: str = Field(min_length=1)
     title: str = Field(min_length=1, max_length=255)
-    blocks: list[ReportBlockRequest] = Field(default_factory=list)
+    blocks: list[ReportBlockRequest] = Field(
+        default_factory=list, max_length=REPORT_MAX_BLOCKS
+    )
     orientation: ReportOrientation = "portrait"
     currency_display_unit: CurrencyDisplayUnit = "auto"
 
@@ -89,7 +92,7 @@ class CreateReportFromArtifactRequest(ReportContractModel):
 
 class ReplaceReportBlocksRequest(ReportContractModel):
     """초안의 제목·전체 블록 배열·페이지 방향·통화 단위를 한 저장 요청으로 변경한다."""
-    blocks: list[ReportBlockRequest]
+    blocks: list[ReportBlockRequest] = Field(max_length=REPORT_MAX_BLOCKS)
     title: str | None = Field(default=None, min_length=1, max_length=255)
     orientation: ReportOrientation | None = None
     currency_display_unit: CurrencyDisplayUnit | None = None
@@ -147,7 +150,7 @@ class ReportDefinitionResponse(ReportContractModel):
     version: int
     status: Literal["draft", "approved"]
     title: str
-    blocks: list[ReportBlockResponse]
+    blocks: list[ReportBlockResponse] = Field(max_length=REPORT_MAX_BLOCKS)
     approved_at: datetime | None
     orientation: ReportOrientation
     currency_display_unit: CurrencyDisplayUnit
@@ -502,9 +505,11 @@ class ReportAssistantAnalysisPlan(ReportContractModel):
 
 
 class ReportAssistantPatchPreviewItem(ReportContractModel):
-    """식별자·SQL 없이 사용자가 승인 전에 확인할 operation별 변경 전후를 반환한다."""
+    """식별자·SQL 없이 승인 전 변경과 nullable 1-based renderer 페이지를 반환한다."""
 
     index: int = Field(ge=0, le=11)
+    depends_on_indexes: tuple[int, ...] = Field(default=(), max_length=11)
+    page_index: int | None = Field(default=None, ge=1)
     operation: Literal[
         "set_report_title", "set_report_orientation", "set_currency_display_unit",
         "compact_report_layout", "add_report_page", "update_block_title", "resize_block",
@@ -526,6 +531,11 @@ class ReportAssistantPatchPreviewItem(ReportContractModel):
 
         if self.evidence_required != (self.evidence_count > 0):
             raise ValueError("patch 영향의 근거 필요 여부와 근거 개수가 일치하지 않습니다.")
+        if (
+            tuple(sorted(set(self.depends_on_indexes))) != self.depends_on_indexes
+            or any(dependency < 0 or dependency >= self.index for dependency in self.depends_on_indexes)
+        ):
+            raise ValueError("patch operation 의존성은 중복 없는 이전 operation만 참조해야 합니다.")
         return self
 
 

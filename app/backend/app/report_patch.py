@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from uuid import uuid4
 
-from app.report_contracts import ReportAssistantPatch
+from app.report_contracts import REPORT_MAX_BLOCKS, ReportAssistantPatch
 from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
 
 
@@ -121,7 +121,7 @@ def validate_report_patch_operation_dependencies(patch: ReportAssistantPatch) ->
     for operation in patch.operations:
         if operation.op in {
             "set_report_title", "set_report_orientation", "set_currency_display_unit",
-            "compact_report_layout", "add_report_page",
+            "compact_report_layout",
         }:
             key = (operation.op, "report")
         elif operation.op in {
@@ -135,6 +135,61 @@ def validate_report_patch_operation_dependencies(patch: ReportAssistantPatch) ->
         if key in unique_targets:
             raise ValueError("Report patch가 같은 대상을 중복 변경합니다.")
         unique_targets.add(key)
+
+
+def report_patch_operation_dependencies(
+    patch: ReportAssistantPatch,
+) -> tuple[tuple[int, ...], ...]:
+    """ordered typed operation에서 서버 소유의 backward-only page 의존성을 계산한다.
+
+    모델은 dependency를 입력할 수 없다. 뒤에 추가되는 각 페이지는 직전 추가 페이지를,
+    명시적 anchor 없이 그 페이지 뒤에 놓이는 신규 content와 이동은 가장 최근 페이지를
+    의존한다. 따라서 반환 그래프는 구성상 forward edge와 cycle을 만들 수 없다.
+    """
+
+    dependencies: list[tuple[int, ...]] = []
+    latest_page_index: int | None = None
+    for index, operation in enumerate(patch.operations):
+        dependency: tuple[int, ...] = ()
+        if operation.op == "add_report_page":
+            if latest_page_index is not None:
+                dependency = (latest_page_index,)
+            latest_page_index = index
+        elif latest_page_index is not None:
+            if (
+                operation.op in {"add_text", "add_artifact_view"}
+                and operation.placement.after_block_id is None
+            ) or (
+                operation.op == "reposition_block"
+                and operation.after_block_id is None
+            ):
+                dependency = (latest_page_index,)
+        if any(item >= index for item in dependency):
+            raise ValueError("Report patch operation 의존성이 이전 operation만 참조하지 않습니다.")
+        dependencies.append(dependency)
+    return tuple(dependencies)
+
+
+def validate_report_patch_dependency_selection(
+    patch: ReportAssistantPatch,
+    selected_indexes: tuple[int, ...],
+) -> None:
+    """부분 승인 선택이 서버 계산 dependency를 모두 포함할 때만 저장을 허용한다."""
+
+    if (
+        not selected_indexes
+        or tuple(sorted(set(selected_indexes))) != selected_indexes
+        or any(index < 0 or index >= len(patch.operations) for index in selected_indexes)
+    ):
+        raise ValueError("Report patch operation 선택 범위가 올바르지 않습니다.")
+    selected = set(selected_indexes)
+    dependencies = report_patch_operation_dependencies(patch)
+    if any(
+        dependency not in selected
+        for index in selected_indexes
+        for dependency in dependencies[index]
+    ):
+        raise ValueError("Report patch operation 선택이 필요한 선행 변경을 포함하지 않습니다.")
 
 
 def _replace_block(block: ReportBlock, **changes: object) -> ReportBlock:
@@ -604,6 +659,8 @@ def apply_report_assistant_patch(
         )
         if requested_anchor is not None:
             latest_insert_for_anchor[requested_anchor] = new_block_id
+    if len(blocks) > REPORT_MAX_BLOCKS:
+        raise ValueError("Report block은 최대 100개까지 저장할 수 있습니다.")
     patched = definition.replace_blocks(
         tuple(blocks), title=title, orientation=orientation,
         currency_display_unit=currency_display_unit,

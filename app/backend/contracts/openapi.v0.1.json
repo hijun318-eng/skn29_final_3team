@@ -1948,6 +1948,7 @@
             "items": {
               "$ref": "#/components/schemas/ReportBlockRequest"
             },
+            "maxItems": 100,
             "title": "Blocks",
             "type": "array"
           },
@@ -3182,6 +3183,7 @@
             "items": {
               "$ref": "#/components/schemas/ReportBlockRequest"
             },
+            "maxItems": 100,
             "title": "Blocks",
             "type": "array"
           },
@@ -4028,7 +4030,7 @@
       },
       "ReportAssistantPatchPreviewItem": {
         "additionalProperties": false,
-        "description": "식별자·SQL 없이 사용자가 승인 전에 확인할 operation별 변경 전후를 반환한다.",
+        "description": "식별자·SQL 없이 승인 전 변경과 nullable 1-based renderer 페이지를 반환한다.",
         "properties": {
           "after": {
             "anyOf": [
@@ -4053,6 +4055,15 @@
               }
             ],
             "title": "Before"
+          },
+          "depends_on_indexes": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 11,
+            "title": "Depends On Indexes",
+            "type": "array"
           },
           "evidence_count": {
             "maximum": 16.0,
@@ -4101,6 +4112,18 @@
             ],
             "title": "Operation",
             "type": "string"
+          },
+          "page_index": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Index"
           },
           "target": {
             "maxLength": 255,
@@ -4958,6 +4981,7 @@
             "items": {
               "$ref": "#/components/schemas/ReportBlockResponse"
             },
+            "maxItems": 100,
             "title": "Blocks",
             "type": "array"
           },

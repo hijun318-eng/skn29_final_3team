@@ -17,6 +17,8 @@ from app.report_patch import (
     ReportPatchNoChangesError,
     VerifiedArtifactBinding,
     apply_report_assistant_patch,
+    report_patch_operation_dependencies,
+    validate_report_patch_dependency_selection,
 )
 from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
 
@@ -189,12 +191,43 @@ class ReportAssistantPatchTest(unittest.TestCase):
         self.assertGreaterEqual(page_break.y, max(block.y + block.h for block in self.definition.blocks))
         self.assertEqual(2, len(self.definition.blocks))
 
-        duplicate = ReportAssistantPatch.model_validate({
-            "summary": "빈 페이지를 중복 추가합니다.",
-            "operations": [{"op": "add_report_page"}, {"op": "add_report_page"}],
+        multi_page = ReportAssistantPatch.model_validate({
+            "summary": "빈 페이지 세 장과 각 페이지 내용을 추가합니다.",
+            "operations": [
+                {"op": "add_report_page"},
+                {
+                    "op": "add_text", "title": "두 번째 페이지 요약",
+                    "content": "검증 근거를 요약합니다.",
+                    "evidence_refs": ["artifact_narrative"],
+                },
+                {"op": "add_report_page"},
+                {
+                    "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                    "view": "chart", "title": "신규 분석 · 차트",
+                },
+                {"op": "add_report_page"},
+                {
+                    "op": "reposition_block", "block_id": "current-chart",
+                    "width": "full",
+                },
+            ],
         })
-        with self.assertRaisesRegex(ValueError, "중복"):
-            apply_report_assistant_patch(self.definition, duplicate, self.bindings)
+
+        multi_page_result = apply_report_assistant_patch(
+            self.definition, multi_page, self.bindings
+        )
+
+        self.assertEqual(
+            3,
+            sum(block.type is BlockType.PAGE_BREAK for block in multi_page_result.blocks),
+        )
+        self.assertEqual(
+            ((), (0,), (0,), (2,), (2,), (4,)),
+            report_patch_operation_dependencies(multi_page),
+        )
+        validate_report_patch_dependency_selection(multi_page, (0, 1, 2, 3, 4, 5))
+        with self.assertRaisesRegex(ValueError, "선행 변경"):
+            validate_report_patch_dependency_selection(multi_page, (0, 1, 2, 3, 5))
 
         remove_marker = ReportAssistantPatch.model_validate({
             "summary": "추가한 페이지를 삭제합니다.",
@@ -202,6 +235,23 @@ class ReportAssistantPatchTest(unittest.TestCase):
         })
         with self.assertRaisesRegex(ValueError, "페이지 경계 수정"):
             apply_report_assistant_patch(result, remove_marker, self.bindings)
+
+        for operation in (
+            {"op": "duplicate_block", "block_id": page_break.block_id},
+            {
+                "op": "reposition_block", "block_id": page_break.block_id,
+                "width": "full",
+            },
+        ):
+            with self.subTest(operation=operation["op"]):
+                protected_marker = ReportAssistantPatch.model_validate({
+                    "summary": "페이지 경계를 직접 변경합니다.",
+                    "operations": [operation],
+                })
+                with self.assertRaisesRegex(ValueError, "페이지 경계 수정"):
+                    apply_report_assistant_patch(
+                        result, protected_marker, self.bindings
+                    )
 
         redundant_title = ReportAssistantPatch.model_validate({
             "summary": "빈 페이지를 추가하고 제목을 유지합니다.",
@@ -212,6 +262,24 @@ class ReportAssistantPatchTest(unittest.TestCase):
         })
         with self.assertRaisesRegex(ReportPatchNoChangesError, "제목 operation"):
             apply_report_assistant_patch(self.definition, redundant_title, self.bindings)
+
+    def test_assistant_patch_cannot_store_more_than_100_blocks(self) -> None:
+        """모델 입력은 100개여도 신규 operation으로 저장 상한을 넘기면 전체 patch를 닫는다."""
+
+        full_definition = self.definition.replace_blocks(tuple(
+            ReportBlock(
+                f"text-{index}", f"본문 {index}", None, 12, None,
+                BlockType.TEXT, 0, index, 12, 1, "본문",
+            )
+            for index in range(100)
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "페이지를 추가합니다.",
+            "operations": [{"op": "add_report_page"}],
+        })
+
+        with self.assertRaisesRegex(ValueError, "최대 100개"):
+            apply_report_assistant_patch(full_definition, patch, self.bindings)
 
     def test_document_currency_and_compact_layout_are_server_applied(self) -> None:
         """통화 단위와 빈 공간 정리는 원본을 건드리지 않고 typed patch로만 적용한다."""

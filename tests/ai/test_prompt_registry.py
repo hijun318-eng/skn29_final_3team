@@ -19,7 +19,7 @@ class PromptRegistryTests(unittest.TestCase):
                 "node3.explain": "PROMPT-v1.3.0",
                 "report.assistant": "PROMPT-v1.0.0",
                 "report.assistant.review": "PROMPT-v1.2.1",
-                "report.assistant.turn": "PROMPT-v1.12.0",
+                "report.assistant.turn": "PROMPT-v1.13.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
         )

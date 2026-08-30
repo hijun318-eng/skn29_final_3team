@@ -6,7 +6,6 @@ export {
   REPORT_RUN_PAGE_SIZE,
   REPORT_TEMPLATE_MAP,
   REPORT_TEMPLATES,
-  WHOLE_ARTIFACT_TEMPLATE,
   artifactCurrencyValues,
   artifactMetric,
   blockSettings,

@@ -15,7 +15,6 @@ import {
   REPORT_TEMPLATE_MAP,
   REPORT_TEMPLATES,
   ReportEditorBlock,
-  WHOLE_ARTIFACT_TEMPLATE,
   draftLayoutSignature,
   paginateReportBlocks,
 } from "./components";
@@ -24,7 +23,6 @@ import {
   definitionDraftState,
   focusReportBlock,
   reportCurrencyState,
-  wholeArtifactTemplate,
 } from "./reportPageControllerSupport";
 import { reportStatusLabel } from "./reportPageLabels";
 import { normalizeReportEditorScale } from "./reportEditorViewport";
@@ -118,9 +116,6 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       ]
     : [], [artifacts.assistantAdditionalArtifactIds, selectedArtifactSource]);
 
-  const wholeArtifactTemplateFor = useCallback((source, width = null) => wholeArtifactTemplate(
-    source, artifacts.artifacts, draft.reportOrientation, WHOLE_ARTIFACT_TEMPLATE, width,
-  ), [artifacts.artifacts, draft.reportOrientation]);
   const viewArtifactTemplateFor = useCallback((template, width = template?.w) => artifactViewTemplate(
     template,
     selectedArtifactSource || artifacts.artifactOptions[0],
@@ -137,8 +132,6 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   }), [draft.currencyPolicyRef, draft.reportOrientation, draft.titleRef, lifecycle.selectedDefinition]);
   const dnd = useReportDragAndDrop({
     addTemplateBlock: draft.addTemplateBlock,
-    addWholeArtifact: draft.addWholeArtifact,
-    artifactOptions: artifacts.artifactOptions,
     blocksRef: draft.blocksRef,
     commitBlocks: draft.commitBlocks,
     frontendReportContext,
@@ -149,7 +142,6 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     setEditorAnnouncement: draft.announce,
     selectDraggedBlock: editorTools.selectDraggedBlock,
     viewArtifactTemplateFor,
-    wholeArtifactTemplateFor,
   });
   dndBridgeRef.current = dnd;
 
@@ -590,10 +582,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const activeTemplate = dnd.draggedBlockId.startsWith("template:")
     ? viewArtifactTemplateFor(REPORT_TEMPLATE_MAP.get(dnd.draggedBlockId.slice("template:".length)))
     : null;
-  const activeArtifactSource = dnd.draggedBlockId.startsWith("artifact:")
-    ? artifacts.artifactOptions.find((source) => source.artifactId === dnd.draggedBlockId.slice("artifact:".length))
-    : null;
-  const activeInsert = activeTemplate || (activeArtifactSource ? wholeArtifactTemplateFor(activeArtifactSource) : null);
+  const activeArtifactSource = activeTemplate?.view ? selectedArtifactSource : null;
+  const activeInsert = activeTemplate;
 
   return {
     activeArtifactSource,

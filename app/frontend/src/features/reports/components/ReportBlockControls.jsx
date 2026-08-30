@@ -3,7 +3,7 @@ import { memo, useRef } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
-import { artifactViewBlockSettings } from "../reportDraftV2";
+import { ARTIFACT_VIEW_LABELS, artifactViewBlockSettings } from "../reportDraftV2";
 import { REPORT_CURRENCY_OPTIONS } from "../reportCurrency";
 import { blockSettings, REPORT_CHART_OPTIONS } from "./reportPresentation";
 
@@ -45,6 +45,10 @@ export const ReportBlockSettings = memo(function ReportBlockSettings({
 }) {
   const settings = blockSettings(block);
   const viewSizing = artifactViewBlockSettings(block);
+  const artifactViewDescription = (viewSizing?.visibleViews || [])
+    .map((view) => ARTIFACT_VIEW_LABELS[view])
+    .filter(Boolean)
+    .join(" · ");
   const widths = block.type === "text"
     ? [[4, "좁게"], [6, "절반"], [12, "전체"]]
     : [[6, "절반"], [12, "전체"]];
@@ -89,7 +93,7 @@ export const ReportBlockSettings = memo(function ReportBlockSettings({
     </section>}
     {block.type === "artifact" && <section>
       <span>분석 결과</span>
-      <small>요약·핵심 지표·차트·표를 같은 분석 근거로 유지합니다.</small>
+      <small>{artifactViewDescription || "선택한 분석"} 요소를 원본 분석 근거와 함께 유지합니다.</small>
       <button type="button" className={settings.sizeMode === "auto" ? "active" : ""} onClick={() => onSetting("sizeMode", "auto")} disabled={disabled}>내용에 맞춤</button>
     </section>}
     <div className="report-block-menu-actions">
@@ -163,6 +167,7 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
 export const ReportTemplateTile = memo(function ReportTemplateTile({
   template,
   disabled = false,
+  disabledReason = "",
   onAdd,
 }) {
   const {
@@ -189,11 +194,11 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
         className="report-template-add"
         disabled={disabled}
         onClick={() => onAdd(template.id)}
-        title={`${template.title} 블록 바로 추가 또는 끌어서 배치`}
+        title={disabled && disabledReason ? disabledReason : `${template.title} 블록 바로 추가 또는 끌어서 배치`}
         {...listeners}
         {...attributes}
       >
-        <Icon size={15} />
+        <Icon size={15} aria-hidden="true" />
         <span className="report-template-copy"><b>{template.title}</b><small>{template.description}</small></span>
       </button>
     </div>

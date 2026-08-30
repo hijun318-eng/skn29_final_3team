@@ -64,7 +64,7 @@ function HookProbe() {
 assert.equal(renderToStaticMarkup(createElement(HookProbe)), "<span>월간 보고서:saved</span>");
 for (const action of [
   "resetDraft", "commitBlocks", "undo", "redo", "updateBlock", "moveBlock",
-  "resizeBlock", "setBlockSetting", "addTemplateBlock", "insertArtifact",
+  "resizeBlock", "setBlockSetting", "addTemplateBlock",
   "deleteBlock", "duplicateBlock", "changeOrientation", "changeCurrencyDisplayUnit",
   "updateReportTitle", "commitReportTitle",
 ]) assert.equal(typeof state[action], "function", `${action} must be a stable hook action`);

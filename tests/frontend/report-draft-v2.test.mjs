@@ -13,8 +13,10 @@ import {
   analysisArtifactTitle,
   analysisRunArtifactSources,
   analysisTimeLabel,
+  artifactViewTitle,
   artifactViewBlockSettings,
   artifactMetricCards,
+  availableArtifactViews,
   createFrontendDraftSnapshot,
   deleteFrontendBlock,
   estimateArtifactBlockLayout,
@@ -54,6 +56,50 @@ assert.equal(first.ok, true, first.errors?.join("; "));
 assert.equal(first.blocks.find((block) => block.id === "whole-a").type, "artifact");
 assert.equal(first.blocks.find((block) => block.id === "whole-a").artifactId, "artifact-a");
 assert.equal(JSON.parse(first.blocks.find((block) => block.id === "whole-a").content).sizeMode, "auto");
+
+const atomicArtifact = {
+  summary: "핵심 결론",
+  metrics: [{ metric_id: "metric-a", label: "승인 지표", value: 12, unit: "count" }],
+  chart: { chart_type: "bar", x_field: "period", y_fields: ["metric_a"] },
+  table: { columns: ["period", "metric_a"], rows: [{ period: "1월", metric_a: 12 }] },
+};
+assert.deepEqual(availableArtifactViews(atomicArtifact), ["summary", "kpi", "chart", "table"]);
+assert.deepEqual(availableArtifactViews({ summary: "요약만" }), ["summary"]);
+assert.equal(artifactViewTitle("객실 매출 분석", "kpi"), "객실 매출 분석 · 핵심 지표");
+const atomicSummary = insertFrontendArtifact([textBlock], {
+  ...sourceA,
+  blockId: "atomic-summary",
+  artifact: atomicArtifact,
+  visibleViews: ["summary"],
+}, report);
+assert.equal(atomicSummary.ok, true, atomicSummary.errors?.join("; "));
+const atomicKpi = insertFrontendArtifact(atomicSummary.blocks, {
+  ...sourceA,
+  blockId: "atomic-kpi",
+  artifact: atomicArtifact,
+  visibleViews: ["kpi"],
+}, report);
+assert.equal(atomicKpi.ok, true, atomicKpi.errors?.join("; "));
+assert.deepEqual(
+  atomicKpi.blocks.filter((block) => block.id.startsWith("atomic-")).map((block) => ({
+    id: block.id,
+    type: block.type,
+    views: JSON.parse(block.content).visibleViews,
+  })),
+  [
+    { id: "atomic-summary", type: "artifact", views: ["summary"] },
+    { id: "atomic-kpi", type: "artifact", views: ["kpi"] },
+  ],
+  "summary and KPI must persist as separate blocks that share only the governed artifact reference",
+);
+const atomicDocument = frontendBlocksToDocument({ ...report, blocks: atomicKpi.blocks });
+assert.equal(atomicDocument.ok, true, atomicDocument.errors?.join("; "));
+assert.deepEqual(
+  atomicDocument.document.pages.flatMap((page) => page.blocks)
+    .filter((block) => block.id.startsWith("atomic-"))
+    .map((block) => block.visibleViews),
+  [["summary"], ["kpi"]],
+);
 
 const side = insertFrontendArtifact(first.blocks, {
   ...sourceB,
@@ -392,8 +438,8 @@ assert.doesNotMatch(
   /pdfUnsupportedBlocks|orderedBlocks\.filter\(\(block\) => block\.type !== "artifact"\)/,
 );
 assert.match(reportSources.documentView, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
-assert.match(reportSources.controller, /wholeArtifactTemplateFor/);
-assert.match(reportSources.dragAndDrop, /wholeArtifactTemplateFor\(libraryArtifact, dropWidth\)\.h/);
+assert.doesNotMatch(reportSources.controller, /wholeArtifactTemplateFor|WHOLE_ARTIFACT_TEMPLATE/);
+assert.doesNotMatch(reportSources.dragAndDrop, /activeId\.startsWith\("artifact:"\)|addWholeArtifact/);
 assert.match(reportSources.draftMutations, /sizeMode: "manual"/);
 assert.match(reportSources.blockControls, /내용에 맞춤/);
 assert.match(reportSources.controller, /draftBridgeRef\.current\?\.fitHydratedArtifactViews\(artifactMap\)/);
@@ -404,6 +450,7 @@ assert.doesNotMatch(hydratedFit, /commitBlocks\(/, "artifact hydration must not 
 assert.match(reportSources.draftState, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
 assert.match(reportSources.draftMutations, /const compacted = compactDraftLayout\(inputBlocks\)/);
 assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
+assert.match(reportSources.draftMutations, /block\.type === "artifact"[\s\S]*fitFrontendArtifactBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
 assert.match(reportSources.draftMutations, /\["artifact", "chart", "table"\]\.includes\(block\.type \?\? ""\)[\s\S]*sizeMode: "manual"/);
 assert.match(reportSources.draftState, /density: "comfortable", sizeMode: "auto"/);
 

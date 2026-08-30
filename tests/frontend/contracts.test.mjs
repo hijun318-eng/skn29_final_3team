@@ -277,6 +277,8 @@ assert.match(reportSources.editorBlock, /report-resize-handle/);
 assert.match(reportSources.markdownEditor, /report-markdown-toolbar/);
 assert.match(reportSources.presentation, /id: "artifact-table"/);
 assert.match(reportSources.presentation, /id: "artifact-chart"/);
+assert.match(reportSources.presentation, /id: "artifact-summary"/);
+assert.match(reportSources.presentation, /id: "artifact-kpi"/);
 assert.match(reportSources.blockControls, /memo\(function ReportTemplateTile/);
 assert.match(reportSources.blockControls, /className="report-template-add"/);
 assert.match(reportSources.blockControls, /setActivatorNodeRef/);

@@ -97,31 +97,44 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
   },
 ];
 
-/** governed artifact의 table/chart view를 삽입하는 일반 template 집합이다. */ export const ARTIFACT_TEMPLATES = [
+/** governed artifact를 요약·KPI·차트·표 원자 단위로 삽입하는 template 집합이다. */ export const ARTIFACT_TEMPLATES = [
+  {
+    id: "artifact-summary",
+    view: "summary",
+    title: "요약",
+    description: "분석의 핵심 결론",
+    icon: Quote,
+    w: 6,
+    h: 5,
+  },
+  {
+    id: "artifact-kpi",
+    view: "kpi",
+    title: "핵심 지표",
+    description: "대표 수치와 단위",
+    icon: Columns2,
+    w: 6,
+    h: 6,
+  },
   {
     id: "artifact-table",
-    title: "표 보기만",
-    description: "Artifact의 상세 행만 삽입",
+    view: "table",
+    title: "표",
+    description: "상세 행과 열",
     icon: Table2,
     w: 6,
     h: 5,
   },
   {
     id: "artifact-chart",
-    title: "차트 보기만",
-    description: "Artifact의 차트만 삽입",
+    view: "chart",
+    title: "차트",
+    description: "변화와 비교 시각화",
     icon: FileBarChart,
     w: 8,
     h: 7,
   },
 ];
-
-/** governed artifact 전체 view를 삽입하는 일반 template이다. */ export const WHOLE_ARTIFACT_TEMPLATE = {
-  id: "artifact-whole",
-  title: "분석 결과",
-  description: "요약·핵심 지표·차트·표를 한 블록으로",
-  icon: FileBarChart,
-};
 
 /** renderer가 지원하는 차트 타입과 표시 라벨 계약이다. */ export const REPORT_CHART_OPTIONS = [
   ["bar", "세로 막대"],

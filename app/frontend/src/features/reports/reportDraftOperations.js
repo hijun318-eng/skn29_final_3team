@@ -151,12 +151,14 @@ export function frontendBlocksFromDocument(document, sourceBlocks) {
   const pageRows = A4_PAGE_LAYOUT[document.orientation].contentRows;
   return document.pages.flatMap((page) => page.blocks.map((block) => {
     const source = sources.get(block.id);
+    const visibleViews = Array.isArray(block.visibleViews) ? block.visibleViews : [];
+    const onlyView = visibleViews.length === 1 ? visibleViews[0] : null;
     const fallbackType = block.kind === "pageBreak"
       ? "page_break"
       : block.kind === "markdown" ? "text"
-      : block.visibleViews.length > 1
+      : visibleViews.length > 1 || ["summary", "kpi"].includes(onlyView)
         ? "artifact"
-        : block.visibleViews[0] === "chart" ? "chart" : "table";
+        : onlyView === "chart" ? "chart" : "table";
     return {
       ...(source || {
         id: block.id,

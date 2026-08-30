@@ -2,6 +2,12 @@
 import { A4_PAGE_LAYOUT } from "./reportDocument.ts";
 
 /** 전체 artifact 블록에서 선택 가능한 governed view 집합이다. */ export const WHOLE_ARTIFACT_VIEWS = Object.freeze(["summary", "kpi", "chart", "table"]);
+/** artifact view ID와 사용자 표시 이름의 단일 계약이다. */ export const ARTIFACT_VIEW_LABELS = Object.freeze({
+  summary: "요약",
+  kpi: "핵심 지표",
+  chart: "차트",
+  table: "표",
+});
 /** 서버 정책이 아직 없을 때 쓰는 표현 전용 통화 기본값이며 원본 수치를 바꾸지 않는다. */ export const DEFAULT_FRONTEND_CURRENCY_POLICY = Object.freeze({
   currencyCode: "KRW",
   displayUnit: "auto",
@@ -54,6 +60,24 @@ export function artifactMetricCards(artifact) {
     if (explicit.length) return explicit;
   }
   return [];
+}
+
+/** 실제 artifact payload에서 독립적으로 추가할 수 있는 view만 반환한다. */
+export function availableArtifactViews(artifact) {
+  if (!artifact) return [];
+  return WHOLE_ARTIFACT_VIEWS.filter((view) => ({
+    summary: Boolean(String(artifact.summary || "").trim()),
+    kpi: artifactMetricCards(artifact).length > 0,
+    chart: Boolean(artifact.chart),
+    table: Boolean(artifact.table),
+  })[view]);
+}
+
+/** 변경 불가 원본 제목과 view 역할을 결합해 독립 분석 요소 제목을 만든다. */
+export function artifactViewTitle(sourceTitle, view) {
+  const title = String(sourceTitle || "분석 결과").trim() || "분석 결과";
+  const label = ARTIFACT_VIEW_LABELS[view] || "분석 요소";
+  return `${title} · ${label}`;
 }
 
 /** DOM을 읽지 않고 governed 응답 형태만으로 artifact block 크기를 추정한다. */

@@ -3,8 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compactDraftLayout, placeDraftBlock } from "../../contracts/report.ts";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
-  WHOLE_ARTIFACT_VIEWS,
+  ARTIFACT_VIEW_LABELS,
   artifactViewBlockSettings,
+  artifactViewTitle,
+  availableArtifactViews,
   deleteFrontendBlock,
   estimateArtifactBlockLayout,
   estimateArtifactViewBlockLayout,
@@ -295,53 +297,6 @@ export function useReportDraftState(
     currencyPolicy: currencyPolicyRef.current,
   }), []);
 
-  const insertArtifact = useCallback((artifactId: string, position: DraftInsertPosition | null = null): boolean => {
-    if (!optionsRef.current.editable) return false;
-    const source = optionsRef.current.artifactSources?.find((item) => item.artifactId === artifactId);
-    if (!source) {
-      optionsRef.current.onNotice?.("추가할 Artifact를 불러온 뒤 다시 시도해 주세요.");
-      return false;
-    }
-    const artifact = optionsRef.current.artifacts?.[artifactId];
-    const layout = estimateArtifactBlockLayout(artifact, {
-      orientation: orientationRef.current,
-      visibleViews: WHOLE_ARTIFACT_VIEWS,
-      ...(position?.w ? { width: position.w } : {}),
-    });
-    const analysisSource = source.sourceKind === "analysisRun" || source.artifactSourceKind === "analysisRun";
-    const blockId = createUuid();
-    const result = insertFrontendArtifact(blocksRef.current, {
-      blockId,
-      title: source.title || source.definitionTitle || "분석 결과",
-      artifactId,
-      ...(!analysisSource ? {
-        artifactDefinitionId: source.definitionId,
-        artifactDefinitionVersion: source.definitionVersion,
-      } : {
-        sourceKind: "analysisRun",
-        requestId: source.requestId || source.artifactRequestId,
-        analysisDefinitionId: source.analysisDefinitionId,
-        analysisDefinitionVersion: source.analysisDefinitionVersion,
-      }),
-      question: source.question,
-      sourceUrns: source.sourceUrns,
-      artifact,
-      visibleViews: WHOLE_ARTIFACT_VIEWS,
-      sizeMode: "auto",
-      width: position?.w ?? layout.width,
-      height: layout.height,
-      placement: position?.placement || { type: "end", pageId: position?.pageId },
-    }, reportContext());
-    if (!result.ok) {
-      optionsRef.current.onError?.(result.errors?.[0] || "분석 결과 전체 블록을 추가하지 못했습니다.");
-      return false;
-    }
-    if (!commitBlocks(result.blocks)) return false;
-    selectBlock(blockId);
-    optionsRef.current.onNotice?.("분석 결과 전체를 요약·핵심 지표·차트·표가 포함된 하나의 블록으로 추가했습니다.");
-    return true;
-  }, [commitBlocks, reportContext, selectBlock]);
-
   const addTemplateBlock = useCallback((templateId: string, position: DraftInsertPosition | null = null, settings: { readonly chartType?: string } = {}): boolean => {
     if (!optionsRef.current.editable) return false;
     const template = optionsRef.current.templates?.get(templateId);
@@ -351,30 +306,75 @@ export function useReportDraftState(
     if (!templateId.startsWith("artifact-")) {
       block = createTextTemplateBlock(template, position, current, orientationRef.current);
     } else {
-      const type = templateId === "artifact-chart" ? "chart" : "table";
+      const view = template.view;
+      if (!view || !["summary", "kpi", "chart", "table"].includes(view)) return false;
       const sources = optionsRef.current.artifactSources ?? [];
       const source = sources.find((item) => item.artifactId === optionsRef.current.selectedArtifactId) ?? sources[0];
       if (!source?.artifactId) {
-        optionsRef.current.onNotice?.("먼저 분석 결과를 보고서로 가져오면 표와 차트를 추가할 수 있습니다.");
+        optionsRef.current.onNotice?.("먼저 사용할 분석 원본을 선택해 주세요.");
         return false;
       }
       const artifact = optionsRef.current.artifacts?.[source.artifactId];
-      if (type === "chart" && !artifact?.chart) {
-        optionsRef.current.onNotice?.("선택한 분석 결과에는 차트 데이터가 없습니다.");
+      if (!availableArtifactViews(artifact).includes(view)) {
+        optionsRef.current.onNotice?.(`선택한 분석 결과에는 ${ARTIFACT_VIEW_LABELS[view]} 데이터가 없습니다.`);
         return false;
       }
+      const sourceTitle = source.title || source.definitionTitle || "분석 결과";
+      const title = artifactViewTitle(sourceTitle, view);
+      const analysisSource = source.sourceKind === "analysisRun" || source.artifactSourceKind === "analysisRun";
+      if (["summary", "kpi"].includes(view)) {
+        const blockId = createUuid();
+        const layout = estimateArtifactBlockLayout(artifact, {
+          orientation: orientationRef.current,
+          visibleViews: [view],
+          ...(position?.w ? { width: position.w } : {}),
+        });
+        const result = insertFrontendArtifact(current, {
+          blockId,
+          title,
+          artifactId: source.artifactId,
+          artifactChecksum: source.artifactChecksum,
+          queryId: source.queryId,
+          ...(!analysisSource ? {
+            artifactDefinitionId: source.definitionId,
+            artifactDefinitionVersion: source.definitionVersion,
+          } : {
+            sourceKind: "analysisRun",
+            requestId: source.requestId || source.artifactRequestId,
+            analysisDefinitionId: source.analysisDefinitionId,
+            analysisDefinitionVersion: source.analysisDefinitionVersion,
+          }),
+          question: source.question,
+          sourceUrns: source.sourceUrns,
+          artifact,
+          visibleViews: [view],
+          sizeMode: "auto",
+          width: position?.w ?? layout.width,
+          height: layout.height,
+          placement: position?.placement || { type: "end", pageId: position?.pageId },
+        }, reportContext());
+        if (!result.ok) {
+          optionsRef.current.onError?.(result.errors?.[0] || `${ARTIFACT_VIEW_LABELS[view]} 요소를 추가하지 못했습니다.`);
+          return false;
+        }
+        if (!commitBlocks(result.blocks)) return false;
+        selectBlock(blockId);
+        optionsRef.current.onNotice?.(`${ARTIFACT_VIEW_LABELS[view]} 요소를 독립 블록으로 추가했습니다.`);
+        return true;
+      }
+      const type = view === "chart" ? "chart" : "table";
       const defaultY = current.reduce((bottom, item) => Math.max(bottom, item.y + item.h), 0);
       const adaptiveLayout = estimateArtifactViewBlockLayout(
-        { type },
+        { type, ...(position?.w ? { w: position.w, columns: position.w } : {}) },
         artifact,
-        { orientation: orientationRef.current, autoWidth: true },
+        { orientation: orientationRef.current, autoWidth: !position?.w },
       );
-      const width = adaptiveLayout.width;
+      const width = position?.w ?? adaptiveLayout.width;
       block = fitFrontendArtifactViewBlock({
         ...source,
         id: createUuid(),
         type,
-        title: `${source.title} ${type === "chart" ? "차트" : "표"}`,
+        title,
         content: type === "chart"
           ? JSON.stringify({ showLegend: true, sizeMode: "auto", ...(settings.chartType ? { chartType: settings.chartType } : {}) })
           : JSON.stringify({ density: "comfortable", sizeMode: "auto" }),
@@ -394,8 +394,9 @@ export function useReportDraftState(
     });
     if (!committed) return false;
     selectBlock(block.id);
+    if (template.view) optionsRef.current.onNotice?.(`${ARTIFACT_VIEW_LABELS[template.view]} 요소를 독립 블록으로 추가했습니다.`);
     return true;
-  }, [commitBlocks, selectBlock]);
+  }, [commitBlocks, reportContext, selectBlock]);
 
   const duplicateBlock = useCallback((blockId: string) => {
     const current = blocksRef.current;
@@ -404,7 +405,7 @@ export function useReportDraftState(
     const duplicate = {
       ...source,
       id: createUuid(),
-      title: `${source.title} 복사본`,
+      title: source.type === "text" ? `${source.title} 복사본` : source.title,
       y: source.y + source.h,
     };
     if (commitBlocks(placeDraftBlock([...current, duplicate], duplicate.id, duplicate.x, duplicate.y) as readonly DraftReportBlock[])) {
@@ -559,8 +560,6 @@ export function useReportDraftState(
     compactLayout,
     setBlockSetting,
     addTemplateBlock,
-    insertArtifact,
-    addWholeArtifact: insertArtifact,
     duplicateBlock,
     deleteBlock,
     fitHydratedArtifactViews,
@@ -569,7 +568,7 @@ export function useReportDraftState(
   }), [
     addTemplateBlock, announce, beginSave, blocks, changeCurrencyDisplayUnit, changeOrientation,
     clearSaveFailure, commitBlocks, commitReportTitle, deleteBlock, duplicateBlock, editorAnnouncement,
-    fitHydratedArtifactViews, history, insertArtifact, isDirty, markSaveFailed, markSaved,
+    fitHydratedArtifactViews, history, isDirty, markSaveFailed, markSaved,
     compactLayout, moveBlock, orderedBlocks, redo, reportCurrencyPolicy, reportOrientation, reportTitle, resetBlocks,
     resetDraft, resizeBlock, saveFailed, saveState, selectBlock, selectedBlock,
     selectedBlockId, setBlockSetting, undo, updateBlock, updateReportTitle,

@@ -2,7 +2,6 @@
 import { compactDraftLayout, restoreDraftLayout } from "../../contracts/report";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
-  WHOLE_ARTIFACT_VIEWS,
   estimateArtifactBlockLayout,
   estimateArtifactViewBlockLayout,
 } from "./reportDraftV2";
@@ -51,26 +50,19 @@ export function reportCurrencyState(artifacts, policy) {
   return { policy, unit, label: currencyDisplayLabel(unit) };
 }
 
-/** 선택 artifact의 실제 밀도로 전체 블록 template 크기를 계산한다. */
-export function wholeArtifactTemplate(source, artifacts, orientation, baseTemplate, width = null) {
-  const layout = estimateArtifactBlockLayout(source ? artifacts[source.artifactId] : null, {
-    orientation,
-    visibleViews: WHOLE_ARTIFACT_VIEWS,
-    ...(width ? { width } : {}),
-  });
-  return { ...baseTemplate, w: layout.width, h: layout.height };
-}
-
-/** chart/table template만 실제 artifact·A4 방향에 맞는 높이로 조정한다. */
+/** 독립 artifact view template을 실제 데이터·A4 방향에 맞는 크기로 조정한다. */
 export function artifactViewTemplate(template, source, artifacts, orientation, width = template?.w) {
   if (!template?.id?.startsWith("artifact-")) return template;
-  const type = template.id === "artifact-chart" ? "chart" : "table";
-  const resolvedWidth = width ?? 12;
-  const layout = estimateArtifactViewBlockLayout(
-    { type, w: resolvedWidth, columns: resolvedWidth },
-    source ? artifacts[source.artifactId] : null,
-    { orientation },
-  );
+  const view = template.view;
+  const resolvedWidth = width ?? template.w ?? 12;
+  const artifact = source ? artifacts[source.artifactId] : null;
+  const layout = ["summary", "kpi"].includes(view)
+    ? estimateArtifactBlockLayout(artifact, { orientation, visibleViews: [view], width: resolvedWidth })
+    : estimateArtifactViewBlockLayout(
+        { type: view === "chart" ? "chart" : "table", w: resolvedWidth, columns: resolvedWidth },
+        artifact,
+        { orientation },
+      );
   return { ...template, w: resolvedWidth, h: layout.height };
 }
 

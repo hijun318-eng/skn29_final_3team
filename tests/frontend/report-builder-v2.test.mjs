@@ -15,6 +15,7 @@ const toolbar = source("app/frontend/src/features/reports/components/ReportEdito
 const editorBlock = source("app/frontend/src/features/reports/components/ReportEditorBlock.jsx");
 const blockControls = source("app/frontend/src/features/reports/components/ReportBlockControls.jsx");
 const toolPanel = source("app/frontend/src/features/reports/components/ReportToolPanel.jsx");
+const artifactLibrary = source("app/frontend/src/features/reports/ReportWholeArtifactBlock.jsx");
 const properties = source("app/frontend/src/features/reports/components/ReportPropertiesPanel.jsx");
 const assistant = source("app/frontend/src/features/reports/components/ReportAssistantPanel.jsx");
 const documentView = source("app/frontend/src/features/reports/components/ReportDocumentView.jsx");
@@ -142,6 +143,7 @@ assert.match(builderStyles, /\.theme-light \.report-template-overlay\{[^}]*color
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-drop-preview\{[^}]*background:rgba\(226,239,255,\.9\)!important/);
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-slash-menu\{[^}]*color:#29445f[^}]*background:#fff/);
 assert.match(builderStyles, /\.report-template-tile\[aria-disabled="true"\][^\n]*opacity:1/);
+assert.match(builderStyles, /\.notion-editor-sidebar \.report-insert-grid>\.report-template-tile\[aria-disabled="true"\]\{opacity:1\}/);
 assert.match(builderStyles, /\.notion-editor-topbar button:disabled,[^\n]*opacity:1/);
 assert.match(builderStyles, /\.report-library-search input::placeholder,[^\n]*opacity:1/);
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-library-search input::placeholder,[^\n]*color:#5f7288;opacity:1/);
@@ -166,7 +168,18 @@ assert.doesNotMatch(builderStyles, /report-template-minimap/);
 assert.match(properties, /unifySelectedSize\("width"\)/);
 assert.match(properties, /unifySelectedSize\("height"\)/);
 assert.match(page, /onSelectBlocks=\{page\.editorTools\.selectBlocks\}/);
-assert.match(page, /분석 결과 전체로 추가/);
+assert.doesNotMatch(page, /분석 결과 전체로 추가|Artifact 전체로 추가/);
+assert.match(page, /독립 요소로 추가/);
+assert.match(toolPanel, /1\. 분석 원본/);
+assert.match(toolPanel, /2\. 추가할 분석 요소/);
+assert.match(toolPanel, /selectedAvailableViews\.includes\(template\.view\)/);
+assert.match(artifactLibrary, /aria-pressed=\{selected\}/);
+assert.doesNotMatch(artifactLibrary, /useDraggable|`artifact:\$\{/);
+for (const templateId of ["artifact-summary", "artifact-kpi", "artifact-chart", "artifact-table"]) {
+  assert.match(reportPresentation, new RegExp(`id: "${templateId}"`));
+}
+assert.match(builderStyles, /report-artifact-library-tile\.is-selected/);
+assert.match(builderStyles, /report-library-subgroup \.report-insert-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 assert.doesNotMatch(page, /Artifact 전체로 추가/);
 assert.match(builderStyles, /\.report-marquee-selection/);
 assert.match(editorBlock, /!event\.altKey \|\| event\.deltaY === 0 \|\| block\.type !== "table" \|\| !isDraft \|\| locked/);

@@ -3,6 +3,7 @@ import { compactDraftLayout, isDraftLayoutValid } from "../../contracts/report.t
 import { createUuid } from "../../utils/createUuid.ts";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
+  fitFrontendArtifactBlock,
   fitFrontendArtifactViewBlock,
   frontendTextBlockLayout,
 } from "./reportDraftV2.js";
@@ -51,8 +52,12 @@ export function fitAutoArtifactViewLayout(
 ): readonly DraftReportBlock[] {
   const compacted = compactDraftLayout(inputBlocks) as readonly DraftReportBlock[];
   return compactDraftLayout(compacted.map((block) => (
-    block.artifactId && artifacts[block.artifactId] && ["chart", "table"].includes(block.type ?? "")
-      ? fitFrontendArtifactViewBlock(block, artifacts[block.artifactId], { orientation })
+    block.artifactId && artifacts[block.artifactId]
+      ? block.type === "artifact"
+        ? fitFrontendArtifactBlock(block, artifacts[block.artifactId], { orientation })
+        : ["chart", "table"].includes(block.type ?? "")
+          ? fitFrontendArtifactViewBlock(block, artifacts[block.artifactId], { orientation })
+          : block
       : block
   ))) as readonly DraftReportBlock[];
 }

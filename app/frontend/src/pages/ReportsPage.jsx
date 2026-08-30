@@ -147,7 +147,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     isDraft={page.isDraft}
     onAddChart={addChartBlock}
     onAddTemplate={draft.addTemplateBlock}
-    onAddWholeArtifact={draft.addWholeArtifact}
     onClose={page.closeToolPanel}
     onCreateAssistantDraft={page.createAssistantDraft}
     onSelectArtifact={artifacts.setArtifactSelection}
@@ -169,7 +168,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     {lifecycle.error && <p ref={page.errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{lifecycle.error}</p>}
     {lifecycle.notice && <p className="report-api-state notion-editor-notice" role="status"><Check size={17} />{lifecycle.notice}</p>}
     <ReportEditorCanvas
-      activeArtifactTitle={page.activeArtifactSource?.title}
+      activeArtifactTitle={page.activeArtifactSource ? `${page.activeArtifactSource.title} · ${page.activeInsert?.title}` : undefined}
       activeInsert={page.activeInsert}
       alignmentGuides={dnd.alignmentGuides}
       canEdit={page.canEdit}
@@ -309,7 +308,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   >
     {editor}
     <DragOverlay dropAnimation={{ duration: 160, easing: "ease-out" }}>
-      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeArtifactSource?.title || page.activeInsert.title}</b><small>{page.activeArtifactSource ? "분석 결과 전체로 추가" : "캔버스에 놓아 추가"}</small></span></div>}
+      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeInsert.title}</b><small>{page.activeArtifactSource ? `${page.activeArtifactSource.title}에서 독립 요소로 추가` : "캔버스에 놓아 추가"}</small></span></div>}
     </DragOverlay>
   </DndContext>;
 }

@@ -53,6 +53,7 @@ import type {
 
 /** 새 편집 블록을 만드는 일반 template 입력이다. */ export interface DraftBlockTemplate {
   readonly id: string;
+  readonly view?: "summary" | "kpi" | "chart" | "table";
   readonly blockTitle?: string;
   readonly content?: string;
   readonly w: number;
@@ -168,8 +169,6 @@ import type {
     position?: DraftInsertPosition | null,
     settings?: { readonly chartType?: string },
   ) => boolean;
-  readonly insertArtifact: (artifactId: string, position?: DraftInsertPosition | null) => boolean;
-  readonly addWholeArtifact: (artifactId: string, position?: DraftInsertPosition | null) => boolean;
   readonly duplicateBlock: (blockId: string) => void;
   readonly deleteBlock: (blockId: string) => void;
   readonly fitHydratedArtifactViews: (

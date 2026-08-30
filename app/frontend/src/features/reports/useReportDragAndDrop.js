@@ -63,8 +63,6 @@ function reportKeyboardCoordinates(event, { currentCoordinates }) {
 /** pointer·touch·keyboard drag를 동일 배치 계약으로 조정하고 실패 시 기존 draft를 보존한다. */
 export function useReportDragAndDrop({
   addTemplateBlock,
-  addWholeArtifact,
-  artifactOptions,
   blocksRef,
   commitBlocks,
   frontendReportContext,
@@ -75,7 +73,6 @@ export function useReportDragAndDrop({
   setEditorAnnouncement,
   selectDraggedBlock,
   viewArtifactTemplateFor,
-  wholeArtifactTemplateFor,
 }) {
   const [draggedBlockId, setDraggedBlockId] = useState("");
   const [draggedBlockIds, setDraggedBlockIds] = useState(() => new Set());
@@ -102,11 +99,10 @@ export function useReportDragAndDrop({
   const dragLabel = useCallback((activeId) => {
     const id = String(activeId);
     if (id.startsWith("template:")) return `${reportTemplateMap.get(id.slice("template:".length))?.title || "새"} 블록`;
-    if (id.startsWith("artifact:")) return `${artifactOptions.find((item) => item.artifactId === id.slice("artifact:".length))?.title || "분석 결과"} 전체 블록`;
     const block = blocksRef.current.find((item) => item.id === id);
     const type = block?.type === "artifact" ? "분석 결과" : block?.type === "chart" ? "차트" : block?.type === "table" ? "표" : "텍스트";
     return `${block?.title || "제목 없음"} ${type} 블록`;
-  }, [artifactOptions, blocksRef, reportTemplateMap]);
+  }, [blocksRef, reportTemplateMap]);
 
   const dragDestination = useCallback((active, delta) => {
     const activeId = String(active.id);
@@ -114,10 +110,7 @@ export function useReportDragAndDrop({
     const template = activeId.startsWith("template:")
       ? viewArtifactTemplateFor(reportTemplateMap.get(activeId.slice("template:".length)))
       : null;
-    const libraryArtifact = activeId.startsWith("artifact:")
-      ? artifactOptions.find((item) => item.artifactId === activeId.slice("artifact:".length))
-      : null;
-    const dragTemplate = template || (libraryArtifact ? wholeArtifactTemplateFor(libraryArtifact) : null);
+    const dragTemplate = template;
     if (!source && !dragTemplate) return null;
     const initial = active.rect.current.initial;
     const center = pointerDragRef.current && dragPointerRef.current
@@ -159,9 +152,7 @@ export function useReportDragAndDrop({
     const dropWidth = fullRowTarget ? 6 : width;
     const dropHeight = !source && template?.id?.startsWith("artifact-")
       ? viewArtifactTemplateFor(template, dropWidth).h
-      : !source && libraryArtifact
-        ? wholeArtifactTemplateFor(libraryArtifact, dropWidth).h
-        : height;
+      : height;
     const y = fullRowTarget
       ? fullRowTarget.y ?? 0
       : Math.max(page.offsetY, Math.round((center.y - bounds.top - paddingTop) / rowStep - dropHeight / 2) + page.offsetY);
@@ -178,7 +169,7 @@ export function useReportDragAndDrop({
           ? { type: pointerRow < (contentTarget.y ?? 0) + (contentTarget.h ?? 1) / 2 ? "before" : "after", targetBlockId: contentTarget.id }
           : { type: "end", pageId: page.id },
     };
-  }, [artifactOptions, blocksRef, reportTemplateMap, viewArtifactTemplateFor, wholeArtifactTemplateFor]);
+  }, [blocksRef, reportTemplateMap, viewArtifactTemplateFor]);
 
   const resetDrag = useCallback(() => {
     pointerDragRef.current = false;
@@ -199,7 +190,7 @@ export function useReportDragAndDrop({
     dropPositionRef.current = null;
     lastDropOutcomeRef.current = { success: false, message: "" };
     setDraggedBlockId(activeId);
-    if (!activeId.startsWith("template:") && !activeId.startsWith("artifact:")) {
+    if (!activeId.startsWith("template:")) {
       const group = selectedBlockIds.has(activeId) ? new Set(selectedBlockIds) : new Set([activeId]);
       draggedBlockIdsRef.current = group;
       setDraggedBlockIds(group);
@@ -224,17 +215,13 @@ export function useReportDragAndDrop({
     const activeId = String(active.id);
     const libraryTemplate = activeId.startsWith("template:")
       ? viewArtifactTemplateFor(reportTemplateMap.get(activeId.slice("template:".length)))
-      : activeId.startsWith("artifact:")
-        ? wholeArtifactTemplateFor(artifactOptions.find((item) => item.artifactId === activeId.slice("artifact:".length)))
-        : null;
+      : null;
     const keyboardPosition = !pointerDragRef.current && libraryTemplate
       ? keyboardEndDropPosition(blocksRef.current, { pageId: reportPages.at(-1)?.id, width: libraryTemplate.w, height: libraryTemplate.h })
       : null;
     const position = dropPositionRef.current ?? dragDestination(active, delta) ?? keyboardPosition;
     let succeeded = false;
-    if (activeId.startsWith("artifact:")) {
-      if (position) succeeded = addWholeArtifact(activeId.slice("artifact:".length), position);
-    } else if (activeId.startsWith("template:")) {
+    if (activeId.startsWith("template:")) {
       if (position) succeeded = addTemplateBlock(activeId.slice("template:".length), position);
     } else {
       const source = blocksRef.current.find((block) => block.id === activeId);
@@ -260,7 +247,7 @@ export function useReportDragAndDrop({
     lastDropOutcomeRef.current = { success: succeeded, message };
     setEditorAnnouncement(message);
     resetDrag();
-  }, [addTemplateBlock, addWholeArtifact, artifactOptions, blocksRef, commitBlocks, dragDestination, dragLabel, frontendReportContext, lockedBlockIds, reportPages, reportTemplateMap, resetDrag, setEditorAnnouncement, viewArtifactTemplateFor, wholeArtifactTemplateFor]);
+  }, [addTemplateBlock, blocksRef, commitBlocks, dragDestination, dragLabel, frontendReportContext, lockedBlockIds, reportPages, reportTemplateMap, resetDrag, setEditorAnnouncement, viewArtifactTemplateFor]);
 
   const handleDragCancel = useCallback(({ active }) => {
     const message = `${dragLabel(active.id)} 이동을 취소했습니다. 원래 위치를 유지합니다.`;

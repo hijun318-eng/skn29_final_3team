@@ -15,6 +15,11 @@ import numpy as np
 from .text_processing import SecurityScanner
 
 
+OPENAI_EMBEDDING_MODELS = frozenset(
+    {"text-embedding-3-small", "text-embedding-3-large"}
+)
+
+
 class SentenceTransformerEmbeddingProvider:
     def __init__(self, profile: dict[str, Any], device: str = "auto"):
         self.profile = profile
@@ -84,6 +89,11 @@ class OpenAIEmbeddingProvider:
     ) -> None:
         if not api_key.strip():
             raise ValueError("OPENAI_API_KEY is required for OpenAI embeddings")
+        if model_id not in OPENAI_EMBEDDING_MODELS:
+            raise ValueError(
+                "OPENAI_EMBEDDING_MODEL must be text-embedding-3-small or "
+                "text-embedding-3-large"
+            )
         parsed = urlparse(endpoint)
         if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
             raise ValueError("OPENAI_EMBEDDING_ENDPOINT must be an authenticated HTTPS endpoint")

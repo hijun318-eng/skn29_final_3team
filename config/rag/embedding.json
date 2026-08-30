@@ -1,8 +1,8 @@
 {
   "provider": "openai",
-  "model_id": "text-embedding-3-small",
+  "model_id": "text-embedding-3-large",
   "local_path": "models/Qwen3-Embedding-0.6B",
-  "revision": "text-embedding-3-small:d1024",
+  "revision": "text-embedding-3-large:d1024",
   "dimension": 1024,
   "normalize_embeddings": true,
   "device": "auto",

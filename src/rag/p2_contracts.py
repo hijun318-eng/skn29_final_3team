@@ -11,15 +11,15 @@ class EvidenceType(str, Enum):
 
 
 class ImplementationState(str, Enum):
-    ISOLATED_POC = "ISOLATED_POC"
+    INTEGRATED_CANDIDATE = "INTEGRATED_CANDIDATE"
 
 
 @dataclass(frozen=True)
 class P2GateStatus:
-    implementation_state: str = ImplementationState.ISOLATED_POC
+    implementation_state: str = ImplementationState.INTEGRATED_CANDIDATE
     p2_gate: str = "NOT_APPROVED"
     tool_registration: str = "DISABLED"
-    production_integration: str = "NOT_STARTED"
+    production_integration: str = "CURRENT_INTEGRATION_E2E_PENDING"
     affects_p0_p1_completion: bool = False
 
 

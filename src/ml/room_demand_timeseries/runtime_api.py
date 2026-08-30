@@ -35,6 +35,41 @@ HISTORY_COLUMNS = [
 REQUEST_MAX_HORIZON = 7
 
 
+def runtime_estimator_types(model: Any) -> tuple[str, ...]:
+    """동결 wrapper 안에서 실제 추론을 담당하는 estimator 종류를 반환한다."""
+    pipelines = list((getattr(model, "pipelines", None) or {}).values())
+    primary = getattr(model, "pipeline", None)
+    if primary is not None:
+        pipelines.insert(0, primary)
+    estimator_types = []
+    for pipeline in pipelines:
+        named_steps = getattr(pipeline, "named_steps", None)
+        estimator = named_steps.get("model") if isinstance(named_steps, dict) else None
+        if estimator is None:
+            raise RuntimeError("model pipeline is missing its estimator")
+        estimator_types.append(type(estimator).__name__)
+    if not estimator_types:
+        raise RuntimeError("model artifact has no serving pipeline")
+    return tuple(sorted(set(estimator_types)))
+
+
+def validate_hgbr_runtime(model_type: str, model: Any) -> str:
+    """승인 경로에는 HGBR manifest와 실제 HGBR estimator가 함께 있어야 한다."""
+    if "hgbr" not in model_type.lower():
+        raise RuntimeError("ML release is not declared as an HGBR model")
+    estimator_types = runtime_estimator_types(model)
+    if estimator_types != ("HistGradientBoostingRegressor",):
+        raise RuntimeError("HGBR release contains an unexpected estimator")
+    return estimator_types[0]
+
+
+def validate_history_source(trino: TrinoClient, history_table: str) -> None:
+    """승인된 history table이 존재하고 최소 한 행을 읽을 수 있을 때만 serving을 허용한다."""
+    result = trino.query(f"SELECT 1 AS source_ready FROM {history_table} LIMIT 1")
+    if not result.rows or result.rows[0].get("source_ready") != 1:
+        raise RuntimeError("ML history source is empty or unreadable")
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -69,9 +104,18 @@ class TimeSeriesRuntime:
         self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.approval = json.loads(approval_path.read_text(encoding="utf-8"))
         feature_contract = json.loads(feature_contract_path.read_text(encoding="utf-8"))
+        model_versions = {
+            self.manifest.get("model_version"),
+            self.approval.get("model_version"),
+            feature_contract.get("model_version"),
+        }
+        if None in model_versions or len(model_versions) != 1:
+            raise RuntimeError("ML release model versions do not match")
         actual_hash = sha256(artifact)
         if actual_hash != self.manifest.get("artifact_sha256"):
             raise RuntimeError("model artifact hash verification failed")
+        if actual_hash != self.approval.get("artifact_sha256"):
+            raise RuntimeError("model approval hash verification failed")
         if feature_contract.get("feature_columns_ordered") != FEATURE_COLUMNS:
             raise RuntimeError("runtime feature contract mismatch")
         decision = self.approval.get("final_decision", self.approval.get("decision"))
@@ -83,6 +127,10 @@ class TimeSeriesRuntime:
         self.model = joblib.load(artifact)
         if not hasattr(self.model, "predict_raw") or not hasattr(self.model, "predict"):
             raise RuntimeError("artifact is not a time-series demand model")
+        self.model_type = str(self.manifest.get("model_type") or "").strip()
+        if not self.model_type:
+            raise RuntimeError("model manifest is missing model_type")
+        self.estimator_type = validate_hgbr_runtime(self.model_type, self.model)
         self.model_hash = actual_hash
         self.history_table = safe_table(os.environ["ML_HISTORY_TABLE"])
         self.builder = TimeSeriesFeatureBuilder()
@@ -93,6 +141,7 @@ class TimeSeriesRuntime:
             ca_file=os.getenv("TRINO_CA_FILE") or os.environ["TRINO_TLS_CA_FILE"],
             timeout_seconds=float(os.getenv("TRINO_TIMEOUT_SECONDS", "30")),
         )
+        validate_history_source(self.trino, self.history_table)
 
     def query_history(self, request: PredictionRequest) -> tuple[pd.DataFrame, str]:
         sql = f"""
@@ -136,6 +185,8 @@ ORDER BY property_id
         return {
             "model_version": self.manifest["model_version"],
             "model_hash": self.model_hash,
+            "model_type": self.model_type,
+            "estimator_type": self.estimator_type,
             "approval": self.approval.get("final_decision"),
             "max_horizon": REQUEST_MAX_HORIZON,
             "model_max_horizon": MAX_HORIZON,
@@ -242,7 +293,13 @@ def health() -> dict[str, str]:
 @app.get("/readiness")
 def readiness() -> dict[str, Any]:
     runtime = ready_state()
-    return {"status": "ready", "model_hash": runtime.model_hash, "approval": runtime.approval.get("final_decision")}
+    return {
+        "status": "ready",
+        "model_hash": runtime.model_hash,
+        "model_type": runtime.model_type,
+        "estimator_type": runtime.estimator_type,
+        "approval": runtime.approval.get("final_decision"),
+    }
 
 
 @app.get("/capabilities")

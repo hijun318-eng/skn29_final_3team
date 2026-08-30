@@ -1,6 +1,6 @@
 # 내부업무매뉴얼 RAG 통합 경계
 
-이 디렉터리는 독립 로컬 검증을 통과한 Qwen3 Embedding·pgvector 검색 코드를 저장소 구조에 맞춰 옮긴 것이다. 합성 내부업무매뉴얼 PDF는 `data/rag/`에 포함하며, 모델, `.env`, DB dump와 실행 증적은 포함하지 않는다.
+이 디렉터리는 `text-embedding-3-large:d1024`와 pgvector·BM25 Hybrid 검색을 저장소 구조에 맞춰 통합한 코드다. 합성 내부업무매뉴얼 PDF는 `data/rag/`에 포함하며, secret, `.env`, DB dump와 실행 증적은 포함하지 않는다.
 
 ## 현재 적용 상태
 
@@ -17,9 +17,24 @@
 `enabled=false`, `approval_status=NOT_APPROVED`로 유지되며 MCP `tools/list`·`tools/call`이나
 기존 backend router를 활성화하지 않는다.
 
+## Embedding 후보 선택 원칙
+
+`text-embedding-3-large:d1024`는 한국어를 포함한 비영어 검색 품질을 우선 확인하기 위한
+후보다. OpenAI가 제공하는 `dimensions` 옵션으로 pgvector 계약은 1024차원에 고정한다.
+공식 embedding 모델 목록에는 `text-embedding-3-small`과 `text-embedding-3-large`가
+있으며 `text-embedding-3-medium`은 없으므로 런타임에서 거부한다.
+
+`large`는 `small`보다 비용이 높으므로 운영 기본값으로 승인한 것이 아니다. 활성화 전 같은
+한국어 Gold set, chunk와 Hybrid 검색 설정으로 recall, nDCG, 근거 적합도, 지연, 비용을
+비교한다. 유의미한 품질 이점이 확인되지 않으면 `small:d1024`로 내리고 전 문서를 같은
+revision으로 다시 적재한다. 모델 선택과 무관하게 `RAG_FEATURE_ENABLED=0`이 기본값이다.
+
+참고: [OpenAI embedding 모델](https://developers.openai.com/api/docs/models/text-embedding-3-large),
+[Embedding API의 dimensions 계약](https://developers.openai.com/api/reference/ruby/resources/embeddings/methods/create)
+
 ## 서비스 연동 기반
 
-`src/rag/integration/`은 최신 `dev`와 병합할 때 사용할 비활성 통합 경계다.
+`src/rag/integration/`은 Backend Gateway와 Supervisor가 호출할 수 있는 비활성 통합 경계다.
 
 | 구성 | 역할 |
 |---|---|
@@ -27,7 +42,7 @@
 | `AnswerviceContextAdapter` | `request_id`, `trace_id`, 사용자, 역할, 기준일, 대화 ID 전달 |
 | `PgToolRegistryRepository` | Tool 버전·승인·활성·허용 역할을 DB에서 읽기 |
 | `EvidenceCoordinator` | Tool별 권한 확인, 부분 실패 처리, Evidence 유형 분리 |
-| `LocalRagEvidenceAdapter` | 승인된 역할 매핑 후 기존 Qwen3 검색 호출 |
+| `LocalRagEvidenceAdapter` | 승인된 역할 매핑 후 OpenAI embedding 기반 검색 호출 |
 | `ApprovedSqlEvidenceAdapter` | 승인 SQL·G2 token만 기존 DataPlatform으로 실행 |
 | `DevP2EvidenceBridge` | 최신 `dev RequestContext`와 통합 Coordinator 연결 |
 | `McpJsonRpcDispatcher` | 네트워크 listener 없이 MCP `tools/list`·`tools/call` 계약 처리 |
@@ -35,7 +50,7 @@
 
 이 모듈은 검색 근거를 구조화할 뿐 답변 문장을 생성하지 않는다. Registry가 승인·활성화되지
 않으면 호출을 차단하며, 역할 매핑도 담당자가 `approved=true`로 제공하기 전에는 실패한다.
-현재 `dev`의 `GENERAL`·`TEMPLATE` 경로에 자동 등록하거나 P0/P1 응답 schema를 변경하지 않는다.
+현재 일반 분석 요청을 RAG로 임의 전환하지 않으며, 명시적으로 승인된 내부 지침 capability에서만 호출한다.
 MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint는 열지 않는다.
 
 ## 저장소 경로
@@ -51,15 +66,13 @@ MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint�
 | 로컬 평가 실행 결과 | `evals/runs/rag/` (`gitignore`) |
 | 검색 대상 매뉴얼 | `data/rag/manuals/` (개별 PDF 17개) |
 
-## dev 병합 후 연결 순서
+## 활성화 전 확인 순서
 
-1. 루트 `compose.yml`의 include 목록에 `infrastructure/rag/compose.fragment.yml`을 추가한다.
-2. backend image에 `infrastructure/rag/requirements.txt` 의존성과 로컬 모델 mount를 추가한다.
-3. `src.rag.api.create_app`의 검색 handler를 기존 `/internal/v1/*` router에 연결한다.
-4. 기존 `hotel_analyst`, `report_admin`, `data_admin`과 RAG의 `STAFF`, `MANAGER`, `SYSTEM_ADMIN` 역할 매핑을 담당자가 승인한 뒤 설정한다.
-5. Django 또는 gateway가 만든 인증 Context와 HMAC 서명 검증 경계를 하나로 정리한 뒤 외부 접근을 허용한다.
-
-3~5번은 현재 구현 완료로 간주하지 않는다. 병합 충돌 해결 후 기존 FastAPI 계약과 함께 결정해야 한다.
+1. 별도 `rag` profile로 PostgreSQL·RAG API·답변 서비스를 기동한다.
+2. `RAG_DB_PASSWORD`, `RAG_GATEWAY_HMAC_SECRET`, `OPENAI_API_KEY`를 저장소 밖에서 주입한다.
+3. 17개 문서를 현재 embedding revision으로 적재하고 문서별 승인·역할·유효기간을 검증한다.
+4. Backend Gateway의 health·HMAC·역할 매핑과 검색·답변 E2E를 같은 source revision에서 검증한다.
+5. 업무 담당자 Gold 승인을 기록한 뒤에만 Registry와 `RAG_FEATURE_ENABLED`를 활성화한다.
 
 ## 로컬 입력 경로
 
@@ -68,11 +81,15 @@ MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint�
 | `RAG_CONFIG_DIR` | `config/rag` |
 | `RAG_MIGRATIONS_DIR` | `infrastructure/rag/db/init` |
 | `RAG_MANUALS_DIR` | `data/rag/manuals` |
-| `RAG_MODEL_PATH` | `models/Qwen3-Embedding-0.6B` |
+| `RAG_EMBEDDING_PROVIDER` | `openai` |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-large` |
+| `OPENAI_EMBEDDING_DIMENSIONS` | `1024` |
+| `OPENAI_EMBEDDING_ENDPOINT` | `https://api.openai.com/v1/embeddings` |
+| `RAG_MODEL_PATH` | Qwen fallback를 명시적으로 빌드할 때만 사용 |
 | `RAG_RERANKER_PATH` | `models/bge-reranker-v2-m3` |
-| `RAG_ANSWER_ENDPOINT` | `http://llm-service:8000/v1/chat/completions` |
-| `RAG_ANSWER_MODEL` | `answervice-llm` |
-| `RAG_DEVICE` | `auto` (CUDA 가능 시 `cuda`, 아니면 `cpu`) |
+| `RAG_ANSWER_ENDPOINT` | `http://rag-local-answer:8001/v1/chat/completions` |
+| `RAG_ANSWER_MODEL` | `rag-local-answer-v2` |
+| `RAG_DEVICE` | `cpu` |
 | `RAG_SMOKE_QUERIES_PATH` | `evals/testsets/rag/smoke_queries.json` |
 | `RAG_EVIDENCE_DIR` | `evals/runs/rag` |
 | `RAG_BACKUP_DIR` | `backups/rag` |

@@ -1,6 +1,6 @@
 services:
   rag-postgres:
-    profiles: [rag-candidate, rag-e2e]
+    profiles: [rag, rag-candidate, rag-e2e]
     image: pgvector/pgvector:pg16@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
     container_name: answervice-rag-pgvector
     environment:

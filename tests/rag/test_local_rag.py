@@ -262,7 +262,11 @@ class OperationalControlTest(unittest.TestCase):
     def test_p2_gate_and_tool_registration_fail_closed(self) -> None:
         gate = P2GateStatus()
         tool = RagToolContract()
-        self.assertEqual(gate.implementation_state, "ISOLATED_POC")
+        self.assertEqual(gate.implementation_state, "INTEGRATED_CANDIDATE")
+        self.assertEqual(
+            gate.production_integration,
+            "CURRENT_INTEGRATION_E2E_PENDING",
+        )
         self.assertEqual(gate.p2_gate, "NOT_APPROVED")
         self.assertFalse(gate.affects_p0_p1_completion)
         self.assertFalse(tool.enabled)

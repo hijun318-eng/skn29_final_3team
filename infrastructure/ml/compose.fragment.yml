@@ -1,7 +1,7 @@
 services:
   ml-runtime:
     # Trino가 필요한 추가 profile이므로 full 또는 split-host와 함께 활성화한다.
-    profiles: [ml-candidate]
+    profiles: [ml, ml-candidate]
     container_name: answervice-ml-runtime
     build:
       context: ../..

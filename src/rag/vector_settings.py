@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .embedding_provider import OPENAI_EMBEDDING_MODELS
+
 
 @dataclass(frozen=True)
 class VectorSettings:
@@ -57,8 +59,19 @@ class VectorSettings:
         )
         configured_model_path = os.getenv("RAG_MODEL_PATH", embedding["local_path"])
         provider = os.getenv("RAG_EMBEDDING_PROVIDER", embedding.get("provider", "qwen")).strip().lower()
+        if provider not in {"openai", "qwen"}:
+            raise ValueError(f"Unsupported RAG_EMBEDDING_PROVIDER: {provider}")
         model_id = os.getenv("OPENAI_EMBEDDING_MODEL", embedding["model_id"]).strip() if provider == "openai" else embedding["model_id"]
         dimension = int(os.getenv("OPENAI_EMBEDDING_DIMENSIONS", str(embedding["dimension"]))) if provider == "openai" else int(embedding["dimension"])
+        if provider == "openai" and model_id not in OPENAI_EMBEDDING_MODELS:
+            raise ValueError(
+                "OPENAI_EMBEDDING_MODEL must be text-embedding-3-small or "
+                "text-embedding-3-large"
+            )
+        if dimension != int(embedding["dimension"]):
+            raise ValueError(
+                "Embedding dimension must match the configured pgvector schema"
+            )
         return cls(
             project_root=root,
             config_dir=config_dir,

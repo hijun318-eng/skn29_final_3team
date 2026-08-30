@@ -1,7 +1,7 @@
 services:
   rag-api:
-    profiles: [rag-candidate, rag-e2e]
-    image: answervice-rag-e2e-backend:20260819-orchestration2
+    profiles: [rag, rag-candidate, rag-e2e]
+    image: answervice-rag-runtime:openai-large-d1024-hybrid-20260830
     container_name: answervice-rag-api
     build:
       context: ../..
@@ -18,7 +18,7 @@ services:
       RAG_MODEL_PATH: /models/${RAG_EMBEDDING_MODEL_DIR:-Qwen3-Embedding-0.6B}
       RAG_EMBEDDING_PROVIDER: ${RAG_EMBEDDING_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-large}
       OPENAI_EMBEDDING_DIMENSIONS: ${OPENAI_EMBEDDING_DIMENSIONS:-1024}
       OPENAI_EMBEDDING_ENDPOINT: ${OPENAI_EMBEDDING_ENDPOINT:-https://api.openai.com/v1/embeddings}
       RAG_DEVICE: ${RAG_DEVICE:-cpu}
@@ -46,7 +46,7 @@ services:
 
   rag-e2e:
     profiles: [rag-e2e]
-    image: answervice-rag-e2e-backend:20260819-orchestration2
+    image: answervice-rag-runtime:openai-large-d1024-hybrid-20260830
     build:
       context: ../..
       dockerfile: infrastructure/rag/Dockerfile
@@ -71,9 +71,9 @@ services:
       - database-network
 
   rag-local-answer:
-    profiles: [rag-candidate, rag-e2e]
+    profiles: [rag, rag-candidate, rag-e2e]
     container_name: answervice-rag-local-answer
-    image: answervice-rag-e2e-backend:20260819-orchestration2
+    image: answervice-rag-runtime:openai-large-d1024-hybrid-20260830
     entrypoint: ["uvicorn"]
     command: ["src.rag.local_answer_service:app", "--host", "0.0.0.0", "--port", "8001"]
     healthcheck:

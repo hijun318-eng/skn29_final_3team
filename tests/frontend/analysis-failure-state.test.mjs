@@ -159,6 +159,21 @@ try {
   assert.match(semanticContractHtml, /승인 관계·분석 단위 계약/);
   assert.doesNotMatch(semanticContractHtml, /internal-request-id|internal-trace-id/);
 
+  const presentationUnsupportedHtml = render({
+    ...baseRun,
+    error: {
+      code: "PRESENTATION_NOT_SUPPORTED",
+      message: "현재 결과에는 그래프 비교에 필요한 기간 또는 분류 축이 없습니다.",
+      retryable: false,
+      required_action: "MODIFY_REQUEST",
+    },
+  }, "ERROR");
+  assert.match(presentationUnsupportedHtml, /data-tone="clarification"/);
+  assert.match(presentationUnsupportedHtml, /현재 결과를 요청한 방식으로 표시하기 어렵습니다/);
+  assert.match(presentationUnsupportedHtml, /그래프 비교에 필요한 기간 또는 분류 축/);
+  assert.match(presentationUnsupportedHtml, /기간별 추이나 항목별 비교/);
+  assert.doesNotMatch(presentationUnsupportedHtml, /검증 근거나 계약이 완전하지 않아/);
+
   const emptyHtml = render({ ...baseRun, status: "success", rowCount: 0, error: undefined }, "EMPTY");
   assert.match(emptyHtml, /조건에 맞는 결과가 없습니다/);
   assert.doesNotMatch(emptyHtml, /analysis-diagnostic__action/);

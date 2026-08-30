@@ -145,6 +145,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             "QUERY_TIMEOUT",
             "QUERY_SOURCE_FAILED",
             "EMPTY_RESULT",
+            "PRESENTATION_NOT_SUPPORTED",
             "RESULT_VALIDATION_FAILED",
             "RESULT_EVIDENCE_MISSING",
             "ARTIFACT_PERSIST_FAILED",

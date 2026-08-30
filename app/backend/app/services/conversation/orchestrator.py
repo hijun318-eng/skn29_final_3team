@@ -255,15 +255,15 @@ def _presentation_view_contract(
         or not isinstance(snapshot, dict)
         or not isinstance(chart, dict)
     ):
-        raise ValueError("표현 전환에 필요한 Safe Artifact schema가 없습니다.")
+        raise ValueError("이전 분석 결과의 표·차트 구성 정보를 확인할 수 없습니다.")
     raw_columns = snapshot.get("columns")
     if not isinstance(raw_columns, list) or any(
         not isinstance(column, str) or not column for column in raw_columns
     ):
-        raise ValueError("Artifact column schema가 유효하지 않습니다.")
+        raise ValueError("이전 분석 결과에서 표시할 열을 확인할 수 없습니다.")
     columns = tuple(dict.fromkeys(raw_columns))
     if len(columns) != len(raw_columns) or not columns:
-        raise ValueError("Artifact column schema가 중복되었거나 비어 있습니다.")
+        raise ValueError("이전 분석 결과의 표시 열이 비어 있거나 중복되었습니다.")
 
     view_type = {
         "HORIZONTAL_BAR": "BAR",
@@ -271,7 +271,7 @@ def _presentation_view_contract(
         "SUMMARY": "TABLE",
     }.get(requested_type.upper(), requested_type.upper())
     if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA"}:
-        raise ValueError("요청한 표현은 현재 renderer allowlist 밖입니다.")
+        raise ValueError("요청한 표현 방식은 현재 지원하지 않습니다.")
     spec: dict[str, Any] = {
         "chart_type": view_type.lower(),
         "source_artifact_id": str(artifact_id),
@@ -296,9 +296,9 @@ def _presentation_view_contract(
             for field in raw_y_fields
         )
     ):
-        raise ValueError("Artifact의 승인 축·series로 요청한 표현을 만들 수 없습니다.")
+        raise ValueError("현재 결과에는 그래프 비교에 필요한 기간 또는 분류 축이 없습니다.")
     if view_type in {"LINE", "AREA"} and x_field != "period":
-        raise ValueError("시간축 역할이 없는 Artifact를 추이 그래프로 바꿀 수 없습니다.")
+        raise ValueError("현재 결과에는 시간 흐름을 나타내는 기간 축이 없습니다.")
     spec.update(
         {
             "x_field": x_field,
@@ -2126,7 +2126,7 @@ class ConversationOrchestrator:
                 terminal_status, reason_code = "BLOCKED", "NEEDS_CLARIFICATION"
             elif route_block_message is not None:
                 terminal_status = "BLOCKED"
-                reason_code = ErrorCode.RESULT_VALIDATION_FAILED.value
+                reason_code = ErrorCode.PRESENTATION_NOT_SUPPORTED.value
             if (
                 slots.route == "ANALYSIS"
                 and terminal_status == "SUCCEEDED"

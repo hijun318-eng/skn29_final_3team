@@ -1781,8 +1781,12 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("BLOCKED", blocked["status"])
         self.assertEqual(
-            ErrorCode.RESULT_VALIDATION_FAILED.value,
+            ErrorCode.PRESENTATION_NOT_SUPPORTED.value,
             blocked["code"],
+        )
+        self.assertEqual(
+            "현재 결과에는 시간 흐름을 나타내는 기간 축이 없습니다.",
+            blocked["message"],
         )
         self.assertEqual("PRESENTATION", blocked["turn"]["route"])
         self.assertEqual("BLOCKED", blocked["turn"]["terminal_status"])

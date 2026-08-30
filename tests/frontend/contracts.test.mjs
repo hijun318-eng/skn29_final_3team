@@ -137,6 +137,7 @@ assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /supportedCha
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /문의 코드/);
 assert.match(source("contracts/analysis.ts"), /REQUEST_CANCELLED/);
 assert.match(source("contracts/analysis.ts"), /NETWORK_UNAVAILABLE/);
+assert.match(source("contracts/analysis.ts"), /PRESENTATION_NOT_SUPPORTED/);
 assert.match(source("pages/AgentPage.jsx"), /NETWORK_UNAVAILABLE/);
 assert.match(source("components/analysis/AnalysisFailureState.tsx"), /REQUIRED_ACTION_COPY\[action\]/);
 assert.match(source("components/analysis/AnalysisFailureState.tsx"), /run\.error\?\.required_action/);

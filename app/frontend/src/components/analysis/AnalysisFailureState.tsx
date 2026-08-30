@@ -256,6 +256,19 @@ export function analysisFailurePresentation(
     };
   }
 
+  if (code === "PRESENTATION_NOT_SUPPORTED") {
+    return {
+      tone: "clarification",
+      category: "표현 방식 확인",
+      title: "현재 결과를 요청한 방식으로 표시하기 어렵습니다",
+      reason: messageOr(
+        "현재 결과에는 그래프 비교에 필요한 기간 또는 분류 축이 없습니다.",
+        error?.message,
+      ),
+      nextStep: "기간별 추이나 항목별 비교가 포함된 분석을 먼저 요청해 주세요.",
+    };
+  }
+
   if (RESULT_GUARD_CODES.has(code) || viewState === "INSUFFICIENT_EVIDENCE") {
     return {
       tone: "restricted",

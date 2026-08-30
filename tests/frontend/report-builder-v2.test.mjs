@@ -51,6 +51,8 @@ assert.match(builder, /\{presentation\}/);
 assert.match(builder, /rightPanel === "assistant"/);
 assert.match(builder, /className="builder-inspector"/);
 assert.match(builder, /const \[propertiesOpen, setPropertiesOpen\] = useState\(false\)/);
+assert.match(builder, /aria-label=\{propertiesOpen && rightPanel === "assistant" \? "AI 도우미 닫기" : "AI 도우미 열기"\}/);
+assert.match(builder, /aria-label=\{propertiesOpen && rightPanel === "properties" \? "속성 닫기" : "속성 열기"\}/);
 assert.match(builder, /libraryOpen \? "library-open" : "library-collapsed"/);
 assert.match(builder, /propertiesOpen \? "inspector-open" : "properties-collapsed"/);
 assert.match(builder, /pages\.length > 1 && <nav className="builder-page-navigator"/);

@@ -109,8 +109,8 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
           <nav aria-label="작업 화면 설정">
             <button ref={shortcutTriggerRef} type="button" onClick={() => setShortcutHelpOpen(true)} aria-haspopup="dialog" aria-label="편집 단축키"><HelpCircle size={14} /><span>도움말</span></button>
             {presentation}
-            {assistant && <button type="button" onClick={() => toggleRightPanel("assistant")} aria-pressed={propertiesOpen && rightPanel === "assistant"}><Sparkles size={14} /><span>AI 도우미</span></button>}
-            <button type="button" onClick={() => toggleRightPanel("properties")} aria-pressed={propertiesOpen && rightPanel === "properties"}>{propertiesOpen && rightPanel === "properties" ? <PanelRightClose size={14} /> : <Settings2 size={14} />}<span>속성</span></button>
+            {assistant && <button type="button" onClick={() => toggleRightPanel("assistant")} aria-label={propertiesOpen && rightPanel === "assistant" ? "AI 도우미 닫기" : "AI 도우미 열기"} aria-pressed={propertiesOpen && rightPanel === "assistant"}><Sparkles size={14} /><span>AI 도우미</span></button>}
+            <button type="button" onClick={() => toggleRightPanel("properties")} aria-label={propertiesOpen && rightPanel === "properties" ? "속성 닫기" : "속성 열기"} aria-pressed={propertiesOpen && rightPanel === "properties"}>{propertiesOpen && rightPanel === "properties" ? <PanelRightClose size={14} /> : <Settings2 size={14} />}<span>속성</span></button>
             {fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}
           </nav>
         </div>

@@ -1,10 +1,12 @@
 import copy
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, schema_definition, validate_payload
+from src.modelops.runtime import estimate_token_count
 
 
 REPORT_ASSISTANT_REQUEST = {
@@ -508,6 +510,71 @@ class ReportAssistantContractTests(unittest.TestCase):
         forged["patch"]["operations"][1]["depends_on_indexes"] = [0]
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_response", forged)
+
+    def test_three_page_patch_fits_output_budget_and_keeps_operation_bound(self):
+        """12-operation 3페이지 구성은 4,096에 들고 추가 연산은 계약에서 거부된다."""
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        summary = "승인된 분석 근거를 바탕으로 월별 변화와 주요 관측값을 설명합니다. " * 8
+        response["patch"] = {
+            "summary": "제목·요약·지표·차트·표를 세 페이지 흐름으로 구성합니다.",
+            "operations": [
+                {**REPORT_ASSISTANT_WIRE_OPERATION, "op": "set_report_title", "title": "월간 운영 분석 보고서"},
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_text",
+                    "title": "경영진 요약", "content": summary,
+                    "evidence_refs": ["artifact_narrative"], "width": "full",
+                },
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_artifact_view",
+                    "artifact_ref": "source_artifact", "view": "kpi", "width": "half",
+                },
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_artifact_view",
+                    "artifact_ref": "source_artifact", "view": "chart", "width": "full",
+                    "chart_type": "line", "show_legend": True,
+                },
+                {**REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_report_page"},
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_text",
+                    "title": "월별 변화", "content": summary,
+                    "evidence_refs": ["artifact_narrative"], "width": "full",
+                },
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_artifact_view",
+                    "artifact_ref": "source_artifact", "view": "table", "width": "full",
+                    "density": "compact", "show_row_numbers": False,
+                },
+                {**REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_report_page"},
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_text",
+                    "title": "주요 시사점", "content": summary,
+                    "evidence_refs": ["artifact_narrative"], "width": "full",
+                },
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_artifact_view",
+                    "artifact_ref": "source_artifact", "view": "summary", "width": "half",
+                },
+                {
+                    **REPORT_ASSISTANT_WIRE_OPERATION, "op": "set_currency_display_unit",
+                    "currency_display_unit": "hundredMillion",
+                },
+                {**REPORT_ASSISTANT_WIRE_OPERATION, "op": "compact_report_layout"},
+            ],
+        }
+
+        validate_payload("report_assistant_turn_response", response)
+        token_count = estimate_token_count(
+            json.dumps(response, ensure_ascii=False, separators=(",", ":"))
+        )
+        self.assertGreater(token_count, 1280)
+        self.assertLessEqual(token_count, 4096)
+
+        response["patch"]["operations"].append(
+            {**REPORT_ASSISTANT_WIRE_OPERATION, "op": "add_report_page"}
+        )
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", response)
 
     def test_turn_history_is_bounded_and_clarification_has_no_action(self):
         """최근 대화는 role/content만 허용하고 clarification은 실행 계획과 patch를 갖지 않는다."""

@@ -227,7 +227,8 @@ assert.match(reportSources.page, /evaluation=\{lifecycle\.assistantEvaluation\}/
 assert.match(reportSources.page, /onRetry=\{lifecycle\.retryAssistantSession\}/);
 assert.match(reportSources.page, /onReview=\{page\.reviewAssistantReport\}/);
 assert.match(reportSources.lifecycle, /reportClient\.reviewAssistantSession\(session\.assistant_request_id, selectedBlockId\)/);
-assert.match(reportAssistantPanelSource, /실행 검증 완료/);
+assert.match(reportAssistantPanelSource, /요청 처리를 확인했습니다/);
+assert.match(reportAssistantPanelSource, /report-assistant-technical-detail/);
 assert.match(reportAssistantPanelSource, /비저장 품질 검토/);
 assert.match(reportAssistantPanelSource, /이 항목 수정하기/);
 assert.match(reportAssistantPanelSource, /종합 편집 근거 선택/);

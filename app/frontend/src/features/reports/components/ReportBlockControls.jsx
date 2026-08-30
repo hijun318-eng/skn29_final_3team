@@ -1,5 +1,5 @@
 /** 보고서 block의 통화·표현·크기·복제·삭제 제어기를 제공하는 모듈이다. */
-import { memo, useRef } from "react";
+import { memo, useId, useRef } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
@@ -170,6 +170,8 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
   disabledReason = "",
   onAdd,
 }) {
+  const reasonId = useId();
+  const hasVisibleReason = disabled && Boolean(disabledReason);
   const {
     attributes,
     listeners,
@@ -185,8 +187,12 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
   return (
     <div
       ref={setNodeRef}
-      className={`report-template-tile ${isDragging ? "is-dragging" : ""}`}
+      className={`report-template-tile ${isDragging ? "is-dragging" : ""} ${hasVisibleReason ? "has-disabled-reason" : ""}`.trim()}
+      role={hasVisibleReason ? "group" : undefined}
       aria-disabled={disabled || undefined}
+      aria-describedby={hasVisibleReason ? reasonId : undefined}
+      aria-label={hasVisibleReason ? `${template.title}: ${disabledReason}` : undefined}
+      tabIndex={hasVisibleReason ? 0 : undefined}
     >
       <button
         ref={setActivatorNodeRef}
@@ -194,13 +200,15 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
         className="report-template-add"
         disabled={disabled}
         onClick={() => onAdd(template.id)}
-        title={disabled && disabledReason ? disabledReason : `${template.title} 블록 바로 추가 또는 끌어서 배치`}
+        aria-describedby={hasVisibleReason ? reasonId : undefined}
+        title={disabled ? undefined : `${template.title} 블록 바로 추가 또는 끌어서 배치`}
         {...listeners}
         {...attributes}
       >
         <Icon size={15} aria-hidden="true" />
         <span className="report-template-copy"><b>{template.title}</b><small>{template.description}</small></span>
       </button>
+      {hasVisibleReason && <small id={reasonId} className="report-template-disabled-reason" role="note">{disabledReason}</small>}
     </div>
   );
 });

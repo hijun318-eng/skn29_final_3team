@@ -11,12 +11,28 @@ import {
 } from "../reportAssistantUiState";
 import { formatSeoulTime } from "../reportPageLabels";
 
-/** 실제 assistant API가 반환한 모델·시도 횟수·처리 시간만 성공 영수증으로 표시하며 trace가 없으면 렌더링하지 않는다. */
+/** 내부 실행 정보는 기본 대화에서 숨기고 사용자가 펼친 경우에만 확인할 수 있게 한다. */
+function AssistantTechnicalDetails({ children }) {
+  return <details className="report-assistant-technical-detail">
+    <summary>기술 상세</summary>
+    <div>{children}</div>
+  </details>;
+}
+
+/** 실제 assistant API 성공을 사용자 문구로 표시하며 세부 trace는 접힌 영역에만 둔다. */
 function AssistantReceipt({ trace }) {
   if (!trace) return null;
   return <div className="report-assistant-receipt">
     <Check size={13} aria-hidden="true" />
-    <span><b>AI 초안 반영 완료</b><small>{trace.model_version} · {trace.attempts}회 시도 · {(trace.duration_ms / 1000).toFixed(1)}초</small></span>
+    <div><b>보고서 변경을 반영했습니다.</b><small>새 버전에서 변경 내용을 확인할 수 있습니다.</small>
+      <AssistantTechnicalDetails>
+        <dl>
+          <div><dt>사용 모델</dt><dd>{trace.model_version || "정보 없음"}</dd></div>
+          <div><dt>처리 시도</dt><dd>{trace.attempts ?? "정보 없음"}</dd></div>
+          <div><dt>처리 시간</dt><dd>{Number.isFinite(trace.duration_ms) ? `${(trace.duration_ms / 1000).toFixed(1)}초` : "정보 없음"}</dd></div>
+        </dl>
+      </AssistantTechnicalDetails>
+    </div>
   </div>;
 }
 
@@ -115,18 +131,19 @@ function AssistantQualityReview({ review, onSelect, pending }) {
   </section>;
 }
 
-/** 승인 카드가 닫힌 뒤에도 서버 terminal phase와 안전한 오류 code를 사용자에게 보여준다. */
+/** 승인 카드가 닫힌 뒤 terminal phase는 사용자 문구로, 오류 code는 접힌 기술 상세로 표시한다. */
 function AssistantWorkflowStatus({ status, errorCode, requiredAction, retryable, onRetry, pending }) {
   if (!WORKFLOW_COPY[status] || !["completed", "failed", "cancelled"].includes(status)) return null;
   const [title, detail] = WORKFLOW_COPY[status];
   return <article className={`report-assistant-message assistant workflow-${status}`}>
     <ShieldCheck size={15} aria-hidden="true" />
-    <p><b>{title}</b><br />{detail}{errorCode ? <small> · {errorCode}</small> : null}
-      {status === "failed" ? <small> · {REQUIRED_ACTION_COPY[requiredAction] || REQUIRED_ACTION_COPY.NONE}</small> : null}
+    <p><b>{title}</b><br />{detail}
+      {status === "failed" ? <small>{REQUIRED_ACTION_COPY[requiredAction] || REQUIRED_ACTION_COPY.NONE}</small> : null}
       {status === "failed" && retryable
         ? <button type="button" onClick={onRetry} disabled={pending}>새 세션으로 다시 시도</button>
         : null}
     </p>
+    {errorCode ? <AssistantTechnicalDetails><code>{errorCode}</code></AssistantTechnicalDetails> : null}
   </article>;
 }
 
@@ -143,7 +160,7 @@ function AssistantCancelAction({ status, onCancel, pending }) {
   return null;
 }
 
-/** 현재 사용자 요청의 안전한 서버 평가만 표시하고 전체 사용자 비용·원문 trace는 노출하지 않는다. */
+/** 사용자에게는 처리 결과만 표시하고 계약·지연·오류 code는 접힌 기술 상세로 분리한다. */
 function AssistantEvaluationReceipt({ evaluation }) {
   if (!evaluation) return null;
   const route = evaluation.route === "new_data"
@@ -151,10 +168,14 @@ function AssistantEvaluationReceipt({ evaluation }) {
     : evaluation.route === "existing_artifact" ? "기존 분석 결과 편집" : "분류 없음";
   return <article className="report-assistant-message assistant">
     <ShieldCheck size={15} aria-hidden="true" />
-    <p><b>실행 검증 완료</b><br />{route} · 형식 검증 {evaluation.contract_valid ? "통과" : "실패"} · 새 버전 {evaluation.revision_created ? "생성" : "미생성"}
-      {evaluation.latency_ms == null ? null : <small> · {Math.round(evaluation.latency_ms)}ms</small>}
-      {evaluation.error_code ? <small> · {evaluation.error_code}</small> : null}
-    </p>
+    <p><b>요청 처리를 확인했습니다.</b><br />{route} · 보고서 새 버전 {evaluation.revision_created ? "생성" : "미생성"}</p>
+    <AssistantTechnicalDetails>
+      <dl>
+        <div><dt>형식 검증</dt><dd>{evaluation.contract_valid ? "통과" : "실패"}</dd></div>
+        {evaluation.latency_ms == null ? null : <div><dt>처리 시간</dt><dd>{Math.round(evaluation.latency_ms)}ms</dd></div>}
+        {evaluation.error_code ? <div><dt>오류 코드</dt><dd><code>{evaluation.error_code}</code></dd></div> : null}
+      </dl>
+    </AssistantTechnicalDetails>
   </article>;
 }
 
@@ -202,7 +223,9 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
     setSelectedIndexes(
       preview.approvedIndexes?.length
         ? [...preview.approvedIndexes]
-        : preview.items.map((item) => item.index),
+        : preview.items
+            .filter((item) => item.impact_category !== "DESTRUCTIVE")
+            .map((item) => item.index),
     );
   }, [preview?.requestId]);
   useEffect(() => {
@@ -216,6 +239,7 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
   const impactCategories = [...new Set(selectedItems.map((item) => item.impact_category))];
   const evidenceRequired = selectedItems.filter((item) => item.evidence_required).length;
   const evidenceCited = selectedItems.filter((item) => item.evidence_required && item.evidence_count > 0).length;
+  const hasDestructiveItems = preview.items.some((item) => item.impact_category === "DESTRUCTIVE");
   const toggleOperation = (index) => setSelectedIndexes((current) => (
     current.includes(index)
       ? current.filter((item) => item !== index)
@@ -240,9 +264,10 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
     </dl>
     {!titleOnly && <div className="report-assistant-patch-selection" role="group" aria-label="변경 선택 도구">
       <span aria-live="polite">{selectedIndexes.length} / {preview.items.length}개 선택</span>
-      <button type="button" onClick={() => setSelectedIndexes(allIndexes)} disabled={!waiting || pending || selectedIndexes.length === allIndexes.length}>전체 선택</button>
+      <button type="button" onClick={() => setSelectedIndexes(allIndexes)} disabled={!waiting || pending || selectedIndexes.length === allIndexes.length}>{hasDestructiveItems ? "모두 선택(삭제 포함)" : "전체 선택"}</button>
       <button type="button" onClick={() => setSelectedIndexes([])} disabled={!waiting || pending || !selectedIndexes.length}>전체 해제</button>
     </div>}
+    {hasDestructiveItems && waiting ? <p className="report-assistant-patch-safety-note"><ShieldCheck size={13} aria-hidden="true" />삭제·복원 작업은 안전을 위해 자동 선택하지 않습니다. 적용할 항목을 직접 확인해 주세요.</p> : null}
     <div className="report-assistant-patch-items" aria-label="적용할 변경 선택">
       {preview.items.map((item) => {
         const inputId = `${operationIdPrefix}-operation-${item.index}`;
@@ -407,12 +432,12 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   return <aside className="report-assistant-panel" aria-label="보고서 AI Assistant">
     <header>
       <span className="report-assistant-mark"><Sparkles size={15} aria-hidden="true" /></span>
-      <div><p>REPORT ASSISTANT</p><h2>보고서 AI Assistant</h2><small>선택된 블록 · {selectedBlock?.title || "선택 없음"}</small></div>
+      <div><p>REPORT ASSISTANT</p><h2>보고서 AI Assistant</h2><small title={selectedBlock?.title || "선택 없음"}>선택된 블록 · {selectedBlock?.title || "선택 없음"}</small></div>
     </header>
 
     <div className="report-assistant-context">
       <Database size={14} aria-hidden="true" />
-      <span><b>{artifactTitle || "분석 결과를 선택해 주세요"}</b><small>{artifact ? "승인된 분석 결과를 근거로 초안을 다시 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
+      <span><b title={artifactTitle || "분석 결과를 선택해 주세요"}>{artifactTitle || "분석 결과를 선택해 주세요"}</b><small>{artifact ? "승인된 분석 결과를 근거로 초안을 다시 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
       {artifactOptions.length > 1 && <button
         type="button"
         onClick={openEvidencePicker}
@@ -514,7 +539,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
     <div className="report-assistant-quick" aria-label="빠른 요청">
       <button type="button" onClick={requestTitleSuggestion} disabled={!canEdit || !artifact || Boolean(pending) || workflowActive || hasUnsavedChanges}>제목 제안</button>
       <button type="button" onClick={onReview} disabled={!canEdit || !artifact || Boolean(pending) || workflowActive || hasUnsavedChanges}>보고서 품질 검토</button>
-      {suggestions.map((request) => <button type="button" onClick={() => onInstructionChange(request)} disabled={!canEdit || !artifact || Boolean(pending) || composerBlocked} key={request}>{request}</button>)}
+      {suggestions.map((request) => <button type="button" title={request} onClick={() => onInstructionChange(request)} disabled={!canEdit || !artifact || Boolean(pending) || composerBlocked} key={request}>{request}</button>)}
     </div>
 
     {hasUnsavedChanges && <p className="report-assistant-save-first" role="status">현재 편집 내용을 저장하면 AI 제목 제안, 품질 검토와 변경안 적용을 사용할 수 있습니다.</p>}

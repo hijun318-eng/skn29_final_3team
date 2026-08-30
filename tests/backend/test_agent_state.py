@@ -16,6 +16,8 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.agent_contracts import (
+    AGENT_CHECKPOINT_VERSION,
+    AGENT_EXECUTION_STATE_VERSION,
     AgentCheckpoint,
     AgentDecisionSource,
     AgentExecutionPhase,
@@ -24,7 +26,11 @@ from app.agent_contracts import (
 )
 from app.contracts import RequestContext
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentRequest
+from app.ports.agent import (
+    AgentKind,
+    AgentRequest,
+    canonical_agent_request_fingerprint,
+)
 from app.services.agent_state import (
     AgentStateTransitionError,
     checkpoint_agent_state,
@@ -53,7 +59,8 @@ class AgentStateContractTest(unittest.TestCase):
     def test_initial_state_uses_conversation_scoped_idempotency_identity(self) -> None:
         """같은 key라도 Conversation이 다르면 checkpoint thread가 격리된다."""
 
-        first = initial_agent_state(_request(idempotency_key="same-key"))
+        first_request = _request(idempotency_key="same-key")
+        first = initial_agent_state(first_request)
         second = initial_agent_state(_request(idempotency_key="same-key"))
 
         self.assertEqual(first.phase, AgentExecutionPhase.RECEIVED)
@@ -61,6 +68,25 @@ class AgentStateContractTest(unittest.TestCase):
         self.assertNotEqual(first.checkpoint.thread_id, second.checkpoint.thread_id)
         self.assertEqual(first.checkpoint.idempotency_key, "same-key")
         self.assertNotIn("객실 매출", str(first.model_dump(mode="json")))
+        self.assertEqual(
+            first.request_fingerprint,
+            canonical_agent_request_fingerprint(first_request),
+        )
+        self.assertEqual(first.schema_version, AGENT_EXECUTION_STATE_VERSION)
+        self.assertEqual(
+            checkpoint_agent_state(first).schema_version,
+            AGENT_CHECKPOINT_VERSION,
+        )
+
+    def test_prefingerprint_v1_state_is_rejected_instead_of_silently_reused(self) -> None:
+        """필수 fingerprint 전 v1 snapshot을 새 상태로 오인하지 않는다."""
+
+        payload = initial_agent_state(_request()).model_dump(mode="python")
+        payload["schema_version"] = "AgentExecutionState.v1"
+        payload.pop("request_fingerprint")
+
+        with self.assertRaises(ValidationError):
+            AgentExecutionState.model_validate(payload)
 
     def test_reducer_advances_only_through_legal_forward_transitions(self) -> None:
         """route·start·complete가 revision을 하나씩 증가시키고 terminal을 고정한다."""

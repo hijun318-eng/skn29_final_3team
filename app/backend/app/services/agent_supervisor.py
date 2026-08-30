@@ -20,6 +20,7 @@ from app.ports.agent import (
     AgentPortReadiness,
     AgentRequest,
     AgentResult,
+    canonical_agent_request_fingerprint,
 )
 from app.services.agent_state import initial_agent_state, reduce_agent_state
 
@@ -308,6 +309,7 @@ class AgentRoutingOutcome:
 
     decision: SupervisorDecision
     state: AgentExecutionState
+    request_fingerprint: str
 
     def __post_init__(self) -> None:
         """결정과 reducer 상태가 같은 Agent·근거를 가리킬 때만 허용한다."""
@@ -318,6 +320,7 @@ class AgentRoutingOutcome:
             or self.state.decision_reason != self.decision.reason
             or self.state.decision_source is not self.decision.source
             or self.state.decision_evidence_refs != self.decision.evidence_refs
+            or self.request_fingerprint != self.state.request_fingerprint
         ):
             raise AgentDispatchError(
                 "AGENT_ROUTING_OUTCOME_INVALID",
@@ -545,7 +548,11 @@ class DeterministicAgentSupervisor:
                 evidence_refs=decision.evidence_refs,
             ),
         )
-        return AgentRoutingOutcome(decision=decision, state=state)
+        return AgentRoutingOutcome(
+            decision=decision,
+            state=state,
+            request_fingerprint=canonical_agent_request_fingerprint(request),
+        )
 
     async def execute_routed_with_state(
         self,
@@ -556,13 +563,19 @@ class DeterministicAgentSupervisor:
 
         expected = initial_agent_state(request)
         state = routing.state
+        expected_routed = reduce_agent_state(
+            expected,
+            AgentStateUpdate(
+                event="ROUTE",
+                agent=routing.decision.agent,
+                reason=routing.decision.reason,
+                source=routing.decision.source,
+                evidence_refs=routing.decision.evidence_refs,
+            ),
+        )
         if (
-            expected.checkpoint != state.checkpoint
-            or expected.request_id != state.request_id
-            or expected.trace_id != state.trace_id
-            or expected.user_id != state.user_id
-            or expected.expected_head_turn_id != state.expected_head_turn_id
-            or expected.requested_route != state.requested_route
+            state != expected_routed
+            or routing.request_fingerprint != expected.request_fingerprint
         ):
             failed_state = reduce_agent_state(
                 expected,

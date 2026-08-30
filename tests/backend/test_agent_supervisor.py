@@ -25,10 +25,12 @@ from app.ports.agent import (
     AgentRequest,
     AgentResult,
     MLPredictionInvocation,
+    canonical_agent_request_fingerprint,
 )
 from app.services.agent_supervisor import (
     AgentCapabilityEvidence,
     AgentDispatchError,
+    AgentRoutingOutcome,
     CapabilityEvidenceRouteResolver,
     CallableAgentPort,
     DeterministicAgentSupervisor,
@@ -413,6 +415,102 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
             raised.exception.code,
             "AGENT_ROUTE_REQUEST_MISMATCH",
         )
+        self.assertEqual(raised.exception.state.phase, AgentExecutionPhase.FAILED)
+        self.assertEqual(port_calls, 0)
+
+    async def test_routed_state_rejects_changed_typed_invocation_at_same_checkpoint(self) -> None:
+        """같은 command checkpoint라도 route 뒤 invocation 변조는 실행 전에 차단한다."""
+
+        port_calls = 0
+
+        class MLResolver:
+            async def resolve(self, request: AgentRequest) -> SupervisorDecision:
+                return SupervisorDecision(
+                    agent=AgentKind.ML_PREDICTION,
+                    reason="STRUCTURED_ML_ROUTE",
+                    source=AgentDecisionSource.GOVERNED_DEFAULT,
+                )
+
+        async def ml_handler(request: AgentRequest):
+            nonlocal port_calls
+            port_calls += 1
+            return {"status": "SUCCESS", "data": {}}
+
+        supervisor = DeterministicAgentSupervisor(
+            {
+                AgentKind.ML_PREDICTION: CallableAgentPort(
+                    AgentKind.ML_PREDICTION,
+                    ml_handler,
+                )
+            },
+            route_resolver=MLResolver(),
+        )
+        routed_request = _request(
+            admitted=True,
+            invocation=MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=30,
+            ),
+        )
+        routing = await supervisor.route_with_state(routed_request)
+        changed_payload = routed_request.model_dump(mode="python")
+        changed_payload["invocation"] = {
+            **routed_request.invocation.model_dump(mode="python"),
+            "horizon_days": 90,
+        }
+        changed_request = AgentRequest.model_validate(changed_payload)
+
+        self.assertEqual(
+            routed_request.command,
+            changed_request.command,
+        )
+        self.assertEqual(
+            routed_request.context.command_id,
+            changed_request.context.command_id,
+        )
+        self.assertNotEqual(
+            canonical_agent_request_fingerprint(routed_request),
+            canonical_agent_request_fingerprint(changed_request),
+        )
+        with self.assertRaises(AgentDispatchError) as raised:
+            await supervisor.execute_routed_with_state(changed_request, routing)
+
+        self.assertEqual(raised.exception.code, "AGENT_ROUTE_REQUEST_MISMATCH")
+        self.assertEqual(raised.exception.state.phase, AgentExecutionPhase.FAILED)
+        self.assertEqual(port_calls, 0)
+
+    async def test_routed_state_rejects_tampered_state_with_copied_fingerprint(self) -> None:
+        """유효 request fingerprint를 복사해도 ROUTED state 필드 변조는 실행 전에 차단한다."""
+
+        port_calls = 0
+
+        async def analysis_handler(request: AgentRequest):
+            nonlocal port_calls
+            port_calls += 1
+            return {"status": "SUCCESS", "data": {}}
+
+        supervisor = DeterministicAgentSupervisor(
+            {
+                AgentKind.ANALYSIS_WORKFLOW: CallableAgentPort(
+                    AgentKind.ANALYSIS_WORKFLOW,
+                    analysis_handler,
+                )
+            }
+        )
+        request = _request(admitted=True)
+        routing = await supervisor.route_with_state(request)
+        tampered_state = routing.state.model_copy(update={"trace_id": "tampered"})
+        tampered_routing = AgentRoutingOutcome(
+            decision=routing.decision,
+            state=tampered_state,
+            request_fingerprint=routing.request_fingerprint,
+        )
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await supervisor.execute_routed_with_state(request, tampered_routing)
+
+        self.assertEqual(raised.exception.code, "AGENT_ROUTE_REQUEST_MISMATCH")
         self.assertEqual(raised.exception.state.phase, AgentExecutionPhase.FAILED)
         self.assertEqual(port_calls, 0)
 

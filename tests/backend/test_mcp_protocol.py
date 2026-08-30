@@ -6,6 +6,8 @@ import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 from fastapi.exceptions import RequestValidationError
 
@@ -16,16 +18,24 @@ from app.api.mcp_router import (
     TOOL_INPUT_SCHEMA,
     TOOL_NAME,
     TOOL_OUTPUT_SCHEMA,
+    TOOL_REQUIRED_ROLES,
+    TOOL_SEMANTIC_VERSION,
+    TOOL_TIMEOUT_SECONDS,
+    TOOL_TRANSPORT,
     UNSUPPORTED_PROTOCOL_VERSION,
     _decode_mcp_header,
     _discovery_result,
     _has_request_metadata,
     _origin_allowed,
+    _registry_receipt_matches,
     _rpc_result,
     _structured_run_output,
+    _tool_output_matches_schema,
     _valid_request_id,
     mcp_post,
 )
+from app.auth import Principal
+from app.contracts import Role
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +45,7 @@ class _StubRequest:
     def __init__(self, payload: object, *, origin: str | None = None) -> None:
         self._payload = payload
         self.headers = {} if origin is None else {"Origin": origin}
+        self.state = SimpleNamespace(trace_id="mcp-test-trace")
 
     async def json(self) -> object:
         return self._payload
@@ -69,6 +80,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertEqual("analysis.get_run", TOOL_NAME)
         self.assertEqual(["request_id"], TOOL_INPUT_SCHEMA["required"])
         self.assertFalse(TOOL_INPUT_SCHEMA["additionalProperties"])
+        self.assertFalse(TOOL_OUTPUT_SCHEMA["additionalProperties"])
         self.assertIn("artifact_id", TOOL_OUTPUT_SCHEMA["required"])
 
     def test_latest_stateless_request_metadata_is_self_contained(self) -> None:
@@ -116,6 +128,10 @@ class McpProtocolTest(unittest.TestCase):
         })
         self.assertEqual(set(TOOL_OUTPUT_SCHEMA["properties"]), set(projected))
         self.assertNotIn("internal_context", projected)
+        self.assertTrue(_tool_output_matches_schema(projected))
+        self.assertFalse(
+            _tool_output_matches_schema({**projected, "unexpected": True})
+        )
         with self.assertRaises(ValueError):
             _structured_run_output({
                 "request_id": "request-1",
@@ -124,6 +140,57 @@ class McpProtocolTest(unittest.TestCase):
                 "query_id": None,
                 "artifact_id": None,
             })
+
+    def test_registry_receipt_requires_exact_contract_and_principal_role(self) -> None:
+        """부분 일치·schema drift·다른 role은 공개 Tool 승인 receipt가 아니다."""
+
+        principal = Principal(uuid4(), Role.ANALYST)
+        receipt = {
+            "tool_id": "c4454392-2f92-54a4-ad13-b8cdaba45732",
+            "tool_code": TOOL_NAME,
+            "semantic_version": TOOL_SEMANTIC_VERSION,
+            "description": "Get one persisted Analysis Run owned by the authenticated user.",
+            "input_schema_json": TOOL_INPUT_SCHEMA,
+            "output_schema_json": TOOL_OUTPUT_SCHEMA,
+            "transport": TOOL_TRANSPORT,
+            "timeout_seconds": TOOL_TIMEOUT_SECONDS,
+            "required_roles_json": list(TOOL_REQUIRED_ROLES),
+            "is_enabled": True,
+        }
+        self.assertTrue(_registry_receipt_matches(receipt, principal))
+
+        mismatches = {
+            "semantic_version": "1.0.1",
+            "transport": "HTTP",
+            "timeout_seconds": 6,
+            "required_roles_json": [Role.PLATFORM_ADMIN.value],
+            "is_enabled": False,
+            "input_schema_json": {**TOOL_INPUT_SCHEMA, "required": []},
+            "output_schema_json": {
+                **TOOL_OUTPUT_SCHEMA,
+                "additionalProperties": True,
+            },
+        }
+        for field, value in mismatches.items():
+            with self.subTest(field=field):
+                self.assertFalse(
+                    _registry_receipt_matches(
+                        {**receipt, field: value},
+                        principal,
+                    )
+                )
+        self.assertTrue(
+            _registry_receipt_matches(
+                receipt,
+                Principal(uuid4(), Role.PLATFORM_ADMIN),
+            )
+        )
+        self.assertFalse(
+            _registry_receipt_matches(
+                receipt,
+                Principal(uuid4(), Role.REPORT_ADMIN),
+            )
+        )
 
     def test_origin_is_fail_closed_when_present(self) -> None:
         self.assertTrue(_origin_allowed(None))
@@ -172,6 +239,14 @@ class McpProtocolTest(unittest.TestCase):
         self.assertNotIn("CREATE TABLE rag.", source)
         self.assertNotIn("CREATE TABLE ml.", source)
 
+        closure_source = (
+            ROOT
+            / "app/backend/migrations/versions/20260831_61_mcp_output_schema_closed.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("down_revision = \"20260831_60\"", closure_source)
+        self.assertIn("additionalProperties", closure_source)
+        self.assertNotIn("ADD COLUMN", closure_source)
+
 
 class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
     async def _post(
@@ -184,7 +259,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
     ) -> tuple[int, dict[str, object]]:
         response = await mcp_post(
             _StubRequest(payload),  # type: ignore[arg-type]
-            None,  # type: ignore[arg-type]
+            Principal(uuid4(), Role.ANALYST),
             protocol_version,
             method_header,
             name_header,
@@ -274,6 +349,86 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(400, status)
         self.assertEqual(-32602, body["error"]["code"])
+
+    async def test_registry_mismatch_hides_tool_from_list_and_call(self) -> None:
+        """전체 registry receipt가 다르면 목록과 직접 호출을 모두 fail-closed 한다."""
+
+        with patch(
+            "app.api.mcp_router._authorized_tool",
+            AsyncMock(return_value=False),
+        ) as authorized:
+            status, listed = await self._post(
+                _request_payload(method="tools/list"),
+                method_header="tools/list",
+            )
+            call_payload = _request_payload(
+                method="tools/call",
+                extra_params={
+                    "name": TOOL_NAME,
+                    "arguments": {"request_id": str(uuid4())},
+                },
+            )
+            call_status, called = await self._post(
+                call_payload,
+                method_header="tools/call",
+                name_header=TOOL_NAME,
+            )
+
+        self.assertEqual(200, status)
+        self.assertEqual([], listed["result"]["tools"])
+        self.assertEqual(200, call_status)
+        self.assertEqual(-32602, called["error"]["code"])
+        self.assertEqual(2, authorized.await_count)
+
+    async def test_tool_call_applies_registry_timeout_and_audits_failure(self) -> None:
+        """registry의 timeout을 실제 조회에 적용하고 값을 꾸미지 않고 실패한다."""
+
+        async def raise_timeout(awaitable, *, timeout):
+            self.assertEqual(TOOL_TIMEOUT_SECONDS, timeout)
+            awaitable.close()
+            raise TimeoutError
+
+        request_id = str(uuid4())
+        payload = _request_payload(
+            method="tools/call",
+            extra_params={
+                "name": TOOL_NAME,
+                "arguments": {"request_id": request_id},
+            },
+        )
+        with (
+            patch(
+                "app.api.mcp_router._authorized_tool",
+                AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.PostgresAnalysisRepository.get_run",
+                AsyncMock(return_value={}),
+            ),
+            patch(
+                "app.api.mcp_router.asyncio.wait_for",
+                side_effect=raise_timeout,
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._post(
+                payload,
+                method_header="tools/call",
+                name_header=TOOL_NAME,
+            )
+
+        self.assertEqual(200, status)
+        self.assertTrue(body["result"]["isError"])
+        self.assertNotIn("structuredContent", body["result"])
+        self.assertEqual("FAILED", record_run.await_args.args[3])
+        self.assertEqual("TOOL_TIMEOUT", record_run.await_args.args[6])
 
 
 if __name__ == "__main__":

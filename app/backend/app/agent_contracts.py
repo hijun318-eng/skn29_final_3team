@@ -12,9 +12,9 @@ from app.contract_core import ContractModel
 from app.ports.agent import AgentKind
 
 
-AGENT_EXECUTION_STATE_VERSION = "AgentExecutionState.v1"
+AGENT_EXECUTION_STATE_VERSION = "AgentExecutionState.v2"
 AGENT_CHECKPOINT_IDENTITY_VERSION = "AgentCheckpointIdentity.v1"
-AGENT_CHECKPOINT_VERSION = "AgentCheckpoint.v1"
+AGENT_CHECKPOINT_VERSION = "AgentCheckpoint.v2"
 AGENT_CHECKPOINT_NAMESPACE = "conversation-command"
 
 
@@ -64,11 +64,12 @@ class AgentExecutionState(ContractModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal["AgentExecutionState.v1"] = AGENT_EXECUTION_STATE_VERSION
+    schema_version: Literal["AgentExecutionState.v2"] = AGENT_EXECUTION_STATE_VERSION
     checkpoint: AgentCheckpointIdentity
     revision: int = Field(ge=0)
     phase: AgentExecutionPhase
     request_id: UUID
+    request_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     trace_id: str = Field(min_length=1, max_length=128)
     user_id: UUID
     expected_head_turn_id: UUID | None
@@ -215,7 +216,7 @@ class AgentCheckpoint(ContractModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal["AgentCheckpoint.v1"] = AGENT_CHECKPOINT_VERSION
+    schema_version: Literal["AgentCheckpoint.v2"] = AGENT_CHECKPOINT_VERSION
     identity: AgentCheckpointIdentity
     revision: int = Field(ge=0)
     state: AgentExecutionState

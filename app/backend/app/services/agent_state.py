@@ -9,7 +9,7 @@ from app.agent_contracts import (
     AgentExecutionState,
     AgentStateUpdate,
 )
-from app.ports.agent import AgentRequest
+from app.ports.agent import AgentRequest, canonical_agent_request_fingerprint
 
 
 class AgentStateTransitionError(RuntimeError):
@@ -42,6 +42,7 @@ def initial_agent_state(request: AgentRequest) -> AgentExecutionState:
         revision=0,
         phase=AgentExecutionPhase.RECEIVED,
         request_id=request.context.request_id,
+        request_fingerprint=canonical_agent_request_fingerprint(request),
         trace_id=request.context.trace_id,
         user_id=request.context.user_id,
         expected_head_turn_id=request.command.expected_head_turn_id,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 from enum import Enum
+from hashlib import sha256
+import json
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
@@ -82,6 +84,19 @@ class AgentRequest(ContractModel):
         if self.invocation is not None and self.invocation.agent is not self.target_agent:
             raise ValueError("AgentRequest invocation 종류가 target Agent와 다릅니다.")
         return self
+
+
+def canonical_agent_request_fingerprint(request: AgentRequest) -> str:
+    """전체 immutable AgentRequest를 결정론적 SHA-256으로 봉인한다."""
+
+    canonical = json.dumps(
+        request.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class AgentPortReadiness(ContractModel):

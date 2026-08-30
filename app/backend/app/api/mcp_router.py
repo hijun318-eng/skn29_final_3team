@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
 import os
 import time
+from collections.abc import Mapping
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -18,9 +20,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.adapters.analysis_repository import AnalysisRepositoryUnavailable, PostgresAnalysisRepository
 from app.auth import AuthenticationError, Principal
-from app.authorization import has_capability
+from app.authorization import has_capability, role_is_entitled
 from app.context import TokenAuthenticator, bearer_auth, token_authenticator
-from app.contracts import Capability
+from app.contracts import Capability, Role
 from app.database import session_scope
 
 
@@ -32,6 +34,11 @@ HEADER_MISMATCH = -32020
 UNSUPPORTED_PROTOCOL_VERSION = -32022
 TOOL_ID = UUID("c4454392-2f92-54a4-ad13-b8cdaba45732")
 TOOL_NAME = "analysis.get_run"
+TOOL_SEMANTIC_VERSION = "1.0.0"
+TOOL_DESCRIPTION = "Get one persisted Analysis Run owned by the authenticated user."
+TOOL_TRANSPORT = "MCP_STREAMABLE_HTTP"
+TOOL_TIMEOUT_SECONDS = 5
+TOOL_REQUIRED_ROLES = (Role.ANALYST.value,)
 TOOL_INPUT_SCHEMA = {
     "type": "object",
     "properties": {"request_id": {"type": "string", "format": "uuid"}},
@@ -48,6 +55,13 @@ TOOL_OUTPUT_SCHEMA = {
         "artifact_id": {"type": ["string", "null"]},
     },
     "required": ["request_id", "status", "trace_id", "query_id", "artifact_id"],
+    "additionalProperties": False,
+}
+TOOL_ANNOTATIONS = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
 }
 
 mcp_router = APIRouter()
@@ -187,29 +201,80 @@ def _structured_run_output(run: dict[str, Any]) -> dict[str, Any]:
         key: stored_run.get(key)
         for key in ("request_id", "status", "trace_id", "query_id", "artifact_id")
     }
-    if any(
-        not isinstance(structured[key], str) or not structured[key].strip()
-        for key in ("request_id", "status", "trace_id")
-    ) or any(
-        structured[key] is not None
-        and (
-            not isinstance(structured[key], str)
-            or not structured[key].strip()
-        )
-        for key in ("query_id", "artifact_id")
-    ):
+    if not _tool_output_matches_schema(structured):
         raise ValueError("analysis.get_run output contract is invalid")
     return structured
 
 
-async def _enabled_tool() -> bool:
+def _tool_output_matches_schema(value: Mapping[str, Any]) -> bool:
+    """공개 structuredContent가 추가 필드 없이 선언 schema와 일치하는지 확인한다."""
+
+    if set(value) != set(TOOL_OUTPUT_SCHEMA["properties"]):
+        return False
+    return not (
+        any(
+            not isinstance(value[key], str) or not value[key].strip()
+            for key in ("request_id", "status", "trace_id")
+        )
+        or any(
+            value[key] is not None
+            and (
+                not isinstance(value[key], str)
+                or not value[key].strip()
+            )
+            for key in ("query_id", "artifact_id")
+        )
+    )
+
+
+def _registry_receipt_matches(
+    row: Mapping[str, Any] | None,
+    principal: Principal,
+) -> bool:
+    """DB registry row가 코드 Tool 계약과 현재 Principal에 정확히 일치하는지 검증한다."""
+
+    if row is None or not isinstance(principal.role, Role):
+        return False
+    try:
+        required_roles = row["required_roles_json"]
+        return bool(
+            UUID(str(row["tool_id"])) == TOOL_ID
+            and row["tool_code"] == TOOL_NAME
+            and row["semantic_version"] == TOOL_SEMANTIC_VERSION
+            and row["description"] == TOOL_DESCRIPTION
+            and row["input_schema_json"] == TOOL_INPUT_SCHEMA
+            and row["output_schema_json"] == TOOL_OUTPUT_SCHEMA
+            and row["transport"] == TOOL_TRANSPORT
+            and type(row["timeout_seconds"]) is int
+            and row["timeout_seconds"] == TOOL_TIMEOUT_SECONDS
+            and type(required_roles) is list
+            and tuple(required_roles) == TOOL_REQUIRED_ROLES
+            and role_is_entitled(principal.role, required_roles)
+            and row["is_enabled"] is True
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+async def _authorized_tool(principal: Principal) -> bool:
+    """Registry의 전체 계약 receipt와 현재 Principal role을 한 번에 대조한다."""
+
     try:
         async with session_scope(_database_url()) as session:
             result = await session.execute(
-                text("SELECT is_enabled FROM tooling.tool_registry WHERE tool_id = :tool_id AND tool_code = :tool_code"),
+                text(
+                    """
+                    SELECT tool_id, tool_code, semantic_version, description,
+                           input_schema_json, output_schema_json, transport,
+                           timeout_seconds, required_roles_json, is_enabled
+                    FROM tooling.tool_registry
+                    WHERE tool_id = :tool_id AND tool_code = :tool_code
+                    """
+                ),
                 {"tool_id": TOOL_ID, "tool_code": TOOL_NAME},
             )
-            return bool(result.scalar_one_or_none())
+            row = result.mappings().one_or_none()
+            return _registry_receipt_matches(row, principal)
     except SQLAlchemyError as error:
         raise HTTPException(status_code=503, detail="MCP Tool Registry를 사용할 수 없습니다.") from error
 
@@ -366,14 +431,14 @@ async def mcp_post(
         if set(params) - {"_meta", "cursor"} or "cursor" in params:
             return _rpc_error(request_id, -32602, "Invalid cursor", 400)
         tools = []
-        if has_capability(principal.role, Capability.READ_ANALYSIS) and await _enabled_tool():
+        if has_capability(principal.role, Capability.READ_ANALYSIS) and await _authorized_tool(principal):
             tools.append({
                 "name": TOOL_NAME,
                 "title": "Get Analysis Run",
-                "description": "Get one persisted Analysis Run owned by the authenticated user.",
+                "description": TOOL_DESCRIPTION,
                 "inputSchema": TOOL_INPUT_SCHEMA,
                 "outputSchema": TOOL_OUTPUT_SCHEMA,
-                "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+                "annotations": TOOL_ANNOTATIONS,
             })
         return _rpc_result(
             request_id,
@@ -391,7 +456,7 @@ async def mcp_post(
         )
     if set(params) - {"_meta", "name", "arguments"}:
         return _rpc_error(request_id, -32602, "Invalid tools/call params", 400)
-    if params.get("name") != TOOL_NAME or not await _enabled_tool():
+    if params.get("name") != TOOL_NAME or not await _authorized_tool(principal):
         return _rpc_error(request_id, -32602, "Unknown or disabled tool")
     arguments = params.get("arguments") or {}
     if not isinstance(arguments, dict) or set(arguments) != {"request_id"}:
@@ -428,7 +493,34 @@ async def mcp_post(
             },
         )
     try:
-        run = await PostgresAnalysisRepository(_database_url(), principal.subject).get_run(arguments["request_id"])
+        run = await asyncio.wait_for(
+            PostgresAnalysisRepository(
+                _database_url(), principal.subject
+            ).get_run(arguments["request_id"]),
+            timeout=TOOL_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        await _record_run(
+            principal,
+            trace_id,
+            arguments,
+            "FAILED",
+            started,
+            {},
+            "TOOL_TIMEOUT",
+        )
+        return _rpc_result(
+            request_id,
+            {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Analysis 실행 조회 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+                    }
+                ],
+                "isError": True,
+            },
+        )
     except (ValueError, KeyError) as error:
         await _record_run(principal, trace_id, arguments, "FAILED", started, {}, "RUN_NOT_FOUND")
         return _rpc_result(request_id, {"content": [{"type": "text", "text": str(error)}], "isError": True})

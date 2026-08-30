@@ -209,7 +209,7 @@ def test_activation_rejects_a_product_from_a_different_model_release() -> None:
         )
 
 
-def test_existing_mcp_public_identifier_and_result_schema_are_unchanged() -> None:
+def test_existing_mcp_public_identifier_and_closed_result_schema() -> None:
     assert MCP_PROTOCOL_VERSION == "2026-07-28"
     assert TOOL_NAME == "analysis.get_run"
     assert TOOL_INPUT_SCHEMA == {
@@ -228,4 +228,5 @@ def test_existing_mcp_public_identifier_and_result_schema_are_unchanged() -> Non
             "artifact_id": {"type": ["string", "null"]},
         },
         "required": ["request_id", "status", "trace_id", "query_id", "artifact_id"],
+        "additionalProperties": False,
     }

@@ -26,9 +26,10 @@ test("ML 예측 결과는 KPI와 차트를 먼저 보여주고 상세 데이터�
     server: { middlewareMode: true, hmr: false },
   });
   try {
-    const { MLPredictionResult } = await server.ssrLoadModule(
+    const { default: MLPredictionWorkspace, MLPredictionResult } = await server.ssrLoadModule(
       "/src/components/ml/MLPredictionWorkspace.jsx",
     );
+    assert.equal(renderToStaticMarkup(createElement(MLPredictionWorkspace)), "");
     const html = renderToStaticMarkup(createElement(MLPredictionResult, {
       result: {
         property_id: "HOTEL-SEOUL",
@@ -72,12 +73,39 @@ test("ML 예측 결과는 KPI와 차트를 먼저 보여주고 상세 데이터�
     assert.match(html, /<details class="ml-workspace__technical-details">/);
     assert.doesNotMatch(html, /<details[^>]+open/);
     assert.doesNotMatch(html, /RAG 호출|Trino query/);
+
+    const invalidHtml = renderToStaticMarkup(createElement(MLPredictionResult, {
+      result: {
+        daily_forecasts: [{
+          target_date: "2026-08-31",
+          total_available_rooms: 100,
+          predicted_occupied_rooms: null,
+          predicted_available_rooms: 30,
+          predicted_occupancy_rate: null,
+        }],
+      },
+    }));
+    assert.match(invalidHtml, /role="alert"/);
+    assert.match(invalidHtml, /예측 결과 형식을 확인할 수 없습니다/);
+    assert.doesNotMatch(invalidHtml, /0%|0객실박|role="img"/);
+
+    const emptyHtml = renderToStaticMarkup(createElement(MLPredictionResult, {
+      result: { daily_forecasts: [] },
+    }));
+    assert.match(emptyHtml, /role="status"/);
+    assert.match(emptyHtml, /표시할 예측 결과가 없습니다/);
+    assert.doesNotMatch(emptyHtml, /0%|0객실박/);
   } finally {
     await server.close();
   }
 });
 
 test("ML 예측 drawer는 viewport와 키보드 접근성 계약을 갖는다", () => {
+  assert.match(source, /horizon_days: Number\(horizon\)/);
+  assert.match(source, /max=\{capability\?\.max_horizon_days \|\| 1\}/);
+  assert.match(source, /현재 모델은/);
+  assert.doesNotMatch(source, /\[1, 3, 7\]/);
+  assert.match(styles, /\.ml-workspace__field-hint\s*\{[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1\.5;/s);
   assert.match(source, /aria-controls=\{DIALOG_ID\}/);
   assert.match(source, /role="dialog"/);
   assert.match(source, /aria-modal="true"/);

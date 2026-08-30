@@ -167,6 +167,9 @@ export function AnalysisStatePanel({
     { type: "horizontal-bar", label: "가로 막대" },
     { type: "line", label: "선 그래프" },
     { type: "area", label: "영역 차트" },
+    ...(["pie", "donut"].includes(chartType)
+      ? [{ type: "pie", label: "원형" }, { type: "donut", label: "도넛" }]
+      : []),
   ];
 
   const chartDisplayType = chartDisplayOptions.some((option) => option.type === chartDisplayOverride)

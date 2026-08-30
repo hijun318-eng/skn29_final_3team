@@ -199,6 +199,8 @@
 }
 
 .ml-workspace__result { padding: 20px; display: grid; gap: 20px; }
+.ml-workspace__result-state { margin: 0; padding: 14px; color: var(--ml-text-muted); border: 1px solid var(--ml-line); border-radius: 9px; background: var(--ml-surface-raised); font-size: 12px; line-height: 1.6; }
+.ml-workspace__result-state.is-error { color: var(--ml-danger-text); border-color: color-mix(in srgb, var(--ml-danger-text) 30%, transparent); background: var(--ml-danger-surface); }
 
 .ml-workspace__result-meta {
   display: grid;

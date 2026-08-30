@@ -157,16 +157,24 @@ export function AnalysisVisualSection({
       </section>
     );
   }
-  if (chart && (!hasTableColumns || (Boolean(table?.rows?.length) && !canRenderChart))) {
+  if (chart && !canRenderChart) {
+    const hasTableRows = Boolean(table?.rows?.length);
+    const missingData = !hasTableColumns || !hasTableRows;
     return (
       <section className="analysis-chart-fallback" role="status">
         <AlertTriangle size={16} aria-hidden="true" />
         <div>
-          <b>{supportedChartType ? "그래프 구성 정보를 확인할 수 없습니다." : "현재 지원하지 않는 그래프 형식입니다."}</b>
+          <b>{!supportedChartType
+            ? "현재 지원하지 않는 그래프 형식입니다."
+            : missingData
+              ? "그래프로 표시할 데이터가 없습니다."
+              : "그래프 구성 정보를 확인할 수 없습니다."}</b>
           <p>
-            {supportedChartType
-              ? hasTableColumns ? "그래프 구성과 상세 데이터가 일치하지 않아 임의로 해석하지 않았습니다. 제공된 데이터는 아래 표에서 확인할 수 있습니다." : "그래프에 필요한 상세 데이터가 없어 임의로 시각화하지 않았습니다."
-              : "데이터를 임의로 바꾸지 않고 아래 표로 표시합니다."}
+            {!supportedChartType
+              ? "데이터를 임의로 바꾸지 않고 아래 표로 표시합니다."
+              : missingData
+                ? "현재 결과에 상세 데이터가 없어 값을 임의로 만들지 않았습니다."
+                : "그래프 구성과 상세 데이터가 일치하지 않아 임의로 해석하지 않았습니다. 제공된 데이터는 아래 표에서 확인할 수 있습니다."}
           </p>
         </div>
       </section>

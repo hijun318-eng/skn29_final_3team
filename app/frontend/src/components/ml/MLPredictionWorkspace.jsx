@@ -7,6 +7,12 @@ import "./MLPredictionWorkspace.css";
 const API_PREFIX = String(import.meta.env.VITE_BACKEND_BASE_URL || "").replace(/\/$/, "");
 const DIALOG_ID = "ml-prediction-dialog";
 const DIALOG_TITLE_ID = "ml-prediction-dialog-title";
+const FORECAST_NUMBER_FIELDS = [
+  "total_available_rooms",
+  "predicted_occupied_rooms",
+  "predicted_available_rooms",
+  "predicted_occupancy_rate",
+];
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
   "select:not([disabled])",
@@ -32,17 +38,19 @@ async function requestJson(path, options = {}) {
 
 
 function formatRooms(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 }).format(
-    Math.round(Number(value || 0)),
+    Math.round(value),
   );
 }
 
 
 function formatPercent(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("ko-KR", {
     style: "percent",
     maximumFractionDigits: 1,
-  }).format(Number(value || 0));
+  }).format(value);
 }
 
 
@@ -52,25 +60,40 @@ function formatKoreanDate(value) {
 }
 
 
+function validForecastDay(day) {
+  return Boolean(
+    day
+    && typeof day === "object"
+    && /^\d{4}-\d{2}-\d{2}$/.test(String(day.target_date || ""))
+    && FORECAST_NUMBER_FIELDS.every((field) => (
+      typeof day[field] === "number" && Number.isFinite(day[field])
+    ))
+    && FORECAST_NUMBER_FIELDS.slice(0, 3).every((field) => day[field] >= 0)
+    && day.predicted_occupancy_rate >= 0
+    && day.predicted_occupancy_rate <= 1
+  );
+}
+
+
 function buildForecastSummary(days) {
   const totalOccupied = days.reduce(
-    (sum, day) => sum + Number(day.predicted_occupied_rooms || 0),
+    (sum, day) => sum + day.predicted_occupied_rooms,
     0,
   );
   const totalAvailable = days.reduce(
-    (sum, day) => sum + Number(day.total_available_rooms || 0),
+    (sum, day) => sum + day.total_available_rooms,
     0,
   );
   return {
     totalOccupied,
-    occupancyRate: totalAvailable > 0 ? totalOccupied / totalAvailable : 0,
+    occupancyRate: totalAvailable > 0 ? totalOccupied / totalAvailable : null,
   };
 }
 
 
 /** API가 반환한 일별 점유율만 이용해 추이를 그린다. */
 export function MLForecastChart({ days }) {
-  if (days.length === 0) return null;
+  if (!Array.isArray(days) || days.length === 0 || !days.every(validForecastDay)) return null;
   const width = 640;
   const height = 180;
   const horizontalPadding = 8;
@@ -78,7 +101,7 @@ export function MLForecastChart({ days }) {
   const drawableWidth = width - horizontalPadding * 2;
   const drawableHeight = height - verticalPadding * 2;
   const coordinates = days.map((day, index) => {
-    const ratio = Math.max(0, Math.min(1, Number(day.predicted_occupancy_rate || 0)));
+    const ratio = day.predicted_occupancy_rate;
     const x = horizontalPadding + (
       days.length === 1 ? drawableWidth / 2 : (index / (days.length - 1)) * drawableWidth
     );
@@ -86,7 +109,7 @@ export function MLForecastChart({ days }) {
     return { x, y };
   });
   const points = coordinates.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
-  const occupancyRates = days.map((day) => Number(day.predicted_occupancy_rate || 0));
+  const occupancyRates = days.map((day) => day.predicted_occupancy_rate);
   const chartDescription = [
     `${formatKoreanDate(days[0].target_date)}부터 ${formatKoreanDate(days.at(-1).target_date)}까지 예상 점유율 추이`,
     `최저 ${formatPercent(Math.min(...occupancyRates))}`,
@@ -133,7 +156,14 @@ export function MLForecastChart({ days }) {
 
 /** 예측 결과의 사용자 요약과 선택형 상세 정보를 표시한다. */
 export function MLPredictionResult({ result }) {
-  const days = Array.isArray(result.daily_forecasts) ? result.daily_forecasts : [];
+  const forecasts = result?.daily_forecasts;
+  if (!Array.isArray(forecasts) || !forecasts.every(validForecastDay)) {
+    return <div className="ml-workspace__result"><p className="ml-workspace__result-state is-error" role="alert">예측 결과 형식을 확인할 수 없습니다. 잠시 후 다시 요청해 주세요.</p></div>;
+  }
+  if (forecasts.length === 0) {
+    return <div className="ml-workspace__result"><p className="ml-workspace__result-state" role="status">선택한 기간에 표시할 예측 결과가 없습니다.</p></div>;
+  }
+  const days = forecasts;
   const summary = buildForecastSummary(days);
 
   return (

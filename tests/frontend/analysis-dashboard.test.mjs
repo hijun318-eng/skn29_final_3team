@@ -10,8 +10,6 @@ const frontendRoot = fileURLToPath(new URL("../../app/frontend", import.meta.url
 const response = JSON.parse(readFileSync(new URL("./fixtures/analysis-rich-success.json", import.meta.url), "utf8"));
 const processViewModels = JSON.parse(readFileSync(new URL("./fixtures/analysis-process-view-models.json", import.meta.url), "utf8"));
 const stylesSource = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
-const mlWorkspaceStylesSource = readFileSync(new URL("../../app/frontend/src/components/ml/MLPredictionWorkspace.css", import.meta.url), "utf8");
-const mlWorkspaceSource = readFileSync(new URL("../../app/frontend/src/components/ml/MLPredictionWorkspace.jsx", import.meta.url), "utf8");
 const agentSource = readFileSync(new URL("../../app/frontend/src/pages/AgentPage.jsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../app/frontend/src/App.jsx", import.meta.url), "utf8");
 const server = await createServer({
@@ -27,7 +25,6 @@ try {
   const { AnalysisStatePanel, analysisResultDensity } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
   const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
-  const { default: MLPredictionWorkspace } = await server.ssrLoadModule("/src/components/ml/MLPredictionWorkspace.jsx");
   const { normalizeApiResponse } = await server.ssrLoadModule("/src/contracts/analysis.ts");
   const run = normalizeApiResponse(response, "7월 PLATINUM 장기 투숙 우수 고객 객실 유형별 매출을 분석해줘");
   const html = renderToStaticMarkup(createElement(AnalysisStatePanel, { run }));
@@ -219,15 +216,6 @@ try {
   assert.match(agentSource, /ragAvailable &&/);
   assert.match(agentSource, /enabledFeatures\.includes\(SERVICE_FEATURE\.mlPrediction\)/);
   assert.match(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
-  assert.equal(renderToStaticMarkup(createElement(MLPredictionWorkspace)), "");
-  assert.match(mlWorkspaceSource, /horizon_days: Number\(horizon\)/);
-  assert.match(mlWorkspaceSource, /max=\{capability\?\.max_horizon_days \|\| 1\}/);
-  assert.match(mlWorkspaceSource, /현재 모델은/);
-  assert.match(
-    mlWorkspaceStylesSource,
-    /\.ml-workspace__field-hint\s*\{[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1\.5;/s,
-  );
-  assert.doesNotMatch(mlWorkspaceSource, /\[1, 3, 7\]/);
 
   // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));
@@ -258,6 +246,16 @@ try {
     viewType: "DONUT",
   }));
   assert.match(donutHtml, /enterprise-chart--donut/);
+  assert.match(donutHtml, /aria-pressed="false">원형<\/button>/);
+  assert.match(donutHtml, /aria-pressed="true">도넛<\/button>/);
+
+  const emptyChartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: { ...run, table: { ...run.table, rows: [] } },
+    viewType: "CHART",
+  }));
+  assert.match(emptyChartHtml, /그래프로 표시할 데이터가 없습니다/);
+  assert.match(emptyChartHtml, /상세 데이터가 없어 값을 임의로 만들지 않았습니다/);
+  assert.doesNotMatch(emptyChartHtml, /class="enterprise-chart/);
 
   const followupHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,

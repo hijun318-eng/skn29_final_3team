@@ -2136,6 +2136,15 @@ class MetricResolver:
                 if item in support_terms
             )
         )
+        requested_route = enum_signal(
+            normalized.get("requested_route"), CONVERSATION_ROUTES
+        )
+        presentation_explicit = normalized.get("presentation_explicit") is True
+        presentation_type = (
+            enum_signal(normalized.get("presentation_type"), PRESENTATION_TYPES)
+            if presentation_explicit
+            else None
+        )
         partial_context = {
             "intent_candidates": intents,
             "metric_ids": selected_metric_ids or suggestion_ids,
@@ -2155,12 +2164,9 @@ class MetricResolver:
             "filter_fields": filter_fields,
             "period_candidates": periods,
             "period_relationship": relationship,
-            "requested_route": enum_signal(
-                normalized.get("requested_route"), CONVERSATION_ROUTES
-            ),
-            "presentation_type": enum_signal(
-                normalized.get("presentation_type"), PRESENTATION_TYPES
-            ),
+            "requested_route": requested_route,
+            "presentation_type": presentation_type,
+            "presentation_explicit": presentation_explicit,
             "is_elliptical": normalized.get("is_elliptical"),
         }
         if requested_support_ids:
@@ -2387,12 +2393,9 @@ class MetricResolver:
             model_signals={
                 # Node1의 route/표현/생략문 신호는 후보다. 계약 enum 안의 값만 통과시키고
                 # 라우트 확정과 전제조건 검증은 ConversationSlotResolver가 한다.
-                "requested_route": enum_signal(
-                    normalized.get("requested_route"), CONVERSATION_ROUTES
-                ),
-                "presentation_type": enum_signal(
-                    normalized.get("presentation_type"), PRESENTATION_TYPES
-                ),
+                "requested_route": requested_route,
+                "presentation_type": presentation_type,
+                "presentation_explicit": presentation_explicit,
                 "is_elliptical": normalized.get("is_elliptical"),
                 "measurement_source_text": measurement_source_text,
                 "measurement_source_texts": measurement_source_texts,

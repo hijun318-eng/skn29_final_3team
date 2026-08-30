@@ -31,7 +31,7 @@ def enum_signal(value: object, allowed: frozenset[str]) -> str | None:
     return value if isinstance(value, str) and value in allowed else None
 
 
-def client_action_signals(payload: dict[str, object]) -> dict[str, str]:
+def client_action_signals(payload: dict[str, object]) -> dict[str, object]:
     """클라이언트가 보낸 typed action을 계약 enum 안의 신호로만 정규화합니다.
 
     UI가 이미 아는 동작(차트 전환·보고서 담기)은 자연어 문장으로 바꿔 다시 해석시키지
@@ -45,11 +45,12 @@ def client_action_signals(payload: dict[str, object]) -> dict[str, str]:
     Returns:
         허용된 신호만 담은 딕셔너리(없으면 빈 딕셔너리)
     """
-    signals: dict[str, str] = {}
+    signals: dict[str, object] = {}
     route = enum_signal(payload.get("requested_route"), CONVERSATION_ROUTES)
     if route is not None:
         signals["requested_route"] = route
     presentation = enum_signal(payload.get("presentation_type"), PRESENTATION_TYPES)
     if presentation is not None:
         signals["presentation_type"] = presentation
+        signals["presentation_explicit"] = True
     return signals

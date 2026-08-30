@@ -1115,8 +1115,9 @@ class _Normalizer:
                 }
             ],
             "period_relationship": "single",
-            "requested_route": "general",
-            "presentation_type": "table",
+            "requested_route": "ANALYSIS",
+            "presentation_type": "BAR",
+            "presentation_explicit": False,
             "is_elliptical": False,
         }
 
@@ -1556,6 +1557,9 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
         if term["kind"] == "support_metric"
     }
     assert structured["selected_metric_id"] == "amount_per_event"
+    assert structured["requested_route"] == "ANALYSIS"
+    assert structured["presentation_explicit"] is False
+    assert structured["presentation_type"] is None
     assert set(structured["metric_ids"]) == {
         "amount_total",
         "event_count",

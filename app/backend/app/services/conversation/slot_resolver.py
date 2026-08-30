@@ -786,8 +786,10 @@ class ConversationSlotResolver:
         Returns:
             허용 목록에 속하는 뷰 타입
         """
-        # prompt 계약상 presentation_type은 사용자가 표현을 명시한 경우에만 반환된다.
-        # 연산 종류를 근거로 서버가 차트를 추정하지 않으며, 신호가 없으면 요약으로 닫는다.
+        # 연산 종류만으로 차트를 추정하지 않는다. Node1이 표현 타입뿐 아니라 현재
+        # 질문에 그 표현이 명시됐다는 typed 증거까지 반환한 경우에만 초기 뷰로 쓴다.
+        if not node1_output or node1_output.get("presentation_explicit") is not True:
+            return "SUMMARY"
         return cls._presentation_signal(node1_output) or "SUMMARY"
 
     @classmethod

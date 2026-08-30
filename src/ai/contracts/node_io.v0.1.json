@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.28.0",
+  "version": "MODEL-v1.29.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -849,6 +849,7 @@
             null
           ]
         },
+        "presentation_explicit": {"type": ["boolean", "null"]},
         "is_elliptical": {"type": ["boolean", "null"]},
         "dimension_candidates": {"type": "array", "items": {"type": "string"}},
         "filter_candidates": {

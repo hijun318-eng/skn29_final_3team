@@ -172,6 +172,7 @@ async def test_route_and_ellipsis_signals_survive_response_validation():
         {
             "requested_route": "PRESENTATION",
             "presentation_type": "LINE",
+            "presentation_explicit": True,
             "is_elliptical": True,
         }
     )
@@ -180,6 +181,7 @@ async def test_route_and_ellipsis_signals_survive_response_validation():
 
     assert normalized["requested_route"] == "PRESENTATION"
     assert normalized["presentation_type"] == "LINE"
+    assert normalized["presentation_explicit"] is True
     assert normalized["is_elliptical"] is True
 
 

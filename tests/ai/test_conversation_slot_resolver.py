@@ -14,6 +14,7 @@ from app.services.conversation.slot_resolver import (
 )
 from app.services.conversation.analysis_request import build_structured_analysis_request
 from app.services.conversation.time_algebra import TimeAlgebraEngine
+from app.services.context.model_signals import client_action_signals
 
 
 def _node1_period(start: str, end_exclusive: str, source_text: str) -> dict:
@@ -250,12 +251,34 @@ def test_initial_view_defaults_to_summary_unless_explicitly_requested() -> None:
     ) == "SUMMARY"
     assert resolve(
         "표로 보여줘",
-        {"analysis_operation": "time_trend", "presentation_type": "TABLE"},
+        {
+            "analysis_operation": "time_trend",
+            "presentation_type": "TABLE",
+            "presentation_explicit": True,
+        },
     ) == "TABLE"
     assert resolve(
         "두 기간 객실 매출을 비교해줘",
         {"analysis_operation": "period_comparison", "presentation_type": "BAR"},
-    ) == "BAR"
+    ) == "SUMMARY"
+    assert resolve(
+        "두 기간 객실 매출을 비교해줘",
+        {
+            "analysis_operation": "period_comparison",
+            "presentation_type": "BAR",
+            "presentation_explicit": False,
+        },
+    ) == "SUMMARY"
+
+
+def test_typed_client_presentation_action_carries_explicit_evidence() -> None:
+    assert client_action_signals(
+        {"requested_route": "PRESENTATION", "presentation_type": "TABLE"}
+    ) == {
+        "requested_route": "PRESENTATION",
+        "presentation_type": "TABLE",
+        "presentation_explicit": True,
+    }
 
 
 def test_conversation_slots_preserve_multi_metric_operation_and_followup_inheritance():
@@ -856,6 +879,7 @@ def test_presentation_signal_yields_to_explicit_monthly_reaggregation() -> None:
         node1_output={
             "requested_route": "PRESENTATION",
             "presentation_type": "BAR",
+            "presentation_explicit": True,
             "metric_resolution": "missing",
             "is_elliptical": True,
             "analysis_operation": "time_trend",

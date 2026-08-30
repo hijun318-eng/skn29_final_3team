@@ -1,4 +1,28 @@
 services:
+  ml-history-bootstrap:
+    profiles: [ml, ml-candidate]
+    image: "postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60"
+    environment:
+      PGHOST: pms-postgres
+      PGPORT: "5432"
+      PGDATABASE: ${PMS_DB_NAME:-pms_db}
+      PGUSER: ${PMS_ADMIN_USER:?PMS_ADMIN_USER is required}
+      PGPASSWORD: ${PMS_ADMIN_PASSWORD:?PMS_ADMIN_PASSWORD is required}
+      PMS_READONLY_USER: ${PMS_READONLY_USER:?PMS_READONLY_USER is required}
+    entrypoint: ["sh", "-ec"]
+    command:
+      - >-
+        psql -v ON_ERROR_STOP=1
+        -v readonly_role="$${PMS_READONLY_USER}"
+        -f /sql/01_room_demand_history_v43_synthetic.sql
+    volumes:
+      - ../ml/sql/01_room_demand_history_v43_synthetic.sql:/sql/01_room_demand_history_v43_synthetic.sql:ro
+    networks: [database-network]
+    depends_on:
+      pms-postgres:
+        condition: service_healthy
+    restart: "no"
+
   ml-runtime:
     # Trino가 필요한 추가 profile이므로 full 또는 split-host와 함께 활성화한다.
     profiles: [ml, ml-candidate]
@@ -12,7 +36,7 @@ services:
       ML_MODEL_MANIFEST: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model_manifest.json
       ML_MODEL_APPROVAL: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model.approval.json
       ML_FEATURE_CONTRACT: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/feature_contract.json
-      ML_HISTORY_TABLE: ${ML_HISTORY_TABLE:-pms.ml_evaluation.room_demand_daily_facts_20260826_v2}
+      ML_HISTORY_TABLE: ${ML_HISTORY_TABLE:-pms.ml_evaluation.room_demand_daily_facts_v43_20260830}
       ML_ALLOW_CONDITIONAL: ${ML_ALLOW_CONDITIONAL:-false}
       TRINO_URL: ${TRINO_URL:-https://trino:8443}
       TRINO_USER: ${TRINO_RUNTIME_USER:?TRINO_RUNTIME_USER is required}
@@ -30,6 +54,8 @@ services:
     depends_on:
       trino:
         condition: service_healthy
+      ml-history-bootstrap:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readiness', timeout=2).read()"]
       interval: 5s

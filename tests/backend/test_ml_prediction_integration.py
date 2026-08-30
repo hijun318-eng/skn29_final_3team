@@ -64,6 +64,17 @@ def _runtime_capabilities() -> dict[str, object]:
             }
         ],
         "synthetic_training_data": True,
+        "history_source": {
+            "table": "pms.ml_evaluation.approved_history",
+            "row_count": 8766,
+            "property_count": 3,
+            "series_count": 9,
+            "min_date": "2024-01-01",
+            "max_date": "2026-08-31",
+            "synthetic_only": True,
+            "summary_query_id": "trino-history-summary-1",
+            "continuity_query_id": "trino-history-continuity-1",
+        },
         "query_id": "trino-capability-query-1",
     }
 
@@ -280,31 +291,166 @@ def test_matching_prediction_release_is_saved_once() -> None:
     assert session.execute_calls == 1
 
 
+def test_prediction_history_source_drift_is_blocked_before_audit_storage() -> None:
+    changed = _prediction_result()
+    changed["provenance"] = {
+        **changed["provenance"],  # type: ignore[dict-item]
+        "history_table": "pms.ml_evaluation.unapproved_history",
+    }
+    client = _StubMLClient(_runtime_capabilities(), changed)
+    session = _RecordingSession()
+    service = MLPredictionService(client)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="provenance is incomplete"):
+        asyncio.run(
+            service.predict(  # type: ignore[arg-type]
+                session,
+                {"property_id": "GRAND", "as_of": "2026-08-28", "horizon": 7},
+            )
+        )
+
+    assert session.execute_calls == 0
+
+
 def test_ml_runtime_has_an_explicit_profile_without_joining_full_by_default() -> None:
     compose = (ROOT / "infrastructure" / "ml" / "compose.fragment.yml").read_text(encoding="utf-8")
 
-    assert "profiles: [ml, ml-candidate]" in compose
+    assert compose.count("profiles: [ml, ml-candidate]") == 2
     assert "profiles: [ml, ml-candidate, full]" not in compose
     assert "room-demand-timeseries-hgbr-v2.2.0" in compose
     assert "room-demand-hgbr-optimization-v3.3.0" not in compose
+    assert "pms.ml_evaluation.room_demand_daily_facts_v43_20260830" in compose
+    assert "ml-history-bootstrap:" in compose
+    assert "condition: service_completed_successfully" in compose
+    assert "../ml/sql/01_room_demand_history_v43_synthetic.sql" in compose
 
 
-def test_ml_history_preflight_uses_the_contract_table_and_requires_a_row() -> None:
+def _history_summary(**overrides: object) -> dict[str, object]:
+    return {
+        "row_count": 8766,
+        "property_count": 3,
+        "min_date": "2024-01-01",
+        "max_date": "2026-08-31",
+        "invalid_rows": 0,
+        "synthetic_rows": 8766,
+        "non_synthetic_rows": 0,
+        **overrides,
+    }
+
+
+def _history_continuity(**overrides: object) -> dict[str, object]:
+    return {
+        "series_count": 9,
+        "min_series_rows": 974,
+        "invalid_series": 0,
+        **overrides,
+    }
+
+
+def test_ml_history_preflight_validates_values_continuity_and_source_mode() -> None:
     class StubTrino:
-        def __init__(self, rows: list[dict[str, int]]) -> None:
-            self.rows = rows
-            self.sql = ""
+        def __init__(self, responses: list[list[dict[str, object]]]) -> None:
+            self.responses = responses
+            self.sql: list[str] = []
 
         def query(self, sql: str) -> SimpleNamespace:
-            self.sql = sql
-            return SimpleNamespace(rows=self.rows)
+            self.sql.append(sql)
+            return SimpleNamespace(
+                rows=self.responses.pop(0),
+                query_id=f"trino-history-{len(self.sql)}",
+            )
 
-    ready = StubTrino([{"source_ready": 1}])
-    validate_history_source(ready, "pms.ml_evaluation.approved_history")
-    assert ready.sql == "SELECT 1 AS source_ready FROM pms.ml_evaluation.approved_history LIMIT 1"
+    ready = StubTrino([[_history_summary()], [_history_continuity()]])
+    receipt = validate_history_source(
+        ready,  # type: ignore[arg-type]
+        "pms.ml_evaluation.approved_history",
+        expected_synthetic=True,
+    )
 
-    with pytest.raises(RuntimeError, match="empty or unreadable"):
-        validate_history_source(StubTrino([]), "pms.ml_evaluation.approved_history")
+    assert len(ready.sql) == 2
+    assert all("pms.ml_evaluation.approved_history" in sql for sql in ready.sql)
+    assert "count_if" in ready.sql[0]
+    assert "date_diff" in ready.sql[1]
+    assert receipt == {
+        "table": "pms.ml_evaluation.approved_history",
+        "row_count": 8766,
+        "property_count": 3,
+        "series_count": 9,
+        "min_date": "2024-01-01",
+        "max_date": "2026-08-31",
+        "synthetic_only": True,
+        "summary_query_id": "trino-history-1",
+        "continuity_query_id": "trino-history-2",
+    }
+
+
+@pytest.mark.parametrize(
+    ("summary", "message"),
+    [
+        (_history_summary(row_count=0, synthetic_rows=0), "empty or unreadable"),
+        (_history_summary(invalid_rows=1), "has 1 invalid rows"),
+        (
+            _history_summary(synthetic_rows=8765, non_synthetic_rows=1),
+            "synthetic mode does not match",
+        ),
+    ],
+)
+def test_ml_history_preflight_rejects_invalid_summary(
+    summary: dict[str, object],
+    message: str,
+) -> None:
+    class StubTrino:
+        def query(self, sql: str) -> SimpleNamespace:
+            return SimpleNamespace(rows=[summary], query_id="trino-history-summary")
+
+    with pytest.raises(RuntimeError, match=message):
+        validate_history_source(
+            StubTrino(),  # type: ignore[arg-type]
+            "pms.ml_evaluation.approved_history",
+            expected_synthetic=True,
+        )
+
+
+def test_ml_history_preflight_rejects_incomplete_series() -> None:
+    class StubTrino:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def query(self, sql: str) -> SimpleNamespace:
+            self.calls += 1
+            rows = (
+                [_history_summary()]
+                if self.calls == 1
+                else [_history_continuity(invalid_series=1)]
+            )
+            return SimpleNamespace(rows=rows, query_id=f"trino-history-{self.calls}")
+
+    with pytest.raises(RuntimeError, match="incomplete time series"):
+        validate_history_source(
+            StubTrino(),  # type: ignore[arg-type]
+            "pms.ml_evaluation.approved_history",
+            expected_synthetic=True,
+        )
+
+
+def test_ml_history_view_is_derived_from_v43_sources_without_fixed_results() -> None:
+    sql = (
+        ROOT
+        / "infrastructure"
+        / "ml"
+        / "sql"
+        / "01_room_demand_history_v43_synthetic.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "walkerhill_v4_3.pms_room_inventory_daily" in sql
+    assert "walkerhill_v4_3.pms_stay_nights" in sql
+    assert "walkerhill_v4_3.pms_stays" in sql
+    assert "walkerhill_v4_3.pms_reservations" in sql
+    assert "VALUES" not in sql.upper()
+    assert "true AS is_synthetic" in sql
+    assert 'TO :"readonly_role"' in sql
+    assert "ML_HISTORY_INVALID_ROWS" in sql
+    assert "ML_HISTORY_INVALID_SERIES" in sql
 
 
 def test_ml_candidate_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

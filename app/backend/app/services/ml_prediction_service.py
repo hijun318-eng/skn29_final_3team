@@ -36,6 +36,32 @@ class MLPropertyCapability(ContractModel):
         return self
 
 
+class MLHistorySourceCapability(ContractModel):
+    """Runtime 시작 시 검증된 history source의 최소 영수증이다."""
+
+    table: str = Field(
+        min_length=5,
+        max_length=256,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$",
+    )
+    row_count: int = Field(ge=1)
+    property_count: int = Field(ge=1)
+    series_count: int = Field(ge=1)
+    min_date: date
+    max_date: date
+    synthetic_only: bool
+    summary_query_id: str = Field(min_length=1, max_length=256)
+    continuity_query_id: str = Field(min_length=1, max_length=256)
+
+    @model_validator(mode="after")
+    def validate_history_window(self) -> "MLHistorySourceCapability":
+        """시작일이 종료일보다 늦은 history 영수증은 거부한다."""
+
+        if self.min_date > self.max_date:
+            raise ValueError("ML history source date window is invalid")
+        return self
+
+
 class MLRuntimeCapability(ContractModel):
     """Backend가 호출할 수 있는 객실 수요 Runtime의 release receipt다."""
 
@@ -48,6 +74,7 @@ class MLRuntimeCapability(ContractModel):
     model_max_horizon: int = Field(ge=1, le=31)
     properties: tuple[MLPropertyCapability, ...] = Field(min_length=1)
     synthetic_training_data: bool
+    history_source: MLHistorySourceCapability
     query_id: str = Field(min_length=1, max_length=256)
 
     @model_validator(mode="after")
@@ -59,6 +86,8 @@ class MLRuntimeCapability(ContractModel):
         property_ids = [item.property_id.upper() for item in self.properties]
         if len(property_ids) != len(set(property_ids)):
             raise ValueError("ML runtime property capability is duplicated")
+        if self.synthetic_training_data != self.history_source.synthetic_only:
+            raise ValueError("ML release and history source synthetic mode differ")
         return self
 
 
@@ -120,7 +149,8 @@ class MLPredictionService:
             or provenance.get("rag_called") is not False
             or provenance.get("source") != "TRINO_HISTORICAL_DAILY_FACTS"
             or provenance.get("request_as_of") != request_payload["as_of"]
-            or not str(provenance.get("history_table") or "").strip()
+            or provenance.get("history_table")
+            != capabilities["history_source"]["table"]
             or not str(provenance.get("trino_query_id") or "").strip()
         ):
             raise RuntimeError(

@@ -63,11 +63,98 @@ def validate_hgbr_runtime(model_type: str, model: Any) -> str:
     return estimator_types[0]
 
 
-def validate_history_source(trino: TrinoClient, history_table: str) -> None:
-    """승인된 history table이 존재하고 최소 한 행을 읽을 수 있을 때만 serving을 허용한다."""
-    result = trino.query(f"SELECT 1 AS source_ready FROM {history_table} LIMIT 1")
-    if not result.rows or result.rows[0].get("source_ready") != 1:
+def validate_history_source(
+    trino: TrinoClient,
+    history_table: str,
+    *,
+    expected_synthetic: bool,
+) -> dict[str, Any]:
+    """History 계약의 값 범위·연속성·합성 출처가 모두 맞을 때만 serving한다."""
+
+    summary_sql = f"""
+SELECT
+    count(*) AS row_count,
+    count(DISTINCT property_id) AS property_count,
+    min(business_date) AS min_date,
+    max(business_date) AS max_date,
+    count_if(
+        property_id IS NULL
+        OR business_date IS NULL
+        OR room_type_code IS NULL
+        OR physical_rooms <= 0
+        OR available_room_nights < 0
+        OR available_room_nights > physical_rooms
+        OR rooms_sold < 0
+        OR rooms_sold > available_room_nights
+        OR daily_adr < 0
+        OR cancellation_rate < 0
+        OR cancellation_rate > 1
+        OR is_synthetic IS NULL
+    ) AS invalid_rows,
+    count_if(is_synthetic) AS synthetic_rows,
+    count_if(NOT is_synthetic) AS non_synthetic_rows
+FROM {history_table}
+""".strip()
+    summary_result = trino.query(summary_sql)
+    if len(summary_result.rows) != 1:
+        raise RuntimeError("ML history source summary is unreadable")
+    summary = summary_result.rows[0]
+    row_count = int(summary.get("row_count") or 0)
+    property_count = int(summary.get("property_count") or 0)
+    invalid_rows = int(summary.get("invalid_rows") or 0)
+    synthetic_rows = int(summary.get("synthetic_rows") or 0)
+    non_synthetic_rows = int(summary.get("non_synthetic_rows") or 0)
+    if row_count < 1 or property_count < 1:
         raise RuntimeError("ML history source is empty or unreadable")
+    if invalid_rows:
+        raise RuntimeError(f"ML history source has {invalid_rows} invalid rows")
+    if expected_synthetic:
+        source_mode_matches = synthetic_rows == row_count and non_synthetic_rows == 0
+    else:
+        source_mode_matches = non_synthetic_rows == row_count and synthetic_rows == 0
+    if not source_mode_matches:
+        raise RuntimeError("ML history source synthetic mode does not match the release")
+
+    continuity_sql = f"""
+SELECT
+    count(*) AS series_count,
+    min(row_count) AS min_series_rows,
+    count_if(
+        row_count < 372
+        OR row_count <> date_diff('day', min_date, max_date) + 1
+    ) AS invalid_series
+FROM (
+    SELECT
+        property_id,
+        room_type_code,
+        count(*) AS row_count,
+        min(business_date) AS min_date,
+        max(business_date) AS max_date
+    FROM {history_table}
+    GROUP BY property_id, room_type_code
+) AS history_series
+""".strip()
+    continuity_result = trino.query(continuity_sql)
+    if len(continuity_result.rows) != 1:
+        raise RuntimeError("ML history source continuity receipt is unreadable")
+    continuity = continuity_result.rows[0]
+    series_count = int(continuity.get("series_count") or 0)
+    min_series_rows = int(continuity.get("min_series_rows") or 0)
+    invalid_series = int(continuity.get("invalid_series") or 0)
+    if series_count < 1 or min_series_rows < 372 or invalid_series:
+        raise RuntimeError("ML history source has incomplete time series")
+
+    return {
+        "table": history_table,
+        "row_count": row_count,
+        "property_count": property_count,
+        "series_count": series_count,
+        "min_date": str(summary["min_date"]),
+        "max_date": str(summary["max_date"]),
+        "synthetic_only": expected_synthetic,
+        "summary_query_id": summary_result.query_id,
+        "continuity_query_id": continuity_result.query_id,
+    }
 
 
 def sha256(path: Path) -> str:
@@ -141,7 +228,11 @@ class TimeSeriesRuntime:
             ca_file=os.getenv("TRINO_CA_FILE") or os.environ["TRINO_TLS_CA_FILE"],
             timeout_seconds=float(os.getenv("TRINO_TIMEOUT_SECONDS", "30")),
         )
-        validate_history_source(self.trino, self.history_table)
+        self.history_source = validate_history_source(
+            self.trino,
+            self.history_table,
+            expected_synthetic=bool(self.manifest["synthetic_training_data"]),
+        )
 
     def query_history(self, request: PredictionRequest) -> tuple[pd.DataFrame, str]:
         sql = f"""
@@ -192,6 +283,7 @@ ORDER BY property_id
             "model_max_horizon": MAX_HORIZON,
             "properties": properties,
             "synthetic_training_data": bool(self.manifest["synthetic_training_data"]),
+            "history_source": self.history_source,
             "query_id": result.query_id,
         }
 

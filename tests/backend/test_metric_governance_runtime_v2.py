@@ -69,6 +69,7 @@ from app.services.analysis.result_validator import PipelineResultValidator  # no
 from app.services.context.metric_resolver import (  # noqa: E402
     MetricResolver,
     _explicit_calendar_time_bucket,
+    _merge_period_recheck,
     _reconcile_explicit_calendar_bucket,
     _reconcile_comparison_axis,
     _validate_selected_data_availability,
@@ -104,6 +105,41 @@ from src.data.governance_contract import (  # noqa: E402
     dimension_members,
 )
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V1  # noqa: E402
+
+
+def test_period_recheck_cannot_overwrite_route_or_result_shape() -> None:
+    """기간 전용 재검토가 표현 전환을 새 분석으로 오염시키지 않는다."""
+
+    original = {
+        "requested_route": "PRESENTATION",
+        "presentation_type": "TABLE",
+        "presentation_explicit": True,
+        "analysis_operation": None,
+        "intent_candidates": [],
+        "period_candidates": [],
+        "period_relationship": "single",
+    }
+    rechecked = {
+        **original,
+        "requested_route": "ANALYSIS",
+        "analysis_operation": "aggregate",
+        "intent_candidates": ["aggregate"],
+        "period_candidates": [
+            {
+                "start": "2026-08-01T00:00:00+09:00",
+                "end_exclusive": "2026-09-01T00:00:00+09:00",
+                "source_text": "8월",
+            }
+        ],
+    }
+
+    merged = _merge_period_recheck(original, rechecked)
+
+    assert merged["requested_route"] == "PRESENTATION"
+    assert merged["presentation_type"] == "TABLE"
+    assert merged["analysis_operation"] is None
+    assert merged["intent_candidates"] == []
+    assert merged["period_candidates"] == rechecked["period_candidates"]
 
 
 def _runtime_bundle(

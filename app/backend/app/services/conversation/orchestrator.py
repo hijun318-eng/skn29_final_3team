@@ -178,7 +178,11 @@ def _analysis_terminal(response: Any) -> tuple[str, str | None]:
     return value, reason
 
 
-def _view_contract(response: Any, artifact_id: UUID) -> dict[str, Any]:
+def _view_contract(
+    response: Any,
+    artifact_id: UUID,
+    requested_type: str | None = None,
+) -> dict[str, Any]:
     """Create the immutable default View payload from the Safe Artifact response."""
 
     chart = getattr(
@@ -199,10 +203,18 @@ def _view_contract(response: Any, artifact_id: UUID) -> dict[str, Any]:
         )
         or "TABLE"
     ).upper()
-    view_type = {
+    artifact_view_type = {
         "HORIZONTAL_BAR": "BAR",
         "DONUT": "PIE",
     }.get(raw_type, raw_type)
+    requested_view_type = {
+        "HORIZONTAL_BAR": "BAR",
+        "DONUT": "PIE",
+        # SUMMARY는 대화 renderer의 복합 모드이며 영속 ViewSpec enum은 아니다.
+        # 사용자가 별도 표현을 요청하지 않은 초기 결과는 중립적인 TABLE로 보존한다.
+        "SUMMARY": "TABLE",
+    }.get(str(requested_type or "").upper(), str(requested_type or "").upper())
+    view_type = requested_view_type or artifact_view_type
     if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA", "SCATTER", "KPI"}:
         view_type = "TABLE"
     spec = {
@@ -2121,7 +2133,11 @@ class ConversationOrchestrator:
                 and artifact_id is not None
             ):
                 view_spec_id = uuid4()
-                view_spec = _view_contract(analysis_resp, artifact_id)
+                view_spec = _view_contract(
+                    analysis_resp,
+                    artifact_id,
+                    slots.target_chart_type,
+                )
             clarifies_turn_id = (
                 UUID(str(previous_turns[-1]["turn_id"]))
                 if previous_turns

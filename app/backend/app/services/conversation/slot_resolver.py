@@ -380,6 +380,7 @@ class ConversationSlotResolver:
             candidate_changes_metric
             or node1_output.get("dimension_fields")
             or node1_output.get("filter_fields")
+            or node1_output.get("period_candidates")
             or (
                 candidate_operation is not None
                 and candidate_operation
@@ -389,6 +390,12 @@ class ConversationSlotResolver:
                 candidate_time_bucket is not None
                 and candidate_time_bucket
                 != analysis_inheritance_slots.get("analysis_time_bucket")
+            )
+            or (
+                isinstance(node1_output.get("result_limit"), int)
+                and not isinstance(node1_output.get("result_limit"), bool)
+                and node1_output.get("result_limit")
+                != analysis_inheritance_slots.get("result_limit")
             )
         )
         # 재사용할 선행 Artifact가 실제로 있는지는 오케스트레이터가 실행 직전에 확인해

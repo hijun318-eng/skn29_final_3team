@@ -1129,3 +1129,50 @@ def test_presentation_yields_when_the_question_changes_the_query_shape():
         as_of=date(2026, 8, 18),
     )
     assert render_only.route == "PRESENTATION"
+
+
+def test_presentation_yields_to_typed_period_or_rank_changes() -> None:
+    """기간 후보나 순위 개수 변경은 기존 Artifact의 표현 전환으로 처리하지 않는다."""
+
+    previous = _prior_analysis_turn()
+    base = {
+        "requested_route": "PRESENTATION",
+        "presentation_type": "TABLE",
+        "presentation_explicit": True,
+        "metric_resolution": "missing",
+        "is_elliptical": True,
+    }
+
+    period_change = ConversationSlotResolver.resolve(
+        user_message="다른 기간을 표로 보여줘",
+        node1_output={
+            **base,
+            **_node1_period(
+                "2026-06-01T00:00:00+09:00",
+                "2026-07-01T00:00:00+09:00",
+                "다른 기간",
+            ),
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 18),
+    )
+    rank_change = ConversationSlotResolver.resolve(
+        user_message="상위 항목만 표로 보여줘",
+        node1_output={
+            **base,
+            "analysis_operation": "top_n",
+            "result_limit": 5,
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 18),
+    )
+
+    assert period_change.route == "ANALYSIS"
+    assert period_change.time_range == ResolvedTimeRange(
+        start=date(2026, 6, 1),
+        end_exclusive=date(2026, 7, 1),
+        source_text="다른 기간",
+    )
+    assert rank_change.route == "ANALYSIS"
+    assert rank_change.analysis_operation == "top_n"
+    assert rank_change.result_limit == 5

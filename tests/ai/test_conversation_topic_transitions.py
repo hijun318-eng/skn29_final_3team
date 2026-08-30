@@ -224,6 +224,7 @@ def test_complex_single_metric_question_keeps_dimensions_filter_period_and_view(
             ],
             "period_candidates": _period("2025-07-01", "2025-08-01", "2025년 7월"),
             "presentation_type": "TABLE",
+            "presentation_explicit": True,
             "is_elliptical": False,
             "requested_route": "ANALYSIS",
         },

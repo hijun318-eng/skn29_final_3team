@@ -51,12 +51,34 @@ from app.services.conversation.orchestrator import (
     ConversationOrchestrator,
     _business_terms_for_turn,
     _safe_analysis_observation,
+    _view_contract,
 )
 from app.services.execution_control import ConcurrentExecutionGate
 
 
 TEST_PRODUCT_RELEASE = "product-release:test"
 TEST_SEMANTIC_RELEASE = "semantic-release:test"
+
+
+def test_initial_summary_view_does_not_persist_an_unsolicited_chart() -> None:
+    """초기 SUMMARY 요청은 Artifact의 추천 chart와 무관하게 중립 ViewSpec을 남긴다."""
+
+    response = SimpleNamespace(
+        data=SimpleNamespace(
+            result=SimpleNamespace(
+                chart=SimpleNamespace(
+                    chart_type="bar",
+                    x_field="period",
+                    y_fields=("room_revenue",),
+                )
+            )
+        )
+    )
+
+    view = _view_contract(response, uuid4(), "SUMMARY")
+
+    assert view["view_type"] == "TABLE"
+    assert view["spec_json"]["chart_type"] == "table"
 
 
 def test_safe_analysis_observation_excludes_sql_rows_and_parameters() -> None:

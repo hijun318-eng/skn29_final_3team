@@ -787,6 +787,25 @@ def _range_period_recheck_required(
         return False
 
 
+def _merge_period_recheck(
+    original: dict[str, Any],
+    rechecked: dict[str, Any],
+) -> dict[str, Any]:
+    """기간 재검토 응답에서 기간 계약만 원래 해석에 병합한다.
+
+    ``interpretation_recheck.target``이 ``period_candidates``인 호출은 다른 route,
+    metric, result-shape 결정을 바꿀 권한이 없다. 재검토 응답 전체로 원본을 교체하면
+    표현 전환 요청이 새 분석으로 바뀌는 등 unrelated slot drift가 생길 수 있으므로,
+    기간 후보와 그 후보들의 관계만 좁게 채택한다.
+    """
+
+    merged = dict(original)
+    for field in ("period_candidates", "period_relationship"):
+        if field in rechecked:
+            merged[field] = rechecked[field]
+    return merged
+
+
 def _analysis_shape_recheck_violation(normalized: dict[str, Any]) -> str | None:
     """선택된 분석 요청의 결과 형태 위반을 bounded 재검토 코드로 반환한다.
 
@@ -1899,9 +1918,10 @@ class MetricResolver:
                 "attempt": 1,
                 "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
             }
-            normalized = await normalize()
-            if not isinstance(normalized, dict):
+            period_recheck = await normalize()
+            if not isinstance(period_recheck, dict):
                 raise ValueError("Node1 기간 재검토 응답은 객체여야 합니다.")
+            normalized = _merge_period_recheck(normalized, period_recheck)
             interpretation_rechecked = True
         normalized = _reconcile_explicit_calendar_bucket(
             normalized,

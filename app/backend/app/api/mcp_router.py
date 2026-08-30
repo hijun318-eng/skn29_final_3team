@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import json
-import logging
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -19,12 +17,27 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.adapters.analysis_repository import AnalysisRepositoryUnavailable, PostgresAnalysisRepository
 from app.auth import AuthenticationError, Principal
-from app.authorization import has_capability, role_is_entitled
 from app.context import TokenAuthenticator, bearer_auth, token_authenticator
-from app.contracts import Capability, Role
 from app.database import DatabaseConfigurationError, session_scope
+from app.ports.mcp_tool import (
+    MCPToolDispatchError,
+    MCPToolInfrastructureError,
+)
+from app.services.mcp_tool_registry import (
+    ANALYSIS_GET_RUN_ANNOTATIONS,
+    ANALYSIS_GET_RUN_DESCRIPTION,
+    ANALYSIS_GET_RUN_INPUT_SCHEMA,
+    ANALYSIS_GET_RUN_NAME,
+    ANALYSIS_GET_RUN_OUTPUT_SCHEMA,
+    ANALYSIS_GET_RUN_SEMANTIC_VERSION,
+    ANALYSIS_GET_RUN_TIMEOUT_SECONDS,
+    ANALYSIS_GET_RUN_TOOL_ID,
+    MCPToolDispatcher,
+    MCPToolRegistry,
+    _analysis_get_run_output,
+    analysis_get_run_descriptor,
+)
 
 
 # 날짜처럼 보이는 값은 질문 기준일이 아니라 MCP wire protocol의 공개 version이다.
@@ -33,48 +46,19 @@ MCP_PROTOCOL_VERSION = "2026-07-28"
 MCP_SERVER_INFO = {"name": "answervice-mcp", "version": "1.0.0"}
 HEADER_MISMATCH = -32020
 UNSUPPORTED_PROTOCOL_VERSION = -32022
-TOOL_ID = UUID("c4454392-2f92-54a4-ad13-b8cdaba45732")
-TOOL_NAME = "analysis.get_run"
-TOOL_SEMANTIC_VERSION = "1.0.0"
-TOOL_DESCRIPTION = "Get one persisted Analysis Run owned by the authenticated user."
+TOOL_ID = ANALYSIS_GET_RUN_TOOL_ID
+TOOL_NAME = ANALYSIS_GET_RUN_NAME
+TOOL_SEMANTIC_VERSION = ANALYSIS_GET_RUN_SEMANTIC_VERSION
+TOOL_DESCRIPTION = ANALYSIS_GET_RUN_DESCRIPTION
 TOOL_TRANSPORT = "MCP_STREAMABLE_HTTP"
-TOOL_TIMEOUT_SECONDS = 5
-TOOL_REQUIRED_ROLES = (Role.ANALYST.value,)
-TOOL_INPUT_SCHEMA = {
-    "type": "object",
-    "properties": {"request_id": {"type": "string", "format": "uuid"}},
-    "required": ["request_id"],
-    "additionalProperties": False,
-}
-TOOL_OUTPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "request_id": {"type": "string"},
-        "status": {"type": "string"},
-        "trace_id": {"type": "string"},
-        "query_id": {"type": ["string", "null"]},
-        "artifact_id": {"type": ["string", "null"]},
-    },
-    "required": ["request_id", "status", "trace_id", "query_id", "artifact_id"],
-    "additionalProperties": False,
-}
-TOOL_ANNOTATIONS = {
-    "readOnlyHint": True,
-    "destructiveHint": False,
-    "idempotentHint": True,
-    "openWorldHint": False,
-}
+TOOL_TIMEOUT_SECONDS = ANALYSIS_GET_RUN_TIMEOUT_SECONDS
+TOOL_REQUIRED_ROLES = ("analyst",)
+TOOL_INPUT_SCHEMA = ANALYSIS_GET_RUN_INPUT_SCHEMA
+TOOL_OUTPUT_SCHEMA = ANALYSIS_GET_RUN_OUTPUT_SCHEMA
+TOOL_ANNOTATIONS = ANALYSIS_GET_RUN_ANNOTATIONS
 
 mcp_router = APIRouter()
-logger = logging.getLogger(__name__)
-
-
-class MCPInfrastructureError(RuntimeError):
-    """MCP 저장소 장애를 공개 JSON-RPC error code와 결속한다."""
-
-    def __init__(self, code: str) -> None:
-        self.code = code
-        super().__init__(code)
+MCPInfrastructureError = MCPToolInfrastructureError
 
 
 def _database_url() -> str:
@@ -221,60 +205,22 @@ def _discovery_result() -> dict[str, Any]:
 def _structured_run_output(run: dict[str, Any]) -> dict[str, Any]:
     """저장된 run을 공개 outputSchema의 최소 필드로 투영하고 타입을 검증한다."""
 
-    stored_run = json.loads(json.dumps(run, default=str))
-    structured = {
-        key: stored_run.get(key)
-        for key in ("request_id", "status", "trace_id", "query_id", "artifact_id")
-    }
-    if not _tool_output_matches_schema(structured):
-        raise ValueError("analysis.get_run output contract is invalid")
-    return structured
+    return dict(_analysis_get_run_output(run))
 
 
 def _tool_output_matches_schema(value: Mapping[str, Any]) -> bool:
     """공개 structuredContent가 추가 필드 없이 선언 schema와 일치하는지 확인한다."""
 
-    if set(value) != set(TOOL_OUTPUT_SCHEMA["properties"]):
+    try:
+        return dict(_analysis_get_run_output(value)) == value
+    except (TypeError, ValueError):
         return False
-    return not (
-        any(
-            not isinstance(value[key], str) or not value[key].strip()
-            for key in ("request_id", "status", "trace_id")
-        )
-        or any(
-            value[key] is not None
-            and (
-                not isinstance(value[key], str)
-                or not value[key].strip()
-            )
-            for key in ("query_id", "artifact_id")
-        )
-    )
 
 
 def _registry_contract_matches(row: Mapping[str, Any] | None) -> bool:
     """DB registry row가 코드 Tool 계약과 정확히 일치하는지 검증한다."""
 
-    if row is None:
-        return False
-    try:
-        required_roles = row["required_roles_json"]
-        return bool(
-            UUID(str(row["tool_id"])) == TOOL_ID
-            and row["tool_code"] == TOOL_NAME
-            and row["semantic_version"] == TOOL_SEMANTIC_VERSION
-            and row["description"] == TOOL_DESCRIPTION
-            and row["input_schema_json"] == TOOL_INPUT_SCHEMA
-            and row["output_schema_json"] == TOOL_OUTPUT_SCHEMA
-            and row["transport"] == TOOL_TRANSPORT
-            and type(row["timeout_seconds"]) is int
-            and row["timeout_seconds"] == TOOL_TIMEOUT_SECONDS
-            and type(required_roles) is list
-            and tuple(required_roles) == TOOL_REQUIRED_ROLES
-            and row["is_enabled"] is True
-        )
-    except (KeyError, TypeError, ValueError):
-        return False
+    return analysis_get_run_descriptor(_database_url).registry_contract_matches(row)
 
 
 def _registry_receipt_matches(
@@ -283,16 +229,15 @@ def _registry_receipt_matches(
 ) -> bool:
     """정확한 registry 계약에 현재 Principal entitlement까지 대조한다."""
 
+    descriptor = analysis_get_run_descriptor(_database_url)
     return bool(
-        isinstance(principal.role, Role)
-        and _registry_contract_matches(row)
-        and row is not None
-        and role_is_entitled(principal.role, row["required_roles_json"])
+        descriptor.registry_contract_matches(row)
+        and MCPToolRegistry._authorized(descriptor, principal.role)
     )
 
 
-async def _tool_access(principal: Principal) -> tuple[bool, bool]:
-    """활성 registry 계약 존재 여부와 현재 Principal entitlement를 한 번에 조회한다."""
+async def _registry_rows() -> Sequence[Mapping[str, Any]]:
+    """Runtime DB의 registry rows를 generic registry에 전달한다."""
 
     try:
         async with session_scope(_database_url()) as session:
@@ -303,18 +248,30 @@ async def _tool_access(principal: Principal) -> tuple[bool, bool]:
                            input_schema_json, output_schema_json, transport,
                            timeout_seconds, required_roles_json, is_enabled
                     FROM tooling.tool_registry
-                    WHERE tool_id = :tool_id AND tool_code = :tool_code
                     """
-                ),
-                {"tool_id": TOOL_ID, "tool_code": TOOL_NAME},
+                )
             )
-            row = result.mappings().one_or_none()
-            known = _registry_contract_matches(row)
-            return known, bool(known and _registry_receipt_matches(row, principal))
+            return tuple(result.mappings().all())
     except MCPInfrastructureError:
         raise
     except (DatabaseConfigurationError, SQLAlchemyError) as error:
         raise MCPInfrastructureError("MCP_REGISTRY_UNAVAILABLE") from error
+
+
+def _tool_registry() -> MCPToolRegistry:
+    """현재 handler가 구현된 descriptor만 runtime registry에 조립한다."""
+
+    return MCPToolRegistry(
+        (analysis_get_run_descriptor(_database_url),),
+        _registry_rows,
+    )
+
+
+async def _tool_access(principal: Principal) -> tuple[bool, bool]:
+    """기존 내부 검증 helper를 generic registry access 위에 유지한다."""
+
+    access = await _tool_registry().resolve(TOOL_NAME, principal.role)
+    return access.known, access.authorized
 
 
 async def _authorized_tool(principal: Principal) -> bool:
@@ -332,6 +289,8 @@ async def _record_run(
     started: float,
     output_ref: dict[str, Any],
     error_code: str | None = None,
+    *,
+    tool_id: UUID = TOOL_ID,
 ) -> None:
     try:
         async with session_scope(_database_url()) as session:
@@ -346,7 +305,7 @@ async def _record_run(
                     """
                 ),
                 {
-                    "run_id": uuid4(), "tool_id": TOOL_ID, "user_id": principal.subject,
+                    "run_id": uuid4(), "tool_id": tool_id, "user_id": principal.subject,
                     "role": principal.role.value, "trace_id": trace_id,
                     "input_hash": hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest(),
                     "status": status, "latency_ms": max(0, round((time.perf_counter() - started) * 1000)),
@@ -368,6 +327,8 @@ async def _audit_or_error(
     started: float,
     output_ref: dict[str, Any],
     error_code: str | None = None,
+    *,
+    tool_id: UUID = TOOL_ID,
 ) -> JSONResponse | None:
     """감사 저장에 실패하면 원래 Tool 결과 대신 JSON-RPC server error를 반환한다."""
 
@@ -380,6 +341,7 @@ async def _audit_or_error(
             started,
             output_ref,
             error_code,
+            tool_id=tool_id,
         )
     except MCPInfrastructureError as error:
         return _rpc_infrastructure_error(request_id, error)
@@ -397,6 +359,7 @@ async def _audited_tool_error(
     *,
     status: str = "FAILED",
     protocol_error: bool = False,
+    tool_id: UUID = TOOL_ID,
 ) -> JSONResponse:
     """실패 감사를 먼저 저장하고 공개 MCP 오류 형식으로 안전하게 변환한다."""
 
@@ -409,6 +372,7 @@ async def _audited_tool_error(
         started,
         {},
         error_code,
+        tool_id=tool_id,
     )
     if audit_error is not None:
         return audit_error
@@ -541,21 +505,11 @@ async def mcp_post(
             )
         if set(params) - {"_meta", "cursor"} or "cursor" in params:
             return _rpc_error(request_id, -32602, "Invalid cursor", 400)
-        tools = []
-        if has_capability(principal.role, Capability.READ_ANALYSIS):
-            try:
-                authorized = await _authorized_tool(principal)
-            except MCPInfrastructureError as error:
-                return _rpc_infrastructure_error(request_id, error)
-            if authorized:
-                tools.append({
-                    "name": TOOL_NAME,
-                    "title": "Get Analysis Run",
-                    "description": TOOL_DESCRIPTION,
-                    "inputSchema": TOOL_INPUT_SCHEMA,
-                    "outputSchema": TOOL_OUTPUT_SCHEMA,
-                    "annotations": TOOL_ANNOTATIONS,
-                })
+        try:
+            descriptors = await _tool_registry().list_authorized(principal.role)
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
+        tools = [descriptor.public_definition() for descriptor in descriptors]
         return _rpc_result(
             request_id,
             {"tools": tools, "ttlMs": 0, "cacheScope": "private"},
@@ -572,21 +526,17 @@ async def mcp_post(
         )
     if set(params) - {"_meta", "name", "arguments"}:
         return _rpc_error(request_id, -32602, "Invalid tools/call params", 400)
-    if params.get("name") != TOOL_NAME:
-        return _rpc_error(request_id, -32602, "Unknown or disabled tool")
     started = time.perf_counter()
     trace_id = request.state.trace_id
     try:
-        known_tool, role_entitled = await _tool_access(principal)
+        access = await _tool_registry().resolve(str(params.get("name")), principal.role)
     except MCPInfrastructureError as error:
         return _rpc_infrastructure_error(request_id, error)
-    if not known_tool:
+    if not access.known or access.descriptor is None:
         return _rpc_error(request_id, -32602, "Unknown or disabled tool")
     arguments = params.get("arguments", {})
-    if not role_entitled or not has_capability(
-        principal.role,
-        Capability.READ_ANALYSIS,
-    ):
+    descriptor = access.descriptor
+    if not access.authorized:
         return await _audited_tool_error(
             request_id,
             principal,
@@ -597,103 +547,29 @@ async def mcp_post(
             "Unknown or disabled tool",
             status="DENIED",
             protocol_error=True,
-        )
-    if not isinstance(arguments, dict) or set(arguments) != {"request_id"}:
-        return await _audited_tool_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            started,
-            "INVALID_ARGUMENT",
-            "request_id is required and no additional arguments are allowed",
-            protocol_error=True,
+            tool_id=descriptor.tool_id,
         )
     try:
-        UUID(arguments["request_id"])
-    except (AttributeError, TypeError, ValueError):
-        return await _audited_tool_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            started,
-            "INVALID_ARGUMENT",
-            "request_id는 UUID 형식이어야 합니다.",
-        )
-    try:
-        run = await asyncio.wait_for(
-            PostgresAnalysisRepository(
-                _database_url(), principal.subject
-            ).get_run(arguments["request_id"]),
-            timeout=TOOL_TIMEOUT_SECONDS,
-        )
-    except TimeoutError:
-        return await _audited_tool_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            started,
-            "TOOL_TIMEOUT",
-            "Analysis 실행 조회 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
-        )
-    except (ValueError, KeyError) as error:
-        return await _audited_tool_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            started,
-            "RUN_NOT_FOUND",
-            str(error),
-        )
-    except AnalysisRepositoryUnavailable:
-        return await _audited_tool_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            started,
-            "REPOSITORY_UNAVAILABLE",
-            "Analysis 저장소를 사용할 수 없습니다.",
+        result = await MCPToolDispatcher().dispatch(
+            descriptor,
+            subject_id=principal.subject,
+            role=principal.role,
+            trace_id=trace_id,
+            arguments=arguments,
         )
     except MCPInfrastructureError as error:
         return _rpc_infrastructure_error(request_id, error)
-    except DatabaseConfigurationError:
-        return _rpc_infrastructure_error(
-            request_id,
-            MCPInfrastructureError("MCP_STORAGE_UNAVAILABLE"),
-        )
-    except Exception as error:
-        logger.error(
-            "MCP tool execution failed",
-            extra={
-                "trace_id": trace_id,
-                "tool_name": TOOL_NAME,
-                "error_type": type(error).__name__,
-            },
-        )
+    except MCPToolDispatchError as error:
         return await _audited_tool_error(
             request_id,
             principal,
             trace_id,
             arguments,
             started,
-            "TOOL_EXECUTION_FAILED",
-            "Analysis 실행을 조회하는 중 오류가 발생했습니다.",
-        )
-    try:
-        structured = _structured_run_output(run)
-    except ValueError:
-        return await _audited_tool_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            started,
-            "RUN_CONTRACT_INVALID",
-            "Analysis 실행 결과 계약이 올바르지 않습니다.",
+            error.code,
+            str(error),
+            protocol_error=error.protocol_error,
+            tool_id=descriptor.tool_id,
         )
     audit_error = await _audit_or_error(
         request_id,
@@ -702,12 +578,16 @@ async def mcp_post(
         arguments,
         "SUCCEEDED",
         started,
-        {key: structured.get(key) for key in ("request_id", "query_id", "artifact_id")},
+        dict(result.audit_output_ref),
+        tool_id=descriptor.tool_id,
     )
     if audit_error is not None:
         return audit_error
     return _rpc_result(request_id, {
-        "content": [{"type": "text", "text": json.dumps(structured, ensure_ascii=False)}],
-        "structuredContent": structured,
+        "content": [{
+            "type": "text",
+            "text": json.dumps(result.structured_content, ensure_ascii=False),
+        }],
+        "structuredContent": dict(result.structured_content),
         "isError": False,
     })

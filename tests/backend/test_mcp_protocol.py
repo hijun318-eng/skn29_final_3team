@@ -77,6 +77,23 @@ def _request_payload(
     }
 
 
+def _registry_receipt(*, enabled: bool = True) -> dict[str, object]:
+    """현재 analysis.get_run code descriptor와 정확히 일치하는 DB receipt를 만든다."""
+
+    return {
+        "tool_id": "c4454392-2f92-54a4-ad13-b8cdaba45732",
+        "tool_code": TOOL_NAME,
+        "semantic_version": TOOL_SEMANTIC_VERSION,
+        "description": "Get one persisted Analysis Run owned by the authenticated user.",
+        "input_schema_json": TOOL_INPUT_SCHEMA,
+        "output_schema_json": TOOL_OUTPUT_SCHEMA,
+        "transport": TOOL_TRANSPORT,
+        "timeout_seconds": TOOL_TIMEOUT_SECONDS,
+        "required_roles_json": list(TOOL_REQUIRED_ROLES),
+        "is_enabled": enabled,
+    }
+
+
 class McpProtocolTest(unittest.TestCase):
     def test_contract_is_one_read_only_owner_scoped_tool(self) -> None:
         self.assertEqual("2026-07-28", MCP_PROTOCOL_VERSION)
@@ -148,18 +165,7 @@ class McpProtocolTest(unittest.TestCase):
         """부분 일치·schema drift·다른 role은 공개 Tool 승인 receipt가 아니다."""
 
         principal = Principal(uuid4(), Role.ANALYST)
-        receipt = {
-            "tool_id": "c4454392-2f92-54a4-ad13-b8cdaba45732",
-            "tool_code": TOOL_NAME,
-            "semantic_version": TOOL_SEMANTIC_VERSION,
-            "description": "Get one persisted Analysis Run owned by the authenticated user.",
-            "input_schema_json": TOOL_INPUT_SCHEMA,
-            "output_schema_json": TOOL_OUTPUT_SCHEMA,
-            "transport": TOOL_TRANSPORT,
-            "timeout_seconds": TOOL_TIMEOUT_SECONDS,
-            "required_roles_json": list(TOOL_REQUIRED_ROLES),
-            "is_enabled": True,
-        }
+        receipt = _registry_receipt()
         self.assertTrue(_registry_receipt_matches(receipt, principal))
 
         mismatches = {
@@ -259,10 +265,11 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         protocol_version: str | None = MCP_PROTOCOL_VERSION,
         method_header: str | None = "server/discover",
         name_header: str | None = None,
+        role: Role = Role.ANALYST,
     ) -> tuple[int, dict[str, object]]:
         response = await mcp_post(
             _StubRequest(payload),  # type: ignore[arg-type]
-            Principal(uuid4(), Role.ANALYST),
+            Principal(uuid4(), role),
             protocol_version,
             method_header,
             name_header,
@@ -272,6 +279,8 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
     async def _call_tool(
         self,
         arguments: object,
+        *,
+        role: Role = Role.ANALYST,
     ) -> tuple[int, dict[str, object]]:
         """표준 metadata와 mirrored header를 포함한 Tool 호출을 만든다."""
 
@@ -282,6 +291,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             ),
             method_header="tools/call",
             name_header=TOOL_NAME,
+            role=role,
         )
 
     async def test_discovery_is_stateless_and_self_describing(self) -> None:
@@ -371,16 +381,14 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
     async def test_registry_mismatch_hides_tool_from_list_and_call(self) -> None:
         """전체 registry receipt가 다르면 목록과 직접 호출을 모두 fail-closed 한다."""
 
-        with (
-            patch(
-                "app.api.mcp_router._authorized_tool",
-                AsyncMock(return_value=False),
-            ) as authorized,
-            patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(False, False)),
-            ) as tool_access,
-        ):
+        drifted = {
+            **_registry_receipt(),
+            "output_schema_json": {**TOOL_OUTPUT_SCHEMA, "required": []},
+        }
+        with patch(
+            "app.api.mcp_router._registry_rows",
+            AsyncMock(return_value=(drifted,)),
+        ) as registry_rows:
             status, listed = await self._post(
                 _request_payload(method="tools/list"),
                 method_header="tools/list",
@@ -402,8 +410,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], listed["result"]["tools"])
         self.assertEqual(200, call_status)
         self.assertEqual(-32602, called["error"]["code"])
-        self.assertEqual(1, authorized.await_count)
-        self.assertEqual(1, tool_access.await_count)
+        self.assertEqual(2, registry_rows.await_count)
 
     async def test_registry_failure_uses_json_rpc_server_error(self) -> None:
         """Registry 장애가 FastAPI detail 응답으로 wire 계약을 이탈하지 않는다."""
@@ -440,8 +447,8 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(True, True)),
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
             ),
             patch.dict("os.environ", {"APP_RUNTIME_DATABASE_URL": ""}),
         ):
@@ -459,15 +466,18 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(True, False)),
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
             ),
             patch(
                 "app.api.mcp_router._record_run",
                 AsyncMock(),
             ) as record_run,
         ):
-            status, body = await self._call_tool({"request_id": str(uuid4())})
+            status, body = await self._call_tool(
+                {"request_id": str(uuid4())},
+                role=Role.REPORT_ADMIN,
+            )
 
         self.assertEqual(200, status)
         self.assertEqual(-32602, body["error"]["code"])
@@ -479,8 +489,8 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(True, True)),
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
             ),
             patch(
                 "app.api.mcp_router._record_run",
@@ -504,8 +514,8 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(True, True)),
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
             ),
             patch(
                 "app.api.mcp_router._database_url",
@@ -536,19 +546,19 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         request_id = str(uuid4())
         with (
             patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(True, True)),
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
             ),
             patch(
                 "app.api.mcp_router._database_url",
                 return_value="postgresql+psycopg://test:test@localhost/test",
             ),
             patch(
-                "app.api.mcp_router.PostgresAnalysisRepository.get_run",
+                "app.services.mcp_tool_registry.PostgresAnalysisRepository.get_run",
                 AsyncMock(return_value={}),
             ),
             patch(
-                "app.api.mcp_router.asyncio.wait_for",
+                "app.services.mcp_tool_registry.asyncio.wait_for",
                 side_effect=raise_timeout,
             ),
             patch(
@@ -570,15 +580,15 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         request_id = str(uuid4())
         with (
             patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(True, True)),
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
             ),
             patch(
                 "app.api.mcp_router._database_url",
                 return_value="postgresql+psycopg://test:test@localhost/test",
             ),
             patch(
-                "app.api.mcp_router.PostgresAnalysisRepository.get_run",
+                "app.services.mcp_tool_registry.PostgresAnalysisRepository.get_run",
                 AsyncMock(side_effect=SQLAlchemyError("secret-dsn")),
             ),
             patch(
@@ -599,15 +609,15 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "app.api.mcp_router._tool_access",
-                AsyncMock(return_value=(True, True)),
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
             ),
             patch(
                 "app.api.mcp_router._database_url",
                 return_value="postgresql+psycopg://test:test@localhost/test",
             ),
             patch(
-                "app.api.mcp_router.PostgresAnalysisRepository.get_run",
+                "app.services.mcp_tool_registry.PostgresAnalysisRepository.get_run",
                 AsyncMock(side_effect=asyncio.CancelledError),
             ),
             patch(

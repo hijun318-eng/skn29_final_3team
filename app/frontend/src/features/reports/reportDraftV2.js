@@ -20,6 +20,7 @@ export {
   analysisRunArtifactSources,
   analysisTimeLabel,
   reportAssistantArtifactOptions,
+  reportAssistantRepresentativeBlock,
 } from "./reportAnalysisArtifacts.js";
 /** editor 블록과 versioned 문서를 연결하는 순수 연산을 재노출한다. */
 export {

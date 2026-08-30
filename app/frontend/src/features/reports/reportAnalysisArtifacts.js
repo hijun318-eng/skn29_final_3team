@@ -105,6 +105,13 @@ export function reportAssistantArtifactOptions(options = [], primaryArtifactId =
   return result;
 }
 
+/** 현재 선택 블록의 근거를 우선하고, 텍스트 선택 시 보고서에 실제 배치된 첫 근거를 대표로 삼는다. */
+export function reportAssistantRepresentativeBlock(blocks = [], selectedBlockId = "") {
+  const selected = blocks.find((block) => block?.id === selectedBlockId);
+  if (selected?.artifactId) return selected;
+  return blocks.find((block) => block?.artifactId) || null;
+}
+
 function analysisMetricToReport(metric) {
   return {
     metric_id: metric.metricId,

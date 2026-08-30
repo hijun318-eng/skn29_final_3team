@@ -233,10 +233,10 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
           ].join(" · "),
         }
       : null}
-    artifact={page.selectedArtifact}
-    artifactOptions={artifacts.assistantArtifactOptions}
+    artifact={page.assistantArtifact}
+    artifactOptions={page.assistantArtifactOptions}
     assistantArtifactIds={page.assistantArtifactIds}
-    artifactTitle={page.selectedArtifactSource?.title}
+    artifactTitle={page.assistantArtifactSource?.title}
     canEdit={page.canEdit}
     hasUnsavedChanges={draft.isDirty}
     instruction={lifecycle.assistantInstruction}
@@ -247,7 +247,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
     onReview={page.reviewAssistantReport}
-    onSelectArtifacts={artifacts.setAssistantArtifacts}
+    onSelectArtifacts={page.setAssistantArtifacts}
     onSuggestTitle={page.suggestAssistantTitle}
     onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}

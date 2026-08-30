@@ -159,6 +159,36 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         self.assertNotIn("private-evidence-query", repr(payload))
         self.assertNotIn("a" * 64, repr(payload))
 
+    def test_turn_payload_requires_primary_artifact_to_match_current_draft_block(self) -> None:
+        """대표 근거와 선택 Artifact 블록이 다르면 모델 호출 payload를 만들지 않는다."""
+
+        primary_id = uuid4()
+        secondary_id = uuid4()
+        secondary_block_id = str(uuid4())
+        definition = ReportDefinitionVersion(
+            str(uuid4()), 1, DefinitionStatus.DRAFT, "월간 보고서",
+            (
+                ReportBlock(
+                    str(uuid4()), "매출 차트", str(primary_id), 6, "query-primary",
+                    BlockType.CHART, 0, 0, 6, 7,
+                ),
+                ReportBlock(
+                    secondary_block_id, "점유율 표", str(secondary_id), 6, "query-secondary",
+                    BlockType.TABLE, 6, 0, 6, 7,
+                ),
+            ),
+        )
+        artifact = {
+            "artifact_id": primary_id, "title": "승인 매출", "narrative_markdown": "요약",
+            "evidence_json": {}, "chart_spec_json": None, "data_snapshot_json": None,
+        }
+
+        with self.assertRaisesRegex(ValueError, "ASSISTANT_STATE_CONFLICT"):
+            _report_turn_payload(
+                definition, artifact, "선택 블록을 수정해 줘",
+                selected_block_id=secondary_block_id,
+            )
+
     def test_report_api_and_model_input_share_the_100_block_fail_closed_limit(self) -> None:
         """create·replace·response와 모델 입력이 모두 같은 100-block 상한을 공개한다."""
 

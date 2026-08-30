@@ -392,6 +392,7 @@ def _report_turn_payload(
     }
     if len(definition.blocks) > REPORT_MAX_BLOCKS:
         raise ValueError("REPORT_BLOCK_LIMIT_EXCEEDED")
+    primary_artifact_id = str(primary["artifact_id"])
     selected_block = None
     if selected_block_id is not None:
         block = next(
@@ -399,6 +400,11 @@ def _report_turn_payload(
             None,
         )
         if block is None:
+            raise ValueError("ASSISTANT_STATE_CONFLICT")
+        if (
+            block.artifact_id is not None
+            and str(block.artifact_id) != primary_artifact_id
+        ):
             raise ValueError("ASSISTANT_STATE_CONFLICT")
         selected_block = {
             "block_id": block.block_id,

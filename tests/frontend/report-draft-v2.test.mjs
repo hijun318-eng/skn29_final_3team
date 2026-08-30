@@ -32,6 +32,7 @@ import {
   orientFrontendBlocks,
   reportArtifactLibrarySources,
   reportAssistantArtifactOptions,
+  reportAssistantRepresentativeBlock,
   saveFrontendDraft,
 } from "../../app/frontend/src/features/reports/reportDraftV2.js";
 import { reportEvidenceReady } from "../../app/frontend/src/features/reports/reportArtifactEvidence.ts";
@@ -238,6 +239,23 @@ assert.deepEqual(
 );
 assert.deepEqual(reportAssistantArtifactOptions([manyAssistantOptions[0]], "artifact-1"), [manyAssistantOptions[0]]);
 
+const assistantBlocks = [
+  { id: "summary", type: "text", content: "요약" },
+  { id: "revenue-chart", type: "chart", artifactId: "artifact-revenue" },
+  { id: "occupancy-table", type: "table", artifactId: "artifact-occupancy" },
+];
+assert.equal(
+  reportAssistantRepresentativeBlock(assistantBlocks, "occupancy-table")?.artifactId,
+  "artifact-occupancy",
+  "선택한 Artifact 블록의 실제 근거가 대표 Artifact여야 한다",
+);
+assert.equal(
+  reportAssistantRepresentativeBlock(assistantBlocks, "summary")?.artifactId,
+  "artifact-revenue",
+  "텍스트 블록 선택 시 보고서에 배치된 첫 Artifact를 대표 근거로 사용해야 한다",
+);
+assert.equal(reportAssistantRepresentativeBlock([{ id: "summary", type: "text" }], "summary"), null);
+
 const analysisArtifactBefore = structuredClone(analysisLibraryFixture.artifact);
 const adaptedAnalysisArtifact = adaptAnalysisRunArtifact(analysisLibraryFixture.artifact);
 assert.equal(adaptedAnalysisArtifact.artifact_id, "artifact-revenue");
@@ -440,7 +458,7 @@ assert.match(reportSources.artifacts, /analysisClient\.listRuns\(\{ limit: 7, ap
 assert.match(reportSources.artifacts, /analysisClient\.getRunArtifact\(source\.requestId \|\| source\.artifactRequestId\)/);
 assert.match(reportSources.artifacts, /sources\.filter\([\s\S]*hydrationIds\.has\(source\.artifactId\)/);
 assert.match(reportSources.artifacts, /const setAssistantArtifacts = useCallback\(async/);
-assert.match(reportSources.artifacts, /const primaryArtifactId = artifactSelection \|\| uniqueIds\[0\] \|\| ""/);
+assert.match(reportSources.artifacts, /const primaryArtifactId = representativeArtifactId \|\| artifactSelection \|\| uniqueIds\[0\] \|\| ""/);
 assert.match(reportSources.artifacts, /const selectedIds = \[primaryArtifactId, \.\.\.requested\]/);
 assert.match(reportSources.artifacts, /setArtifactSelection\(primaryArtifactId\)/);
 assert.match(reportSources.controller, /const persistedBlocks = compactDraftLayout\(draft\.orderedBlocks\)/);

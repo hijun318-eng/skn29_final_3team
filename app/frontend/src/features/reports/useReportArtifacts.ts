@@ -220,19 +220,27 @@ export function useReportArtifacts({
     });
   }, [artifactSources, artifacts]);
 
-  const assistantArtifactOptions = useMemo(() => reportAssistantArtifactOptions(
+  const assistantArtifactOptionsFor = useCallback((primaryArtifactId: string) => reportAssistantArtifactOptions(
     artifactSources.filter(
       (source) => isAnalysisSource(source) || Boolean(artifacts[source.artifactId]),
     ),
-    artifactSelection,
+    primaryArtifactId,
     assistantAdditionalArtifactIds,
     recentArtifactIds,
-  ), [artifactSources, artifacts, artifactSelection, assistantAdditionalArtifactIds, recentArtifactIds]);
+  ), [artifactSources, artifacts, assistantAdditionalArtifactIds, recentArtifactIds]);
 
-  const setAssistantArtifacts = useCallback(async (artifactIds: readonly string[]) => {
+  const assistantArtifactOptions = useMemo(
+    () => assistantArtifactOptionsFor(artifactSelection),
+    [artifactSelection, assistantArtifactOptionsFor],
+  );
+
+  const setAssistantArtifacts = useCallback(async (
+    artifactIds: readonly string[],
+    representativeArtifactId = "",
+  ) => {
     if (!selectedDefinition) return false;
     const uniqueIds = [...new Set(artifactIds)].filter(Boolean).slice(0, 5);
-    const primaryArtifactId = artifactSelection || uniqueIds[0] || "";
+    const primaryArtifactId = representativeArtifactId || artifactSelection || uniqueIds[0] || "";
     if (!primaryArtifactId) return false;
     const requested = uniqueIds
       .filter((artifactId) => artifactId !== primaryArtifactId)
@@ -249,7 +257,7 @@ export function useReportArtifacts({
       (source: any) => !artifacts[source.artifactId],
     );
     if (!missingSources.length) {
-      setArtifactSelection(primaryArtifactId);
+      if (!representativeArtifactId) setArtifactSelection(primaryArtifactId);
       setAssistantAdditionalArtifactIds(requested);
       return true;
     }
@@ -306,7 +314,7 @@ export function useReportArtifacts({
       }])),
     }));
     onHydrated(artifactMap, selectedDefinition);
-    setArtifactSelection(primaryArtifactId);
+    if (!representativeArtifactId) setArtifactSelection(primaryArtifactId);
     setAssistantAdditionalArtifactIds(requested);
     return true;
   }, [
@@ -323,6 +331,7 @@ export function useReportArtifacts({
     analysisLibraryState,
     assistantAdditionalArtifactIds,
     assistantArtifactOptions,
+    assistantArtifactOptionsFor,
     artifactOptions,
     artifactSelection,
     artifactSources,

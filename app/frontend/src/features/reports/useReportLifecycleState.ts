@@ -17,6 +17,7 @@ import {
 import { createUuid } from "../../utils/createUuid.ts";
 import { formatSeoulTime, reportApiError, reportRunStatusLabel } from "./reportPageLabels.ts";
 import { isSameReportDefinition, REPORT_RUN_PAGE_SIZE, sortReportDefinitions } from "./reportLifecycleSupport.ts";
+import { reportAssistantSessionMatchesDefinition } from "./reportAssistantSessionRecovery.ts";
 import type {
   AssistantTrace,
   CreateDefinitionResult,
@@ -498,14 +499,21 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return review;
   }, [mutate, reportClient]);
 
-  const restoreAssistantSession = useCallback(async (assistantRequestId: string) => {
+  const restoreAssistantSession = useCallback(async (
+    assistantRequestId: string,
+    definition: Pick<ReportDefinitionVersion, "definitionId" | "version">,
+  ) => {
     const request = ++assistantRequestRef.current;
     const session = await mutate(
       "assistant-recover",
       () => reportClient.getAssistantSession(assistantRequestId),
       () => assistantRequestRef.current === request,
     );
-    if (!session || assistantRequestRef.current !== request) return null;
+    if (
+      !session
+      || assistantRequestRef.current !== request
+      || !reportAssistantSessionMatchesDefinition(session, definition)
+    ) return null;
     setAssistantSession(session);
     setAssistantSuggestionSet(null);
     return session;

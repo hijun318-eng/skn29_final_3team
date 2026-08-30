@@ -25,6 +25,7 @@ const server = await createServer({
 
 try {
   const { RagAnswerCard } = await server.ssrLoadModule("/src/components/rag/RagAnswerCard.jsx");
+  const { default: RagEmptyState, ragDocumentTypeLabel } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
   const rag = {
     answer_text: "현재 상태\n- 객실 정비 이력 확인\n- 당직자 인계 확인\n\n권장 조치\n- 승인 절차 확인\n- 후속 기록 남기기",
     answer_type: ["COMPARE"],
@@ -69,6 +70,17 @@ try {
   assert.match(stylesSource, /@media \(max-width: 650px\)/);
   assert.match(stylesSource, /min-height: 44px/);
   assert.match(stylesSource, /:focus-visible/);
+
+  const catalogHtml = renderToStaticMarkup(createElement(RagEmptyState, {
+    documents: [
+      { manual_id: "manual-1", title: "승인 운영 매뉴얼", document_type: "OPERATIONS_MANUAL", version: "v3", owner_team: "운영팀" },
+      { manual_id: "manual-2", title: "분류 미지정 문서", document_type: "UNDECLARED_SERVER_ENUM" },
+    ],
+  }));
+  assert.match(catalogHtml, /운영 매뉴얼 · v3 · 운영팀/);
+  assert.match(catalogHtml, /분류 미지정 문서[\s\S]*내부 문서/);
+  assert.doesNotMatch(catalogHtml, /OPERATIONS_MANUAL|UNDECLARED_SERVER_ENUM|undefined/);
+  assert.equal(ragDocumentTypeLabel("procedure"), "업무 절차서");
 } finally {
   await server.close();
 }

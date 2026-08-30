@@ -211,7 +211,8 @@ try {
     }],
   }));
   assert.match(ragCatalogHtml, /승인 운영 매뉴얼/);
-  assert.match(ragCatalogHtml, /OPERATIONS_MANUAL · v3 · 운영팀/);
+  assert.match(ragCatalogHtml, /운영 매뉴얼 · v3 · 운영팀/);
+  assert.doesNotMatch(ragCatalogHtml, /OPERATIONS_MANUAL|undefined/);
   assert.doesNotMatch(ragCatalogHtml, /추천 질문|환불 기준|안전사고 발생 시/);
   assert.match(agentSource, /ragAvailable &&/);
   assert.match(agentSource, /enabledFeatures\.includes\(SERVICE_FEATURE\.mlPrediction\)/);

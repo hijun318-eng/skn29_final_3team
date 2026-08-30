@@ -1,4 +1,28 @@
 /** 서버가 현재 역할에 승인한 문서만 내부 문서 검색의 시작 화면에 표시한다. */
+const DOCUMENT_TYPE_LABELS = Object.freeze({
+  GUIDE: "업무 안내서",
+  MANUAL: "업무 매뉴얼",
+  OPERATIONS_MANUAL: "운영 매뉴얼",
+  POLICY: "정책 문서",
+  PROCEDURE: "업무 절차서",
+  REGULATION: "업무 규정",
+});
+
+/** 서버 문서 유형을 원시 enum 대신 사용자에게 읽기 쉬운 한국어 명칭으로 변환한다. */
+export function ragDocumentTypeLabel(value) {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return DOCUMENT_TYPE_LABELS[normalized] || "내부 문서";
+}
+
+function documentMeta(document) {
+  return [
+    ragDocumentTypeLabel(document?.document_type),
+    document?.version,
+    document?.owner_team,
+  ].filter((value) => typeof value === "string" && value.trim()).join(" · ");
+}
+
+/** 현재 역할에 승인된 내부 문서를 한국어 메타데이터와 함께 안내한다. */
 export default function RagEmptyState({ documents = [], loading = false, error = "", onBack }) {
   return (
     <section className="chat-empty-state rag-empty-state">
@@ -18,7 +42,7 @@ export default function RagEmptyState({ documents = [], loading = false, error =
             {documents.map((document) => (
               <li key={document.manual_id}>
                 <strong>{document.title}</strong>
-                <span>{document.document_type} · {document.version} · {document.owner_team}</span>
+                <span>{documentMeta(document)}</span>
               </li>
             ))}
           </ul>

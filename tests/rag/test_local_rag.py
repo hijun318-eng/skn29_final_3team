@@ -272,11 +272,11 @@ class OperationalControlTest(unittest.TestCase):
         tool = RagToolContract()
         self.assertEqual(gate.implementation_state, "INTEGRATED_RC")
         self.assertEqual(gate.p2_gate, "TECHNICALLY_VALIDATED")
-        self.assertEqual(gate.production_integration, "CODE_INTEGRATED_E2E_PENDING")
+        self.assertEqual(gate.production_integration, "LOCAL_DOCKER_VALIDATED")
         self.assertFalse(gate.affects_p0_p1_completion)
         self.assertFalse(tool.enabled)
         self.assertEqual(tool.approval_status, "PENDING_BUSINESS_OWNER_APPROVAL")
-        self.assertEqual(tool.health_status, "NOT_LIVE_VERIFIED")
+        self.assertEqual(tool.health_status, "HEALTH_ENDPOINT_AVAILABLE")
 
     def test_retrieval_contract_keeps_sql_and_document_evidence_separate(self) -> None:
         result = {

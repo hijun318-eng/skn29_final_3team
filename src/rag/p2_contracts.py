@@ -33,7 +33,7 @@ class RagToolContract:
     transport: str = "INTERNAL_HTTP"
     timeout_seconds: int = 30
     maximum_retries: int = 0
-    enabled: bool = True
+    enabled: bool = False
     approval_status: str = "PENDING_BUSINESS_OWNER_APPROVAL"
     health_status: str = "HEALTH_ENDPOINT_AVAILABLE"
     read_only: bool = True

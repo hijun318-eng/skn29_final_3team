@@ -28,6 +28,19 @@ export function normalizeChartType(value) {
   return CHART_TYPES.has(normalized) ? normalized : null;
 }
 
+/** 막대 계열의 실제 최솟값·최댓값을 기준으로 0 기준선이 항상 domain에 포함되도록 한다. */
+export function resolveBarValueDomain(rows, series) {
+  const values = rows.flatMap((row) => series
+    .map((item) => chartNumber(row?.[item.key]))
+    .filter((value) => value !== null));
+  if (!values.length) return [0, "auto"];
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  if (minimum >= 0) return [0, "auto"];
+  if (maximum <= 0) return ["auto", 0];
+  return ["auto", "auto"];
+}
+
 function orderedRows(data, xKey) {
   if (!data.length || !xKey || !data.every((row) => row && typeof row === "object" && ISO_PERIOD.test(String(row[xKey] ?? "")))) return data;
   return [...data].sort((left, right) => String(left[xKey]).localeCompare(String(right[xKey])));
@@ -148,6 +161,7 @@ export function EnterpriseChart({
   const isBar = chartType === "bar" || chartType === "horizontal-bar" || chartType === "stacked-bar";
   const isHorizontal = chartType === "horizontal-bar";
   const isStacked = chartType === "stacked-bar";
+  const barValueDomain = isBar ? resolveBarValueDomain(chartRows, normalizedSeries) : undefined;
   const categoryLength = isHorizontal ? 18 : chartRows.length > 8 ? 8 : chartRows.length > 4 ? 10 : 14;
   const categoryFormatter = (value) => categoryLabel(value, categoryLength);
   const margin = isHorizontal
@@ -155,11 +169,11 @@ export function EnterpriseChart({
     : { top: showLabels && chartType === "bar" ? 32 : commonUnit ? 26 : 16, right: 24, bottom: 10, left: 18 };
   const categoryAxisWidth = Math.min(160, Math.max(76, Math.max(...chartRows.map((row) => [...categoryFormatter(row[xKey])].length)) * 7.4));
   const axes = isHorizontal ? <>
-    <XAxis className="enterprise-chart-axis enterprise-chart-axis--value" type="number" axisLine={{ stroke: "var(--chart-axis)" }} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} domain={["auto", "auto"]} />
+    <XAxis className="enterprise-chart-axis enterprise-chart-axis--value" type="number" axisLine={{ stroke: "var(--chart-axis)" }} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} domain={barValueDomain} />
     <YAxis className="enterprise-chart-axis enterprise-chart-axis--category" type="category" dataKey={xKey} name={xLabel} width={categoryAxisWidth} axisLine={false} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={11} interval={0} tickFormatter={categoryFormatter} />
   </> : <>
     <XAxis className="enterprise-chart-axis enterprise-chart-axis--category" dataKey={xKey} name={xLabel} height={40} axisLine={{ stroke: "var(--chart-axis)" }} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={12} minTickGap={chartRows.length > 8 ? 34 : 24} interval="preserveStartEnd" tickFormatter={categoryFormatter} padding={{ left: 14, right: 14 }} />
-    <YAxis className="enterprise-chart-axis enterprise-chart-axis--value" width={82} axisLine={false} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} />
+    <YAxis className="enterprise-chart-axis enterprise-chart-axis--value" width={82} axisLine={false} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} domain={barValueDomain} />
   </>;
   const common = <>
     <CartesianGrid strokeDasharray="2 6" horizontal={!isHorizontal} vertical={isHorizontal} />

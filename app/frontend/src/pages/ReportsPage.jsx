@@ -282,6 +282,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     canvas={workspace}
     library={library}
     libraryOpen={page.toolPanelOpen}
+    libraryTriggerRef={page.toolToggleRef}
+    onCloseLibrary={page.closeToolPanel}
     onKeyDown={page.handleEditorKeyDown}
     onPointerMove={dnd.handlePointerMove}
     orientation={draft.reportOrientation}

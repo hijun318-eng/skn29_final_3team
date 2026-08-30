@@ -11,6 +11,8 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   canvas,
   library,
   libraryOpen,
+  libraryTriggerRef,
+  onCloseLibrary,
   onKeyDown,
   onPointerMove,
   orientation,
@@ -22,6 +24,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   const assistantTriggerRef = useRef(null);
   const inspectorDismissRef = useRef(null);
   const inspectorRef = useRef(null);
+  const libraryRef = useRef(null);
   const propertiesTriggerRef = useRef(null);
   const rightPanelTriggerRef = useRef(null);
   const shortcutTriggerRef = useRef(null);
@@ -78,9 +81,10 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
       return;
     }
     rightPanelTriggerRef.current = trigger.current;
+    if (compactInspector && libraryOpen) onCloseLibrary?.();
     setRightPanel(panel);
     setPropertiesOpen(true);
-  }, [closeRightPanel, propertiesOpen, rightPanel]);
+  }, [closeRightPanel, compactInspector, libraryOpen, onCloseLibrary, propertiesOpen, rightPanel]);
 
   useEffect(() => {
     if (!propertiesOpen) return undefined;
@@ -94,15 +98,51 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   }, [closeRightPanel, propertiesOpen]);
 
   const inspectorModal = propertiesOpen && compactInspector;
+  const libraryModal = libraryOpen && compactInspector;
+  const modalOpen = inspectorModal || libraryModal;
   const inspectorLabel = rightPanel === "assistant" ? "보고서 AI 도우미" : "보고서 속성";
   useEffect(() => {
     if (!inspectorModal) return;
     window.requestAnimationFrame(() => inspectorDismissRef.current?.focus());
   }, [inspectorModal, rightPanel]);
 
-  const keepInspectorFocus = useCallback((event) => {
-    if (!inspectorModal || event.key !== "Tab") return;
-    const controls = [...(inspectorRef.current?.querySelectorAll(
+  useEffect(() => {
+    if (!modalOpen) return undefined;
+    const toolbar = rootRef.current?.querySelector(":scope > .notion-editor-topbar");
+    if (toolbar) toolbar.inert = true;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (toolbar) toolbar.inert = false;
+    };
+  }, [modalOpen]);
+
+  useEffect(() => {
+    if (!libraryModal) return undefined;
+    if (propertiesOpen) setPropertiesOpen(false);
+    const frame = window.requestAnimationFrame(() => {
+      const firstControl = libraryRef.current?.querySelector(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+      );
+      firstControl?.focus();
+    });
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape" || document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      onCloseLibrary?.();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.requestAnimationFrame(() => libraryTriggerRef?.current?.focus?.());
+    };
+  }, [libraryModal, libraryTriggerRef, onCloseLibrary, propertiesOpen]);
+
+  const keepModalFocus = useCallback((event, container, active) => {
+    if (!active || event.key !== "Tab") return;
+    const controls = [...(container?.querySelectorAll(
       'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])',
     ) || [])].filter((element) => {
       const closedDetails = element.closest("details:not([open])");
@@ -118,18 +158,30 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
       event.preventDefault();
       first.focus();
     }
-  }, [inspectorModal]);
+  }, []);
+
+  const keepInspectorFocus = useCallback((event) => {
+    keepModalFocus(event, inspectorRef.current, inspectorModal);
+  }, [inspectorModal, keepModalFocus]);
 
   return <div
     ref={rootRef}
     className={`${libraryOpen ? "library-open" : "library-collapsed"} ${propertiesOpen ? "inspector-open" : "properties-collapsed"}`.trim()}
     data-report-builder="v2"
-    onKeyDown={inspectorModal ? undefined : onKeyDown}
-    onPointerMoveCapture={inspectorModal ? undefined : onPointerMove}
+    onKeyDown={inspectorModal || libraryModal ? undefined : onKeyDown}
+    onPointerMoveCapture={inspectorModal || libraryModal ? undefined : onPointerMove}
   >
     {toolbar}
     <div className="report-builder-v2-layout">
-      {libraryOpen && <div className="builder-library-column" inert={inspectorModal || undefined}>
+      {libraryOpen && <div
+        ref={libraryRef}
+        className="builder-library-column"
+        inert={inspectorModal || undefined}
+        role={libraryModal ? "dialog" : "complementary"}
+        aria-modal={libraryModal ? "true" : undefined}
+        aria-label="보고서 블록 도구"
+        onKeyDown={(event) => keepModalFocus(event, libraryRef.current, libraryModal)}
+      >
         {library}
         {pages.length > 1 && <nav className="builder-page-navigator" aria-label="보고서 페이지">
           <header><span>페이지</span><small>{pages.length} PAGES</small></header>
@@ -146,7 +198,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
           </button>)}</div>
         </nav>}
       </div>}
-      <main ref={workspaceRef} className="builder-workspace" onScroll={trackVisiblePage} inert={inspectorModal || undefined}>
+      <main ref={workspaceRef} className="builder-workspace" onScroll={trackVisiblePage} inert={inspectorModal || libraryModal || undefined}>
         <div className="builder-workspace-toolbar" data-report-editor-chrome="true">
           <div className="builder-workspace-context"><b>{String(activePageIndex + 1).padStart(2, "0")} / {String(pages.length).padStart(2, "0")}</b><span>{orientation === "landscape" ? "가로" : "세로"}</span></div>
           <nav aria-label="작업 화면 설정">
@@ -157,11 +209,13 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
         </div>
         {canvas}
       </main>
+      {libraryModal && <button type="button" className="builder-library-scrim" onClick={onCloseLibrary} aria-label="보고서 블록 도구 닫기" />}
       {inspectorModal && <button type="button" className="builder-inspector-scrim" onClick={closeRightPanel} aria-label={`${inspectorLabel} 닫기`} />}
       {(assistant || properties) && <div
         ref={inspectorRef}
         className="builder-inspector"
         hidden={!propertiesOpen}
+        inert={libraryModal || undefined}
         role={compactInspector ? "dialog" : "complementary"}
         aria-modal={compactInspector && propertiesOpen ? "true" : undefined}
         aria-label={inspectorLabel}

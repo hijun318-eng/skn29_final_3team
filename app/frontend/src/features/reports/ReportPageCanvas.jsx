@@ -1,7 +1,11 @@
 /** 실제 A4 비율과 grid를 screen/print 양쪽에서 유지하는 page canvas 모듈이다. */
 import { memo, useLayoutEffect, useRef, useState } from "react";
 
-import { normalizeReportEditorScale, resolveReportEditorScale } from "./reportEditorViewport";
+import {
+  REPORT_EDITOR_MIN_READABLE_SCALE,
+  normalizeReportEditorScale,
+  resolveReportEditorScale,
+} from "./reportEditorViewport";
 import "./report-a4-paper.css";
 import "./report-a4-content.css";
 import "./report-a4-artifact.css";
@@ -103,7 +107,10 @@ const ScaledPage = memo(function ScaledPage({
         )
         : mode === "presentation"
           ? Math.min(1, viewport.clientWidth / naturalWidth, viewport.clientHeight / naturalHeight)
-        : Math.min(1, viewport.clientWidth / naturalWidth);
+        : Math.min(1, Math.max(
+          REPORT_EDITOR_MIN_READABLE_SCALE,
+          viewport.clientWidth / naturalWidth,
+        ));
       const next = {
         scale,
         width: naturalWidth * scale,
@@ -158,7 +165,11 @@ const ScaledPage = memo(function ScaledPage({
           data-orientation={orientation}
           role="region"
           aria-label={pageLabel}
-          style={frame ? { transform: `scale(${frame.scale})` } : undefined}
+          style={frame ? {
+            "--report-editor-scale": frame.scale,
+            "--report-editor-inverse-scale": 1 / frame.scale,
+            transform: `scale(${frame.scale})`,
+          } : undefined}
         >
           <header className="answer-report-page__header">{header}</header>
           <div

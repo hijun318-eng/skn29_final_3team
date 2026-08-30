@@ -104,7 +104,7 @@ export const ReportEditorToolbar = memo(function ReportEditorToolbar({
         : <h1>{reportTitle || "보고서 초안"}</h1>}</div>}
       {!builderV2 && <span className="notion-status-chip">{reportStatusLabel(selectedDefinition?.status)} · v{selectedDefinition?.version}</span>}
     </div>
-    <div className="editor-command-actions" role="region" aria-label="편집 명령. 작은 화면에서는 좌우로 스크롤할 수 있습니다." tabIndex={0}>
+    <div className="editor-command-actions" role="region" aria-label="보고서 편집 명령">
       <button ref={toolToggleRef} type="button" aria-pressed={toolPanelOpen} aria-label={toolPanelOpen ? "블록 도구 숨기기" : "블록 도구 열기"} title={toolPanelOpen ? "블록 도구 숨기기" : "블록 도구 열기"} onClick={onToggleTools} disabled={Boolean(pending)}>{toolPanelOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}<span>블록</span></button>
       <div className="editor-history-actions" aria-label="편집 기록"><button type="button" aria-label="실행 취소" title="실행 취소 (Ctrl+Z)" onClick={onUndo} disabled={Boolean(pending) || !history.past.length}><Undo2 size={14} /></button><button type="button" aria-label="다시 실행" title="다시 실행 (Ctrl+Y)" onClick={onRedo} disabled={Boolean(pending) || !history.future.length}><Redo2 size={14} /></button></div>
       <span className={`editor-save-state ${saveStatus}`} role="status">{saveStatus === "saving" ? <LoaderCircle className="spin" size={13} aria-hidden="true" /> : saveStatus === "error" ? <AlertTriangle size={13} aria-hidden="true" /> : saveStatus === "unsaved" ? <Clock3 size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}{saveStatus === "saving" ? "저장 중" : saveStatus === "error" ? "저장 실패" : saveStatus === "unsaved" ? "저장되지 않은 변경" : "저장됨"}</span>

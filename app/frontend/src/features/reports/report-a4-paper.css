@@ -19,7 +19,12 @@
   font-family: Pretendard, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.answer-report-canvas--editor { overflow-x: auto; }
+.answer-report-canvas--editor,
+.answer-report-canvas--preview { overflow-x: auto; }
+
+.answer-report-canvas--preview .answer-report-page-viewport { align-items: safe center; }
+.answer-report-canvas--preview .answer-report-page-frame,
+.answer-report-canvas--preview .answer-report-page-chrome { max-inline-size: none; }
 
 .answer-report-page-viewport {
   inline-size: 100%;

@@ -342,6 +342,7 @@ export const GeneratedReportBlock = memo(function GeneratedReportBlock({
         artifact={artifact}
         artifactState={artifactState}
         currency={currency}
+        onRetry={onRetry}
         renderView={(type, options = {}) => (
           <ReportArtifactContent
             block={{ ...block, type, h: options.height ?? block.h }}

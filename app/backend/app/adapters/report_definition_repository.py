@@ -18,8 +18,23 @@ from src.report.domain import (
     DefinitionStatus,
     ReportBlock,
     ReportDefinitionVersion,
+    normalize_report_block_content,
     normalize_report_title,
 )
+
+
+def _canonical_atomic_blocks(
+    blocks: tuple[ReportBlock, ...],
+) -> tuple[ReportBlock, ...]:
+    """새 저장 대상만 원자 view로 정규화하고 기존 DB 행은 읽기 시 변경하지 않는다."""
+
+    return tuple(
+        replace(
+            block,
+            content=normalize_report_block_content(block.type, block.content),
+        )
+        for block in blocks
+    )
 from src.report.repository import ReportRevisionConflict
 
 
@@ -142,6 +157,7 @@ class ReportDefinitionRepositoryMixin:
         """draft 레코드를 저장소의 비동기 트랜잭션 안에서 영속화한다."""
         if draft.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft만 저장할 수 있습니다.")
+        draft = replace(draft, blocks=_canonical_atomic_blocks(draft.blocks))
         definition_id = _uuid(draft.definition_id, "definition_id")
         try:
             async with self._sessionmaker.begin() as session:
@@ -287,6 +303,7 @@ class ReportDefinitionRepositoryMixin:
 
         if draft.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft만 저장할 수 있습니다.")
+        draft = replace(draft, blocks=_canonical_atomic_blocks(draft.blocks))
         definition_id = _uuid(draft.definition_id, "definition_id")
         await session.execute(
             text(
@@ -629,6 +646,7 @@ class ReportDefinitionRepositoryMixin:
         """호출자가 소유한 종결 트랜잭션 안에서 Report draft 배치를 교체한다."""
 
         title = normalize_report_title(title) if title is not None else None
+        blocks = _canonical_atomic_blocks(blocks)
         definition_uuid = _uuid(definition_id, "definition_id")
         version_row = (await session.execute(
             text(
@@ -775,6 +793,7 @@ class ReportDefinitionRepositoryMixin:
     ) -> ReportDefinitionVersion:
         """draft 제목·blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
         title = normalize_report_title(title) if title is not None else None
+        blocks = _canonical_atomic_blocks(blocks)
         if expected_draft_revision is not None and (
             isinstance(expected_draft_revision, bool)
             or not isinstance(expected_draft_revision, int)

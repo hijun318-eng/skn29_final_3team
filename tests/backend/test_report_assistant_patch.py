@@ -331,7 +331,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
         self.assertEqual("artifact-old", chart.artifact_id)
         self.assertEqual("query-old", chart.query_id)
         self.assertEqual(
-            {"chartType": "horizontal-bar", "showLegend": False, "sizeMode": "manual"},
+            {"chartType": "horizontal-bar", "showLegend": False, "sizeMode": "manual", "visibleViews": ["chart"]},
             settings,
         )
         self.assertEqual("현재 실적", self.definition.blocks[1].title)
@@ -381,11 +381,11 @@ class ReportAssistantPatchTest(unittest.TestCase):
         chart = next(block for block in result.blocks if block.title == "신규 분석 · 차트")
 
         self.assertEqual(
-            {"density": "compact", "showRowNumbers": True, "sizeMode": "auto"},
+            {"density": "compact", "showRowNumbers": True, "sizeMode": "auto", "visibleViews": ["table"]},
             json.loads(table.content),
         )
         self.assertEqual(
-            {"chartType": "line", "showLegend": False, "sizeMode": "auto"},
+            {"chartType": "line", "showLegend": False, "sizeMode": "auto", "visibleViews": ["chart"]},
             json.loads(chart.content),
         )
 
@@ -460,25 +460,18 @@ class ReportAssistantPatchTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "서버 검증 제목"):
             apply_report_assistant_patch(self.definition, forged_title, summary_only)
 
-    def test_legacy_whole_artifact_patch_remains_replayable(self) -> None:
-        """기존 DB에 저장된 합본 artifact operation은 마이그레이션 없이 계속 재생한다."""
+    def test_legacy_whole_artifact_patch_fails_closed(self) -> None:
+        """합본 artifact operation은 새 Revision으로 재생하지 않고 원본 기록을 보존한다."""
 
-        legacy = ReportAssistantPatch.model_validate({
-            "summary": "기존 합본 분석 결과를 복원합니다.",
-            "operations": [{
-                "op": "add_artifact_view", "artifact_ref": "analysis_result",
-                "view": "artifact", "title": "기존 합본 분석 결과",
-                "placement": {"width": "full"},
-            }],
-        })
-
-        result = apply_report_assistant_patch(self.definition, legacy, self.bindings)
-        restored = result.blocks[-1]
-
-        self.assertEqual(BlockType.ARTIFACT, restored.type)
-        self.assertEqual((12, 12), (restored.w, restored.h))
-        self.assertEqual("기존 합본 분석 결과", restored.title)
-        self.assertEqual({"sizeMode": "auto"}, json.loads(restored.content))
+        with self.assertRaises(ValueError):
+            ReportAssistantPatch.model_validate({
+                "summary": "기존 합본 분석 결과를 복원합니다.",
+                "operations": [{
+                    "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                    "view": "artifact", "title": "기존 합본 분석 결과",
+                    "placement": {"width": "full"},
+                }],
+            })
 
     def test_all_existing_block_transforms_preserve_view_spec_lineage(self) -> None:
         """resize·setting·reposition·duplicate 경로 모두 기존 view_spec_id를 잃지 않는다."""

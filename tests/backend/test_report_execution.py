@@ -645,7 +645,7 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
         str(report_id),
         1,
         DefinitionStatus.DRAFT,
-        "Aggregate Artifact Report",
+        "Atomic Artifact Report",
         (
             ReportBlock(
                 str(block_id),
@@ -658,7 +658,7 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
                 0,
                 12,
                 12,
-                '{"presentationMode":"standard","visibleViews":["summary","kpi","chart","table"]}',
+                '{"presentationMode":"standard","visibleViews":["summary"]}',
             ),
         ),
         orientation="landscape",
@@ -674,7 +674,7 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
             self.html = kwargs["string"]
 
         def write_pdf(self, **kwargs):
-            return b"%PDF-1.7\naggregate-artifact"
+            return b"%PDF-1.7\natomic-artifact"
 
     with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=FakeHTML)}):
         approved = await approve_report_document(
@@ -694,9 +694,9 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
         "query_id": "source-query",
     }]
     assert "Replay result narrative" in document["html_snapshot"]
-    assert "주요 KPI" in document["html_snapshot"]
-    assert "<svg" in document["html_snapshot"]
-    assert "<table>" in document["html_snapshot"]
+    assert "주요 KPI" not in document["html_snapshot"]
+    assert "<svg" not in document["html_snapshot"]
+    assert "<table>" not in document["html_snapshot"]
 
     command = await repository.queue_manual_run(
         str(report_id), 1, AS_OF, "aggregate-artifact-replay"

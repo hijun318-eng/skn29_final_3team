@@ -267,6 +267,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
         artifact={artifact}
         artifactState={artifactState}
         currency={currency}
+        onRetry={block.artifactId ? retryArtifact : undefined}
         renderView={(type, options = {}) => (
           <ReportArtifactContent
             block={{ ...block, type, h: options.height ?? block.h }}

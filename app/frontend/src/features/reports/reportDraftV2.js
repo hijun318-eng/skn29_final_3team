@@ -1,8 +1,8 @@
 /** 프런트 draft의 artifact 적응·layout·영속 순수 연산 공개 표면을 제공하는 barrel 모듈이다. */
 export {
   ARTIFACT_VIEW_LABELS,
+  ATOMIC_ARTIFACT_VIEWS,
   DEFAULT_FRONTEND_CURRENCY_POLICY,
-  WHOLE_ARTIFACT_VIEWS,
   artifactMetricCards,
   artifactViewTitle,
   artifactViewBlockSettings,

@@ -242,7 +242,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             "y": 0,
             "w": 12,
             "h": 12,
-            "content": "{}",
+            "content": '{"visibleViews":["summary"]}',
         }
         report_context = context(Role.ANALYST)
 
@@ -360,11 +360,11 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["summary"], json.loads(created["blocks"][0]["content"])["visibleViews"])
         self.assertEqual(["kpi"], json.loads(created["blocks"][1]["content"])["visibleViews"])
         self.assertEqual(
-            {"showLegend": True, "sizeMode": "auto"},
+            {"showLegend": True, "sizeMode": "auto", "visibleViews": ["chart"]},
             json.loads(created["blocks"][2]["content"]),
         )
         self.assertEqual(
-            {"density": "comfortable", "showRowNumbers": False, "sizeMode": "auto"},
+            {"density": "comfortable", "showRowNumbers": False, "sizeMode": "auto", "visibleViews": ["table"]},
             json.loads(created["blocks"][3]["content"]),
         )
 
@@ -413,7 +413,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(404, missing.exception.status_code)
 
-    def test_aggregate_artifact_block_is_an_additive_api_type(self):
+    def test_artifact_api_block_requires_one_atomic_view(self):
         payload = ReplaceReportBlocksRequest.model_validate({
             "title": "Analysis Artifact Review",
             "orientation": "landscape",
@@ -428,13 +428,25 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             "columns": 12,
             "w": 12,
             "h": 12,
-            "content": '{"presentationMode":"detail","visibleViews":["summary","kpi","chart","table"]}',
+            "content": '{"presentationMode":"detail","visibleViews":["summary"]}',
         }]})
 
         self.assertEqual("artifact", payload.blocks[0].type)
         self.assertEqual("Analysis Artifact Review", payload.title)
         self.assertEqual("landscape", payload.orientation)
         self.assertEqual("billion", payload.currency_display_unit)
+        with self.assertRaises(ValidationError):
+            ReplaceReportBlocksRequest.model_validate({
+                "expected_draft_revision": 1,
+                "blocks": [{
+                    "block_id": "00000000-0000-0000-0000-000000000012",
+                    "title": "Legacy bundle",
+                    "type": "artifact",
+                    "artifact_id": "00000000-0000-0000-0000-000000000099",
+                    "columns": 12,
+                    "content": '{"visibleViews":["summary","kpi"]}',
+                }],
+            })
         with self.assertRaises(ValidationError):
             ReplaceReportBlocksRequest.model_validate({
                 "blocks": [],

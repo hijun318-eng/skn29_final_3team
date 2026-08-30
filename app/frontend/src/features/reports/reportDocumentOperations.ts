@@ -14,6 +14,7 @@ import {
   type ReportDropPlacement,
   type ReportOrientation,
 } from "./reportDocumentTypes.ts";
+import { REPORT_ARTIFACT_VIEW_IDS } from "../../contracts/reportContract.ts";
 import {
   canonicalArtifactRef,
   canonicalBlock,
@@ -92,10 +93,9 @@ export function insertArtifactBlock(
   if (!isNonEmptyString(input.title)) return invalid(document, "title must be a non-empty string");
   const mode = input.presentationMode ?? document.presentationMode;
   if (!isPresentationMode(mode)) return invalid(document, "presentationMode is invalid");
-  if (!Array.isArray(input.visibleViews) || input.visibleViews.length === 0
-    || input.visibleViews.some((view) => !isNonEmptyString(view))
-    || new Set(input.visibleViews).size !== input.visibleViews.length) {
-    return invalid(document, "visibleViews must contain unique non-empty view IDs");
+  if (!Array.isArray(input.visibleViews) || input.visibleViews.length !== 1
+    || !REPORT_ARTIFACT_VIEW_IDS.includes(input.visibleViews[0])) {
+    return invalid(document, "visibleViews must contain exactly one supported atomic view ID");
   }
   const referenceErrors: string[] = [];
   validateArtifactReference(input.artifactRef, "artifactRef", referenceErrors);

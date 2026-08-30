@@ -56,7 +56,7 @@ try {
     },
   };
   const html = renderToStaticMarkup(createElement(ReportWholeArtifactBlock, {
-    block: { title: "5월 객실 매출", w: 12, type: "artifact", content: "{}" },
+    block: { title: "5월 객실 매출", w: 12, type: "artifact", content: '{"visibleViews":["summary"]}' },
     artifact,
     artifactState: { status: "success" },
     currency: { label: "억 원", unit: "billion", policy: {} },
@@ -66,9 +66,7 @@ try {
   assert.equal(reportColumnLabel(artifact, "room_revenue"), "객실 매출");
   assert.equal(reportColumnLabel(artifact, "period"), "기간");
   assert.match(html, /분석 결과/);
-  assert.match(html, /요약 · 핵심 지표/);
-  assert.match(html, /객실 매출/);
-  assert.match(html, /억 원/);
+  assert.match(html, />요약</);
   assert.match(html, /2026년 5월 1일부터 31일까지/);
   assert.doesNotMatch(html, /Room Revenue|KRW|ANALYSIS ARTIFACT|>KPI|미포함|2026-05-01/);
 
@@ -97,14 +95,14 @@ try {
     },
   };
   const countKpiHtml = renderToStaticMarkup(createElement(ReportWholeArtifactBlock, {
-    block: { title: "연회 취소", w: 12, type: "artifact", content: "{}" },
+    block: { title: "연회 취소", w: 12, type: "artifact", content: '{"visibleViews":["kpi"]}' },
     artifact: countArtifact,
     artifactState: { status: "success" },
     currency: { label: "억 원", unit: "billion", policy: {} },
     renderView: (type) => createElement("div", null, `${type} 보기`),
   }));
   const countTableHtml = renderToStaticMarkup(createElement(ReportArtifactContent, {
-    block: { title: "연회 취소", type: "table", content: "{}" },
+    block: { title: "연회 취소", type: "table", content: '{"visibleViews":["table"]}' },
     artifact: countArtifact,
     artifactState: { status: "success" },
     currency: { label: "억 원", unit: "billion", policy: {} },
@@ -114,6 +112,33 @@ try {
   assert.match(countTableHtml, /report-table-sort-label/);
   assert.doesNotMatch(`${countKpiHtml}${countTableHtml}`, />count<|\(count\)/);
 
+  const legacyBundleHtml = renderToStaticMarkup(createElement(ReportWholeArtifactBlock, {
+    block: {
+      title: "기존 합본", w: 12, type: "artifact",
+      content: '{"visibleViews":["summary","kpi"]}',
+    },
+    artifact,
+    artifactState: { status: "success" },
+    currency: { label: "억 원", unit: "billion", policy: {} },
+    renderView: () => createElement("div", null, "unexpected"),
+  }));
+  assert.match(legacyBundleHtml, /이전 합본 분석 요소는 표시할 수 없습니다/);
+  assert.doesNotMatch(legacyBundleHtml, /unexpected|객실 매출|6,114/);
+  for (const [artifactState, expected] of [
+    [{ status: "error", message: "연결 실패", requiredAction: "RETRY" }, "연결 실패"],
+    [{ status: "empty" }, "조건에 맞는 데이터가 없습니다"],
+  ]) {
+    const terminalHtml = renderToStaticMarkup(createElement(ReportWholeArtifactBlock, {
+      block: { title: "원자 요약", w: 6, type: "artifact", content: '{"visibleViews":["summary"]}' },
+      artifact,
+      artifactState,
+      currency: { label: "억 원", unit: "billion", policy: {} },
+      onRetry() {},
+    }));
+    assert.match(terminalHtml, new RegExp(expected));
+    assert.doesNotMatch(terminalHtml, /불러오고 있습니다/);
+  }
+
   const editorCallbacks = {
     onSelect() {}, onUpdate() {}, onMove() {}, onResize() {}, onSetting() {},
     onDuplicate() {}, onDelete() {}, onToggleLock() {}, onRetryArtifact() {},
@@ -121,7 +146,7 @@ try {
   const artifactEditorHtml = renderToStaticMarkup(createElement(ReportEditorBlock, {
     block: {
       id: "artifact-table", title: "객실 매출 상세", type: "table",
-      artifactId: "artifact-one", content: "{}", x: 0, y: 0, w: 6, columns: 6, h: 5,
+      artifactId: "artifact-one", content: '{"visibleViews":["table"]}', x: 0, y: 0, w: 6, columns: 6, h: 5,
     },
     rowOffset: 0,
     artifact,

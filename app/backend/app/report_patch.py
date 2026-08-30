@@ -8,7 +8,13 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from app.report_contracts import REPORT_MAX_BLOCKS, ReportAssistantPatch
-from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
+from src.report.domain import (
+    BlockType,
+    DefinitionStatus,
+    ReportBlock,
+    ReportDefinitionVersion,
+    normalize_report_block_content,
+)
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -222,9 +228,12 @@ def _with_settings(block: ReportBlock, changes: dict[str, object]) -> ReportBloc
     """typed 허용값만 기존 renderer 설정에 병합해 결정적 JSON으로 저장한다."""
 
     settings = {**_block_settings(block), **changes}
+    content = json.dumps(
+        settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
     return _replace_block(
         block,
-        content=json.dumps(settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        content=normalize_report_block_content(block.type, content),
     )
 
 
@@ -601,7 +610,7 @@ def apply_report_assistant_patch(
                     raise ValueError("Artifact view 제목이 서버 검증 제목과 일치하지 않습니다.")
             block_type = (
                 BlockType.ARTIFACT
-                if operation.view in {"summary", "kpi", "artifact"}
+                if operation.view in {"summary", "kpi"}
                 else BlockType(operation.view)
             )
             artifact_id = binding.artifact_id
@@ -615,11 +624,13 @@ def apply_report_assistant_patch(
                 })
             elif operation.view == "chart":
                 settings.update({
+                    "visibleViews": ["chart"],
                     "showLegend": True if operation.show_legend is None else operation.show_legend,
                     **({"chartType": operation.chart_type} if operation.chart_type else {}),
                 })
             elif operation.view == "table":
                 settings.update({
+                    "visibleViews": ["table"],
                     "density": operation.density or "comfortable",
                     "showRowNumbers": bool(operation.show_row_numbers),
                 })

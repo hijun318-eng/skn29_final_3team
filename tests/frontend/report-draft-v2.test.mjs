@@ -52,7 +52,12 @@ const sourceA = {
 };
 const sourceB = { artifactId: "artifact-b", queryId: "query-b", title: "채널 구성 분석" };
 
-const first = insertFrontendArtifact([textBlock], { ...sourceA, blockId: "whole-a" }, report);
+const rejectedWhole = insertFrontendArtifact([textBlock], { ...sourceA, blockId: "legacy-whole" }, report);
+assert.equal(rejectedWhole.ok, false);
+assert.match(rejectedWhole.errors[0], /하나의 view/);
+const first = insertFrontendArtifact([textBlock], {
+  ...sourceA, blockId: "whole-a", visibleViews: ["summary"], width: 12,
+}, report);
 assert.equal(first.ok, true, first.errors?.join("; "));
 assert.equal(first.blocks.find((block) => block.id === "whole-a").type, "artifact");
 assert.equal(first.blocks.find((block) => block.id === "whole-a").artifactId, "artifact-a");
@@ -112,16 +117,50 @@ assert.deepEqual(
     .map((block) => block.visibleViews),
   [["summary"], ["kpi"]],
 );
+const legacyDocument = frontendBlocksToDocument({
+  ...report,
+  blocks: [{
+    ...atomicSummary.blocks.find((block) => block.id === "atomic-summary"),
+    content: JSON.stringify({ visibleViews: ["summary", "kpi"] }),
+  }],
+});
+assert.equal(legacyDocument.ok, false);
+assert.match(legacyDocument.errors[0], /Artifact 참조|원자 view|데이터 블록/);
+const migratedChartRequest = toReportBlockRequest({
+  id: "legacy-chart-request", title: "차트", type: "chart", artifactId: "artifact-a",
+  columns: 6, x: 0, y: 0, w: 6, h: 7, content: '{"showLegend":true}',
+});
+assert.deepEqual(JSON.parse(migratedChartRequest.content).visibleViews, ["chart"]);
+assert.equal(frontendBlocksToDocument({
+  ...report,
+  blocks: [{
+    id: "migrated-chart", title: "차트", type: "chart", artifactId: "artifact-a",
+    columns: 6, x: 0, y: 0, w: 6, h: 7, content: '{"showLegend":true}',
+  }],
+}).ok, true);
+assert.equal(frontendBlocksToDocument({
+  ...report,
+  blocks: [{
+    id: "mismatched-chart", title: "잘못된 차트", type: "chart", artifactId: "artifact-a",
+    columns: 6, x: 0, y: 0, w: 6, h: 7, content: '{"visibleViews":["table"]}',
+  }],
+}).ok, false);
+assert.throws(() => toReportBlockRequest({
+  id: "legacy-bundle-request", title: "합본", type: "artifact", artifactId: "artifact-a",
+  columns: 12, x: 0, y: 0, w: 12, h: 12,
+  content: '{"visibleViews":["summary","kpi"]}',
+}), /visibleViews 하나/);
 
 const side = insertFrontendArtifact(first.blocks, {
   ...sourceB,
   blockId: "whole-b",
+  visibleViews: ["summary"],
   placement: { type: "side", targetBlockId: "whole-a", edge: "right" },
 }, report);
 assert.equal(side.ok, true, side.errors?.join("; "));
 assert.deepEqual(side.blocks.filter((block) => block.id.startsWith("whole-")).map(({ id, x, w, h }) => [id, x, w, h]), [
-  ["whole-a", 0, 6, 18],
-  ["whole-b", 6, 6, 18],
+  ["whole-a", 0, 6, 5],
+  ["whole-b", 6, 6, 5],
 ]);
 
 const beforeMove = structuredClone(side.blocks);
@@ -184,8 +223,9 @@ assert.deepEqual(frontendTextBlockLayout({ ...summary, content: "매우 긴 문�
 const keyboardDrop = keyboardEndDropPosition(side.blocks, {
   pageId: "report-1:page:1", width: 12, height: 16,
 });
+const sideBottom = side.blocks.reduce((bottom, block) => Math.max(bottom, block.y + block.h), 0);
 assert.deepEqual(keyboardDrop, {
-  pageId: "report-1:page:1", x: 0, requestedX: 0, y: 22, w: 12, h: 16,
+  pageId: "report-1:page:1", x: 0, requestedX: 0, y: sideBottom, w: 12, h: 16,
   placement: { type: "end", pageId: "report-1:page:1" },
 });
 
@@ -317,6 +357,7 @@ const insertedAnalysisArtifact = insertFrontendArtifact([], {
   blockId: "analysis-whole",
   sourceKind: "analysisRun",
   requestId: "request-revenue-new",
+  visibleViews: ["summary"],
 }, report);
 assert.equal(insertedAnalysisArtifact.ok, true, insertedAnalysisArtifact.errors?.join("; "));
 const persistedAnalysisBlock = toReportBlockRequest(insertedAnalysisArtifact.blocks[0]);
@@ -381,9 +422,10 @@ assert.deepEqual(
 
 const monthlyArtifact = fixture("artifact-monthly-revenue.json");
 const monthlyBeforeSizing = structuredClone(monthlyArtifact);
-assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape" }), { width: 12, height: 12 });
-assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "portrait" }), { width: 12, height: 18 });
-assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape", width: 6 }), { width: 6, height: 17 });
+assert.throws(
+  () => estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape" }),
+  /원자 view 하나/,
+);
 assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape", visibleViews: ["chart"] }), { width: 6, height: 8 });
 assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape", visibleViews: ["table"] }), { width: 6, height: 8 });
 const longSummaryLayout = estimateArtifactBlockLayout({ ...monthlyArtifact, summary: "긴 한국어 분석 요약입니다. ".repeat(30) }, {
@@ -399,19 +441,27 @@ assert.equal(wideTableLayout.height <= 18, true);
 assert.deepEqual(monthlyArtifact, monthlyBeforeSizing, "Artifact sizing must be pure");
 const manualArtifactBlock = {
   id: "manual-size", title: "수동 크기", type: "artifact", artifactId: monthlyArtifact.artifact_id,
-  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary", "chart"], sizeMode: "manual" }),
+  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary"], sizeMode: "manual" }),
   columns: 6, x: 0, y: 0, w: 6, h: 8,
 };
 assert.equal(fitFrontendArtifactBlock(manualArtifactBlock, monthlyArtifact, { orientation: "portrait" }), manualArtifactBlock);
 const autoFittedBlock = fitFrontendArtifactBlock(manualArtifactBlock, monthlyArtifact, { orientation: "portrait", force: true });
-assert.equal(autoFittedBlock.w, 12);
-assert.equal(autoFittedBlock.h > manualArtifactBlock.h, true);
+assert.deepEqual([autoFittedBlock.w, autoFittedBlock.h], [6, 5]);
 assert.equal(JSON.parse(autoFittedBlock.content).sizeMode, "auto");
 assert.deepEqual(manualArtifactBlock, {
   id: "manual-size", title: "수동 크기", type: "artifact", artifactId: monthlyArtifact.artifact_id,
-  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary", "chart"], sizeMode: "manual" }),
+  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary"], sizeMode: "manual" }),
   columns: 6, x: 0, y: 0, w: 6, h: 8,
 }, "fit must not mutate manual input");
+const legacyBundleBlock = {
+  ...manualArtifactBlock,
+  content: JSON.stringify({ visibleViews: ["summary", "chart"], sizeMode: "auto" }),
+};
+assert.equal(
+  fitFrontendArtifactBlock(legacyBundleBlock, monthlyArtifact, { orientation: "portrait", force: true }),
+  legacyBundleBlock,
+  "legacy multi-view blocks must fail closed instead of silently selecting a view",
+);
 
 const legacyChart = { id: "legacy-chart", title: "월별 차트", type: "chart", artifactId: monthlyArtifact.artifact_id, content: JSON.stringify({ showLegend: true }), columns: 6, x: 0, y: 0, w: 6, h: 7 };
 const legacyMonthlyTable = { id: "legacy-monthly-table", title: "월별 표", type: "table", artifactId: monthlyArtifact.artifact_id, content: JSON.stringify({ density: "compact" }), columns: 6, x: 6, y: 0, w: 6, h: 7 };

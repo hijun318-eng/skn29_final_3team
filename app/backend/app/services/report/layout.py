@@ -17,31 +17,34 @@ from typing import Any, Mapping
 from app.services.report.chart import _chart_svg
 from app.services.report.values import (
     ARTIFACT_PRESENTATION_MODES,
-    ARTIFACT_VIEWS,
     LAYOUT_PAGE_ROWS,
     SYNTHETIC_WARNING,
     _markdown_text,
     _metrics_html,
     _table_html,
 )
+from src.report.domain import BlockType, normalize_report_block_content
 
 
 def _artifact_settings(content: object) -> tuple[str, tuple[str, ...]]:
-    """블록 content로부터 프레젠테이션 모드 및 노출할 뷰 목록을 파싱합니다."""
+    """artifact block의 정확히 한 summary/KPI view를 파싱하고 합본은 거부합니다."""
     try:
         settings = json.loads(content) if isinstance(content, str) else {}
-    except (TypeError, ValueError):
-        settings = {}
+    except (TypeError, ValueError) as error:
+        raise ValueError("Report artifact block 설정이 올바르지 않습니다.") from error
     if not isinstance(settings, dict):
-        settings = {}
+        raise ValueError("Report artifact block 설정이 올바르지 않습니다.")
     mode = settings.get("presentationMode")
     if not isinstance(mode, str) or mode not in ARTIFACT_PRESENTATION_MODES:
         mode = "standard"
     requested = settings.get("visibleViews")
-    if not isinstance(requested, list):
-        return mode, ARTIFACT_VIEWS
-    visible = tuple(dict.fromkeys(view for view in requested if view in ARTIFACT_VIEWS))
-    return mode, visible or ARTIFACT_VIEWS
+    if (
+        not isinstance(requested, list)
+        or len(requested) != 1
+        or requested[0] not in {"summary", "kpi"}
+    ):
+        raise ValueError("Report artifact block은 summary 또는 kpi view 하나만 가져야 합니다.")
+    return mode, (requested[0],)
 
 
 def _block_chart_type(block: Mapping[str, Any], artifact: Mapping[str, Any]) -> str:
@@ -169,6 +172,8 @@ def _block_html(block: Mapping[str, Any], currency_display_unit: str) -> str:
     if block_type == "page_break":
         return ""
     artifact = block.get("artifact") or {}
+    if block_type in {"artifact", "chart", "table"}:
+        normalize_report_block_content(BlockType(block_type), str(block.get("content") or ""))
     if block_type == "text":
         content = _markdown_text(str(block.get("content") or ""))
     elif block_type == "artifact":

@@ -1,4 +1,5 @@
 import unittest
+import json
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 
@@ -11,6 +12,7 @@ from src.report.domain import (
     ReportDefinitionVersion,
     ReportRun,
     RunStatus,
+    normalize_report_block_content,
 )
 from tests.support.report_repository import InMemoryReportRepository
 
@@ -104,12 +106,42 @@ class ReportDomainTest(unittest.TestCase):
         )
         self.assertEqual(chart.columns, chart.w)
         self.assertIsNone(text.artifact_id)
-        artifact = ReportBlock(
+        legacy_artifact = ReportBlock(
             "artifact-whole", "Analysis Artifact", "artifact-1", 12, "query-1",
             BlockType.ARTIFACT, 0, 7, 12, 12,
             '{"presentationMode":"standard","visibleViews":["summary","kpi","chart","table"]}',
         )
-        self.assertEqual(BlockType.ARTIFACT, artifact.type)
+        self.assertEqual(BlockType.ARTIFACT, legacy_artifact.type)
+        with self.assertRaisesRegex(ValueError, "visibleViews"):
+            normalize_report_block_content(legacy_artifact.type, legacy_artifact.content)
+        self.assertEqual(
+            ["chart"],
+            json.loads(normalize_report_block_content(BlockType.CHART, ""))["visibleViews"],
+        )
+        self.assertEqual(
+            ["table"],
+            json.loads(normalize_report_block_content(BlockType.TABLE, "{}"))["visibleViews"],
+        )
+        for block_type, mismatched in (
+            (BlockType.CHART, '{"visibleViews":["table"]}'),
+            (BlockType.TABLE, '{"visibleViews":["chart"]}'),
+        ):
+            with self.subTest(block_type=block_type), self.assertRaisesRegex(
+                ValueError, "type.*visibleViews"
+            ):
+                normalize_report_block_content(block_type, mismatched)
+        self.assertEqual(
+            ["summary"],
+            json.loads(normalize_report_block_content(
+                BlockType.ARTIFACT, '{"visibleViews":["summary"]}',
+            ))["visibleViews"],
+        )
+        for invalid in (
+            "{}", '{"visibleViews":[]}', '{"visibleViews":["unknown"]}',
+            '{"visibleViews":["summary","kpi"]}',
+        ):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "visibleViews"):
+                normalize_report_block_content(BlockType.ARTIFACT, invalid)
         with self.assertRaisesRegex(ValueError, "12-column bounds"):
             ReportBlock("bad", "초과", "artifact-1", 6, None, BlockType.TABLE, 7, 0, 6, 1)
         with self.assertRaisesRegex(ValueError, "positive height"):

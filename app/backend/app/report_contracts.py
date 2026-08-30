@@ -12,7 +12,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.contracts import ChartSpec, Evidence, MetricValue, TableResult
-from src.report.domain import BlockFailureCode, normalize_report_title
+from src.report.domain import (
+    BlockFailureCode,
+    normalize_report_block_content,
+    normalize_report_title,
+)
 
 
 ReportOrientation = Literal["portrait", "landscape"]
@@ -57,6 +61,13 @@ class ReportBlockRequest(ReportContractModel):
         ):
             raise ValueError("Report block 근거 별칭 계약이 올바르지 않습니다.")
         return value
+
+    @model_validator(mode="after")
+    def validate_atomic_artifact_view(self) -> "ReportBlockRequest":
+        """새 저장 요청의 data block을 정확히 하나의 원자 view에 결속한다."""
+
+        self.content = normalize_report_block_content(self.type, self.content)
+        return self
 
 
 class CreateReportDefinitionRequest(ReportContractModel):
@@ -895,15 +906,11 @@ class ReportAssistantUpdateTextOperation(ReportContractModel):
 
 
 class ReportAssistantAddArtifactViewOperation(ReportContractModel):
-    """서버가 제공한 별칭의 검증 Artifact view 하나를 독립 block으로 추가한다.
-
-    ``artifact``는 이미 저장된 Assistant patch의 비파괴 재생만 위한 legacy 값이다. 활성
-    모델 adapter는 summary·kpi·chart·table 원자 view만 새 operation으로 만들 수 있다.
-    """
+    """서버가 제공한 별칭의 검증 Artifact 원자 view 하나를 독립 block으로 추가한다."""
 
     op: Literal["add_artifact_view"]
     artifact_ref: str = Field(min_length=1, max_length=128)
-    view: Literal["summary", "kpi", "chart", "table", "artifact"]
+    view: Literal["summary", "kpi", "chart", "table"]
     title: str = Field(min_length=1, max_length=255)
     chart_type: ReportChartType | None = None
     show_legend: bool | None = None

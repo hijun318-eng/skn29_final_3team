@@ -1,5 +1,5 @@
 /** artifact 원본 선택 tile과 레거시 전체 artifact block UI를 제공하는 모듈이다. */
-import { Layers3 } from "lucide-react";
+import { AlertTriangle, Inbox, Layers3, RotateCcw } from "lucide-react";
 
 import {
   formatMetricDisplayValue,
@@ -10,7 +10,6 @@ import {
 import { formatCurrencyAmount, isCurrencyMetricUnit } from "./reportCurrency";
 import {
   ARTIFACT_VIEW_LABELS,
-  WHOLE_ARTIFACT_VIEWS,
   artifactMetricCards,
   availableArtifactViews,
   wholeArtifactSettings,
@@ -44,21 +43,52 @@ export function ReportArtifactLibraryTile({ source, artifact, disabled = false, 
   </article>;
 }
 
-/** 전체 artifact의 선택 view를 근거 상태·통화 정책과 함께 한 블록으로 렌더링한다. */
-export function ReportWholeArtifactBlock({ block, artifact, artifactState, currency, renderView }) {
-  if (!artifact || artifactState?.status !== "success") return renderView("table", { height: 5 });
-  const settings = wholeArtifactSettings(block) || { visibleViews: WHOLE_ARTIFACT_VIEWS };
+/** 정확히 하나의 summary/KPI view를 근거 상태·통화 정책과 함께 렌더링한다. */
+export function ReportWholeArtifactBlock({ block, artifact, artifactState, currency, onRetry }) {
+  const settings = wholeArtifactSettings(block);
+  if (!settings) {
+    return <section className="report-whole-artifact report-api-state" role="alert">
+      <b>이전 합본 분석 요소는 표시할 수 없습니다.</b>
+      <span>요약·핵심 지표·차트·표 중 하나를 독립 블록으로 다시 추가해 주세요.</span>
+    </section>;
+  }
+  const view = settings.visibleViews[0];
+  if (!artifactState || artifactState.status === "loading") {
+    return <section className="report-whole-artifact report-api-state" role="status">
+      <b>{ARTIFACT_VIEW_LABELS[view]} 요소를 불러오고 있습니다.</b>
+    </section>;
+  }
+  if (artifactState.status === "error") {
+    return <section className="report-whole-artifact report-artifact-state is-error" role="alert">
+      <AlertTriangle size={17} aria-hidden="true" />
+      <div><b>이 블록의 분석 데이터를 불러오지 못했습니다.</b>
+        <p>{artifactState.message || "다른 블록은 계속 확인할 수 있습니다."}</p>
+        {onRetry && artifactState.requiredAction === "RETRY" && <button type="button" onClick={onRetry}><RotateCcw size={13} aria-hidden="true" />다시 불러오기</button>}
+      </div>
+    </section>;
+  }
+  if (artifactState.status === "empty") {
+    return <section className="report-whole-artifact report-artifact-state is-empty" role="status">
+      <Inbox size={17} aria-hidden="true" />
+      <div><b>조건에 맞는 데이터가 없습니다.</b><p>오류가 아니라 유효한 빈 분석 결과입니다.</p></div>
+    </section>;
+  }
+  if (!artifact) {
+    return <section className="report-whole-artifact report-api-state" role="alert">
+      <b>{ARTIFACT_VIEW_LABELS[view]} 데이터를 표시할 수 없습니다.</b>
+    </section>;
+  }
   const metrics = artifactMetricCards(artifact);
-  const visibleViewIds = settings.visibleViews.filter((view) => ({
+  const available = ({
     summary: Boolean(String(artifact.summary || "").trim()),
     kpi: metrics.length > 0,
-    chart: Boolean(artifact.chart),
-    table: Boolean(artifact.table),
-  })[view]);
-  const views = new Set(visibleViewIds.length ? visibleViewIds : ["summary"]);
-  const viewLabels = { summary: "요약", kpi: "핵심 지표", chart: "차트", table: "표" };
-  const visibleViewLabel = [...views].map((view) => viewLabels[view]).join(" · ");
-  const accessibilityScope = views.size === 1 ? "분석 요소" : `${visibleViewLabel} 분석 결과 묶음`;
+  })[view];
+  if (!available) {
+    return <section className="report-whole-artifact report-api-state" role="alert">
+      <b>{ARTIFACT_VIEW_LABELS[view]} 데이터를 표시할 수 없습니다.</b>
+    </section>;
+  }
+  const visibleViewLabel = ARTIFACT_VIEW_LABELS[view];
   const visibleMetrics = metrics.slice(0, block.w <= 6 ? 2 : 4);
   const summaryMetrics = artifact.evidence?.metrics?.length
     ? artifact.evidence.metrics
@@ -68,19 +98,10 @@ export function ReportWholeArtifactBlock({ block, artifact, artifactState, curre
     artifact.evidence?.period?.start,
     artifact.evidence?.period?.end_exclusive,
   );
-  const rows = artifact.table?.rows || [];
-  const rowLimit = block.w <= 6 ? 3 : 4;
-  const visibleRows = rows.slice(0, rowLimit);
-  const tableArtifact = artifact.table ? { ...artifact, table: { ...artifact.table, rows: visibleRows } } : artifact;
   const timeDescription = analysisTimeLabel(artifact.evidence);
-  const gridRows = ["auto", views.has("summary") && "auto", views.has("kpi") && "auto", (views.has("chart") || views.has("table")) && "minmax(0, 1fr)"].filter(Boolean).join(" ");
-  return <section className={`report-whole-artifact ${block.w <= 6 ? "is-half" : ""}`} style={{ gridTemplateRows: gridRows }} aria-label={`${block.title} ${accessibilityScope}`}>
+  return <section className={`report-whole-artifact ${block.w <= 6 ? "is-half" : ""}`} aria-label={`${block.title} ${visibleViewLabel} 분석 요소`}>
     <header className="report-whole-artifact-heading"><div><small>분석 결과</small><b>{timeDescription || "분석 결과"}</b></div><span>{visibleViewLabel}</span></header>
-    {views.has("summary") && <p className="report-whole-artifact-summary">{shortSummary(localizedSummary)}</p>}
-    {views.has("kpi") && <div className="report-whole-artifact-kpis" aria-label="주요 지표">{visibleMetrics.length ? visibleMetrics.map((metric) => { const currencyMetric = isCurrencyMetricUnit(metric.unit); const meta = [metric.context, currencyMetric ? currency.label : ""].filter(Boolean).join(" · "); return <dl key={metric.metric_id || metric.metricId || metric.label}><dt>{metricDisplayLabel(metric)}{meta && <small>{meta}</small>}</dt><dd>{currencyMetric ? formatCurrencyAmount(metric.value, currency.unit, currency.policy) : formatMetricDisplayValue(metric.value, metric)}</dd></dl>; }) : <p>별도 대표 지표가 제공되지 않았습니다.</p>}{metrics.length > visibleMetrics.length && <small>외 {metrics.length - visibleMetrics.length}개 지표</small>}</div>}
-    <div className="report-whole-artifact-views">
-      {views.has("chart") && artifact.chart && <section><h3>변화와 구성</h3>{renderView("chart", { height: 6 })}</section>}
-      {views.has("table") && artifact.table && <section><h3>상세 데이터</h3>{renderView("table", { height: 5, artifact: tableArtifact })}{rows.length > visibleRows.length && <p className="report-whole-artifact-more">현재 {visibleRows.length}행 표시 · 외 {rows.length - visibleRows.length}행은 원본 Artifact에서 확인</p>}</section>}
-    </div>
+    {view === "summary" && <p className="report-whole-artifact-summary">{shortSummary(localizedSummary)}</p>}
+    {view === "kpi" && <div className="report-whole-artifact-kpis" aria-label="주요 지표">{visibleMetrics.map((metric) => { const currencyMetric = isCurrencyMetricUnit(metric.unit); const meta = [metric.context, currencyMetric ? currency.label : ""].filter(Boolean).join(" · "); return <dl key={metric.metric_id || metric.metricId || metric.label}><dt>{metricDisplayLabel(metric)}{meta && <small>{meta}</small>}</dt><dd>{currencyMetric ? formatCurrencyAmount(metric.value, currency.unit, currency.policy) : formatMetricDisplayValue(metric.value, metric)}</dd></dl>; })}{metrics.length > visibleMetrics.length && <small>외 {metrics.length - visibleMetrics.length}개 지표</small>}</div>}
   </section>;
 }

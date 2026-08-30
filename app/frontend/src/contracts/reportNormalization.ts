@@ -5,6 +5,7 @@ import {
   assertReportContractVersion,
   assertReportCurrencyDisplayUnit,
   assertReportOrientation,
+  normalizeAtomicReportBlockContent,
   type DraftLayoutBlock,
   type ReportBlock,
   type ReportBlockRequest,
@@ -112,7 +113,7 @@ export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
   if (["table", "chart", "artifact"].includes(type) && !block.artifactId) {
     throw new Error("table·chart·artifact block은 Artifact가 필요합니다.");
   }
-  const content = block.content ?? "";
+  const content = normalizeAtomicReportBlockContent(type, block.content ?? "");
   if (type === "text" && !content.trim()) throw new Error("text block 내용은 비어 있을 수 없습니다.");
   const w = block.w ?? block.columns;
   return {

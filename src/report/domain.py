@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
+import json
 import re
 import unicodedata
 
@@ -15,6 +16,50 @@ CURRENCY_DISPLAY_UNITS = frozenset(
     {"auto", "one", "thousand", "million", "hundredMillion", "billion"}
 )
 MAX_REPORT_TITLE_LENGTH = 255
+REPORT_ARTIFACT_VIEWS = frozenset({"summary", "kpi", "chart", "table"})
+
+
+def normalize_report_block_content(block_type: "BlockType | str", content: str) -> str:
+    """data block 설정을 정확히 한 원자 Artifact view로 정규화한다.
+
+    legacy chart/table은 block type 자체가 view를 확정하므로 누락된 ``visibleViews``만
+    안전하게 보완한다. artifact 합본·unknown·복수 view는 원본 DB를 변경하지 않고 새 저장을
+    거부해 조용한 데이터 손실을 막는다.
+    """
+
+    resolved_type = BlockType(block_type)
+    if resolved_type not in {BlockType.TABLE, BlockType.CHART, BlockType.ARTIFACT}:
+        return content
+    try:
+        settings = json.loads(content or "{}")
+    except (TypeError, ValueError) as error:
+        raise ValueError("Report 분석 block 설정은 JSON 객체여야 합니다.") from error
+    if not isinstance(settings, dict):
+        raise ValueError("Report 분석 block 설정은 JSON 객체여야 합니다.")
+    expected = (
+        "chart" if resolved_type is BlockType.CHART
+        else "table" if resolved_type is BlockType.TABLE
+        else None
+    )
+    requested = settings.get("visibleViews")
+    if requested is None and expected is not None:
+        requested = [expected]
+        settings["visibleViews"] = requested
+    if (
+        not isinstance(requested, list)
+        or len(requested) != 1
+        or requested[0] not in REPORT_ARTIFACT_VIEWS
+    ):
+        raise ValueError("Report 분석 block은 허용된 visibleViews 하나만 가져야 합니다.")
+    view = requested[0]
+    if (
+        (expected is not None and view != expected)
+        or (expected is None and view not in {"summary", "kpi"})
+    ):
+        raise ValueError("Report block type과 visibleViews가 일치하지 않습니다.")
+    return json.dumps(
+        settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
 
 
 def normalize_report_title(value: str) -> str:

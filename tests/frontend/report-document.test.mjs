@@ -20,7 +20,7 @@ function insert(document, id, options = {}) {
     title: `${id} 성과 분석`,
     artifactRef: { artifactId: `artifact-${id}`, version: 2, checksum: `sha256:${id}` },
     presentationMode: options.mode ?? "standard",
-    visibleViews: options.visibleViews ?? ["summary", "kpi", "charts", "table"],
+    visibleViews: options.visibleViews ?? ["summary"],
     width: options.width,
     height: options.height,
     placement: options.placement,
@@ -65,6 +65,17 @@ const invalidWidth = insertArtifactBlock(halfWidth, {
 });
 assert.equal(invalidWidth.ok, false);
 assert.equal(JSON.stringify(halfWidth), beforeInvalidWidth);
+
+for (const visibleViews of [[], ["summary", "kpi"], ["unknown"]]) {
+  const invalidView = insertArtifactBlock(halfWidth, {
+    blockId: `invalid-view-${visibleViews.length}`,
+    title: "잘못된 분석 요소",
+    artifactRef: { artifactId: "artifact-invalid-view" },
+    visibleViews,
+  });
+  assert.equal(invalidView.ok, false);
+  assert.equal(invalidView.document, halfWidth);
+}
 
 document = insert(document, "revenue");
 document = insert(document, "channel", {

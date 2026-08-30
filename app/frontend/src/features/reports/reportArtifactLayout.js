@@ -1,7 +1,11 @@
 /** artifact 데이터 밀도에서 DOM 비의존 A4 block 크기를 계산하는 모듈이다. */
 import { A4_PAGE_LAYOUT } from "./reportDocument.ts";
+import {
+  REPORT_ARTIFACT_VIEW_IDS,
+  normalizeAtomicReportBlockContent,
+} from "../../contracts/reportContract.ts";
 
-/** 전체 artifact 블록에서 선택 가능한 governed view 집합이다. */ export const WHOLE_ARTIFACT_VIEWS = Object.freeze(["summary", "kpi", "chart", "table"]);
+/** 보고서 block이 하나씩 선택할 수 있는 governed 원자 view 집합이다. */ export const ATOMIC_ARTIFACT_VIEWS = REPORT_ARTIFACT_VIEW_IDS;
 /** artifact view ID와 사용자 표시 이름의 단일 계약이다. */ export const ARTIFACT_VIEW_LABELS = Object.freeze({
   summary: "요약",
   kpi: "핵심 지표",
@@ -15,7 +19,7 @@ import { A4_PAGE_LAYOUT } from "./reportDocument.ts";
   maximumFractionDigits: 1,
 });
 
-/** artifact 블록 content 설정의 호환성 버전이다. */ export const WHOLE_ARTIFACT_SETTINGS_VERSION = "ANSWER-ARTIFACT-BLOCK-v1";
+/** 원자 artifact 블록 content 설정의 호환성 버전이다. */ export const ARTIFACT_BLOCK_SETTINGS_VERSION = "ANSWER-ARTIFACT-BLOCK-v2";
 
 /** JSON 설정을 객체로만 읽고 손상 값은 빈 설정으로 닫는다. */
 export function readReportBlockSettings(value) {
@@ -26,10 +30,15 @@ export function readReportBlockSettings(value) {
   }
 }
 
-/** 전체 artifact 블록 설정을 허용된 mode/view/origin 필드로 정규화한다. */
+/** artifact 블록 설정을 정확히 하나의 summary/KPI 원자 view로 읽고 손상 값은 거부한다. */
 export function wholeArtifactSettings(block) {
   if (block?.type !== "artifact") return null;
-  const settings = readReportBlockSettings(block.content);
+  let settings;
+  try {
+    settings = JSON.parse(normalizeAtomicReportBlockContent("artifact", block.content || ""));
+  } catch {
+    return null;
+  }
   const origin = settings.origin?.kind === "analysisRun" && typeof settings.origin.requestId === "string"
     ? {
         kind: "analysisRun",
@@ -42,9 +51,7 @@ export function wholeArtifactSettings(block) {
     presentationMode: ["summary", "standard", "detail"].includes(settings.presentationMode)
       ? settings.presentationMode
       : "standard",
-    visibleViews: Array.isArray(settings.visibleViews) && settings.visibleViews.length
-      ? [...new Set(settings.visibleViews.filter((view) => typeof view === "string" && view.trim()))]
-      : [...WHOLE_ARTIFACT_VIEWS],
+    visibleViews: [settings.visibleViews[0]],
     sizeMode: settings.sizeMode === "auto" ? "auto" : "manual",
     ...(origin ? { origin } : {}),
   };
@@ -67,7 +74,7 @@ export function availableArtifactViews(artifact) {
   if (!artifact) return [];
   const hasRows = Array.isArray(artifact.table?.rows)
     && artifact.table.rows.some((row) => row && typeof row === "object" && !Array.isArray(row));
-  return WHOLE_ARTIFACT_VIEWS.filter((view) => ({
+  return ATOMIC_ARTIFACT_VIEWS.filter((view) => ({
     summary: Boolean(String(artifact.summary || "").trim()),
     kpi: artifactMetricCards(artifact).length > 0,
     chart: Boolean(artifact.chart) && hasRows,
@@ -88,9 +95,12 @@ export function artifactViewTitle(sourceTitle, view) {
 /** DOM을 읽지 않고 governed 응답 형태만으로 artifact block 크기를 추정한다. */
 export function estimateArtifactBlockLayout(artifact, options = {}) {
   const orientation = options.orientation === "portrait" ? "portrait" : "landscape";
-  const requestedViews = Array.isArray(options.visibleViews) && options.visibleViews.length
-    ? [...new Set(options.visibleViews.filter((view) => WHOLE_ARTIFACT_VIEWS.includes(view)))]
-    : [...WHOLE_ARTIFACT_VIEWS];
+  const requestedViews = Array.isArray(options.visibleViews)
+    && options.visibleViews.length === 1
+    && ATOMIC_ARTIFACT_VIEWS.includes(options.visibleViews[0])
+    ? [options.visibleViews[0]]
+    : null;
+  if (!requestedViews) throw new Error("Artifact block 크기는 원자 view 하나를 명시해야 계산할 수 있습니다.");
   const metrics = artifactMetricCards(artifact);
   const tableColumns = Array.isArray(artifact?.table?.columns) ? artifact.table.columns.length : 0;
   const tableRows = Array.isArray(artifact?.table?.rows) ? artifact.table.rows.length : 0;
@@ -154,6 +164,7 @@ export function fitFrontendArtifactBlock(block, artifact, options = {}) {
   if (block?.type !== "artifact") return block;
   const rawSettings = { ...readReportBlockSettings(block.content), ...(options.settings || {}) };
   const settings = wholeArtifactSettings({ ...block, content: JSON.stringify(rawSettings) });
+  if (!settings) return block;
   if (!options.force && settings.sizeMode !== "auto") return block;
   const layout = estimateArtifactBlockLayout(artifact, {
     orientation: options.orientation,

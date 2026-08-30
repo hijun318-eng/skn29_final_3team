@@ -39,6 +39,40 @@ export function seoulWallClockToIso(value: string): string {
 
 /** 보고서 API가 영속화하는 블록 타입 집합이다. */ export const REPORT_BLOCK_TYPES = ["table", "chart", "text", "artifact", "page_break"] as const;
 /** 영속 블록 타입의 리터럴 타입이다. */ export type ReportBlockType = typeof REPORT_BLOCK_TYPES[number];
+/** 보고서의 한 데이터 block이 독점적으로 표시할 수 있는 원자 Artifact view 집합이다. */
+export const REPORT_ARTIFACT_VIEW_IDS = ["summary", "kpi", "chart", "table"] as const;
+/** 원자 Artifact view 식별자 타입이다. */ export type ReportArtifactViewId = typeof REPORT_ARTIFACT_VIEW_IDS[number];
+
+/** 저장 직전 data block 설정을 정확히 한 원자 view로 정규화한다.
+ *
+ * chart/table의 누락 view는 block type 자체가 의미를 확정하므로 안전하게 보완한다.
+ * artifact block은 summary/kpi 중 하나를 명시해야 하며 legacy 합본·unknown 값은 보존한 채
+ * 저장만 차단한다.
+ */
+export function normalizeAtomicReportBlockContent(type: ReportBlockType, content: string): string {
+  if (!["table", "chart", "artifact"].includes(type)) return content;
+  let settings: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(content || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+    settings = { ...parsed };
+  } catch {
+    throw new Error("Report 분석 block 설정은 JSON 객체여야 합니다.");
+  }
+  const expected = type === "chart" ? "chart" : type === "table" ? "table" : null;
+  const requested = settings.visibleViews;
+  if (requested === undefined && expected) {
+    settings.visibleViews = [expected];
+  } else if (!Array.isArray(requested) || requested.length !== 1
+    || !(REPORT_ARTIFACT_VIEW_IDS as readonly unknown[]).includes(requested[0])) {
+    throw new Error("Report 분석 block은 허용된 visibleViews 하나만 가져야 합니다.");
+  }
+  const view = (settings.visibleViews as unknown[])[0];
+  if ((expected && view !== expected) || (!expected && !["summary", "kpi"].includes(String(view)))) {
+    throw new Error("Report block type과 visibleViews가 일치하지 않습니다.");
+  }
+  return JSON.stringify(settings);
+}
 
 /** 보고서 정의에 저장되는 블록과 선택적 grid 좌표 계약이다. */ export interface ReportBlock {
   readonly id: string;

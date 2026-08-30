@@ -241,9 +241,13 @@ async def create_artifact_draft(
                 "visibleViews": [view],
             })
         elif view == "chart":
-            settings["showLegend"] = True
+            settings.update({"visibleViews": ["chart"], "showLegend": True})
         else:
-            settings.update({"density": "comfortable", "showRowNumbers": False})
+            settings.update({
+                "visibleViews": ["table"],
+                "density": "comfortable",
+                "showRowNumbers": False,
+            })
         width = view_widths[view]
         height = artifact_view_default_height(view)
         if row_x and row_x + width > 12:
@@ -443,12 +447,12 @@ async def create_assistant_report_draft(
                 ReportBlock(
                     str(uuid4()), proposal["table_title"],
                     str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.TABLE, 0, 2, 12, 4,
+                    BlockType.TABLE, 0, 2, 12, 4, '{"visibleViews":["table"]}',
                 ),
                 ReportBlock(
                     str(uuid4()), proposal["chart_title"],
                     str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.CHART, 0, 6, 12, 4,
+                    BlockType.CHART, 0, 6, 12, 4, '{"visibleViews":["chart"]}',
                 ),
             ),
         )

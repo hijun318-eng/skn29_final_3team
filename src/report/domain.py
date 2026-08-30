@@ -6,6 +6,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
 import re
+import unicodedata
 
 REPORT_CONTRACT_VERSION = "REPORT-v1.0.0"
 REPORT_PROPOSAL_VERSION = "REPORT-v1.1.0-DRAFT"
@@ -13,6 +14,24 @@ REPORT_ORIENTATIONS = frozenset({"portrait", "landscape"})
 CURRENCY_DISPLAY_UNITS = frozenset(
     {"auto", "one", "thousand", "million", "hundredMillion", "billion"}
 )
+MAX_REPORT_TITLE_LENGTH = 255
+
+
+def normalize_report_title(value: str) -> str:
+    """사용자가 저장하는 보고서 제목을 단일 행의 bounded 문자열로 정규화한다."""
+
+    if not isinstance(value, str):
+        raise TypeError("보고서 제목은 문자열이어야 합니다.")
+    if any(unicodedata.category(character) == "Cc" for character in value):
+        raise ValueError("보고서 제목에는 줄바꿈이나 제어 문자를 사용할 수 없습니다.")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("보고서 제목은 비어 있을 수 없습니다.")
+    if len(normalized) > MAX_REPORT_TITLE_LENGTH:
+        raise ValueError(
+            f"보고서 제목은 {MAX_REPORT_TITLE_LENGTH}자를 초과할 수 없습니다."
+        )
+    return normalized
 
 
 class DefinitionStatus(StrEnum):
@@ -145,10 +164,18 @@ class ReportDefinitionVersion:
     product_release_id: str | None = None
     permission_snapshot_id: str | None = None
     semantic_release_id: str | None = None
+    draft_revision: int = 1
 
     def __post_init__(self) -> None:
-        if not self.definition_id or self.version < 1 or not self.title:
-            raise ValueError("Report definition id, version, title은 필수입니다.")
+        if not self.definition_id or self.version < 1:
+            raise ValueError("Report definition id와 version은 필수입니다.")
+        object.__setattr__(self, "title", normalize_report_title(self.title))
+        if (
+            isinstance(self.draft_revision, bool)
+            or not isinstance(self.draft_revision, int)
+            or self.draft_revision < 1
+        ):
+            raise ValueError("Report draft revision은 1 이상의 정수여야 합니다.")
         if self.status is DefinitionStatus.APPROVED and self.approved_at is None:
             raise ValueError("승인 version은 approved_at이 필요합니다.")
         if self.status is DefinitionStatus.DRAFT and self.approved_at is not None:
@@ -181,6 +208,7 @@ class ReportDefinitionVersion:
             product_release_id=self.product_release_id,
             permission_snapshot_id=self.permission_snapshot_id,
             semantic_release_id=self.semantic_release_id,
+            draft_revision=self.draft_revision,
         )
 
     def next_draft(self) -> "ReportDefinitionVersion":
@@ -198,6 +226,7 @@ class ReportDefinitionVersion:
             product_release_id=self.product_release_id,
             permission_snapshot_id=self.permission_snapshot_id,
             semantic_release_id=self.semantic_release_id,
+            draft_revision=1,
         )
 
     def replace_blocks(
@@ -226,6 +255,7 @@ class ReportDefinitionVersion:
             product_release_id=self.product_release_id,
             permission_snapshot_id=self.permission_snapshot_id,
             semantic_release_id=self.semantic_release_id,
+            draft_revision=self.draft_revision,
         )
 
 

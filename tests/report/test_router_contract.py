@@ -99,6 +99,7 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
             "title": "주간 운영 보고서 · 검토본",
             "orientation": "landscape",
             "currency_display_unit": "million",
+            "expected_draft_revision": 1,
             "blocks": [{
             "block_id": "text-1", "title": "해석", "type": "text", "content": "관측 결과",
             "x": 0, "y": 0, "w": 12, "h": 2,
@@ -112,7 +113,9 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
         approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
         await self.router.approve_version("report-1", 1, approved_at)
         with self.assertRaises(ReportRouteError) as immutable:
-            await self.router.replace_draft_blocks("report-1", 1, {"blocks": []})
+            await self.router.replace_draft_blocks(
+                "report-1", 1, {"blocks": [], "expected_draft_revision": 2}
+            )
         self.assertEqual(409, immutable.exception.status_code)
 
         payload = {
@@ -139,6 +142,51 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
                 "definition_id": "report-1", "title": "보고서", "blocks": [], "role": "admin",
             })
         self.assertEqual(422, invalid.exception.status_code)
+
+    async def test_draft_revision_retries_are_idempotent_and_stale_changes_conflict(self):
+        created = await self.router.create_definition({
+            "definition_id": "report-cas",
+            "title": "Revision report",
+            "blocks": [],
+        })
+        self.assertEqual(1, created["draft_revision"])
+        changed_payload = {
+            "title": "  Revision report updated  ",
+            "blocks": [],
+            "expected_draft_revision": 1,
+        }
+        changed = await self.router.replace_draft_blocks(
+            "report-cas", 1, changed_payload
+        )
+        self.assertEqual("Revision report updated", changed["title"])
+        self.assertEqual(2, changed["draft_revision"])
+
+        exact_retry = await self.router.replace_draft_blocks(
+            "report-cas", 1, changed_payload
+        )
+        self.assertEqual(2, exact_retry["draft_revision"])
+
+        with self.assertRaises(ReportRouteError) as stale:
+            await self.router.replace_draft_blocks(
+                "report-cas",
+                1,
+                {
+                    "title": "Stale overwrite",
+                    "blocks": [],
+                    "expected_draft_revision": 1,
+                },
+            )
+        self.assertEqual(409, stale.exception.status_code)
+        self.assertEqual(
+            {
+                "code": "REPORT_REVISION_CONFLICT",
+                "current_draft_revision": 2,
+            },
+            stale.exception.detail,
+        )
+        current = await self.router.get_version("report-cas", 1)
+        self.assertEqual("Revision report updated", current["title"])
+        self.assertEqual(2, current["draft_revision"])
 
 
 if __name__ == "__main__":

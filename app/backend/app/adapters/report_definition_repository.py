@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 import json
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -16,7 +18,47 @@ from src.report.domain import (
     DefinitionStatus,
     ReportBlock,
     ReportDefinitionVersion,
+    normalize_report_title,
 )
+from src.report.repository import ReportRevisionConflict
+
+
+def _draft_blocks_match(
+    stored_blocks: list[Mapping[str, Any]],
+    requested_blocks: tuple[ReportBlock, ...],
+) -> bool:
+    """DB block rows와 공개 저장 payload를 query ID 비노출 계약까지 반영해 비교한다."""
+
+    if len(stored_blocks) != len(requested_blocks):
+        return False
+    requested = sorted(
+        requested_blocks,
+        key=lambda block: (block.y, block.x, str(block.block_id)),
+    )
+    for stored, block in zip(stored_blocks, requested, strict=True):
+        stored_query_id = stored["query_id"]
+        if block.query_id is not None and block.query_id != stored_query_id:
+            return False
+        if (
+            str(stored["block_id"]) != str(block.block_id)
+            or stored["title"] != block.title
+            or (
+                str(stored["artifact_id"]) if stored["artifact_id"] else None
+            ) != block.artifact_id
+            or (
+                str(stored["view_spec_id"]) if stored["view_spec_id"] else None
+            ) != block.view_spec_id
+            or stored["columns"] != block.columns
+            or stored["block_type"] != block.type.value
+            or stored["x"] != block.x
+            or stored["y"] != block.y
+            or stored["w"] != block.w
+            or stored["h"] != block.h
+            or stored["content"] != block.content
+            or tuple(stored["evidence_refs"] or ()) != block.evidence_refs
+        ):
+            return False
+    return True
 
 
 class ReportDefinitionRepositoryMixin:
@@ -226,10 +268,11 @@ class ReportDefinitionRepositoryMixin:
                 )
         except IntegrityError as error:
             raise ValueError("같은 Report definition version이 이미 존재합니다.") from error
+        stored = replace(draft, draft_revision=1)
         if receipt is None:
-            return draft
+            return stored
         return replace(
-            draft,
+            stored,
             product_release_id=receipt[0],
             permission_snapshot_id=receipt[1],
             semantic_release_id=receipt[2],
@@ -365,10 +408,11 @@ class ReportDefinitionRepositoryMixin:
             object_id=f"definition:{definition_id}:v{draft.version}",
             receipt=receipt,
         )
+        stored = replace(draft, draft_revision=1)
         if receipt is None:
-            return draft
+            return stored
         return replace(
-            draft,
+            stored,
             product_release_id=receipt[0],
             permission_snapshot_id=receipt[1],
             semantic_release_id=receipt[2],
@@ -388,7 +432,7 @@ class ReportDefinitionRepositoryMixin:
                     SELECT v.definition_id, v.version, v.status, v.title, v.approved_at,
                            v.orientation, v.currency_display_unit,
                            v.product_release_id, v.permission_snapshot_id,
-                           v.semantic_release_id
+                           v.semantic_release_id, v.revision
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
@@ -449,6 +493,7 @@ class ReportDefinitionRepositoryMixin:
                 product_release_id=row["product_release_id"],
                 permission_snapshot_id=row["permission_snapshot_id"],
                 semantic_release_id=row["semantic_release_id"],
+                draft_revision=int(row["revision"]),
             )
 
     async def get_draft_revision(self, definition_id: str, version: int) -> int:
@@ -583,6 +628,7 @@ class ReportDefinitionRepositoryMixin:
     ) -> None:
         """호출자가 소유한 종결 트랜잭션 안에서 Report draft 배치를 교체한다."""
 
+        title = normalize_report_title(title) if title is not None else None
         definition_uuid = _uuid(definition_id, "definition_id")
         version_row = (await session.execute(
             text(
@@ -630,7 +676,8 @@ class ReportDefinitionRepositoryMixin:
                     orientation = COALESCE(:orientation, orientation),
                     currency_display_unit = COALESCE(
                         :currency_display_unit, currency_display_unit
-                    )
+                    ),
+                    revision = revision + 1
                 WHERE definition_id = :definition_id AND version = :version
                   AND status = 'draft'
                 """
@@ -724,15 +771,25 @@ class ReportDefinitionRepositoryMixin:
         title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
+        expected_draft_revision: int | None = None,
     ) -> ReportDefinitionVersion:
         """draft 제목·blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
+        title = normalize_report_title(title) if title is not None else None
+        if expected_draft_revision is not None and (
+            isinstance(expected_draft_revision, bool)
+            or not isinstance(expected_draft_revision, int)
+            or expected_draft_revision < 1
+        ):
+            raise ValueError("expected_draft_revision은 1 이상이어야 합니다.")
         definition_uuid = _uuid(definition_id, "definition_id")
         async with self._sessionmaker.begin() as session:
             version_row = (await session.execute(
                 text(
                     """
-                    SELECT v.status, v.product_release_id,
-                           v.permission_snapshot_id, v.semantic_release_id
+                    SELECT v.status, v.title, v.orientation,
+                           v.currency_display_unit, v.revision,
+                           v.product_release_id, v.permission_snapshot_id,
+                           v.semantic_release_id
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
@@ -750,6 +807,32 @@ class ReportDefinitionRepositoryMixin:
                 raise KeyError("Report definition version을 찾을 수 없습니다.")
             if version_row["status"] != DefinitionStatus.DRAFT.value:
                 raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
+            stored_blocks = (await session.execute(
+                text(
+                    """
+                    SELECT block_id, title, artifact_id, query_id, view_spec_id,
+                           columns, block_type, x, y, w, h, content, evidence_refs
+                    FROM report_v1.report_blocks
+                    WHERE definition_id = :definition_id
+                      AND definition_version = :version
+                    ORDER BY y, x, block_id
+                    """
+                ),
+                {"definition_id": definition_uuid, "version": version},
+            )).mappings().all()
+            current_revision = int(version_row["revision"])
+            payload_unchanged = (
+                (title is None or title == version_row["title"])
+                and (
+                    orientation is None
+                    or orientation == version_row["orientation"]
+                )
+                and (
+                    currency_display_unit is None
+                    or currency_display_unit == version_row["currency_display_unit"]
+                )
+                and _draft_blocks_match(stored_blocks, blocks)
+            )
             receipt_values = (
                 version_row["product_release_id"],
                 version_row["permission_snapshot_id"],
@@ -770,6 +853,43 @@ class ReportDefinitionRepositoryMixin:
                 )
                 if current_receipt is not None:
                     raise ValueError("Legacy Report draft has no release receipt")
+            if (
+                expected_draft_revision is not None
+                and expected_draft_revision != current_revision
+                and not payload_unchanged
+            ):
+                raise ReportRevisionConflict(current_revision)
+            if payload_unchanged:
+                return ReportDefinitionVersion(
+                    definition_id=definition_id,
+                    version=version,
+                    status=DefinitionStatus.DRAFT,
+                    title=version_row["title"],
+                    blocks=tuple(
+                        ReportBlock(
+                            str(block["block_id"]),
+                            block["title"],
+                            str(block["artifact_id"]) if block["artifact_id"] else None,
+                            block["columns"],
+                            block["query_id"],
+                            BlockType(block["block_type"]),
+                            block["x"],
+                            block["y"],
+                            block["w"],
+                            block["h"],
+                            block["content"],
+                            tuple(block["evidence_refs"] or ()),
+                            str(block["view_spec_id"]) if block["view_spec_id"] else None,
+                        )
+                        for block in stored_blocks
+                    ),
+                    orientation=version_row["orientation"],
+                    currency_display_unit=version_row["currency_display_unit"],
+                    product_release_id=version_row["product_release_id"],
+                    permission_snapshot_id=version_row["permission_snapshot_id"],
+                    semantic_release_id=version_row["semantic_release_id"],
+                    draft_revision=current_revision,
+                )
             await session.execute(
                 text(
                     """

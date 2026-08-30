@@ -1979,6 +1979,7 @@
             "type": "string"
           },
           "title": {
+            "maxLength": 255,
             "minLength": 1,
             "title": "Title",
             "type": "string"
@@ -3203,6 +3204,11 @@
             ],
             "title": "Currency Display Unit"
           },
+          "expected_draft_revision": {
+            "minimum": 1.0,
+            "title": "Expected Draft Revision",
+            "type": "integer"
+          },
           "orientation": {
             "anyOf": [
               {
@@ -3233,7 +3239,8 @@
           }
         },
         "required": [
-          "blocks"
+          "blocks",
+          "expected_draft_revision"
         ],
         "title": "ReplaceReportBlocksRequest",
         "type": "object"
@@ -4921,6 +4928,11 @@
             "title": "Definition Id",
             "type": "string"
           },
+          "draft_revision": {
+            "minimum": 1.0,
+            "title": "Draft Revision",
+            "type": "integer"
+          },
           "orientation": {
             "enum": [
               "portrait",
@@ -4955,7 +4967,8 @@
           "blocks",
           "approved_at",
           "orientation",
-          "currency_display_unit"
+          "currency_display_unit",
+          "draft_revision"
         ],
         "title": "ReportDefinitionResponse",
         "type": "object"

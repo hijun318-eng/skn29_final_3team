@@ -133,6 +133,53 @@ class ReportDomainTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "draft Report version"):
             approved.replace_blocks((text,))
 
+    def test_report_title_is_trimmed_and_rejects_non_single_line_values(self):
+        normalized = ReportDefinitionVersion(
+            "report-title",
+            1,
+            DefinitionStatus.DRAFT,
+            f"  {'가' * 255}  ",
+            (),
+        )
+        self.assertEqual("가" * 255, normalized.title)
+        for invalid in ("", "   ", "첫 줄\n둘째 줄", "제목\t탭", "가" * 256):
+            with self.subTest(invalid=repr(invalid)), self.assertRaises(
+                (TypeError, ValueError)
+            ):
+                ReportDefinitionVersion(
+                    "report-invalid-title",
+                    1,
+                    DefinitionStatus.DRAFT,
+                    invalid,
+                    (),
+                )
+
+    def test_report_draft_revision_is_positive_and_survives_domain_transitions(self):
+        revised = ReportDefinitionVersion(
+            "report-revision",
+            1,
+            DefinitionStatus.DRAFT,
+            "Revision report",
+            (),
+            draft_revision=7,
+        )
+        self.assertEqual(7, revised.replace_blocks(()).draft_revision)
+        approved = revised.approve(datetime(2026, 8, 3, tzinfo=timezone.utc))
+        self.assertEqual(7, approved.draft_revision)
+        self.assertEqual(1, approved.next_draft().draft_revision)
+        for invalid in (0, -1, True):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                ValueError, "revision"
+            ):
+                ReportDefinitionVersion(
+                    "report-invalid-revision",
+                    1,
+                    DefinitionStatus.DRAFT,
+                    "Invalid revision",
+                    (),
+                    draft_revision=invalid,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

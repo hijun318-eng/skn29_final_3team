@@ -12,7 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.contracts import ChartSpec, Evidence, MetricValue, TableResult
-from src.report.domain import BlockFailureCode
+from src.report.domain import BlockFailureCode, normalize_report_title
 
 
 ReportOrientation = Literal["portrait", "landscape"]
@@ -61,16 +61,30 @@ class ReportBlockRequest(ReportContractModel):
 class CreateReportDefinitionRequest(ReportContractModel):
     """새 보고서 정의의 식별자·제목·블록과 페이지 방향·통화 표시 단위를 입력받는다."""
     definition_id: str = Field(min_length=1)
-    title: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=255)
     blocks: list[ReportBlockRequest] = Field(default_factory=list)
     orientation: ReportOrientation = "portrait"
     currency_display_unit: CurrencyDisplayUnit = "auto"
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        """직접 생성 제목에 도메인과 같은 단일 행 정규화 규칙을 적용한다."""
+
+        return normalize_report_title(value)
 
 
 class CreateReportFromArtifactRequest(ReportContractModel):
     """기존 분석 산출물 ID와 사용자 제목으로 첫 보고서 정의를 생성하도록 요청한다."""
     artifact_id: UUID
     title: str = Field(min_length=1, max_length=255)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        """Artifact 기반 초안 제목도 일반 초안과 같은 규칙으로 정규화한다."""
+
+        return normalize_report_title(value)
 
 
 class ReplaceReportBlocksRequest(ReportContractModel):
@@ -79,6 +93,14 @@ class ReplaceReportBlocksRequest(ReportContractModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     orientation: ReportOrientation | None = None
     currency_display_unit: CurrencyDisplayUnit | None = None
+    expected_draft_revision: int = Field(ge=1, strict=True)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def validate_title(cls, value: str | None) -> str | None:
+        """제목이 포함된 저장 요청만 공통 단일 행 규칙으로 정규화한다."""
+
+        return None if value is None else normalize_report_title(value)
 
 
 class ApproveReportVersionRequest(ReportContractModel):
@@ -129,6 +151,7 @@ class ReportDefinitionResponse(ReportContractModel):
     approved_at: datetime | None
     orientation: ReportOrientation
     currency_display_unit: CurrencyDisplayUnit
+    draft_revision: int = Field(ge=1)
 
 
 class ReportDefinitionListResponse(ReportContractModel):

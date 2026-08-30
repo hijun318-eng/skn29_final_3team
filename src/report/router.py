@@ -18,7 +18,7 @@ from .domain import (
     ReportRun,
     RunStatus,
 )
-from .repository import ReportRepository
+from .repository import ReportRepository, ReportRevisionConflict
 
 REPORT_ROUTES: Final = (
     ("POST", "/reports/definitions", "create_definition"),
@@ -36,8 +36,8 @@ REPORT_ROUTES: Final = (
 
 class ReportRouteError(ValueError):
     """보고서 요청의 검증·미존재·상태 충돌을 HTTP 상태 코드와 공개 상세 문구로 전달한다."""
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
+    def __init__(self, status_code: int, detail: Any) -> None:
+        super().__init__(str(detail))
         self.status_code = status_code
         self.detail = detail
 
@@ -72,6 +72,7 @@ class ReportRouter:
             "approved_at": version.approved_at.isoformat() if version.approved_at else None,
             "orientation": version.orientation,
             "currency_display_unit": version.currency_display_unit,
+            "draft_revision": version.draft_revision,
         }
 
     @staticmethod
@@ -199,7 +200,13 @@ class ReportRouter:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         """초안 블록 전체와 선택적 표시 설정을 검증·교체하고 입력·미존재·충돌 오류를 구분한다."""
-        extra = set(payload) - {"blocks", "title", "orientation", "currency_display_unit"}
+        extra = set(payload) - {
+            "blocks",
+            "title",
+            "orientation",
+            "currency_display_unit",
+            "expected_draft_revision",
+        }
         if extra:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
@@ -225,12 +232,21 @@ class ReportRouter:
                     title=payload.get("title"),
                     orientation=payload.get("orientation"),
                     currency_display_unit=payload.get("currency_display_unit"),
+                    expected_draft_revision=payload["expected_draft_revision"],
                 ))
             )
         except KeyError as error:
             if error.args and error.args[0] == "Report definition version을 찾을 수 없습니다.":
                 raise ReportRouteError(404, str(error)) from error
             raise ReportRouteError(422, f"필수 필드 누락: {error.args[0]}") from error
+        except ReportRevisionConflict as error:
+            raise ReportRouteError(
+                409,
+                {
+                    "code": "REPORT_REVISION_CONFLICT",
+                    "current_draft_revision": error.current_revision,
+                },
+            ) from error
         except (TypeError, ValueError) as error:
             raise ReportRouteError(409, str(error)) from error
 

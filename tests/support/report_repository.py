@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from datetime import datetime
 from uuid import uuid4
 
@@ -13,6 +14,25 @@ from src.report.domain import (
     ReportDefinitionVersion,
     ReportRun,
 )
+from src.report.repository import ReportRevisionConflict
+
+
+def _blocks_match(
+    current_blocks: tuple[ReportBlock, ...],
+    requested_blocks: tuple[ReportBlock, ...],
+) -> bool:
+    current = sorted(current_blocks, key=lambda block: (block.y, block.x, block.block_id))
+    requested = sorted(
+        requested_blocks, key=lambda block: (block.y, block.x, block.block_id)
+    )
+    if len(current) != len(requested):
+        return False
+    for stored, incoming in zip(current, requested, strict=True):
+        if incoming.query_id is not None and incoming.query_id != stored.query_id:
+            return False
+        if replace(incoming, query_id=stored.query_id) != stored:
+            return False
+    return True
 
 
 class InMemoryReportRepository:
@@ -32,8 +52,9 @@ class InMemoryReportRepository:
         existing = self._versions.get(key)
         if existing and existing.status is DefinitionStatus.APPROVED:
             raise ValueError("승인된 Report version은 덮어쓸 수 없습니다.")
-        self._versions[key] = draft
-        return draft
+        stored = replace(draft, draft_revision=1)
+        self._versions[key] = stored
+        return stored
 
     def get_version(self, definition_id: str, version: int) -> ReportDefinitionVersion:
         try:
@@ -139,13 +160,30 @@ class InMemoryReportRepository:
         title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
+        expected_draft_revision: int | None = None,
     ) -> ReportDefinitionVersion:
-        replaced = self.get_version(definition_id, version).replace_blocks(
+        current = self.get_version(definition_id, version)
+        replaced = current.replace_blocks(
             blocks,
             title=title,
             orientation=orientation,
             currency_display_unit=currency_display_unit,
         )
+        unchanged = (
+            replaced.title == current.title
+            and replaced.orientation == current.orientation
+            and replaced.currency_display_unit == current.currency_display_unit
+            and _blocks_match(current.blocks, blocks)
+        )
+        if (
+            expected_draft_revision is not None
+            and expected_draft_revision != current.draft_revision
+            and not unchanged
+        ):
+            raise ReportRevisionConflict(current.draft_revision)
+        if unchanged:
+            return current
+        replaced = replace(replaced, draft_revision=current.draft_revision + 1)
         self._versions[(definition_id, version)] = replaced
         return replaced
 

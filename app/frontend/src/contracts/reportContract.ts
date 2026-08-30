@@ -84,6 +84,7 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
 /** 정규화된 immutable 보고서 정의 버전이다. */ export interface ReportDefinitionVersion {
   readonly definitionId: string;
   readonly version: number;
+  readonly draftRevision: number;
   readonly status: "draft" | "approved";
   readonly title: string;
   readonly blocks: readonly ReportBlock[];
@@ -143,6 +144,7 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly contract_version: string;
   readonly definition_id: string;
   readonly version: number;
+  readonly draft_revision: number;
   readonly status: "draft" | "approved";
   readonly title: string;
   readonly blocks: readonly ReportBlockResponse[];

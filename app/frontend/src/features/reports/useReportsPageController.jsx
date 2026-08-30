@@ -129,10 +129,10 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const frontendReportContext = useCallback((orientation = draft.reportOrientation) => ({
     definitionId: lifecycle.selectedDefinition?.definitionId || "report-draft",
     version: lifecycle.selectedDefinition?.version || 1,
-    title: lifecycle.selectedDefinition?.title || "보고서 초안",
+    title: draft.titleRef.current || "보고서 초안",
     orientation,
     currencyPolicy: draft.currencyPolicyRef.current,
-  }), [draft.currencyPolicyRef, draft.reportOrientation, lifecycle.selectedDefinition]);
+  }), [draft.currencyPolicyRef, draft.reportOrientation, draft.titleRef, lifecycle.selectedDefinition]);
   const dnd = useReportDragAndDrop({
     addTemplateBlock: draft.addTemplateBlock,
     addWholeArtifact: draft.addWholeArtifact,
@@ -165,6 +165,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       draft.resetDraft({
         blocks: [{ id: result.blockId, title: "운영 요약", columns: 12, type: "text", content: "", x: 0, y: 0, w: 12, h: 4 }],
         savedBlocks: [],
+        title: result.definition.title,
+        savedTitle: result.definition.title,
         orientation: result.definition.orientation,
         currencyPolicy: DEFAULT_FRONTEND_CURRENCY_POLICY,
         selectedBlockId: result.blockId,
@@ -231,7 +233,9 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
         || JSON.stringify(localDraft.currencyPolicy) !== JSON.stringify(serverCurrencyPolicy)
       ),
     );
-    const editable = recoverLocalDraft ? { ...current, blocks: localDraft.blocks } : current;
+    const editable = recoverLocalDraft
+      ? { ...current, blocks: localDraft.blocks }
+      : current;
     lifecycle.clearAssistantTrace();
     applyDefinition(editable, recoverLocalDraft ? {
       serverBlocks: current.blocks,
@@ -249,6 +253,14 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const saveDraft = useCallback(async () => {
     const definition = lifecycle.selectedDefinition;
     if (!definition || !isDraft || lifecycle.pending) return;
+    const title = draft.titleRef.current.trim();
+    if (!title || title.length > 255 || /[\u0000-\u001f\u007f]/.test(title)) {
+      draft.markSaveFailed();
+      lifecycle.setError("보고서 제목을 줄바꿈·제어문자 없이 1~255자로 입력한 뒤 저장해 주세요.");
+      window.requestAnimationFrame(() => document.querySelector(".report-builder-title-input")?.focus());
+      return;
+    }
+    if (title !== draft.titleRef.current) draft.updateReportTitle(title);
     const invalid = draft.orderedBlocks.find((block) => (
       !block.title?.trim() || (block.type === "text" && !block.content?.trim())
     ));
@@ -266,7 +278,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     const snapshot = createFrontendDraftSnapshot({
       definitionId: definition.definitionId,
       version: definition.version,
-      title: definition.title,
+      title,
       orientation: draft.reportOrientation,
       currencyPolicy: draft.reportCurrencyPolicy,
       blocks: draft.orderedBlocks,
@@ -282,7 +294,12 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       definition.definitionId,
       definition.version,
       persistedBlocks.map(toReportBlockRequest),
-      { orientation: draft.reportOrientation, currencyDisplayUnit: draft.reportCurrencyPolicy.displayUnit },
+      {
+        title,
+        expectedDraftRevision: definition.draftRevision,
+        orientation: draft.reportOrientation,
+        currencyDisplayUnit: draft.reportCurrencyPolicy.displayUnit,
+      },
     ));
     if (!saved) {
       draft.markSaveFailed();
@@ -526,7 +543,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const artifactStateFor = useCallback((artifactId) => artifactId
     ? artifacts.artifactStates[artifactId] || { status: "loading", message: "" }
     : null, [artifacts.artifactStates]);
-  const renderHeader = useCallback(({ pageNumber, pageCount }) => <><div className="answer-report-page-title"><small>ANSWERVICE · 분석 보고서</small><h1>{lifecycle.selectedDefinition?.title || "보고서"}</h1><p>{lifecycle.assistantTrace ? "AI 초안 · 검토 필요" : reportStatusLabel(lifecycle.selectedDefinition?.status)} · v{lifecycle.selectedDefinition?.version} · {pageNumber}/{pageCount}페이지</p></div>{lifecycle.selectedDefinition?.status === "approved" && <span className="answer-report-draft-mark">확정본</span>}</>, [lifecycle.assistantTrace, lifecycle.selectedDefinition]);
+  const renderHeader = useCallback(({ pageNumber, pageCount }) => <><div className="answer-report-page-title"><small>ANSWERVICE · 분석 보고서</small><h1>{draft.reportTitle || "보고서"}</h1><p>{lifecycle.assistantTrace ? "AI 초안 · 검토 필요" : reportStatusLabel(lifecycle.selectedDefinition?.status)} · v{lifecycle.selectedDefinition?.version} · {pageNumber}/{pageCount}페이지</p></div>{lifecycle.selectedDefinition?.status === "approved" && <span className="answer-report-draft-mark">확정본</span>}</>, [draft.reportTitle, lifecycle.assistantTrace, lifecycle.selectedDefinition]);
   const renderFooter = useCallback(() => null, []);
   const renderPreviewBlock = useCallback((layoutBlock) => {
     const block = layoutBlock.sourceBlock || layoutBlock;

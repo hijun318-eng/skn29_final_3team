@@ -39,11 +39,15 @@ function normalizeBlock(block: ReportBlockResponse): DraftLayoutBlock {
 export function normalizeReportDefinition(response: ReportDefinitionResponse): ReportDefinitionVersion {
   assertReportContractVersion(response.contract_version);
   if (!["draft", "approved"].includes(response.status)) throw new Error(`지원하지 않는 Report 상태입니다: ${response.status}`);
+  if (!Number.isInteger(response.draft_revision) || response.draft_revision < 1) {
+    throw new Error("Report draft revision은 1 이상의 정수여야 합니다.");
+  }
   assertReportOrientation(response.orientation);
   assertReportCurrencyDisplayUnit(response.currency_display_unit);
   return {
     definitionId: response.definition_id,
     version: response.version,
+    draftRevision: response.draft_revision,
     status: response.status,
     title: response.title,
     blocks: response.blocks.map(normalizeBlock),
@@ -133,6 +137,7 @@ export function createDraft(approved: ReportDefinitionVersion): ReportDefinition
   return {
     definitionId: approved.definitionId,
     version: approved.version + 1,
+    draftRevision: 1,
     status: "draft",
     title: approved.title,
     blocks: approved.blocks.map((block) => ({ ...block })),

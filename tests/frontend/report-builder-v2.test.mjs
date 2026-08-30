@@ -109,6 +109,12 @@ assert.match(toolbar, /role="region" aria-label="편집 명령\. 작은 화면�
 assert.match(toolbar, /builderV2 \? "미리보기" : "HTML 초안 확인"/);
 assert.match(toolbar, /<details className="report-view-menu">/);
 assert.match(toolbar, /\{!builderV2 && <span className="notion-status-chip">/);
+assert.match(toolbar, /className="report-builder-title-input"/);
+assert.match(toolbar, /aria-label="보고서 제목"/);
+assert.match(toolbar, /maxLength=\{255\}/);
+assert.match(toolbar, /event\.nativeEvent\.isComposing/);
+assert.match(toolbar, /titleAtFocusRef\.current/);
+assert.match(page, /reportTitle=\{draft\.reportTitle\}/);
 assert.match(builderStyles, /\.editor-command-actions\{[^}]*flex-wrap:nowrap/);
 assert.match(builderStyles, /@media\(max-width:900px\)\{[\s\S]*\.editor-command-actions>\*\{flex:0 0 auto\}/);
 assert.match(builderStyles, /\.report-view-menu>summary\{[^}]*white-space:nowrap/);

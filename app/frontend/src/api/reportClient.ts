@@ -140,6 +140,8 @@ function assertAssistantSuggestions(value: unknown): asserts value is readonly s
 
 /** 초안 블록 교체와 함께 원자적으로 저장할 문서 표시 옵션이다. */
 export interface ReplaceDraftBlocksOptions {
+  readonly title?: string;
+  readonly expectedDraftRevision: number;
   readonly orientation?: ReportOrientation;
   readonly currencyDisplayUnit?: ReportCurrencyDisplayUnit;
 }
@@ -292,8 +294,15 @@ export function createReportClient(
       definitionId: string,
       version: number,
       blocks: readonly ReportBlockRequest[],
-      options: ReplaceDraftBlocksOptions = {},
+      options: ReplaceDraftBlocksOptions,
     ) {
+      const title = options.title?.trim();
+      if (options.title !== undefined && (!title || title.length > 255 || /[\u0000-\u001f\u007f]/.test(title))) {
+        throw new Error("보고서 제목은 줄바꿈·제어문자 없이 1~255자로 입력해 주세요.");
+      }
+      if (!Number.isInteger(options.expectedDraftRevision) || options.expectedDraftRevision < 1) {
+        throw new Error("보고서 draft revision은 1 이상의 정수여야 합니다.");
+      }
       if (options.orientation !== undefined) assertReportOrientation(options.orientation);
       if (options.currencyDisplayUnit !== undefined) {
         assertReportCurrencyDisplayUnit(options.currencyDisplayUnit);
@@ -301,6 +310,8 @@ export function createReportClient(
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
         await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/blocks`, "PUT", {
           blocks,
+          ...(title === undefined ? {} : { title }),
+          expected_draft_revision: options.expectedDraftRevision,
           ...(options.orientation === undefined ? {} : { orientation: options.orientation }),
           ...(options.currencyDisplayUnit === undefined
             ? {}

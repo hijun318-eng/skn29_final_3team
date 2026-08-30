@@ -253,6 +253,7 @@ const serverOnlyDefinition = normalizeReportDefinition({
   contract_version: REPORT_CONTRACT_VERSION,
   definition_id: report.definitionId,
   version: report.version,
+  draft_revision: 1,
   status: "draft",
   title: report.title,
   blocks: [{ ...persistedAnalysisBlock, view_spec_id: "view-spec-1" }],

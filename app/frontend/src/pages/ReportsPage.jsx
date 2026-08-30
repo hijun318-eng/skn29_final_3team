@@ -117,6 +117,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onLeave={page.leaveEditor}
     onPreview={page.previewEditor}
     onRedo={draft.redo}
+    onReportTitleChange={draft.updateReportTitle}
+    onReportTitleCommit={draft.commitReportTitle}
     onRun={page.runDefinition}
     onSave={page.saveDraft}
     onToggleTools={page.toggleToolPanel}
@@ -124,7 +126,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onUndo={draft.undo}
     orientation={draft.reportOrientation}
     pending={lifecycle.pending}
-    reportTitle={lifecycle.selectedDefinition?.title}
+    reportTitle={draft.reportTitle}
     saveStatus={draft.saveState}
     selectedDefinition={lifecycle.selectedDefinition}
     toolPanelOpen={page.toolPanelOpen}
@@ -183,7 +185,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       renderBlock={page.renderEditorBlock}
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
-      reportTitle={lifecycle.selectedDefinition?.title}
+      reportTitle={draft.reportTitle}
       viewScale={page.editorViewScale}
     />
     {page.isAdmin && lifecycle.selectedDefinition?.status === "approved" && <ReportOperationsPanel

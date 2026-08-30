@@ -92,6 +92,8 @@ import type {
 /** 서버 정의나 최종문서로 draft 전체를 재설정하는 입력이다. */ export interface ResetReportDraftInput {
   readonly blocks: readonly DraftReportBlock[];
   readonly savedBlocks?: readonly DraftReportBlock[];
+  readonly title?: string;
+  readonly savedTitle?: string;
   readonly orientation?: ReportOrientation;
   readonly savedOrientation?: ReportOrientation;
   readonly currencyPolicy?: Partial<DraftCurrencyPolicy>;
@@ -100,9 +102,14 @@ import type {
   readonly dirty?: boolean;
 }
 
+/** 한 번의 사용자 편집을 되돌릴 때 함께 복원할 제목·블록 snapshot이다. */ export interface ReportDraftHistorySnapshot {
+  readonly title: string;
+  readonly blocks: readonly DraftReportBlock[];
+}
+
 /** undo/redo 가능 여부와 안정된 명령 callback 계약이다. */ export interface ReportDraftHistory {
-  readonly past: readonly (readonly DraftReportBlock[])[];
-  readonly future: readonly (readonly DraftReportBlock[])[];
+  readonly past: readonly ReportDraftHistorySnapshot[];
+  readonly future: readonly ReportDraftHistorySnapshot[];
 }
 
 /** 이전 블록을 불변 갱신하고 선택 ID를 함께 반환할 수 있는 updater다. */ export type DraftBlocksUpdater = (
@@ -116,6 +123,9 @@ import type {
   readonly orderedBlocks: readonly DraftReportBlock[];
   readonly blocksRef: MutableRefObject<readonly DraftReportBlock[]>;
   readonly savedBlocksRef: MutableRefObject<readonly DraftReportBlock[]>;
+  readonly reportTitle: string;
+  readonly titleRef: MutableRefObject<string>;
+  readonly savedTitleRef: MutableRefObject<string>;
   readonly selectedBlockId: string;
   readonly selectedBlock: DraftReportBlock | null;
   readonly history: ReportDraftHistory;
@@ -134,6 +144,8 @@ import type {
   readonly announce: (message: string) => void;
   readonly resetDraft: (input: ResetReportDraftInput) => void;
   readonly resetBlocks: (blocks: readonly DraftReportBlock[], dirty?: boolean) => void;
+  readonly updateReportTitle: (title: string) => void;
+  readonly commitReportTitle: (previousTitle: string) => boolean;
   readonly commitBlocks: (updater: DraftBlocksUpdater | readonly DraftReportBlock[], record?: boolean) => boolean;
   readonly beginSave: () => void;
   readonly markSaved: () => void;

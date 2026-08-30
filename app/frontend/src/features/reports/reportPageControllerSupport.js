@@ -11,6 +11,8 @@ import { artifactCurrencyValues, prepareEditorLayout } from "./components";
 
 /** 서버 정의와 선택적 로컬 복원값을 비교해 초기 draft·dirty 상태를 계산한다. */
 export function definitionDraftState(definition, options = {}) {
+  const title = options.title ?? definition.title ?? "보고서 초안";
+  const savedTitle = options.savedTitle ?? title;
   const orientation = options.orientation || definition.orientation || "landscape";
   const currencyPolicy = options.currencyPolicy || {
     ...DEFAULT_FRONTEND_CURRENCY_POLICY,
@@ -21,11 +23,16 @@ export function definitionDraftState(definition, options = {}) {
   const serverBlocks = compactDraftLayout(restoreDraftLayout(options.serverBlocks || definition.blocks));
   const blocks = prepareEditorLayout(definition.blocks, orientation);
   const dirty = Boolean(options.forceDirty) || (
-    definition.status === "draft" && JSON.stringify(blocks) !== JSON.stringify(serverBlocks)
+    definition.status === "draft" && (
+      JSON.stringify(blocks) !== JSON.stringify(serverBlocks)
+      || title !== savedTitle
+    )
   );
   return {
     blocks,
     savedBlocks: dirty ? serverBlocks : blocks,
+    title,
+    savedTitle,
     orientation,
     savedOrientation,
     currencyPolicy,

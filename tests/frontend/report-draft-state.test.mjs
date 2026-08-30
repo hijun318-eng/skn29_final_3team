@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
   copyDraftBlocks,
@@ -57,14 +58,19 @@ assert.deepEqual(readDraftBlockSettings({ ...sourceBlocks[0], type: "chart", con
 
 let state;
 function HookProbe() {
-  state = useReportDraftState({ editable: true, initialBlocks: sourceBlocks });
-  return createElement("span", null, state.saveState);
+  state = useReportDraftState({ editable: true, identity: { title: "월간 보고서" }, initialBlocks: sourceBlocks });
+  return createElement("span", null, `${state.reportTitle}:${state.saveState}`);
 }
-assert.equal(renderToStaticMarkup(createElement(HookProbe)), "<span>saved</span>");
+assert.equal(renderToStaticMarkup(createElement(HookProbe)), "<span>월간 보고서:saved</span>");
 for (const action of [
   "resetDraft", "commitBlocks", "undo", "redo", "updateBlock", "moveBlock",
   "resizeBlock", "setBlockSetting", "addTemplateBlock", "insertArtifact",
   "deleteBlock", "duplicateBlock", "changeOrientation", "changeCurrencyDisplayUnit",
+  "updateReportTitle", "commitReportTitle",
 ]) assert.equal(typeof state[action], "function", `${action} must be a stable hook action`);
+
+const draftStateSource = readFileSync(new URL("../../app/frontend/src/features/reports/useReportDraftState.ts", import.meta.url), "utf8");
+assert.match(draftStateSource, /window\.addEventListener\("beforeunload", warnBeforeUnload\)/);
+assert.match(draftStateSource, /window\.removeEventListener\("beforeunload", warnBeforeUnload\)/);
 
 console.log("frontend report draft state tests passed");

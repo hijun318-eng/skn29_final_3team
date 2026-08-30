@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -19,6 +20,7 @@ if str(BACKEND) not in sys.path:
 
 from app.api.ml_router import RoomDemandRequest, _require_ml_access
 from app.contracts import RequestContext, Role
+from app.services.ml_prediction_service import MLPredictionService
 from src.ml.room_demand_timeseries.contracts import FEATURE_COLUMNS
 from src.ml.room_demand_timeseries.runtime_api import (
     runtime_estimator_types,
@@ -41,6 +43,78 @@ CANDIDATE_DIR = (
     / "artifacts"
     / "room-demand-hgbr-optimization-v3.3.0"
 )
+
+
+def _runtime_capabilities() -> dict[str, object]:
+    return {
+        "model_version": "room-demand-timeseries-hgbr-v2.2.0",
+        "model_hash": "a" * 64,
+        "model_type": "historical-only-direct-multi-horizon-hgbr",
+        "estimator_type": "HistGradientBoostingRegressor",
+        "approval": "CONDITIONAL_PASS",
+        "max_horizon": 7,
+        "model_max_horizon": 10,
+        "properties": [
+            {
+                "property_id": "GRAND",
+                "min_as_of": "2020-01-07",
+                "max_as_of": "2026-08-31",
+                "feature_max_as_of": "2026-08-28",
+                "history_rows": 1234,
+            }
+        ],
+        "synthetic_training_data": True,
+        "query_id": "trino-capability-query-1",
+    }
+
+
+def _prediction_result() -> dict[str, object]:
+    return {
+        "status": "SUCCEEDED",
+        "execution_id": "prediction-execution-1",
+        "property_id": "GRAND",
+        "as_of": "2026-08-28",
+        "feature_as_of": "2026-08-28",
+        "horizon": 7,
+        "model_version": "room-demand-timeseries-hgbr-v2.2.0",
+        "model_hash": "a" * 64,
+        "daily_forecasts": [],
+        "room_type_forecasts": [],
+        "provenance": {
+            "source": "TRINO_HISTORICAL_DAILY_FACTS",
+            "history_table": "pms.ml_evaluation.approved_history",
+            "trino_query_id": "trino-prediction-query-1",
+            "feature_as_of": "2026-08-28",
+            "request_as_of": "2026-08-28",
+            "rag_called": False,
+        },
+    }
+
+
+class _StubMLClient:
+    def __init__(
+        self,
+        capabilities: dict[str, object],
+        prediction: dict[str, object] | None = None,
+    ) -> None:
+        self.capability_payload = capabilities
+        self.prediction_payload = prediction or _prediction_result()
+        self.prediction_calls = 0
+
+    async def capabilities(self) -> dict[str, object]:
+        return self.capability_payload
+
+    async def predict(self, payload: dict[str, object]) -> dict[str, object]:
+        self.prediction_calls += 1
+        return self.prediction_payload
+
+
+class _RecordingSession:
+    def __init__(self) -> None:
+        self.execute_calls = 0
+
+    async def execute(self, statement: object, parameters: object) -> None:
+        self.execute_calls += 1
 
 
 @pytest.mark.parametrize(
@@ -151,6 +225,59 @@ def test_ml_runtime_rejects_a_non_hgbr_manifest() -> None:
 
     with pytest.raises(RuntimeError, match="not declared as an HGBR"):
         validate_hgbr_runtime("generic-regressor", model)
+
+
+def test_backend_accepts_only_a_complete_hgbr_runtime_capability() -> None:
+    service = MLPredictionService(_StubMLClient(_runtime_capabilities()))  # type: ignore[arg-type]
+
+    capabilities = asyncio.run(service.capabilities())
+
+    assert capabilities["estimator_type"] == "HistGradientBoostingRegressor"
+    assert capabilities["properties"][0]["property_id"] == "GRAND"
+
+
+def test_backend_rejects_an_incomplete_ml_runtime_capability() -> None:
+    incomplete = _runtime_capabilities()
+    incomplete["model_hash"] = "not-a-sha256"
+    service = MLPredictionService(_StubMLClient(incomplete))  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="capability response is invalid"):
+        asyncio.run(service.capabilities())
+
+
+def test_prediction_release_drift_is_blocked_before_audit_storage() -> None:
+    changed = _prediction_result()
+    changed["model_hash"] = "b" * 64
+    client = _StubMLClient(_runtime_capabilities(), changed)
+    session = _RecordingSession()
+    service = MLPredictionService(client)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="release changed"):
+        asyncio.run(
+            service.predict(  # type: ignore[arg-type]
+                session,
+                {"property_id": "GRAND", "as_of": "2026-08-28", "horizon": 7},
+            )
+        )
+
+    assert client.prediction_calls == 1
+    assert session.execute_calls == 0
+
+
+def test_matching_prediction_release_is_saved_once() -> None:
+    client = _StubMLClient(_runtime_capabilities())
+    session = _RecordingSession()
+    service = MLPredictionService(client)  # type: ignore[arg-type]
+
+    result = asyncio.run(
+        service.predict(  # type: ignore[arg-type]
+            session,
+            {"property_id": "grand", "as_of": "2026-08-28", "horizon": 7},
+        )
+    )
+
+    assert result["status"] == "SUCCEEDED"
+    assert session.execute_calls == 1
 
 
 def test_ml_runtime_has_an_explicit_profile_without_joining_full_by_default() -> None:

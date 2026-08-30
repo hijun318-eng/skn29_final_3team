@@ -33,6 +33,7 @@ REPORT_ASSISTANT_RESPONSE = {
 
 REPORT_ASSISTANT_TURN_REQUEST = {
     **copy.deepcopy(REPORT_ASSISTANT_REQUEST),
+    "operation_scope": "full_report",
     "artifact": {
         "artifact_id": "source_artifact",
         "title": "Approved analysis",
@@ -207,6 +208,21 @@ class ReportAssistantContractTests(unittest.TestCase):
 
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_response", invalid)
+
+    def test_turn_operation_scope_is_required_and_typed(self):
+        """모델 입력 범위는 서버 enum만 허용하고 누락·임의 문자열을 닫는다."""
+
+        title_request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        title_request["operation_scope"] = "report_title"
+        validate_payload("report_assistant_turn_request", title_request)
+        for invalid_scope in (None, "title", "set_report_title"):
+            invalid = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            if invalid_scope is None:
+                invalid.pop("operation_scope")
+            else:
+                invalid["operation_scope"] = invalid_scope
+            with self.subTest(operation_scope=invalid_scope), self.assertRaises(ContractError):
+                validate_payload("report_assistant_turn_request", invalid)
 
     def test_review_contract_is_read_only_and_rejects_hidden_outputs(self):
         """품질 검토는 기존 안전 입력을 재사용하고 patch·SQL·원시 응답을 출력하지 못한다."""
@@ -456,7 +472,9 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 단일 Artifact 묶음은 과거 clarification·분해 operation보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.9.7", prompt.version)
+        self.assertEqual("PROMPT-v1.10.0", prompt.version)
+        self.assertIn("operation_scope is server-owned authority", prompt.text)
+        self.assertIn("exactly one set_report_title operation", prompt.text)
         self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
         self.assertIn("current instruction is authoritative", prompt.text)
         self.assertIn("ignore any unresolved earlier clarification", prompt.text)
@@ -623,6 +641,92 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             },
             proposal["patch"]["operations"][0],
         )
+
+    async def test_report_title_scope_accepts_only_one_typed_title_operation(self):
+        """제목 전용 범위는 단일 set_report_title을 typed patch로 통과시킨다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        request["operation_scope"] = "report_title"
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "set_report_title",
+            "title": "승인 근거 기반 월간 보고서",
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1", token="test-token",
+            model="test-model", provider="openai",
+        )
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.openai_transport", new=AsyncMock(return_value=response)),
+        ):
+            proposal, _trace = await generate_report_change_proposal(request)
+
+        self.assertEqual(
+            [{"op": "set_report_title", "title": "승인 근거 기반 월간 보고서"}],
+            proposal["patch"]["operations"],
+        )
+
+    def test_report_title_scope_rejects_new_data_mixed_and_other_operations(self):
+        """제목 전용 범위에서 새 분석·혼합·다른 변경은 모델 결과를 저장하기 전에 거부한다."""
+
+        from app.adapters.report_assistant import validate_report_change_operation_scope
+
+        invalid_proposals = (
+            {
+                "change_kind": "new_data", "analysis_plan": {"question": "새 분석"},
+                "patch": None,
+            },
+            {
+                "change_kind": "existing_artifact", "analysis_plan": None,
+                "patch": {"operations": [
+                    {"op": "set_report_title", "title": "새 제목"},
+                    {"op": "add_text", "title": "요약"},
+                ]},
+            },
+            {
+                "change_kind": "existing_artifact", "analysis_plan": None,
+                "patch": {"operations": [{"op": "update_block_title", "title": "새 제목"}]},
+            },
+        )
+        for proposal in invalid_proposals:
+            with self.subTest(proposal=proposal), self.assertRaises(ValueError):
+                validate_report_change_operation_scope(proposal, "report_title")
+
+        validate_report_change_operation_scope(
+            {"change_kind": "clarification", "analysis_plan": None, "patch": None},
+            "report_title",
+        )
+
+    async def test_report_title_scope_retries_then_rejects_other_operation_in_adapter(self):
+        """어댑터도 제목 범위를 어긴 typed 응답을 계약 실패로 닫는다."""
+
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            generate_report_change_proposal,
+        )
+
+        request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        request["operation_scope"] = "report_title"
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1", token="test-token",
+            model="test-model", provider="openai",
+        )
+        transport = AsyncMock(return_value=copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE))
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.openai_transport", new=transport),
+        ):
+            with self.assertRaises(ReportAssistantModelError) as raised:
+                await generate_report_change_proposal(request)
+
+        self.assertEqual("REPORT_ASSISTANT_MODEL_CONTRACT_INVALID", raised.exception.code)
+        self.assertEqual(2, transport.await_count)
 
     async def test_non_text_update_becomes_evidence_bound_text_addition(self):
         """비-text 본문은 변조하지 않고 승인 대기 add_text로 정규화한다."""

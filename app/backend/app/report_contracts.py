@@ -436,6 +436,7 @@ class ReportAssistantMessageRequest(ReportContractModel):
     instruction: str = Field(min_length=1, max_length=500)
     expected_patch_request_id: UUID | None = None
     selected_block_id: str | None = Field(default=None, min_length=1, max_length=255)
+    operation_scope: Literal["full_report", "report_title"] = "full_report"
 
     @field_validator("instruction")
     @classmethod
@@ -528,16 +529,25 @@ class ReportAssistantPatchPreviewItem(ReportContractModel):
         return self
 
 
+class ReportAssistantTurnMessage(ReportContractModel):
+    """새로고침 시 복구할 bounded 사용자·Assistant 대화 한 건을 반환한다."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1000)
+
+
 class ReportAssistantSessionResponse(ReportContractModel):
     """서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다."""
 
     assistant_request_id: UUID
     phase: ReportAssistantPhase
+    operation_scope: Literal["full_report", "report_title"]
     definition_id: UUID
     definition_version: int
     base_revision: int
     artifact_id: UUID
     artifact_ids: tuple[UUID, ...] = ()
+    turn_history: tuple[ReportAssistantTurnMessage, ...] = Field(default=(), max_length=12)
     analysis_plan: ReportAssistantAnalysisPlan | None = None
     patch_request_id: UUID | None = None
     patch_summary: str | None = Field(default=None, min_length=1, max_length=1000)
@@ -562,9 +572,17 @@ class ReportAssistantSessionResponse(ReportContractModel):
     retry_of_assistant_request_id: UUID | None = None
 
     @model_validator(mode="after")
-    def require_plan_during_data_flow(self) -> "ReportAssistantSessionResponse":
-        """데이터 실행 관련 phase가 승인된 계획 없이 노출되는 상태를 거부한다."""
+    def validate_session_state(self) -> "ReportAssistantSessionResponse":
+        """대화 순서와 phase별 필수 계획·patch 계약이 불완전하면 거부한다."""
 
+        expected_roles = tuple(
+            "user" if index % 2 == 0 else "assistant"
+            for index in range(len(self.turn_history))
+        )
+        if len(self.turn_history) % 2 or tuple(
+            message.role for message in self.turn_history
+        ) != expected_roles:
+            raise ValueError("Assistant 대화 이력은 user·assistant 순서의 완전한 turn이어야 합니다.")
         if self.phase in {
             "waiting_approval",
             "running_data_agent",

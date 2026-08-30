@@ -183,11 +183,13 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
     response = {
         "assistant_request_id": session["assistant_request_id"],
         "phase": session["phase"],
+        "operation_scope": session.get("operation_scope", "full_report"),
         "definition_id": session["session_definition_id"],
         "definition_version": session["session_definition_version"],
         "base_revision": session["base_revision"],
         "artifact_id": session["artifact_id"],
         "artifact_ids": artifact_ids,
+        "turn_history": tuple(session.get("turn_history") or ()),
         "analysis_plan": session.get("analysis_plan_json"),
         "patch_request_id": session.get("patch_request_id"),
         "patch_summary": patch.summary if patch else None,
@@ -343,6 +345,7 @@ def _report_turn_payload(
     history: tuple[dict[str, str], ...] = (),
     current_patch: ReportAssistantPatch | None = None,
     selected_block_id: str | None = None,
+    operation_scope: str = "full_report",
 ) -> dict[str, Any]:
     """현재 draft·Artifact·선택적 승인 대기 patch를 서버 별칭의 모델 입력으로 직렬화한다."""
 
@@ -384,6 +387,7 @@ def _report_turn_payload(
 
     return {
         "instruction": instruction,
+        "operation_scope": operation_scope,
         "history": list(history[-12:]),
         "current_patch": (
             report_patch_model_payload(current_patch)
@@ -1396,6 +1400,22 @@ async def review_assistant_report(
             status_code=409,
             detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
         )
+    message_revision = session.get("message_revision")
+    if isinstance(message_revision, bool) or not isinstance(message_revision, int) or message_revision < 0:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+
+    async def observe_review(**observations: Any) -> None:
+        await _observe_assistant(
+            repository,
+            "upsert_assistant_evaluation",
+            assistant_request_id,
+            expected_message_revision=message_revision,
+            **observations,
+        )
+
     artifacts = await _repository_call(
         lambda: _session_artifacts(repository, assistant_request_id, session)
     )
@@ -1441,10 +1461,7 @@ async def review_assistant_report(
             execution_gate.release()
     except ReportAssistantModelError as error:
         error_code = error.code
-        await _observe_assistant(
-            repository,
-            "upsert_assistant_evaluation",
-            assistant_request_id,
+        await observe_review(
             contract_valid=False,
             model_attempts=error.attempts,
             latency_ms=error.duration_ms,
@@ -1456,8 +1473,7 @@ async def review_assistant_report(
             detail={"code": error_code, "assistant_request_id": assistant_request_id},
         ) from error
     if trace.get("output_tokens") is not None and int(trace["output_tokens"]) > max_output_tokens:
-        await _observe_assistant(
-            repository, "upsert_assistant_evaluation", assistant_request_id,
+        await observe_review(
             contract_valid=False,
             model_attempts=trace.get("attempts"), latency_ms=trace.get("duration_ms"),
             input_tokens=trace.get("input_tokens"), output_tokens=trace.get("output_tokens"),
@@ -1481,8 +1497,7 @@ async def review_assistant_report(
     if cost_limit <= 0:
         raise HTTPException(status_code=500, detail="Assistant 비용 제한 설정이 유효하지 않습니다.")
     if estimated_cost is not None and estimated_cost > cost_limit:
-        await _observe_assistant(
-            repository, "upsert_assistant_evaluation", assistant_request_id,
+        await observe_review(
             contract_valid=True,
             model_attempts=trace.get("attempts"), latency_ms=trace.get("duration_ms"),
             input_tokens=trace.get("input_tokens"), output_tokens=trace.get("output_tokens"),
@@ -1502,8 +1517,7 @@ async def review_assistant_report(
         if not summary:
             raise ValueError("REPORT_ASSISTANT_REVIEW_INVALID")
     except (KeyError, TypeError, ValueError) as error:
-        await _observe_assistant(
-            repository, "upsert_assistant_evaluation", assistant_request_id,
+        await observe_review(
             contract_valid=False,
             model_attempts=trace.get("attempts"), latency_ms=trace.get("duration_ms"),
             input_tokens=trace.get("input_tokens"), output_tokens=trace.get("output_tokens"),
@@ -1514,8 +1528,7 @@ async def review_assistant_report(
             status_code=502,
             detail={"code": "REPORT_ASSISTANT_REVIEW_INVALID", "assistant_request_id": assistant_request_id},
         ) from error
-    await _observe_assistant(
-        repository, "upsert_assistant_evaluation", assistant_request_id,
+    await observe_review(
         contract_valid=True,
         model_attempts=trace.get("attempts"), latency_ms=trace.get("duration_ms"),
         input_tokens=trace.get("input_tokens"), output_tokens=trace.get("output_tokens"),
@@ -1556,6 +1569,7 @@ async def submit_assistant_message(
     from app.adapters.report_assistant import (
         ReportAssistantModelError,
         generate_report_change_proposal,
+        validate_report_change_operation_scope,
     )
 
     repository = _router(context).repository
@@ -1565,12 +1579,27 @@ async def submit_assistant_message(
     expected_patch_request_id = payload.expected_patch_request_id
     refining_patch = session["phase"] == "waiting_patch_approval"
     current_patch = None
+    operation_scope = payload.operation_scope
+    stored_operation_scope = session.get("operation_scope", "full_report")
+    message_revision = session.get("message_revision")
+    if stored_operation_scope not in {"full_report", "report_title"}:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    if isinstance(message_revision, bool) or not isinstance(message_revision, int) or message_revision < 0:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
     if session["phase"] == "ready":
         if expected_patch_request_id is not None:
             raise HTTPException(
                 status_code=409,
                 detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
             )
+        if stored_operation_scope == "report_title":
+            operation_scope = "report_title"
     elif refining_patch:
         if (
             expected_patch_request_id is None
@@ -1589,11 +1618,41 @@ async def submit_assistant_message(
                 status_code=409,
                 detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
             ) from error
+        if (
+            len(current_patch.operations) == 1
+            and current_patch.operations[0].op == "set_report_title"
+        ):
+            operation_scope = "report_title"
     else:
         raise HTTPException(
             status_code=409,
             detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
         )
+
+    async def observe_message_turn(
+        *, expected_revision: int = message_revision, **observations: Any
+    ) -> None:
+        await _observe_assistant(
+            repository,
+            "upsert_assistant_evaluation",
+            assistant_request_id,
+            expected_message_revision=expected_revision,
+            **observations,
+        )
+
+    async def claim_or_preserve_refinement_failure(error_code: str) -> bool:
+        """Ready turn은 실패를 claim하고, refinement는 승인 대기 patch를 보존한다."""
+
+        if refining_patch:
+            return True
+        return bool(await repository.fail_assistant_request(
+            assistant_request_id,
+            error_code,
+            operation_scope=operation_scope,
+            expected_phase="ready",
+            expected_message_revision=message_revision,
+        ))
+
     artifacts = await _repository_call(
         lambda: _session_artifacts(repository, assistant_request_id, session)
     )
@@ -1614,6 +1673,7 @@ async def submit_assistant_message(
             history,
             current_patch,
             payload.selected_block_id,
+            operation_scope,
         )
     except ValueError as error:
         raise HTTPException(
@@ -1634,8 +1694,7 @@ async def submit_assistant_message(
     if max_input_tokens < 1 or max_output_tokens < 1:
         raise HTTPException(status_code=500, detail="Assistant token 제한 설정이 유효하지 않습니다.")
     if estimated_input_tokens > max_input_tokens:
-        await _observe_assistant(
-            repository, "upsert_assistant_evaluation", assistant_request_id,
+        await observe_message_turn(
             contract_valid=False, error_code="ASSISTANT_TOKEN_BUDGET_EXCEEDED",
         )
         raise HTTPException(
@@ -1643,8 +1702,7 @@ async def submit_assistant_message(
             detail={"code": "ASSISTANT_TOKEN_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
         )
     if not await execution_gate.acquire(0):
-        await _observe_assistant(
-            repository, "upsert_assistant_evaluation", assistant_request_id,
+        await observe_message_turn(
             contract_valid=False, error_code="ASSISTANT_CONCURRENCY_LIMITED",
         )
         raise HTTPException(
@@ -1658,19 +1716,13 @@ async def submit_assistant_message(
             execution_gate.release()
     except ReportAssistantModelError as error:
         error_code = error.code
-        if not refining_patch:
-            await repository.fail_assistant_request(
-                assistant_request_id, error_code
+        if await claim_or_preserve_refinement_failure(error_code):
+            await observe_message_turn(
+                contract_valid=False,
+                model_attempts=error.attempts,
+                latency_ms=error.duration_ms,
+                error_code=error_code,
             )
-        await _observe_assistant(
-            repository,
-            "upsert_assistant_evaluation",
-            assistant_request_id,
-            contract_valid=False,
-            model_attempts=error.attempts,
-            latency_ms=error.duration_ms,
-            error_code=error_code,
-        )
         raise HTTPException(
             status_code=502,
             detail={
@@ -1678,11 +1730,23 @@ async def submit_assistant_message(
                 "assistant_request_id": assistant_request_id,
             },
         ) from error
+    try:
+        validate_report_change_operation_scope(proposal, operation_scope)
+    except ValueError as error:
+        error_code = "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID"
+        if await claim_or_preserve_refinement_failure(error_code):
+            await observe_message_turn(
+                contract_valid=False,
+                model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+                latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+                error_code=error_code,
+            )
+        raise HTTPException(
+            status_code=502,
+            detail={"code": error_code, "assistant_request_id": assistant_request_id},
+        ) from error
     if refining_patch and proposal["change_kind"] != "existing_artifact":
-        await _observe_assistant(
-            repository,
-            "upsert_assistant_evaluation",
-            assistant_request_id,
+        await observe_message_turn(
             contract_valid=False,
             error_code="REPORT_ASSISTANT_TURN_MODEL_INVALID",
         )
@@ -1694,8 +1758,7 @@ async def submit_assistant_message(
             },
         )
     if trace.get("output_tokens") is not None and int(trace["output_tokens"]) > max_output_tokens:
-        await _observe_assistant(
-            repository, "upsert_assistant_evaluation", assistant_request_id,
+        await observe_message_turn(
             contract_valid=False,
             model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
             latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
@@ -1707,22 +1770,51 @@ async def submit_assistant_message(
             detail={"code": "ASSISTANT_TOKEN_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
         )
 
+    from app.services.report_assistant_operations import estimate_model_cost
+
+    input_tokens = trace.get("input_tokens")
+    output_tokens = trace.get("output_tokens")
+    try:
+        estimated_cost = estimate_model_cost(input_tokens, output_tokens)
+    except RuntimeError:
+        estimated_cost = None
+    raw_cost_limit = os.getenv("REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD", "1.00")
+    try:
+        from decimal import Decimal
+
+        cost_limit = Decimal(raw_cost_limit)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail="Assistant 비용 제한 설정이 유효하지 않습니다.") from error
+    if cost_limit <= 0:
+        raise HTTPException(status_code=500, detail="Assistant 비용 제한 설정이 유효하지 않습니다.")
+    if estimated_cost is not None and estimated_cost > cost_limit:
+        error_code = "ASSISTANT_COST_BUDGET_EXCEEDED"
+        if await claim_or_preserve_refinement_failure(error_code):
+            await observe_message_turn(
+                route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
+                contract_valid=True,
+                model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+                latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens, estimated_cost=estimated_cost,
+                error_code=error_code,
+            )
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "ASSISTANT_COST_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
+        )
+
     try:
         suggestions = _validated_contextual_suggestions(
             proposal.get("suggestions", ()), definition, artifacts
         )
     except ValueError as error:
-        if not refining_patch:
-            await repository.fail_assistant_request(
-                assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_INVALID"
+        error_code = "REPORT_ASSISTANT_TURN_MODEL_INVALID"
+        if await claim_or_preserve_refinement_failure(error_code):
+            await observe_message_turn(
+                contract_valid=False,
+                error_code=error_code,
             )
-        await _observe_assistant(
-            repository,
-            "upsert_assistant_evaluation",
-            assistant_request_id,
-            contract_valid=False,
-            error_code="REPORT_ASSISTANT_TURN_MODEL_INVALID",
-        )
         raise HTTPException(
             status_code=502,
             detail={
@@ -1738,21 +1830,17 @@ async def submit_assistant_message(
                 {"request_id": uuid4(), **dict(proposal["analysis_plan"])}
             ).model_dump(mode="json")
         except (TypeError, ValueError) as error:
-            await repository.fail_assistant_request(
-                assistant_request_id, "REPORT_ASSISTANT_TURN_MODEL_INVALID"
-            )
-            await _observe_assistant(
-                repository,
-                "upsert_assistant_evaluation",
-                assistant_request_id,
-                route="new_data",
-                contract_valid=False,
-                model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
-                latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
-                input_tokens=trace.get("input_tokens"),
-                output_tokens=trace.get("output_tokens"),
-                error_code="REPORT_ASSISTANT_TURN_MODEL_INVALID",
-            )
+            error_code = "REPORT_ASSISTANT_TURN_MODEL_INVALID"
+            if await claim_or_preserve_refinement_failure(error_code):
+                await observe_message_turn(
+                    route="new_data",
+                    contract_valid=False,
+                    model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+                    latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+                    input_tokens=trace.get("input_tokens"),
+                    output_tokens=trace.get("output_tokens"),
+                    error_code=error_code,
+                )
             raise HTTPException(
                 status_code=502,
                 detail={
@@ -1786,6 +1874,8 @@ async def submit_assistant_message(
                 payload.instruction,
                 str(proposal["message"]),
                 str(proposal["change_kind"]),
+                operation_scope,
+                expected_message_revision=message_revision,
             )
         else:
             patch = ReportAssistantPatch.model_validate(proposal["patch"])
@@ -1838,6 +1928,8 @@ async def submit_assistant_message(
                     payload.instruction,
                     no_change_message,
                     "clarification",
+                    operation_scope,
+                    expected_message_revision=message_revision,
                 )
             else:
                 patch_preview = _report_patch_preview(definition, patch)
@@ -1858,6 +1950,8 @@ async def submit_assistant_message(
                             patch_preview,
                             payload.instruction,
                             str(proposal["message"]),
+                            operation_scope,
+                            expected_message_revision=message_revision,
                         )
                     except ValueError as error:
                         raise HTTPException(
@@ -1881,33 +1975,40 @@ async def submit_assistant_message(
                         patch_preview,
                         payload.instruction,
                         str(proposal["message"]),
+                        operation_scope,
+                        expected_message_revision=message_revision,
                     )
     except ValueError as error:
+        conflict = str(error)
         error_code = (
-            "REPORT_REVISION_CONFLICT"
-            if str(error) == "REPORT_REVISION_CONFLICT"
+            conflict
+            if conflict in {"REPORT_REVISION_CONFLICT", "ASSISTANT_STATE_CONFLICT"}
             else "REPORT_ASSISTANT_PATCH_INVALID"
         )
-        if error_code != "REPORT_REVISION_CONFLICT":
-            await repository.fail_assistant_request(assistant_request_id, error_code)
-        await _observe_assistant(
-            repository,
-            "upsert_assistant_evaluation",
-            assistant_request_id,
-            route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
-            operation_types=(
-                tuple(operation.op for operation in patch.operations)
-                if patch is not None else ()
-            ),
-            contract_valid=True,
-            model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
-            latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
-            input_tokens=trace.get("input_tokens"),
-            output_tokens=trace.get("output_tokens"),
-            error_code=error_code,
-        )
+        should_observe = False
+        if error_code not in {"REPORT_REVISION_CONFLICT", "ASSISTANT_STATE_CONFLICT"}:
+            should_observe = await claim_or_preserve_refinement_failure(error_code)
+        if should_observe:
+            await observe_message_turn(
+                route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
+                operation_types=(
+                    tuple(operation.op for operation in patch.operations)
+                    if patch is not None else ()
+                ),
+                contract_valid=True,
+                model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
+                latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
+                input_tokens=trace.get("input_tokens"),
+                output_tokens=trace.get("output_tokens"),
+                error_code=error_code,
+            )
         if error_code == "REPORT_REVISION_CONFLICT":
             raise HTTPException(status_code=409, detail=str(error)) from error
+        if error_code == "ASSISTANT_STATE_CONFLICT":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": error_code, "assistant_request_id": assistant_request_id},
+            ) from error
         raise HTTPException(
             status_code=502,
             detail={
@@ -1915,45 +2016,18 @@ async def submit_assistant_message(
                 "assistant_request_id": assistant_request_id,
             },
         ) from error
-    from app.services.report_assistant_operations import estimate_model_cost
-
-    input_tokens = trace.get("input_tokens")
-    output_tokens = trace.get("output_tokens")
-    try:
-        estimated_cost = estimate_model_cost(input_tokens, output_tokens)
-    except RuntimeError:
-        estimated_cost = None
-    raw_cost_limit = os.getenv("REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD", "1.00")
-    try:
-        from decimal import Decimal
-
-        cost_limit = Decimal(raw_cost_limit)
-    except Exception as error:
-        raise HTTPException(status_code=500, detail="Assistant 비용 제한 설정이 유효하지 않습니다.") from error
-    if cost_limit <= 0:
-        raise HTTPException(status_code=500, detail="Assistant 비용 제한 설정이 유효하지 않습니다.")
-    if estimated_cost is not None and estimated_cost > cost_limit:
-        await repository.fail_assistant_request(
-            assistant_request_id, "ASSISTANT_COST_BUDGET_EXCEEDED"
-        )
-        await _observe_assistant(
-            repository, "upsert_assistant_evaluation", assistant_request_id,
-            route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
-            contract_valid=True,
-            model_attempts=(int(trace["attempts"]) if trace.get("attempts") is not None else None),
-            latency_ms=(float(trace["duration_ms"]) if trace.get("duration_ms") is not None else None),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens, estimated_cost=estimated_cost,
-            error_code="ASSISTANT_COST_BUDGET_EXCEEDED",
-        )
+    saved_message_revision = saved.get("message_revision")
+    if (
+        isinstance(saved_message_revision, bool)
+        or not isinstance(saved_message_revision, int)
+        or saved_message_revision != message_revision + 1
+    ):
         raise HTTPException(
-            status_code=429,
-            detail={"code": "ASSISTANT_COST_BUDGET_EXCEEDED", "assistant_request_id": assistant_request_id},
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
         )
-    await _observe_assistant(
-        repository,
-        "upsert_assistant_evaluation",
-        assistant_request_id,
+    await observe_message_turn(
+        expected_revision=saved_message_revision,
         route=(proposal["change_kind"] if proposal["change_kind"] != "clarification" else None),
         operation_types=(
             tuple(operation.op for operation in patch.operations)
@@ -1966,11 +2040,21 @@ async def submit_assistant_message(
         output_tokens=output_tokens,
         estimated_cost=estimated_cost,
     )
+    try:
+        saved_session = await repository.get_assistant_session(
+            assistant_request_id,
+            expected_message_revision=saved_message_revision,
+        )
+    except (KeyError, ValueError) as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        ) from error
     return {
         "change_kind": proposal["change_kind"],
         "message": proposal["message"],
         "suggestions": suggestions,
-        "session": _assistant_session_response(_with_artifact_bindings(saved, session)),
+        "session": _assistant_session_response(saved_session),
     }
 
 

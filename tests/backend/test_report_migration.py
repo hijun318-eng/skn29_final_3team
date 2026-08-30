@@ -268,6 +268,25 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertNotIn("DROP TABLE", upgrade)
         self.assertNotIn("DELETE FROM", upgrade)
 
+    def test_report_assistant_message_scope_and_revision_are_additive_and_typed(self):
+        """제목 전용 후속 턴을 재시작 후에도 보존할 최소 enum 컬럼만 추가한다."""
+
+        source = (
+            MIGRATIONS / "20260830_59_report_assistant_operation_scope.py"
+        ).read_text(encoding="utf-8")
+        upgrade, downgrade = source.split("def downgrade", 1)
+
+        self.assertIn('down_revision = "20260829_58"', source)
+        self.assertIn("ADD COLUMN operation_scope varchar(24) NOT NULL", upgrade)
+        self.assertIn("DEFAULT 'full_report'", upgrade)
+        self.assertIn("operation_scope IN ('full_report', 'report_title')", upgrade)
+        self.assertIn("ADD COLUMN message_revision bigint NOT NULL DEFAULT 0", upgrade)
+        self.assertIn("message_revision >= 0", upgrade)
+        self.assertNotIn("DROP TABLE", upgrade)
+        self.assertNotIn("DELETE FROM", upgrade)
+        self.assertIn("DROP COLUMN message_revision", downgrade)
+        self.assertIn("DROP COLUMN operation_scope", downgrade)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"

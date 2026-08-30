@@ -50,6 +50,34 @@ _PATCH_OPERATION_LABELS = {
 }
 
 
+def validate_report_change_operation_scope(
+    proposal: dict[str, object],
+    operation_scope: object,
+) -> None:
+    """서버가 지정한 turn 범위를 모델의 route와 typed patch보다 우선해 검증한다."""
+
+    if operation_scope == "full_report":
+        return
+    if operation_scope != "report_title":
+        raise ValueError("Report Assistant operation scope is invalid")
+    kind = proposal.get("change_kind")
+    if kind == "clarification":
+        if proposal.get("analysis_plan") is not None or proposal.get("patch") is not None:
+            raise ValueError("report_title clarification must not include a plan or patch")
+        return
+    patch = proposal.get("patch")
+    operations = patch.get("operations") if isinstance(patch, dict) else None
+    if (
+        kind != "existing_artifact"
+        or proposal.get("analysis_plan") is not None
+        or not isinstance(operations, (list, tuple))
+        or len(operations) != 1
+        or not isinstance(operations[0], dict)
+        or operations[0].get("op") != "set_report_title"
+    ):
+        raise ValueError("report_title scope allows only one set_report_title operation")
+
+
 class ReportAssistantModelError(RuntimeError):
     """보고서 제안 모델의 구성·transport·schema 검증 실패로 draft를 신뢰할 수 없음을 알린다."""
 
@@ -531,15 +559,21 @@ async def generate_report_change_proposal(
                 raise ValueError("clarification must not include a plan or patch")
             if not str(result["message"]).strip():
                 raise ValueError("Report Assistant returned a blank message")
+            proposal = {
+                "change_kind": kind,
+                "message": str(result["message"]).strip(),
+                "analysis_plan": plan,
+                "patch": patch,
+                "suggestions": tuple(str(item).strip() for item in result["suggestions"]),
+            }
+            failure_stage = "operation_scope_validation"
+            validate_report_change_operation_scope(
+                proposal,
+                payload.get("operation_scope"),
+            )
             prompt = get_prompt(PROMPT_IDS[node])
             return (
-                {
-                    "change_kind": kind,
-                    "message": str(result["message"]).strip(),
-                    "analysis_plan": plan,
-                    "patch": patch,
-                    "suggestions": tuple(str(item).strip() for item in result["suggestions"]),
-                },
+                proposal,
                 {
                     "model_version": transport_meta.get("model_version") or route.model,
                     "model_snapshot": transport_meta.get("model_snapshot"),

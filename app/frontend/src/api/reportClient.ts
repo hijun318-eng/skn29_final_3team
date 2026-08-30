@@ -24,6 +24,7 @@ import {
   type RunDueReportScheduleResponse,
   type ReportAssistantDraftResponse,
   type ReportAssistantPhase,
+  type ReportAssistantOperationScope,
   type ReportAssistantProposalResponse,
   type ReportAssistantReviewResponse,
   type ReportAssistantSessionResponse,
@@ -42,6 +43,7 @@ const ASSISTANT_PHASES: readonly ReportAssistantPhase[] = [
 const ASSISTANT_REQUIRED_ACTIONS = [
   "NONE", "RETRY", "REFRESH", "REAUTHENTICATE", "REOPEN_LATEST_REPORT", "CONTACT_ADMIN",
 ] as const;
+const ASSISTANT_OPERATION_SCOPES: readonly ReportAssistantOperationScope[] = ["full_report", "report_title"];
 const ASSISTANT_PATCH_IMPACT_CATEGORIES = ["CONTENT", "LAYOUT", "DESTRUCTIVE"] as const;
 
 function assertAssistantSession(
@@ -49,6 +51,21 @@ function assertAssistantSession(
 ): ReportAssistantSessionResponse {
   if (!ASSISTANT_PHASES.includes(session.phase)) {
     throw new Error(`지원하지 않는 Report Assistant phase입니다: ${session.phase}`);
+  }
+  if (!ASSISTANT_OPERATION_SCOPES.includes(session.operation_scope)) {
+    throw new Error(`지원하지 않는 Report Assistant 작업 범위입니다: ${session.operation_scope}`);
+  }
+  if (!Array.isArray(session.turn_history)
+    || session.turn_history.length > 12
+    || session.turn_history.length % 2 !== 0
+    || session.turn_history.some((turn, index) => (
+      !turn
+      || turn.role !== (index % 2 === 0 ? "user" : "assistant")
+      || typeof turn.content !== "string"
+      || !turn.content.trim()
+      || turn.content.length > 1000
+    ))) {
+    throw new Error("Report Assistant 대화 이력 계약이 올바르지 않습니다.");
   }
   if (session.definition_version < 1 || session.base_revision < 1) {
     throw new Error("Report Assistant revision은 1 이상이어야 합니다.");
@@ -422,7 +439,11 @@ export function createReportClient(
       instruction: string,
       expectedPatchRequestId: string | null = null,
       selectedBlockId: string | null = null,
+      operationScope: ReportAssistantOperationScope = "full_report",
     ) {
+      if (!["full_report", "report_title"].includes(operationScope)) {
+        throw new Error(`지원하지 않는 Report Assistant 작업 범위입니다: ${operationScope}`);
+      }
       const proposal = await parse<ReportAssistantProposalResponse>(await send(
         `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/messages`,
         "POST",
@@ -430,6 +451,7 @@ export function createReportClient(
           instruction,
           expected_patch_request_id: expectedPatchRequestId,
           selected_block_id: selectedBlockId,
+          operation_scope: operationScope,
         },
       ));
       if (!["clarification", "existing_artifact", "new_data"].includes(proposal.change_kind)) {

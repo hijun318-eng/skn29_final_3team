@@ -272,6 +272,9 @@ export type ReportAssistantPhase =
   | "failed"
   | "cancelled";
 
+/** 메시지 한 건에서 서버가 허용할 Report Assistant 변경 범위다. */
+export type ReportAssistantOperationScope = "full_report" | "report_title";
+
 /** 서버가 실패 원인에 따라 결정한 사용자 후속 조치다. */
 export type ReportAssistantRequiredAction =
   | "NONE"
@@ -311,10 +314,17 @@ export interface ReportAssistantPatchPreviewItem {
   readonly evidence_count: number;
 }
 
+/** 서버가 복구 가능한 범위로 공개하는 Report Assistant 대화 한 건이다. */
+export interface ReportAssistantTurnHistoryItem {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+}
+
 /** 대화형 Assistant 세션의 서버 권위 상태 계약이다. */
 export interface ReportAssistantSessionResponse {
   readonly assistant_request_id: string;
   readonly phase: ReportAssistantPhase;
+  readonly operation_scope: ReportAssistantOperationScope;
   readonly definition_id: string;
   readonly definition_version: number;
   readonly base_revision: number;
@@ -340,6 +350,7 @@ export interface ReportAssistantSessionResponse {
   readonly retryable: boolean;
   readonly required_action: ReportAssistantRequiredAction;
   readonly retry_of_assistant_request_id: string | null;
+  readonly turn_history: readonly ReportAssistantTurnHistoryItem[];
 }
 
 /** 변경 제안과 그 결과로 저장된 서버 phase를 함께 반환하는 계약이다. */

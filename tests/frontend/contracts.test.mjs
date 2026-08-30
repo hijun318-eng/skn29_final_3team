@@ -1085,13 +1085,14 @@ let assistantSessionRequest;
 const assistantSessionClient = createReportClient("http://backend.test", async (url, init) => {
   assistantSessionRequest = { url, init };
   const session = {
-    assistant_request_id: "assistant/1", phase: "ready",
+    assistant_request_id: "assistant/1", phase: "ready", operation_scope: "full_report",
     definition_id: "definition-1", definition_version: 2, base_revision: 2,
     artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
     patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [], result_artifact_id: null,
     patch_preview: [], approved_operation_indexes: [],
     result_revision: null, error_code: null, retryable: false, required_action: "NONE",
     retry_of_assistant_request_id: null,
+    turn_history: [],
   };
   const retrySession = url.endsWith("/retry") ? {
     ...session, assistant_request_id: "assistant-2",
@@ -1149,8 +1150,21 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     change_kind: instruction === "모호한 요청" ? "clarification" : "existing_artifact",
     message: instruction === "모호한 요청" ? "어느 기간을 기준으로 할까요?" : "기존 근거로 수정할 수 있습니다.",
     suggestions: ["선택한 블록의 제목을 간결하게 바꿔 줘"],
-    session: instruction === "모호한 요청" ? session : {
-      ...session, phase: "waiting_patch_approval",
+    session: instruction === "모호한 요청" ? {
+      ...session,
+      operation_scope: messageBody.operation_scope,
+      turn_history: [
+        { role: "user", content: instruction },
+        { role: "assistant", content: "어느 기간을 기준으로 할까요?" },
+      ],
+    } : {
+      ...session,
+      phase: "waiting_patch_approval",
+      operation_scope: messageBody.operation_scope,
+      turn_history: [
+        { role: "user", content: instruction },
+        { role: "assistant", content: "기존 근거로 수정할 수 있습니다." },
+      ],
       patch_request_id: "patch-1", patch_summary: "표 제목 변경",
       patch_operations: ["set_report_title"], patch_evidence_refs: [],
       patch_preview: [{
@@ -1207,6 +1221,20 @@ assert.equal(
 );
 assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
   instruction: "표 제목을 바꿔 줘", expected_patch_request_id: null, selected_block_id: null,
+  operation_scope: "full_report",
+});
+
+const titleProposal = await assistantSessionClient.submitAssistantMessage(
+  "assistant/1", "보고서 제목을 제안해 줘", null, null, "report_title",
+);
+assert.equal(titleProposal.session.operation_scope, "report_title");
+assert.deepEqual(titleProposal.session.turn_history, [
+  { role: "user", content: "보고서 제목을 제안해 줘" },
+  { role: "assistant", content: "기존 근거로 수정할 수 있습니다." },
+]);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  instruction: "보고서 제목을 제안해 줘", expected_patch_request_id: null, selected_block_id: null,
+  operation_scope: "report_title",
 });
 
 await assistantSessionClient.submitAssistantMessage(
@@ -1214,7 +1242,15 @@ await assistantSessionClient.submitAssistantMessage(
 );
 assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
   instruction: "제목은 유지하고 요약만 줄여 줘", expected_patch_request_id: "patch-1", selected_block_id: null,
+  operation_scope: "full_report",
 });
+
+await assert.rejects(
+  () => assistantSessionClient.submitAssistantMessage(
+    "assistant/1", "잘못된 범위", null, null, "unsupported_scope",
+  ),
+  /지원하지 않는 Report Assistant 작업 범위/,
+);
 
 const approvedPatch = await assistantSessionClient.approveAssistantPatch(
   "assistant/1", "patch-1", [0],
@@ -1260,12 +1296,12 @@ assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
 });
 
 const staleApprovalClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
-  assistant_request_id: "assistant-1", phase: "ready",
+  assistant_request_id: "assistant-1", phase: "ready", operation_scope: "full_report",
   definition_id: "definition-1", definition_version: 2, base_revision: 2,
   artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
   patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [], result_artifact_id: null,
   result_revision: null, error_code: null, retryable: false, required_action: "NONE",
-  retry_of_assistant_request_id: null,
+  retry_of_assistant_request_id: null, turn_history: [],
 }), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
 await assert.rejects(
   () => staleApprovalClient.approveAssistantPlan("assistant-1", "request-1"),
@@ -1273,16 +1309,31 @@ await assert.rejects(
 );
 
 const mismatchedSessionClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
-  assistant_request_id: "assistant-2", phase: "ready",
+  assistant_request_id: "assistant-2", phase: "ready", operation_scope: "full_report",
   definition_id: "definition-1", definition_version: 2, base_revision: 2,
   artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
   patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [], result_artifact_id: null,
   result_revision: null, error_code: null, retryable: false, required_action: "NONE",
-  retry_of_assistant_request_id: null,
+  retry_of_assistant_request_id: null, turn_history: [],
 }), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
 await assert.rejects(
   () => mismatchedSessionClient.getAssistantSession("assistant-1"),
   /세션 ID가 요청과 일치하지 않습니다/,
+);
+
+const invalidTurnHistoryClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
+  assistant_request_id: "assistant-1", phase: "ready", operation_scope: "full_report",
+  definition_id: "definition-1", definition_version: 2, base_revision: 2,
+  artifact_id: "artifact-1", artifact_ids: ["artifact-1"], analysis_plan: null,
+  patch_request_id: null, patch_summary: null, patch_operations: [], patch_evidence_refs: [],
+  patch_preview: [], approved_operation_indexes: [], result_artifact_id: null,
+  result_revision: null, error_code: null, retryable: false, required_action: "NONE",
+  retry_of_assistant_request_id: null,
+  turn_history: [{ role: "system", content: "내부 지시" }],
+}), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
+await assert.rejects(
+  () => invalidTurnHistoryClient.getAssistantSession("assistant-1"),
+  /대화 이력 계약이 올바르지 않습니다/,
 );
 
 console.log("frontend contract tests passed");

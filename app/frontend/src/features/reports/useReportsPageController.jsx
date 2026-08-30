@@ -29,6 +29,8 @@ import {
 import { reportStatusLabel } from "./reportPageLabels";
 import { normalizeReportEditorScale } from "./reportEditorViewport";
 
+const ASSISTANT_SAVE_FIRST_MESSAGE = "AI로 보고서를 변경하기 전에 현재 편집 내용을 먼저 저장해 주세요.";
+
 /** 보고서 lifecycle·artifact·draft·DND를 화면 계약으로 합성하고 stale open generation을 폐기한다. */
 export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEditorMode }) {
   const isAdmin = suppliedIsAdmin ?? ["report_admin", "platform_admin"].includes(role);
@@ -335,7 +337,17 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     await lifecycle.loadFinalDocument(approved);
   }, [applyDefinition, draft.blocksRef, draft.isDirty, draft.reportOrientation, isDraft, lifecycle]);
 
-  const createAssistantDraft = useCallback(async (instruction = lifecycle.assistantInstruction) => {
+  const requireSavedAssistantDraft = useCallback(() => {
+    if (!draft.isDirty) return true;
+    lifecycle.setError(ASSISTANT_SAVE_FIRST_MESSAGE);
+    return false;
+  }, [draft.isDirty, lifecycle]);
+
+  const createAssistantDraft = useCallback(async (
+    instruction = lifecycle.assistantInstruction,
+    operationScope = "full_report",
+  ) => {
+    if (!requireSavedAssistantDraft()) return null;
     const definition = lifecycle.selectedDefinition;
     if (!definition || !selectedArtifactSource?.artifactId || !selectedArtifact || !instruction.trim()) return null;
     const result = await lifecycle.submitAssistantInstruction(
@@ -343,15 +355,22 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       selectedArtifactSource.artifactId,
       instruction,
       assistantArtifactIds,
-      editorTools.primaryBlock?.id || null,
+      operationScope === "report_title" ? null : editorTools.primaryBlock?.id || null,
+      operationScope,
     );
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
     return result;
-  }, [applyDefinition, artifacts, assistantArtifactIds, editorTools.primaryBlock?.id, lifecycle, selectedArtifact, selectedArtifactSource]);
+  }, [applyDefinition, artifacts, assistantArtifactIds, editorTools.primaryBlock?.id, lifecycle, requireSavedAssistantDraft, selectedArtifact, selectedArtifactSource]);
+
+  const suggestAssistantTitle = useCallback(
+    (instruction) => createAssistantDraft(instruction, "report_title"),
+    [createAssistantDraft],
+  );
 
   const reviewAssistantReport = useCallback(async () => {
+    if (!requireSavedAssistantDraft()) return null;
     const definition = lifecycle.selectedDefinition;
     if (!definition || !selectedArtifactSource?.artifactId || !selectedArtifact) return null;
     return lifecycle.reviewAssistantReport(
@@ -360,15 +379,16 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       assistantArtifactIds,
       editorTools.primaryBlock?.id || null,
     );
-  }, [assistantArtifactIds, editorTools.primaryBlock?.id, lifecycle, selectedArtifact, selectedArtifactSource]);
+  }, [assistantArtifactIds, editorTools.primaryBlock?.id, lifecycle, requireSavedAssistantDraft, selectedArtifact, selectedArtifactSource]);
 
   const approveAssistantDataRequest = useCallback(async () => {
+    if (!requireSavedAssistantDraft()) return null;
     const result = await lifecycle.approveAssistantRequest();
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
     return result;
-  }, [applyDefinition, artifacts, lifecycle]);
+  }, [applyDefinition, artifacts, lifecycle, requireSavedAssistantDraft]);
 
   const rejectAssistantDataRequest = useCallback(
     () => lifecycle.rejectAssistantRequest(),
@@ -376,12 +396,13 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   );
 
   const approveAssistantPatch = useCallback(async (operationIndexes) => {
+    if (!requireSavedAssistantDraft()) return null;
     const result = await lifecycle.approveAssistantPatch(operationIndexes);
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
     return result;
-  }, [applyDefinition, artifacts, lifecycle]);
+  }, [applyDefinition, artifacts, lifecycle, requireSavedAssistantDraft]);
 
   const rejectAssistantPatch = useCallback(
     () => lifecycle.rejectAssistantPatch(),
@@ -584,6 +605,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     artifacts,
     builderV2: REPORT_BUILDER_V2, canEdit,
     createAssistantDraft,
+    suggestAssistantTitle,
     reviewAssistantReport,
     createSchedule,
     createDefinition,

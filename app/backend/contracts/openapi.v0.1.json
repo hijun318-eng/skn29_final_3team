@@ -3787,6 +3787,15 @@
             "title": "Instruction",
             "type": "string"
           },
+          "operation_scope": {
+            "default": "full_report",
+            "enum": [
+              "full_report",
+              "report_title"
+            ],
+            "title": "Operation Scope",
+            "type": "string"
+          },
           "selected_block_id": {
             "anyOf": [
               {
@@ -4367,6 +4376,14 @@
             ],
             "title": "Error Code"
           },
+          "operation_scope": {
+            "enum": [
+              "full_report",
+              "report_title"
+            ],
+            "title": "Operation Scope",
+            "type": "string"
+          },
           "patch_evidence_refs": {
             "default": [],
             "items": {
@@ -4493,11 +4510,21 @@
             "default": false,
             "title": "Retryable",
             "type": "boolean"
+          },
+          "turn_history": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantTurnMessage"
+            },
+            "maxItems": 12,
+            "title": "Turn History",
+            "type": "array"
           }
         },
         "required": [
           "assistant_request_id",
           "phase",
+          "operation_scope",
           "definition_id",
           "definition_version",
           "base_revision",
@@ -4544,6 +4571,32 @@
           "duration_ms"
         ],
         "title": "ReportAssistantTraceResponse",
+        "type": "object"
+      },
+      "ReportAssistantTurnMessage": {
+        "additionalProperties": false,
+        "description": "새로고침 시 복구할 bounded 사용자·Assistant 대화 한 건을 반환한다.",
+        "properties": {
+          "content": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ReportAssistantTurnMessage",
         "type": "object"
       },
       "ReportBlockRequest": {

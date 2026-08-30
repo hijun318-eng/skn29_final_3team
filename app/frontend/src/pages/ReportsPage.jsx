@@ -223,7 +223,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     pageCount={page.reportPages.length}
   />;
   const assistant = <ReportAssistantPanel
-    key={`${lifecycle.selectedDefinition?.definitionId || ""}:${lifecycle.selectedDefinition?.version || ""}:${page.assistantArtifactIds.join(":")}`}
+    key={`${lifecycle.selectedDefinition?.definitionId || ""}:${lifecycle.selectedDefinition?.version || ""}:${page.assistantArtifactIds.join(":")}:${lifecycle.assistantSession?.assistant_request_id || ""}`}
     approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(lifecycle.assistantSession?.phase)
       ? lifecycle.assistantSession?.analysis_plan && {
           ...lifecycle.assistantSession.analysis_plan,
@@ -239,6 +239,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     assistantArtifactIds={page.assistantArtifactIds}
     artifactTitle={page.selectedArtifactSource?.title}
     canEdit={page.canEdit}
+    hasUnsavedChanges={draft.isDirty}
     instruction={lifecycle.assistantInstruction}
     onInstructionChange={lifecycle.setAssistantInstruction}
     onApproveDataRequest={page.approveAssistantDataRequest}
@@ -248,6 +249,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onRejectPatch={page.rejectAssistantPatch}
     onReview={page.reviewAssistantReport}
     onSelectArtifacts={artifacts.setAssistantArtifacts}
+    onSuggestTitle={page.suggestAssistantTitle}
     onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}
     patchPreview={lifecycle.assistantSession?.patch_request_id
@@ -263,6 +265,9 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       : null}
     review={lifecycle.assistantReview}
     pending={lifecycle.pending}
+    sessionId={lifecycle.assistantSession?.assistant_request_id || ""}
+    sessionOperationScope={lifecycle.assistantSession?.operation_scope || "full_report"}
+    sessionTurnHistory={lifecycle.assistantSession?.turn_history || []}
     selectedBlock={page.editorTools.primaryBlock}
     suggestions={lifecycle.assistantSuggestionSet?.selectedBlockId === (page.editorTools.primaryBlock?.id || null)
       ? lifecycle.assistantSuggestionSet.suggestions

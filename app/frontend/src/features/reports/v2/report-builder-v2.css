@@ -320,6 +320,7 @@
 [data-report-builder="v2"] .report-assistant-quick{padding:0 12px 10px;display:flex;gap:5px;overflow-x:auto;scrollbar-width:thin}
 [data-report-builder="v2"] .report-assistant-quick button{min-height:32px;padding:0 10px;flex:none;color:#9db0c6;border:1px solid #2b3d54;border-radius:16px;background:#0d1622;font-size:11px;white-space:nowrap}
 [data-report-builder="v2"] .report-assistant-quick button:hover:not(:disabled){color:#eaf3ff;border-color:#4f83c3;background:#142b49}
+[data-report-builder="v2"] .report-assistant-save-first{margin:0 12px 10px;padding:9px 10px;color:#e9c482;border:1px solid #5c4725;border-radius:8px;background:#1b160d;font-size:11px;line-height:1.5}
 [data-report-builder="v2"] .report-assistant-composer{padding:10px 12px 13px;border-top:1px solid var(--builder-line);background:#080e17}
 [data-report-builder="v2"] .report-assistant-composer>label{display:block;margin-bottom:6px;color:#8b9db2;font-size:11px;font-weight:750}
 [data-report-builder="v2"] .report-assistant-composer>div{padding:5px;display:grid;grid-template-columns:minmax(0,1fr) 32px;align-items:end;gap:5px;border:1px solid #30445e;border-radius:8px;background:#101927}
@@ -519,6 +520,7 @@
 .theme-light [data-report-builder="v2"] .report-assistant-cancel:hover:not(:disabled){color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
 .theme-light [data-report-builder="v2"] .report-assistant-quick button{color:#4d6680;border-color:#cdd9e5;background:#fff}
 .theme-light [data-report-builder="v2"] .report-assistant-quick button:hover:not(:disabled){color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
+.theme-light [data-report-builder="v2"] .report-assistant-save-first{color:#7a5519;border-color:#e2ca9f;background:#fff8e9}
 .theme-light [data-report-builder="v2"] .report-assistant-composer{border-color:#d8e2ed;background:#f2f6fa}
 .theme-light [data-report-builder="v2"] .report-assistant-composer>label{color:#5d7289}
 .theme-light [data-report-builder="v2"] .report-assistant-composer>div{border-color:#c9d7e5;background:#fff}

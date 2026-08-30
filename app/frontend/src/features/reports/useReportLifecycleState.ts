@@ -6,6 +6,7 @@ import {
   seoulWallClockToIso,
   type ReportBlockRequest,
   type ReportAssistantSessionResponse,
+  type ReportAssistantOperationScope,
   type ReportAssistantEvaluationResponse,
   type ReportAssistantReviewResponse,
   type ReportDefinitionVersion,
@@ -391,6 +392,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     instruction: string,
     artifactIds: readonly string[] = [artifactId],
     selectedBlockId: string | null = null,
+    operationScope: ReportAssistantOperationScope = "full_report",
   ) => {
     const normalized = instruction.trim();
     if (!artifactId || !normalized || definition.status !== "draft") return null;
@@ -419,6 +421,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       normalized,
       session.phase === "waiting_patch_approval" ? session.patch_request_id : null,
       selectedBlockId,
+      operationScope,
     ), () => assistantRequestRef.current === request);
     if (assistantRequestRef.current !== request) return null;
     if (!proposal) {

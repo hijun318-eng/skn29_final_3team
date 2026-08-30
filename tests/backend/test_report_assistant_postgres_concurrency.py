@@ -62,6 +62,11 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
         with psycopg.connect(self.database_url) as connection:
             connection.execute(
+                "DELETE FROM report_v1.report_assistant_requests "
+                "WHERE retry_of_assistant_request_id = %s",
+                (self.assistant_request_id,),
+            )
+            connection.execute(
                 "DELETE FROM report_v1.report_assistant_requests WHERE assistant_request_id = %s",
                 (self.assistant_request_id,),
             )
@@ -161,6 +166,7 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
             (),
             "제목을 바꿔줘",
             "제목 변경안을 준비했습니다.",
+            expected_message_revision=0,
         )
         source = await self.repository.get_version(str(self.definition_id), 1)
         return patch, replace(source, title="동시 승인 완료")
@@ -225,6 +231,7 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
                 (),
                 title,
                 f"{title}을 준비했습니다.",
+                expected_message_revision=1,
             )
 
         results = await asyncio.gather(replace(0), replace(1), return_exceptions=True)
@@ -232,6 +239,294 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, sum(isinstance(result, ValueError) for result in results))
         current = await self.repository.get_assistant_session(str(self.assistant_request_id))
         self.assertIn(UUID(str(current["patch_request_id"])), replacements)
+
+    async def test_late_full_report_save_cannot_downgrade_title_scope(self) -> None:
+        """제목 명확화가 먼저 저장되면 늦은 일반 응답은 서버 범위를 넓히지 못한다."""
+
+        await self.repository.start_assistant_session(
+            str(self.assistant_request_id),
+            str(self.definition_id),
+            1,
+            str(self.artifact_id),
+            "a" * 64,
+            "report.assistant.turn",
+            "PROMPT-v1.10.0",
+            "b" * 64,
+        )
+        stored = await self.repository.record_assistant_proposal(
+            str(self.assistant_request_id),
+            "c" * 64,
+            "d" * 64,
+            "MODEL-RELEASE-v1.49.0",
+            "report.assistant.turn",
+            "PROMPT-v1.10.0",
+            "e" * 64,
+            None,
+            "제목을 제안해 줘",
+            "제목의 대상 기간을 알려 주세요.",
+            "clarification",
+            "report_title",
+            expected_message_revision=0,
+        )
+        self.assertEqual("report_title", stored["operation_scope"])
+
+        with self.assertRaisesRegex(ValueError, "ASSISTANT_STATE_CONFLICT"):
+            await self.repository.record_assistant_proposal(
+                str(self.assistant_request_id),
+                "f" * 64,
+                "1" * 64,
+                "MODEL-RELEASE-v1.49.0",
+                "report.assistant.turn",
+                "PROMPT-v1.10.0",
+                "2" * 64,
+                None,
+                "본문을 다시 써 줘",
+                "일반 보고서 변경안을 준비했습니다.",
+                "clarification",
+                "full_report",
+                expected_message_revision=1,
+            )
+
+        current = await self.repository.get_assistant_session(str(self.assistant_request_id))
+        self.assertEqual("report_title", current["operation_scope"])
+
+    async def test_retry_preserves_failed_title_scope(self) -> None:
+        """제목 요청 실패를 재시도해도 새 세션은 제목 변경 범위만 유지한다."""
+
+        await self.repository.start_assistant_session(
+            str(self.assistant_request_id),
+            str(self.definition_id),
+            1,
+            str(self.artifact_id),
+            "a" * 64,
+            "report.assistant.turn",
+            "PROMPT-v1.10.0",
+            "b" * 64,
+        )
+        await self.repository.fail_assistant_request(
+            str(self.assistant_request_id),
+            "REPORT_ASSISTANT_MODEL_TIMEOUT",
+            operation_scope="report_title",
+        )
+        retry_request_id = uuid4()
+        retried = await self.repository.retry_assistant_session(
+            str(self.assistant_request_id),
+            str(retry_request_id),
+            "c" * 64,
+            "report.assistant.turn",
+            "PROMPT-v1.10.0",
+            "d" * 64,
+        )
+
+        self.assertEqual(retry_request_id, retried["assistant_request_id"])
+        self.assertEqual("ready", retried["phase"])
+        self.assertEqual("report_title", retried["operation_scope"])
+
+    async def test_late_model_failure_cannot_terminate_newer_successful_turn(self) -> None:
+        """먼저 저장된 다음 turn의 성공 결과를 늦은 이전 실패가 덮지 못한다."""
+
+        started = await self.repository.start_assistant_session(
+            str(self.assistant_request_id),
+            str(self.definition_id),
+            1,
+            str(self.artifact_id),
+            "a" * 64,
+            "report.assistant.turn",
+            "PROMPT-v1.10.0",
+            "b" * 64,
+        )
+        start_revision = int(started["message_revision"])
+        saved = await self.repository.record_assistant_proposal(
+            str(self.assistant_request_id),
+            "c" * 64,
+            "d" * 64,
+            "MODEL-RELEASE-v1.49.0",
+            "report.assistant.turn",
+            "PROMPT-v1.10.0",
+            "e" * 64,
+            None,
+            "어느 기간인지 확인해 줘",
+            "분석할 기간을 알려 주세요.",
+            "clarification",
+            "full_report",
+            expected_message_revision=start_revision,
+        )
+        self.assertEqual("ready", saved["phase"])
+
+        await self.repository.fail_assistant_request(
+            str(self.assistant_request_id),
+            "REPORT_ASSISTANT_MODEL_TIMEOUT",
+            operation_scope="report_title",
+            expected_phase="ready",
+            expected_message_revision=start_revision,
+        )
+
+        current = await self.repository.get_assistant_session(str(self.assistant_request_id))
+        self.assertEqual("running", current["status"])
+        self.assertEqual("ready", current["phase"])
+        self.assertEqual("full_report", current["operation_scope"])
+        self.assertEqual("c" * 64, current["instruction_hash"])
+        self.assertIsNone(current["error_code"])
+
+    async def test_identical_message_has_one_revision_cas_winner(self) -> None:
+        """같은 문장·같은 revision의 동시 저장도 한 turn만 canonical 상태가 된다."""
+
+        await self.repository.start_assistant_session(
+            str(self.assistant_request_id), str(self.definition_id), 1,
+            str(self.artifact_id), "a" * 64, "report.assistant.turn",
+            "PROMPT-v1.10.0", "b" * 64,
+        )
+
+        async def save_same_message() -> dict[str, object]:
+            return await self.repository.record_assistant_proposal(
+                str(self.assistant_request_id), "c" * 64, "d" * 64,
+                "MODEL-RELEASE-v1.49.0", "report.assistant.turn",
+                "PROMPT-v1.10.0", "e" * 64, None,
+                "같은 문장", "같은 답변", "clarification", "full_report",
+                expected_message_revision=0,
+            )
+
+        results = await asyncio.gather(
+            save_same_message(), save_same_message(), return_exceptions=True,
+        )
+        self.assertEqual(1, sum(isinstance(result, dict) for result in results))
+        self.assertEqual(1, sum(isinstance(result, ValueError) for result in results))
+        current = await self.repository.get_assistant_session(str(self.assistant_request_id))
+        self.assertEqual(1, current["message_revision"])
+        history = await self.repository.get_assistant_turn_history(str(self.assistant_request_id))
+        self.assertEqual(2, len(history))
+        self.assertEqual(history, current["turn_history"])
+
+    async def test_reject_invalidates_late_refinement_and_evaluation(self) -> None:
+        """patch 거절은 revision을 올려 늦은 교체·실패·평가를 모두 no-op으로 만든다."""
+
+        await self._waiting_patch()
+        rejected, claimed = await self.repository.decide_existing_assistant_patch(
+            str(self.assistant_request_id), str(self.patch_request_id), False,
+        )
+        self.assertTrue(claimed)
+        self.assertEqual("ready", rejected["phase"])
+        self.assertEqual("full_report", rejected["operation_scope"])
+        self.assertEqual(2, rejected["message_revision"])
+
+        with self.assertRaisesRegex(ValueError, "ASSISTANT_STATE_CONFLICT"):
+            await self.repository.replace_existing_assistant_patch_proposal(
+                str(self.assistant_request_id), str(self.patch_request_id), str(uuid4()),
+                "f" * 64, "1" * 64, "MODEL-RELEASE-v1.49.0",
+                "report.assistant.turn", "PROMPT-v1.10.0", "2" * 64,
+                {
+                    "summary": "늦은 제안",
+                    "operations": [{"op": "set_report_title", "title": "늦은 제목"}],
+                },
+                (), "늦은 문장", "늦은 답변", expected_message_revision=1,
+            )
+        failed = await self.repository.fail_assistant_request(
+            str(self.assistant_request_id), "REPORT_ASSISTANT_MODEL_TIMEOUT",
+            operation_scope="report_title", expected_phase="ready",
+            expected_message_revision=1,
+        )
+        self.assertFalse(failed)
+        with self.assertRaises(KeyError):
+            await self.repository.upsert_assistant_evaluation(
+                str(self.assistant_request_id),
+                error_code="REPORT_ASSISTANT_MODEL_TIMEOUT",
+                expected_message_revision=1,
+            )
+
+        current = await self.repository.get_assistant_session(str(self.assistant_request_id))
+        self.assertEqual("ready", current["phase"])
+        self.assertEqual("running", current["status"])
+        self.assertIsNone(current["error_code"])
+
+    async def test_concurrent_failures_only_claim_one_evaluation_writer(self) -> None:
+        """동일 revision의 실패 둘은 fail claim 승자 한 건만 평가를 기록한다."""
+
+        await self.repository.start_assistant_session(
+            str(self.assistant_request_id), str(self.definition_id), 1,
+            str(self.artifact_id), "a" * 64, "report.assistant.turn",
+            "PROMPT-v1.10.0", "b" * 64,
+        )
+
+        async def fail(code: str) -> tuple[str, bool]:
+            claimed = await self.repository.fail_assistant_request(
+                str(self.assistant_request_id), code,
+                expected_phase="ready", expected_message_revision=0,
+            )
+            if claimed:
+                await self.repository.upsert_assistant_evaluation(
+                    str(self.assistant_request_id), error_code=code,
+                    expected_message_revision=0,
+                )
+            return code, claimed
+
+        results = await asyncio.gather(fail("FAILURE_A"), fail("FAILURE_B"))
+        winners = [code for code, claimed in results if claimed]
+        self.assertEqual(1, len(winners))
+        evaluation = await self.repository.get_assistant_evaluation(
+            str(self.assistant_request_id)
+        )
+        self.assertEqual(winners[0], evaluation["error_code"])
+
+    async def test_late_review_cannot_overwrite_newer_message_evaluation(self) -> None:
+        """ready revision을 캡처한 review는 새 message 저장 뒤 평가를 덮지 못한다."""
+
+        await self.repository.start_assistant_session(
+            str(self.assistant_request_id), str(self.definition_id), 1,
+            str(self.artifact_id), "a" * 64, "report.assistant.turn",
+            "PROMPT-v1.10.0", "b" * 64,
+        )
+        review_started = asyncio.Event()
+        message_saved = asyncio.Event()
+
+        async def late_review() -> str:
+            review_started.set()
+            await message_saved.wait()
+            with self.assertRaises(KeyError):
+                await self.repository.upsert_assistant_evaluation(
+                    str(self.assistant_request_id),
+                    contract_valid=False,
+                    error_code="STALE_REVIEW",
+                    expected_message_revision=0,
+                )
+            return "blocked"
+
+        async def newer_message() -> str:
+            await review_started.wait()
+            try:
+                saved = await self.repository.record_assistant_proposal(
+                    str(self.assistant_request_id), "c" * 64, "d" * 64,
+                    "MODEL-RELEASE-v1.49.0", "report.assistant.turn",
+                    "PROMPT-v1.10.0", "e" * 64, None,
+                    "최신 문장", "최신 답변", "clarification",
+                    expected_message_revision=0,
+                )
+                await self.repository.upsert_assistant_evaluation(
+                    str(self.assistant_request_id),
+                    contract_valid=True,
+                    error_code="NEWER_MESSAGE",
+                    expected_message_revision=int(saved["message_revision"]),
+                )
+                return "saved"
+            finally:
+                message_saved.set()
+
+        self.assertCountEqual(
+            ["blocked", "saved"],
+            await asyncio.gather(late_review(), newer_message()),
+        )
+        evaluation = await self.repository.get_assistant_evaluation(
+            str(self.assistant_request_id)
+        )
+        self.assertEqual("NEWER_MESSAGE", evaluation["error_code"])
+        current = await self.repository.get_assistant_session(
+            str(self.assistant_request_id), expected_message_revision=1,
+        )
+        self.assertEqual(1, current["message_revision"])
+        self.assertEqual(2, len(current["turn_history"]))
+        with self.assertRaises(KeyError):
+            await self.repository.get_assistant_session(
+                str(self.assistant_request_id), expected_message_revision=0,
+            )
 
     async def test_refresh_recovery_finishes_selected_patch_once(self) -> None:
         """선택 승인 도중 새 요청으로 복구해도 선택 항목만 한 Revision에 저장한다."""
@@ -271,6 +566,7 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
             (),
             "제목만 바꿔줘",
             "두 가지 변경안을 준비했습니다.",
+            expected_message_revision=0,
         )
         self.assertEqual("waiting_patch_approval", proposed["phase"])
 
@@ -290,6 +586,7 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(claimed)
         self.assertEqual("saving_revision", saving["phase"])
+        self.assertEqual(2, saving["message_revision"])
         self.assertEqual((0,), tuple(saving["approved_operation_indexes"]))
 
         recovered_repository = PostgresReportRepository(

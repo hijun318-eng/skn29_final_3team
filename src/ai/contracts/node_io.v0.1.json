@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.29.0",
+  "version": "MODEL-v1.30.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -1330,9 +1330,10 @@
     "report_assistant_turn_request": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["instruction", "artifact", "additional_artifacts", "report", "history", "current_patch", "selected_block"],
+      "required": ["instruction", "operation_scope", "artifact", "additional_artifacts", "report", "history", "current_patch", "selected_block"],
       "properties": {
         "instruction": {"type": "string", "minLength": 1, "maxLength": 500},
+        "operation_scope": {"type": "string", "enum": ["full_report", "report_title"]},
         "artifact": {"$ref": "#/$defs/report_assistant_turn_artifact"},
         "additional_artifacts": {
           "type": "array",

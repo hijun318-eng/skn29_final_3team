@@ -1,9 +1,9 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.48.0",
+  "manifest_version": "MODEL-RELEASE-v1.49.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.29.0",
-  "schema_sha256": "027614af95be462a53270bdb2c947029cbb9d13299c154cbe525e9083a980929",
+  "schema_version": "MODEL-v1.30.0",
+  "schema_sha256": "1e28eabd4d802ef7a2d014ca4428d8800736fada2aa1f26219067735afa2c132",
   "compatible_runtime": {
     "analysis_plan_version": "ANSWERVICE-ANALYSIS-PLAN-v4",
     "typed_sql_compiler_version": "ANSWERVICE-TYPED-SQL-v1.3.2",
@@ -48,8 +48,8 @@
     },
     "report_assistant_turn": {
       "prompt_id": "report.assistant.turn",
-      "prompt_version": "PROMPT-v1.9.7",
-      "prompt_sha256": "a387934f50c26bb8ad4a607840c71e0bbdd62ae9e6b32c68d1451ecba3c724e0",
+      "prompt_version": "PROMPT-v1.10.0",
+      "prompt_sha256": "5cd9a5c795e156952611003de21627a808003f918a8f27cd6ac40c9c242cf876",
       "request_definition": "report_assistant_turn_request",
       "response_definition": "report_assistant_turn_response"
     },

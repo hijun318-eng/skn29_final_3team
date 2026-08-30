@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta, timezone
-from hashlib import sha256
 from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.adapters.view_spec_integrity import canonical_view_spec_json, view_spec_sha256
 
 
 class ConversationRepository:
@@ -71,14 +72,7 @@ class ConversationRepository:
 
         if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA", "SCATTER", "KPI"}:
             raise ValueError("지원하지 않는 View type입니다.")
-        canonical = json.dumps(
-            spec_json,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-            default=str,
-        )
+        canonical = canonical_view_spec_json(spec_json)
         await session.execute(
             text(
                 """
@@ -97,7 +91,7 @@ class ConversationRepository:
                 "artifact_id": artifact_id,
                 "view_type": view_type,
                 "spec_json": canonical,
-                "spec_sha256": sha256(canonical.encode("utf-8")).hexdigest(),
+                "spec_sha256": view_spec_sha256(spec_json),
                 "product_release_id": product_release_id,
                 "permission_snapshot_id": permission_snapshot_id,
                 "semantic_release_id": semantic_release_id,

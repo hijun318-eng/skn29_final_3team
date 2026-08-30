@@ -21,6 +21,7 @@ from app.api.report_router import (
     _compose_assistant_revision,
     _prepare_assistant_revision,
     _report_patch_preview,
+    _report_turn_payload,
     _recover_and_get_assistant_session,
     _validated_contextual_suggestions,
     report_router,
@@ -31,7 +32,15 @@ from app.api.report_router import (
     review_assistant_report,
     submit_assistant_message,
 )
-from app.adapters.report_artifact_repository import ReportArtifactRepositoryMixin
+from app.adapters.report_artifact_repository import (
+    ReportArtifactRepositoryMixin,
+    _canonical_required_release_receipt,
+    _view_spec_type_matches_block,
+)
+from app.adapters.view_spec_integrity import (
+    canonical_view_spec_json,
+    view_spec_sha256,
+)
 from app.contracts import (
     AnalysisData,
     AnalysisResponse,
@@ -54,10 +63,97 @@ from app.report_contracts import (
     report_assistant_retry_policy,
 )
 from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
+from src.ai.schema import validate_payload
 
 
 class ReportAssistantSessionContractTest(unittest.TestCase):
     """서버 phase·승인 계획 계약이 추가 필드와 불완전 계획을 거부하는지 확인한다."""
+
+    def test_finalizer_receipt_canonicalizes_db_uuids_and_requires_provenance(self) -> None:
+        """asyncpg UUID row와 domain str receipt는 같게 비교되고 null source는 거부된다."""
+
+        db_receipt = (uuid4(), uuid4(), uuid4())
+        domain_receipt = tuple(str(value) for value in db_receipt)
+
+        self.assertEqual(
+            domain_receipt,
+            _canonical_required_release_receipt(db_receipt),
+        )
+        self.assertEqual(
+            domain_receipt,
+            _canonical_required_release_receipt(domain_receipt),
+        )
+        with self.assertRaisesRegex(ValueError, "release receipt"):
+            _canonical_required_release_receipt((None, None, None))
+
+    def test_view_spec_hash_uses_one_compact_canonical_serializer(self) -> None:
+        """생성기와 finalizer가 key 순서·공백과 무관한 동일 ViewSpec hash를 공유한다."""
+
+        first = {"series": ["매출"], "chart_type": "kpi", "options": {"unit": "원"}}
+        reordered = {"options": {"unit": "원"}, "chart_type": "kpi", "series": ["매출"]}
+
+        self.assertEqual(
+            '{"chart_type":"kpi","options":{"unit":"원"},"series":["매출"]}',
+            canonical_view_spec_json(first),
+        )
+        self.assertEqual(view_spec_sha256(first), view_spec_sha256(reordered))
+        self.assertTrue(_view_spec_type_matches_block("chart", "KPI"))
+        self.assertFalse(_view_spec_type_matches_block("table", "KPI"))
+
+    def test_turn_payload_exposes_only_bounded_canonical_artifact_views(self) -> None:
+        """모델에는 실제 가능 view와 bounded scalar 표만 주고 내부 실행 식별자는 숨긴다."""
+
+        columns = [f"column_{index}" for index in range(18)]
+        rows = [
+            {
+                **{column: row_index for column in columns},
+                "column_0": "가" * 700 if row_index == 0 else row_index,
+                "column_1": {"nested": "hidden"} if row_index == 0 else row_index,
+            }
+            for row_index in range(22)
+        ]
+        artifact_id = uuid4()
+        definition = ReportDefinitionVersion(
+            str(uuid4()), 1, DefinitionStatus.DRAFT, "월간 보고서", (),
+        )
+        payload = _report_turn_payload(
+            definition,
+            {
+                "artifact_id": artifact_id,
+                "title": "승인 월간 분석",
+                "narrative_markdown": "검증된 월간 요약",
+                "evidence_json": {
+                    "metric_values": [{"label": "매출", "value": 10}],
+                    "query_id": "private-evidence-query",
+                },
+                "chart_spec_json": {
+                    "chart_type": "bar", "x_field": "column_0",
+                    "y_fields": ["column_2"],
+                },
+                "data_snapshot_json": {"columns": columns, "rows": rows},
+                "trino_query_id": "private-trino-query",
+                "artifact_checksum": "a" * 64,
+            },
+            "승인 결과를 보고서에 추가해 줘",
+        )
+
+        validate_payload("report_assistant_turn_request", payload)
+        public_artifact = payload["artifact"]
+        snapshot = public_artifact["table_snapshot"]
+        self.assertEqual(["summary", "kpi", "chart", "table"], public_artifact["available_views"])
+        self.assertEqual((16, 0, 22, True), (
+            len(snapshot["columns"]), len(snapshot["rows"]),
+            snapshot["row_count"], snapshot["truncated"],
+        ))
+        self.assertEqual(
+            [f"column_{index}" for index in range(1, 17)], snapshot["columns"]
+        )
+        self.assertEqual([], snapshot["rows"])
+        self.assertNotIn("가" * 32, repr(payload))
+        self.assertNotIn("nested", repr(payload))
+        self.assertNotIn("private-trino-query", repr(payload))
+        self.assertNotIn("private-evidence-query", repr(payload))
+        self.assertNotIn("a" * 64, repr(payload))
 
     def test_ready_session_round_trips_without_analysis_plan(self) -> None:
         """ready 세션은 정의·artifact·base revision만으로 공개 계약을 만족한다."""
@@ -324,6 +420,11 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
             "NOT EXISTS",
             "INSERT INTO report_v1.report_definition_versions",
             "INSERT INTO report_v1.report_blocks",
+            "product_release_id, permission_snapshot_id",
+            "view_spec_id, content, evidence_refs",
+            "view_spec_sha256(verified_spec)",
+            "_view_spec_type_matches_block",
+            "_bind_report_receipt",
             "report_patch_json = CAST(:patch AS jsonb)",
             "SET phase = 'completed', status = 'success'",
             "result_revision = :target_version",
@@ -1008,6 +1109,9 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 "artifact_id": secondary_id, "title": "객실", "narrative_markdown": "승인 객실",
                 "evidence_json": {"metric_values": [{"label": "객실", "value": 80}]},
                 "chart_spec_json": None,
+                "data_snapshot_json": {
+                    "columns": ["객실"], "rows": [{"객실": 80}],
+                },
                 "trino_query_id": "private-secondary-query", "artifact_checksum": "b" * 64,
             },
         )
@@ -1020,7 +1124,7 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 "summary": "두 번째 승인 근거 표 추가",
                 "operations": [{
                     "op": "add_artifact_view", "artifact_ref": "source_artifact_2",
-                    "view": "table", "title": "객실 현황",
+                    "view": "table", "title": "객실 · 표",
                 }],
             },
         }
@@ -1039,7 +1143,7 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 "summary": "두 번째 승인 근거 표 추가",
                 "operations": [{
                     "op": "add_artifact_view", "artifact_ref": "source_artifact_2",
-                    "view": "table", "title": "객실 현황",
+                    "view": "table", "title": "객실 · 표",
                 }],
             },
         }, {
@@ -1194,7 +1298,10 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 "title": "승인 분석",
                 "narrative_markdown": "현재 기간 결과",
                 "evidence_json": {},
-                "chart_spec_json": {"chart_type": "bar"},
+                "chart_spec_json": {
+                    "chart_type": "bar", "x_field": "period",
+                    "y_fields": ["value"],
+                },
                 "artifact_checksum": "a" * 64,
             }),
             get_version=AsyncMock(return_value=ReportDefinitionVersion(
@@ -1775,6 +1882,9 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
             get_version=AsyncMock(return_value=definition),
             get_assistant_artifact=AsyncMock(return_value={
                 "artifact_id": waiting["artifact_id"], "trino_query_id": "query-1",
+                "title": "승인 분석", "narrative_markdown": "승인 근거 요약",
+                "evidence_json": {}, "chart_spec_json": None,
+                "data_snapshot_json": None,
                 "artifact_checksum": "d" * 64,
             }),
             finalize_existing_assistant_patch=AsyncMock(return_value=completed),
@@ -1844,6 +1954,9 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
             get_version=AsyncMock(return_value=definition),
             get_assistant_artifact=AsyncMock(return_value={
                 "artifact_id": waiting["artifact_id"], "trino_query_id": "query-1",
+                "title": "승인 분석", "narrative_markdown": "승인 근거 요약",
+                "evidence_json": {}, "chart_spec_json": None,
+                "data_snapshot_json": None,
                 "artifact_checksum": "d" * 64,
             }),
             finalize_existing_assistant_patch=AsyncMock(return_value=completed),
@@ -1895,6 +2008,9 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
             get_version=AsyncMock(return_value=definition),
             get_assistant_artifact=AsyncMock(return_value={
                 "artifact_id": saving["artifact_id"], "trino_query_id": "query-1",
+                "title": "승인 분석", "narrative_markdown": "승인 근거 요약",
+                "evidence_json": {}, "chart_spec_json": None,
+                "data_snapshot_json": None,
                 "artifact_checksum": "d" * 64,
             }),
             finalize_existing_assistant_patch=AsyncMock(return_value=completed),
@@ -2253,7 +2369,14 @@ class ReportAssistantComposeTest(unittest.IsolatedAsyncioTestCase):
                 "title": "직전 월 비교",
                 "narrative_markdown": "승인된 비교 결과입니다.",
                 "evidence_json": {"metrics": []},
-                "chart_spec_json": {"chart_type": "bar"},
+                "chart_spec_json": {
+                    "chart_type": "bar", "x_field": "period",
+                    "y_fields": ["value"],
+                },
+                "data_snapshot_json": {
+                    "columns": ["period", "value"],
+                    "rows": [{"period": "직전 월", "value": 1}],
+                },
                 "artifact_checksum": "a" * 64,
             }),
             finalize_existing_assistant_patch=AsyncMock(return_value=completed),
@@ -2285,7 +2408,7 @@ class ReportAssistantComposeTest(unittest.IsolatedAsyncioTestCase):
                         "op": "add_artifact_view",
                         "artifact_ref": "source_artifact",
                         "view": "chart",
-                        "title": "직전 월 비교",
+                        "title": "직전 월 비교 · 차트",
                         "placement": {"after_block_id": None, "width": "full"},
                     },
                     {
@@ -3037,6 +3160,10 @@ class ReportAssistantApprovalTest(unittest.IsolatedAsyncioTestCase):
                     "unit": None,
                 }]},
                 "chart_spec": None,
+                "available_views": ["summary"],
+                "table_snapshot": {
+                    "columns": [], "rows": [], "row_count": 0, "truncated": False,
+                },
             },
             "report": {
                 "title": "현재 보고서",

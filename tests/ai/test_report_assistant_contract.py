@@ -51,6 +51,13 @@ REPORT_ASSISTANT_TURN_REQUEST = {
             "x_field": "category_code",
             "y_fields": ["resolved_measure"],
         },
+        "available_views": ["summary", "kpi", "chart", "table"],
+        "table_snapshot": {
+            "columns": ["column_1", "column_2"],
+            "rows": [],
+            "row_count": 1,
+            "truncated": True,
+        },
     },
     "current_patch": None,
     "selected_block": None,
@@ -122,7 +129,7 @@ REPORT_ASSISTANT_EXISTING_RESPONSE = {
             "op": "add_artifact_view",
             "artifact_ref": "source_artifact",
             "view": "chart",
-            "title": "승인 지표 차트",
+            "title": None,
             "after_block_id": "block-one",
             "width": "full",
         }],
@@ -362,6 +369,24 @@ class ReportAssistantContractTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_request", invalid)
 
+    def test_legacy_current_patch_accepts_whole_artifact_but_new_response_does_not(self):
+        """입력 재생은 legacy 합본을 보존하고 신규 structured output은 원자 view만 허용한다."""
+
+        request = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+        request["current_patch"] = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE["patch"])
+        request["current_patch"]["operations"][0]["view"] = "artifact"
+        validate_payload("report_assistant_turn_request", request)
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"][0]["view"] = "artifact"
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", response)
+
+        forged_title = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        forged_title["patch"]["operations"][0]["title"] = "모델 소유 제목"
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", forged_title)
+
     def test_turn_plan_requires_nonempty_metric_scope(self):
         """새 데이터 제안은 사용자에게 공개할 하나 이상의 지표 범위를 반드시 포함한다."""
 
@@ -468,17 +493,19 @@ class ReportAssistantContractTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_request", too_long)
 
-    def test_turn_prompt_prioritizes_new_intent_and_whole_artifact_operation(self):
-        """현재 새 지시와 단일 Artifact 묶음은 과거 clarification·분해 operation보다 우선한다."""
+    def test_turn_prompt_prioritizes_new_intent_and_atomic_artifact_operations(self):
+        """현재 새 지시와 원자 Artifact view는 과거 clarification보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.11.0", prompt.version)
+        self.assertEqual("PROMPT-v1.12.0", prompt.version)
         self.assertIn("operation_scope is server-owned authority", prompt.text)
         self.assertIn("exactly one set_report_title operation", prompt.text)
         self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
         self.assertIn("current instruction is authoritative", prompt.text)
         self.assertIn("ignore any unresolved earlier clarification", prompt.text)
-        self.assertIn("exactly one add_artifact_view operation with view artifact", prompt.text)
+        self.assertIn("summary, kpi, chart, or table", prompt.text)
+        self.assertIn("Never emit view artifact", prompt.text)
+        self.assertIn("wire title field to null", prompt.text)
         self.assertIn("Use set_report_orientation with portrait or landscape", prompt.text)
         self.assertIn("return exactly one operation total: add_report_page", prompt.text)
         self.assertIn("Account for every requested effect", prompt.text)
@@ -896,7 +923,7 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             "op": "add_text",
             "block_id": "block-one",
             "artifact_ref": "source_artifact",
-            "view": "artifact",
+            "view": "chart",
             "title": "핵심 요약",
             "content": "승인된 근거를 간결하게 요약했습니다.",
             "after_block_id": "block-one",
@@ -1081,7 +1108,7 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
         response["patch"]["operations"] = [{
             **REPORT_ASSISTANT_WIRE_OPERATION,
             "op": "add_artifact_view", "artifact_ref": "source_artifact",
-            "view": "table", "title": "승인 매출 표", "chart_type": "bar",
+            "view": "table", "title": None, "chart_type": "bar",
             "density": "compact", "show_row_numbers": True, "size_mode": "auto",
         }]
         route = SimpleNamespace(
@@ -1099,6 +1126,10 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
 
         operation = proposal["patch"]["operations"][0]
         self.assertEqual("table", operation["view"])
+        self.assertEqual("Approved analysis · 표", operation["title"])
+        self.assertEqual(
+            {"after_block_id": None, "width": "full"}, operation["placement"]
+        )
         self.assertEqual("compact", operation["density"])
         self.assertTrue(operation["show_row_numbers"])
         self.assertIsNone(operation["chart_type"])

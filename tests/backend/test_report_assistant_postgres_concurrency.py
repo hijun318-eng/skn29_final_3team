@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+import inspect
 import os
 import unittest
 from uuid import UUID, uuid4
@@ -82,6 +83,24 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
                 "DELETE FROM report_v1.report_definitions WHERE definition_id = %s",
                 (self.definition_id,),
             )
+            connection.execute(
+                "ALTER TABLE governance.product_release_bindings "
+                "DISABLE TRIGGER product_release_bindings_immutable"
+            )
+            try:
+                connection.execute(
+                    "DELETE FROM governance.product_release_bindings "
+                    "WHERE object_kind = 'REPORT' AND object_id IN (%s, %s)",
+                    (
+                        f"definition:{self.definition_id}:v1",
+                        f"definition:{self.definition_id}:v2",
+                    ),
+                )
+            finally:
+                connection.execute(
+                    "ALTER TABLE governance.product_release_bindings "
+                    "ENABLE TRIGGER product_release_bindings_immutable"
+                )
 
     def _prepare_report(self) -> UUID:
         """현재 owner의 승인 Artifact 하나를 새 전용 Report v1에 결속한다."""
@@ -96,6 +115,9 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
                 WHERE r.user_id = %s AND r.status IN ('SUCCEEDED', 'PARTIAL')
                   AND a.status = 'APPROVED' AND a.artifact_checksum ~ '^[0-9a-f]{64}$'
                   AND q.trino_query_id IS NOT NULL
+                  AND a.product_release_id IS NOT NULL
+                  AND a.permission_snapshot_id IS NOT NULL
+                  AND a.semantic_release_id IS NOT NULL
                 ORDER BY a.artifact_id
                 LIMIT 1
                 """,
@@ -106,14 +128,22 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
             artifact_uuid = artifact_id[0]
             lineage = connection.execute(
                 """
-                SELECT q.trino_query_id, l.definition_id, l.definition_version
+                SELECT q.trino_query_id, l.definition_id, l.definition_version,
+                       a.product_release_id, a.permission_snapshot_id,
+                       a.semantic_release_id
                 FROM artifact.analysis_artifacts a
                 JOIN query.query_executions q ON q.query_execution_id = a.query_execution_id
                 JOIN analysis_v1.analysis_run_links l ON l.request_id = a.request_id
                 WHERE a.artifact_id = %s
+                  AND a.product_release_id IS NOT NULL
+                  AND a.permission_snapshot_id IS NOT NULL
+                  AND a.semantic_release_id IS NOT NULL
                 """,
                 (artifact_uuid,),
             ).fetchone()
+            if lineage is None:
+                self.fail("격리 E2E Artifact에 완전한 release receipt가 없습니다.")
+            query_id, analysis_id, analysis_version, *receipt = lineage
             connection.execute(
                 "INSERT INTO report_v1.report_definitions (definition_id, owner_id) VALUES (%s, %s)",
                 (self.definition_id, self.owner),
@@ -121,10 +151,13 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
             connection.execute(
                 """
                 INSERT INTO report_v1.report_definition_versions
-                    (definition_id, version, status, title, orientation, currency_display_unit)
-                VALUES (%s, 1, 'draft', '동시성 검증 보고서', 'portrait', 'auto')
+                    (definition_id, version, status, title, orientation,
+                     currency_display_unit, product_release_id,
+                     permission_snapshot_id, semantic_release_id)
+                VALUES (%s, 1, 'draft', '동시성 검증 보고서', 'portrait', 'auto',
+                        %s, %s, %s)
                 """,
-                (self.definition_id,),
+                (self.definition_id, *receipt),
             )
             connection.execute(
                 """
@@ -134,7 +167,23 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
                      analysis_definition_id, analysis_definition_version)
                 VALUES (%s, 1, %s, '승인 Artifact', %s, %s, 12, 'chart', 0, 0, 12, 7, '', %s, %s)
                 """,
-                (self.definition_id, self.block_id, artifact_uuid, *lineage),
+                (
+                    self.definition_id, self.block_id, artifact_uuid, query_id,
+                    analysis_id, analysis_version,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO governance.product_release_bindings (
+                    object_kind, object_id, product_release_id,
+                    permission_snapshot_id, semantic_release_id,
+                    capability_release_vector_json, evidence_refs_json
+                ) VALUES (
+                    'REPORT', %s, %s, %s, %s,
+                    '{"report.lifecycle":"1.0.0"}'::jsonb, '[]'::jsonb
+                )
+                """,
+                (f"definition:{self.definition_id}:v1", *receipt),
             )
         return artifact_uuid
 
@@ -657,6 +706,24 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
                 (self.definition_id,),
             ).fetchone()[0]
         self.assertEqual(2, versions)
+
+
+class ReportAssistantPostgresFixtureContractTest(unittest.TestCase):
+    """실제 DB가 없어 skip돼도 fixture의 release receipt·binding 정리를 정적으로 검증한다."""
+
+    def test_fixture_pins_receipt_and_removes_report_bindings(self) -> None:
+        prepare = inspect.getsource(ReportAssistantPostgresConcurrencyTest._prepare_report)
+        teardown = inspect.getsource(ReportAssistantPostgresConcurrencyTest.asyncTearDown)
+
+        for field in (
+            "product_release_id", "permission_snapshot_id", "semantic_release_id",
+        ):
+            self.assertIn(field, prepare)
+        self.assertIn("governance.product_release_bindings", prepare)
+        self.assertIn("definition:{self.definition_id}:v1", prepare)
+        self.assertIn("DELETE FROM governance.product_release_bindings", teardown)
+        self.assertIn("definition:{self.definition_id}:v2", teardown)
+        self.assertIn("ENABLE TRIGGER product_release_bindings_immutable", teardown)
 
 
 if __name__ == "__main__":

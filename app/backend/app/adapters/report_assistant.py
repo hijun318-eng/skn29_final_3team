@@ -16,6 +16,7 @@ from app.adapters.async_model_client import (
 from app.adapters.contract_model import openai_transport
 from app.adapters.model_schemas import PROMPT_IDS, request_definition, response_definition
 from app.report_contracts import ReportAssistantPatch
+from app.report_patch import ATOMIC_ARTIFACT_VIEWS, artifact_view_title
 from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, validate_payload
 from src.modelops.runtime import _TRANSPORT_META_KEY
@@ -235,7 +236,9 @@ def report_patch_model_payload(patch: ReportAssistantPatch) -> dict[str, object]
             "block_id": raw.get("block_id"),
             "artifact_ref": raw.get("artifact_ref"),
             "view": raw.get("view"),
-            "title": raw.get("title"),
+            "title": (
+                None if operation.op == "add_artifact_view" else raw.get("title")
+            ),
             "content": raw.get("content"),
             "orientation": raw.get("orientation"),
             "currency_display_unit": raw.get("currency_display_unit"),
@@ -321,6 +324,28 @@ def _normalize_wire_text_operation(
         }
     )
     return normalized
+
+
+def _model_artifact_by_alias(
+    payload: dict[str, object],
+    artifact_ref: object,
+) -> dict[str, object]:
+    """모델 별칭을 서버가 제공한 Artifact 공개 payload 한 건으로만 해석한다."""
+
+    candidates = [payload.get("artifact")]
+    additional = payload.get("additional_artifacts")
+    if isinstance(additional, list):
+        candidates.extend(additional)
+    artifact = next(
+        (
+            item for item in candidates
+            if isinstance(item, dict) and item.get("artifact_id") == artifact_ref
+        ),
+        None,
+    )
+    if artifact is None:
+        raise ValueError("Report Assistant Artifact alias is invalid")
+    return artifact
 
 
 def _validate_patch_target_types(
@@ -495,7 +520,7 @@ async def generate_report_change_proposal(
                     "add_text": {"title", "content"},
                     "update_text": {"block_id", "title", "content"},
                     "add_artifact_view": {
-                        "artifact_ref", "view", "title", "chart_type", "show_legend",
+                        "artifact_ref", "view", "chart_type", "show_legend",
                         "density", "show_row_numbers", "size_mode",
                     },
                     "reposition_block": {"block_id"},
@@ -512,13 +537,27 @@ async def generate_report_change_proposal(
                     failure_stage = "operation_projection"
                     allowed_fields = operation_fields[raw_operation["op"]]
                     if raw_operation["op"] == "add_artifact_view":
+                        view = raw_operation["view"]
+                        if view not in ATOMIC_ARTIFACT_VIEWS:
+                            raise ValueError(
+                                "Report Assistant can add only one atomic Artifact view"
+                            )
+                        source_artifact = _model_artifact_by_alias(
+                            payload, raw_operation["artifact_ref"]
+                        )
+                        available_views = source_artifact.get("available_views")
+                        if not isinstance(available_views, list) or view not in available_views:
+                            raise ValueError(
+                                "Report Assistant requested an unavailable Artifact view"
+                            )
                         view_fields = {
+                            "summary": set(),
+                            "kpi": set(),
                             "chart": {"chart_type", "show_legend"},
                             "table": {"density", "show_row_numbers"},
-                            "artifact": set(),
-                        }[raw_operation["view"]]
+                        }[view]
                         allowed_fields = {
-                            "artifact_ref", "view", "title", "size_mode", *view_fields,
+                            "artifact_ref", "view", "size_mode", *view_fields,
                         }
                     operation = {
                         "op": raw_operation["op"],
@@ -531,10 +570,20 @@ async def generate_report_change_proposal(
                     if raw_operation["op"] in {"add_text", "update_text"}:
                         operation["evidence_refs"] = raw_operation["evidence_refs"]
                     if raw_operation["op"] in {"add_text", "add_artifact_view"}:
+                        default_width = (
+                            "half"
+                            if raw_operation["op"] == "add_artifact_view"
+                            and raw_operation["view"] in {"summary", "kpi"}
+                            else "full"
+                        )
                         operation["placement"] = {
                             "after_block_id": raw_operation["after_block_id"],
-                            "width": raw_operation["width"] or "full",
+                            "width": raw_operation["width"] or default_width,
                         }
+                    if raw_operation["op"] == "add_artifact_view":
+                        operation["title"] = artifact_view_title(
+                            str(source_artifact["title"]), str(operation["view"])
+                        )
                     elif raw_operation["op"] == "reposition_block":
                         operation["after_block_id"] = raw_operation["after_block_id"]
                         operation["width"] = raw_operation["width"] or "full"

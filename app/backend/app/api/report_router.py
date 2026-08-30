@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import HTMLResponse
 
 from app.api.report_router_support import (
+    _artifact_table_snapshot,
     _artifact_visible_views,
     _document_response,
     approve_report_version as _approve_report_version,
@@ -363,6 +364,8 @@ def _report_turn_payload(
             "narrative": artifact["narrative_markdown"],
             "evidence": {"catalog": list(report_evidence_catalog(artifact, prefix))},
             "chart_spec": artifact["chart_spec_json"],
+            "available_views": _artifact_visible_views(artifact),
+            "table_snapshot": _artifact_table_snapshot(artifact),
         }
 
     aliases = {
@@ -496,6 +499,8 @@ async def _apply_existing_artifact_patch(
                     str(artifact["artifact_id"]),
                     str(artifact["trino_query_id"]),
                     str(artifact["artifact_checksum"]),
+                    str(artifact["title"]),
+                    frozenset(_artifact_visible_views(artifact)),
                 )
             for index, artifact in enumerate(artifact_items, start=1)
         },
@@ -535,7 +540,13 @@ def _report_patch_preview(
 
     blocks = {block.block_id: block for block in definition.blocks}
     items: list[dict[str, Any]] = []
-    view_labels = {"chart": "차트", "table": "표", "artifact": "복합 보기"}
+    view_labels = {
+        "summary": "요약",
+        "kpi": "핵심 지표",
+        "chart": "차트",
+        "table": "표",
+        "artifact": "복합 보기",
+    }
     for index, operation in enumerate(patch.operations):
         target = _PATCH_OPERATION_LABELS[operation.op]
         before: str | None = None

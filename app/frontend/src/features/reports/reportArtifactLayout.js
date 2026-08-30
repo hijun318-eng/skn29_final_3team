@@ -65,11 +65,13 @@ export function artifactMetricCards(artifact) {
 /** 실제 artifact payload에서 독립적으로 추가할 수 있는 view만 반환한다. */
 export function availableArtifactViews(artifact) {
   if (!artifact) return [];
+  const hasRows = Array.isArray(artifact.table?.rows)
+    && artifact.table.rows.some((row) => row && typeof row === "object" && !Array.isArray(row));
   return WHOLE_ARTIFACT_VIEWS.filter((view) => ({
     summary: Boolean(String(artifact.summary || "").trim()),
     kpi: artifactMetricCards(artifact).length > 0,
-    chart: Boolean(artifact.chart),
-    table: Boolean(artifact.table),
+    chart: Boolean(artifact.chart) && hasRows,
+    table: hasRows,
   })[view]);
 }
 
@@ -77,7 +79,10 @@ export function availableArtifactViews(artifact) {
 export function artifactViewTitle(sourceTitle, view) {
   const title = String(sourceTitle || "분석 결과").trim() || "분석 결과";
   const label = ARTIFACT_VIEW_LABELS[view] || "분석 요소";
-  return `${title} · ${label}`;
+  const suffix = ` · ${label}`;
+  const sourceLimit = Math.max(1, 255 - Array.from(suffix).length);
+  const boundedTitle = Array.from(title).slice(0, sourceLimit).join("").trimEnd();
+  return `${boundedTitle}${suffix}`;
 }
 
 /** DOM을 읽지 않고 governed 응답 형태만으로 artifact block 크기를 추정한다. */

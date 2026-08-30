@@ -16,7 +16,7 @@ class LiveModelContractTests(unittest.TestCase):
     def test_release_manifest_has_one_active_v1_contract_for_every_live_node(self):
         manifest = model_release_manifest()
 
-        self.assertEqual("MODEL-RELEASE-v1.50.0", manifest["manifest_version"])
+        self.assertEqual("MODEL-RELEASE-v1.51.0", manifest["manifest_version"])
         self.assertEqual("ACTIVE", manifest["state"])
         self.assertEqual("v1", manifest["schema_contract"])
         self.assertEqual(schema_version(), manifest["schema_version"])

@@ -10,7 +10,29 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.adapters.report_repository_common import _uuid
+from app.adapters.view_spec_integrity import view_spec_sha256
 from src.report.domain import DefinitionStatus, ReportDefinitionVersion
+
+
+def _canonical_required_release_receipt(
+    values: tuple[object | None, object | None, object | None],
+) -> tuple[str, str, str]:
+    """DB UUID 객체와 domain 문자열을 동일 비교 형식으로 만들고 누락 receipt는 닫는다."""
+
+    if not all(values):
+        raise ValueError("Stored Report release receipt is incomplete")
+    return (str(values[0]), str(values[1]), str(values[2]))
+
+
+def _view_spec_type_matches_block(block_type: str, view_type: str) -> bool:
+    """report_actions의 ViewSpec→block renderer 매핑과 동일한 유형만 허용한다."""
+
+    allowed = {
+        "table": {"TABLE"},
+        # report_actions는 KPI presentation도 chart block renderer로 결속한다.
+        "chart": {"BAR", "LINE", "PIE", "AREA", "SCATTER", "KPI"},
+    }
+    return view_type in allowed.get(block_type, set())
 
 
 class ReportArtifactRepositoryMixin:
@@ -32,7 +54,8 @@ class ReportArtifactRepositoryMixin:
                 text(
                     """
                     SELECT a.artifact_id, a.title, a.narrative_markdown,
-                           a.evidence_json, a.chart_spec_json, a.artifact_checksum,
+                           a.data_snapshot_json, a.evidence_json,
+                           a.chart_spec_json, a.artifact_checksum,
                            q.trino_query_id
                     FROM artifact.analysis_artifacts a
                     JOIN query.query_executions q
@@ -642,7 +665,8 @@ class ReportArtifactRepositoryMixin:
                 text(
                     """
                     SELECT a.artifact_id, a.title, a.narrative_markdown,
-                           a.evidence_json, a.chart_spec_json, a.artifact_checksum,
+                           a.data_snapshot_json, a.evidence_json,
+                           a.chart_spec_json, a.artifact_checksum,
                            q.trino_query_id, b.artifact_alias
                     FROM report_v1.report_assistant_artifact_bindings b
                     JOIN report_v1.report_assistant_requests s
@@ -1119,7 +1143,8 @@ class ReportArtifactRepositoryMixin:
                 source = (await session.execute(
                     text(
                         """
-                        SELECT v.revision
+                        SELECT v.revision, v.product_release_id,
+                               v.permission_snapshot_id, v.semantic_release_id
                         FROM report_v1.report_definition_versions v
                         JOIN report_v1.report_definitions d USING (definition_id)
                         WHERE v.definition_id = :definition_id AND v.version = :source_version
@@ -1139,18 +1164,42 @@ class ReportArtifactRepositoryMixin:
                         "base_revision": assistant["base_revision"],
                         "owner_id": self._owner_id,
                     },
-                )).scalar_one_or_none()
+                )).mappings().one_or_none()
                 if source is None:
                     raise ValueError("REPORT_REVISION_CONFLICT")
+                raw_source_receipt = (
+                    source["product_release_id"],
+                    source["permission_snapshot_id"],
+                    source["semantic_release_id"],
+                )
+                source_receipt_values = _canonical_required_release_receipt(
+                    raw_source_receipt
+                )
+                patched_receipt = _canonical_required_release_receipt(
+                    (
+                        patched.product_release_id,
+                        patched.permission_snapshot_id,
+                        patched.semantic_release_id,
+                    )
+                )
+                if patched_receipt != source_receipt_values:
+                    raise ValueError("REPORT_REVISION_CONFLICT")
+                receipt = await self._resolve_report_receipt(session, source_receipt_values)
+                if receipt is None:
+                    raise ValueError("Stored Report release receipt is incomplete")
                 target_version = source_version + 1
                 await session.execute(
                     text(
                         """
                         INSERT INTO report_v1.report_definition_versions
                             (definition_id, version, status, title,
-                             orientation, currency_display_unit)
+                             orientation, currency_display_unit,
+                             product_release_id, permission_snapshot_id,
+                             semantic_release_id)
                         VALUES (:definition_id, :version, 'draft', :title,
-                                :orientation, :currency_display_unit)
+                                :orientation, :currency_display_unit,
+                                :product_release_id, :permission_snapshot_id,
+                                :semantic_release_id)
                         """
                     ),
                     {
@@ -1159,6 +1208,9 @@ class ReportArtifactRepositoryMixin:
                         "title": patched.title,
                         "orientation": patched.orientation,
                         "currency_display_unit": patched.currency_display_unit,
+                        "product_release_id": receipt[0],
+                        "permission_snapshot_id": receipt[1],
+                        "semantic_release_id": receipt[2],
                     },
                 )
                 for block in patched.blocks:
@@ -1170,17 +1222,82 @@ class ReportArtifactRepositoryMixin:
                         lineage = await self._require_owned_artifact(
                             session, block_artifact_id, block.query_id
                         )
+                        if lineage[3:] != receipt:
+                            raise ValueError(
+                                "Report block Artifact release receipt does not match"
+                            )
+                    view_spec_id = (
+                        _uuid(block.view_spec_id, "view_spec_id")
+                        if block.view_spec_id
+                        else None
+                    )
+                    if view_spec_id is not None:
+                        await self._require_artifact_view_spec(
+                            session, view_spec_id, block_artifact_id
+                        )
+                        verified_view = (await session.execute(
+                            text(
+                                """
+                                SELECT view_type, spec_json, spec_sha256,
+                                       product_release_id, permission_snapshot_id,
+                                       semantic_release_id
+                                FROM artifact.view_specs
+                                WHERE view_spec_id = :view_spec_id
+                                  AND artifact_id = :artifact_id
+                                """
+                            ),
+                            {
+                                "view_spec_id": view_spec_id,
+                                "artifact_id": block_artifact_id,
+                            },
+                        )).mappings().one_or_none()
+                        verified_receipt = (
+                            tuple(str(verified_view[key]) for key in (
+                                "product_release_id",
+                                "permission_snapshot_id",
+                                "semantic_release_id",
+                            ))
+                            if verified_view is not None
+                            and all(verified_view[key] for key in (
+                                "product_release_id",
+                                "permission_snapshot_id",
+                                "semantic_release_id",
+                            ))
+                            else None
+                        )
+                        verified_spec = (
+                            dict(verified_view["spec_json"])
+                            if verified_view is not None
+                            and isinstance(verified_view["spec_json"], dict)
+                            else None
+                        )
+                        if (
+                            verified_view is None
+                            or not _view_spec_type_matches_block(
+                                block.type.value, str(verified_view["view_type"])
+                            )
+                            or verified_receipt != receipt
+                            or verified_spec is None
+                            or not re.fullmatch(
+                                r"[0-9a-f]{64}", str(verified_view["spec_sha256"])
+                            )
+                            or view_spec_sha256(verified_spec)
+                            != str(verified_view["spec_sha256"])
+                        ):
+                            raise ValueError(
+                                "Report ViewSpec integrity or release receipt does not match"
+                            )
                     await session.execute(
                         text(
                             """
                             INSERT INTO report_v1.report_blocks
                                 (definition_id, definition_version, block_id, title,
                                  artifact_id, query_id, columns, block_type, x, y, w, h,
-                                 content, evidence_refs, analysis_definition_id,
+                                 view_spec_id, content, evidence_refs, analysis_definition_id,
                                  analysis_definition_version)
                             VALUES (:definition_id, :version, :block_id, :title,
                                     :artifact_id, :query_id, :columns, :block_type,
-                                    :x, :y, :w, :h, :content, :evidence_refs,
+                                    :x, :y, :w, :h, :view_spec_id, :content, :evidence_refs,
                                     :analysis_definition_id, :analysis_definition_version)
                             """
                         ),
@@ -1197,12 +1314,18 @@ class ReportArtifactRepositoryMixin:
                             "y": block.y,
                             "w": block.w,
                             "h": block.h,
+                            "view_spec_id": view_spec_id,
                             "content": block.content,
                             "evidence_refs": list(block.evidence_refs),
                             "analysis_definition_id": lineage[0] if lineage else None,
                             "analysis_definition_version": lineage[1] if lineage else None,
                         },
                     )
+                await self._bind_report_receipt(
+                    session,
+                    object_id=f"definition:{definition_id}:v{target_version}",
+                    receipt=receipt,
+                )
                 completed = (await session.execute(
                     text(
                         """

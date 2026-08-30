@@ -885,11 +885,15 @@ class ReportAssistantUpdateTextOperation(ReportContractModel):
 
 
 class ReportAssistantAddArtifactViewOperation(ReportContractModel):
-    """서버가 제공한 별칭의 검증 Artifact만 chart·table·bundle 블록으로 추가한다."""
+    """서버가 제공한 별칭의 검증 Artifact view 하나를 독립 block으로 추가한다.
+
+    ``artifact``는 이미 저장된 Assistant patch의 비파괴 재생만 위한 legacy 값이다. 활성
+    모델 adapter는 summary·kpi·chart·table 원자 view만 새 operation으로 만들 수 있다.
+    """
 
     op: Literal["add_artifact_view"]
     artifact_ref: str = Field(min_length=1, max_length=128)
-    view: Literal["chart", "table", "artifact"]
+    view: Literal["summary", "kpi", "chart", "table", "artifact"]
     title: str = Field(min_length=1, max_length=255)
     chart_type: ReportChartType | None = None
     show_legend: bool | None = None

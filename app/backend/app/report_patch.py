@@ -12,6 +12,13 @@ from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDe
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+ATOMIC_ARTIFACT_VIEWS = frozenset({"summary", "kpi", "chart", "table"})
+_ARTIFACT_VIEW_LABELS = {
+    "summary": "요약",
+    "kpi": "핵심 지표",
+    "chart": "차트",
+    "table": "표",
+}
 _DEFAULT_HEIGHT = {
     BlockType.TEXT: 4,
     BlockType.CHART: 7,
@@ -19,7 +26,32 @@ _DEFAULT_HEIGHT = {
     BlockType.ARTIFACT: 12,
     BlockType.PAGE_BREAK: 1,
 }
-_MINIMUM_HEIGHT = _DEFAULT_HEIGHT
+_ATOMIC_DEFAULT_HEIGHT = {
+    "summary": 5,
+    "kpi": 6,
+    "chart": 7,
+    "table": 5,
+}
+
+
+def artifact_view_title(source_title: str, view: str) -> str:
+    """서버 소유 Artifact 제목과 한국어 view 역할로 변경 불가 block 제목을 만든다."""
+
+    normalized = str(source_title).strip()
+    label = _ARTIFACT_VIEW_LABELS.get(view)
+    if not normalized or label is None:
+        raise ValueError("검증 Artifact view 제목을 만들 수 없습니다.")
+    suffix = f" · {label}"
+    return f"{normalized[:255 - len(suffix)].rstrip()}{suffix}"
+
+
+def artifact_view_default_height(view: str) -> int:
+    """신규 원자 Artifact view의 renderer 최소 높이를 단일 계약으로 반환한다."""
+
+    try:
+        return _ATOMIC_DEFAULT_HEIGHT[view]
+    except KeyError as error:
+        raise ValueError("지원하지 않는 원자 Artifact view입니다.") from error
 
 
 class ReportPatchNoChangesError(ValueError):
@@ -33,10 +65,23 @@ class VerifiedArtifactBinding:
     artifact_id: str
     query_id: str
     checksum: str
+    source_title: str
+    available_views: frozenset[str]
 
     def __post_init__(self) -> None:
-        if not self.artifact_id or not self.query_id or not _SHA256.fullmatch(self.checksum):
+        normalized_title = str(self.source_title).strip()
+        normalized_views = frozenset(self.available_views)
+        if (
+            not self.artifact_id
+            or not self.query_id
+            or not _SHA256.fullmatch(self.checksum)
+            or not normalized_title
+            or len(normalized_title) > 255
+            or not normalized_views.issubset(ATOMIC_ARTIFACT_VIEWS)
+        ):
             raise ValueError("검증 Artifact binding이 완전하지 않습니다.")
+        object.__setattr__(self, "source_title", normalized_title)
+        object.__setattr__(self, "available_views", normalized_views)
 
 
 def validate_report_patch_operation_dependencies(patch: ReportAssistantPatch) -> None:
@@ -100,7 +145,7 @@ def _replace_block(block: ReportBlock, **changes: object) -> ReportBlock:
         "artifact_id": block.artifact_id, "columns": block.columns,
         "query_id": block.query_id, "type": block.type, "x": block.x, "y": block.y,
         "w": block.w, "h": block.h, "content": block.content,
-        "evidence_refs": block.evidence_refs,
+        "evidence_refs": block.evidence_refs, "view_spec_id": block.view_spec_id,
     }
     values.update(changes)
     return ReportBlock(**values)
@@ -126,6 +171,20 @@ def _with_settings(block: ReportBlock, changes: dict[str, object]) -> ReportBloc
         block,
         content=json.dumps(settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
     )
+
+
+def _minimum_block_height(block: ReportBlock) -> int:
+    """원자 Artifact block과 legacy 합본의 서로 다른 최소 높이를 결정한다."""
+
+    if block.type is BlockType.ARTIFACT:
+        visible_views = _block_settings(block).get("visibleViews")
+        if (
+            isinstance(visible_views, list)
+            and len(visible_views) == 1
+            and visible_views[0] in {"summary", "kpi"}
+        ):
+            return _ATOMIC_DEFAULT_HEIGHT[visible_views[0]]
+    return _DEFAULT_HEIGHT[block.type]
 
 
 def _compact_blocks(blocks: list[ReportBlock]) -> list[ReportBlock]:
@@ -179,6 +238,23 @@ def _insert_block(
         if target is None:
             raise ValueError("Report patch의 기준 block을 찾을 수 없습니다.")
         insert_y = target.y + target.h
+        # 같은 행뿐 아니라 위에서 시작해 삽입 지점을 가로지르는 staggered block도 있다.
+        # 새 block의 실제 x=0..w와 2D로 겹치는 block이 없을 때까지 시작점을 아래로 민다.
+        while True:
+            collision_bottoms = [
+                item.y + item.h
+                for item in blocks
+                if item.x < block.w
+                and item.x + item.w > 0
+                and item.y < insert_y
+                and item.y + item.h > insert_y
+            ]
+            if not collision_bottoms:
+                break
+            next_y = max(collision_bottoms)
+            if next_y <= insert_y:
+                break
+            insert_y = next_y
     shifted = [
         ReportBlock(
             item.block_id,
@@ -193,6 +269,7 @@ def _insert_block(
             item.h,
             item.content,
             item.evidence_refs,
+            item.view_spec_id,
         )
         for item in blocks
     ]
@@ -211,6 +288,7 @@ def _insert_block(
             block.h,
             block.content,
             block.evidence_refs,
+            block.view_spec_id,
         )
     )
 
@@ -306,7 +384,7 @@ def apply_report_assistant_patch(
                 blocks[index] = _replace_block(source, title=operation.title)
             elif operation.op == "resize_block":
                 minimum_width = 4 if source.type is BlockType.TEXT else 6
-                minimum_height = _MINIMUM_HEIGHT[source.type]
+                minimum_height = _minimum_block_height(source)
                 if operation.block_width < minimum_width or operation.block_height < minimum_height:
                     raise ValueError("Report block 크기가 유형별 최소 범위보다 작습니다.")
                 resized = _replace_block(
@@ -379,6 +457,7 @@ def apply_report_assistant_patch(
                     source.h,
                     source.content,
                     source.evidence_refs,
+                    source.view_spec_id,
                 ),
                 source.block_id,
             )
@@ -420,6 +499,7 @@ def apply_report_assistant_patch(
                     source.h,
                     source.content,
                     source.evidence_refs,
+                    source.view_spec_id,
                 ),
                 operation.after_block_id,
             )
@@ -445,6 +525,7 @@ def apply_report_assistant_patch(
                 source.h,
                 operation.content or source.content,
                 operation.evidence_refs if operation.content is not None else source.evidence_refs,
+                source.view_spec_id,
             )
             continue
         width = 6 if operation.placement.width == "half" else 12
@@ -457,11 +538,27 @@ def apply_report_assistant_patch(
             binding = artifact_bindings.get(operation.artifact_ref)
             if binding is None:
                 raise ValueError("Report patch가 허용되지 않은 Artifact 별칭을 참조했습니다.")
-            block_type = BlockType(operation.view)
+            if operation.view in ATOMIC_ARTIFACT_VIEWS:
+                if operation.view not in binding.available_views:
+                    raise ValueError("요청한 Artifact view를 검증된 결과에서 사용할 수 없습니다.")
+                expected_title = artifact_view_title(binding.source_title, operation.view)
+                if operation.title != expected_title:
+                    raise ValueError("Artifact view 제목이 서버 검증 제목과 일치하지 않습니다.")
+            block_type = (
+                BlockType.ARTIFACT
+                if operation.view in {"summary", "kpi", "artifact"}
+                else BlockType(operation.view)
+            )
             artifact_id = binding.artifact_id
             query_id = binding.query_id
             settings: dict[str, object] = {"sizeMode": operation.size_mode}
-            if operation.view == "chart":
+            if operation.view in {"summary", "kpi"}:
+                settings.update({
+                    "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
+                    "presentationMode": "standard",
+                    "visibleViews": [operation.view],
+                })
+            elif operation.view == "chart":
                 settings.update({
                     "showLegend": True if operation.show_legend is None else operation.show_legend,
                     **({"chartType": operation.chart_type} if operation.chart_type else {}),
@@ -493,9 +590,15 @@ def apply_report_assistant_patch(
                 0,
                 0,
                 width,
-                _DEFAULT_HEIGHT[block_type],
+                (
+                    _ATOMIC_DEFAULT_HEIGHT[operation.view]
+                    if operation.op == "add_artifact_view"
+                    and operation.view in ATOMIC_ARTIFACT_VIEWS
+                    else _DEFAULT_HEIGHT[block_type]
+                ),
                 content,
                 operation.evidence_refs if operation.op == "add_text" else (),
+                None,
             ),
             effective_anchor,
         )

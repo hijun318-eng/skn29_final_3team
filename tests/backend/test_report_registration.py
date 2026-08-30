@@ -271,6 +271,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         class TransferRepository(InMemoryReportRepository):
             artifact = {
                 "artifact_id": "00000000-0000-0000-0000-000000000099",
+                "title": "실제 분석 결과",
                 "artifact_checksum": "a" * 64,
                 "trino_query_id": "query-real",
                 "narrative_markdown": "실제 분석 요약",
@@ -336,22 +337,39 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("draft", created["status"])
         self.assertEqual("landscape", created["orientation"])
         self.assertEqual("auto", created["currency_display_unit"])
-        self.assertEqual(1, len(created["blocks"]))
-        block = created["blocks"][0]
-        self.assertEqual("artifact", block["type"])
-        self.assertEqual("실제 Artifact 보고서", block["title"])
-        self.assertEqual(str(payload.artifact_id), block["artifact_id"])
-        self.assertNotIn("query_id", block)
-        self.assertEqual((0, 0, 12, 12), (block["x"], block["y"], block["w"], block["h"]))
-        self.assertEqual({
-            "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
-            "presentationMode": "standard",
-            "sizeMode": "auto",
-            "visibleViews": ["summary", "kpi", "chart", "table"],
-        }, json.loads(block["content"]))
+        self.assertEqual(4, len(created["blocks"]))
+        self.assertEqual(
+            [
+                ("실제 분석 결과 · 요약", "artifact", 0, 0, 6, 5),
+                ("실제 분석 결과 · 핵심 지표", "artifact", 6, 0, 6, 6),
+                ("실제 분석 결과 · 차트", "chart", 0, 6, 8, 7),
+                ("실제 분석 결과 · 표", "table", 0, 13, 6, 5),
+            ],
+            [
+                (
+                    block["title"], block["type"], block["x"], block["y"],
+                    block["w"], block["h"],
+                )
+                for block in created["blocks"]
+            ],
+        )
+        self.assertTrue(
+            all(block["artifact_id"] == str(payload.artifact_id) for block in created["blocks"])
+        )
+        self.assertTrue(all("query_id" not in block for block in created["blocks"]))
+        self.assertEqual(["summary"], json.loads(created["blocks"][0]["content"])["visibleViews"])
+        self.assertEqual(["kpi"], json.loads(created["blocks"][1]["content"])["visibleViews"])
+        self.assertEqual(
+            {"showLegend": True, "sizeMode": "auto"},
+            json.loads(created["blocks"][2]["content"]),
+        )
+        self.assertEqual(
+            {"density": "comfortable", "showRowNumbers": False, "sizeMode": "auto"},
+            json.loads(created["blocks"][3]["content"]),
+        )
 
         reloaded = await router.get_version(created["definition_id"], 1)
-        self.assertEqual([block], reloaded["blocks"])
+        self.assertEqual(created["blocks"], reloaded["blocks"])
         self.assertEqual(
             ["table"],
             report_api._artifact_visible_views({
@@ -383,7 +401,10 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(DefinitionStatus.APPROVED, approved.status)
         document = router.repository.get_document(created["definition_id"], 1)
         self.assertTrue(document["pdf_bytes"].startswith(b"%PDF-"))
-        self.assertIn('data-visible-views="summary kpi chart table"', document["html_snapshot"])
+        self.assertIn('data-visible-views="summary"', document["html_snapshot"])
+        self.assertIn('data-visible-views="kpi"', document["html_snapshot"])
+        self.assertIn('report-block--chart', document["html_snapshot"])
+        self.assertIn('report-block--table', document["html_snapshot"])
 
         with patch.object(report_api, "_router", return_value=router), self.assertRaises(HTTPException) as missing:
             await report_api.create_draft_from_analysis_artifact(

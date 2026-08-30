@@ -65,7 +65,18 @@ const atomicArtifact = {
 };
 assert.deepEqual(availableArtifactViews(atomicArtifact), ["summary", "kpi", "chart", "table"]);
 assert.deepEqual(availableArtifactViews({ summary: "요약만" }), ["summary"]);
+assert.deepEqual(
+  availableArtifactViews({
+    chart: { chart_type: "bar", x_field: "period", y_fields: ["value"] },
+    table: { columns: ["period", "value"], rows: [] },
+  }),
+  [],
+  "chart and table views require actual rows just like the server availability contract",
+);
 assert.equal(artifactViewTitle("객실 매출 분석", "kpi"), "객실 매출 분석 · 핵심 지표");
+const boundedArtifactTitle = artifactViewTitle("가".repeat(255), "kpi");
+assert.equal(Array.from(boundedArtifactTitle).length, 255);
+assert.match(boundedArtifactTitle, / · 핵심 지표$/);
 const atomicSummary = insertFrontendArtifact([textBlock], {
   ...sourceA,
   blockId: "atomic-summary",

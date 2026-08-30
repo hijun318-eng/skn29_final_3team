@@ -63,6 +63,8 @@ class ReportAssistantPatchTest(unittest.TestCase):
                 "artifact-new",
                 "query-new",
                 "a" * 64,
+                "신규 분석",
+                frozenset({"summary", "kpi", "chart", "table"}),
             )
         }
 
@@ -77,7 +79,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
                         "op": "add_artifact_view",
                         "artifact_ref": "analysis_result",
                         "view": "chart",
-                        "title": "전월 비교",
+                        "title": "신규 분석 · 차트",
                         "placement": {"after_block_id": "current-chart", "width": "full"},
                     },
                     {
@@ -95,7 +97,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
 
         self.assertEqual(4, len(result.blocks))
         self.assertEqual(("summary", "current-chart"), tuple(b.block_id for b in result.blocks[:2]))
-        chart = next(block for block in result.blocks if block.title == "전월 비교")
+        chart = next(block for block in result.blocks if block.title == "신규 분석 · 차트")
         self.assertEqual(BlockType.CHART, chart.type)
         self.assertEqual("artifact-new", chart.artifact_id)
         self.assertEqual("query-new", chart.query_id)
@@ -300,7 +302,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
                 },
                 {
                     "op": "add_artifact_view", "artifact_ref": "analysis_result",
-                    "view": "chart", "title": "추가 차트", "chart_type": "line",
+                    "view": "chart", "title": "신규 분석 · 차트", "chart_type": "line",
                     "show_legend": False, "size_mode": "auto",
                 },
             ],
@@ -308,7 +310,7 @@ class ReportAssistantPatchTest(unittest.TestCase):
 
         result = apply_report_assistant_patch(definition, patch, self.bindings)
         table = next(block for block in result.blocks if block.block_id == "current-table")
-        chart = next(block for block in result.blocks if block.title == "추가 차트")
+        chart = next(block for block in result.blocks if block.title == "신규 분석 · 차트")
 
         self.assertEqual(
             {"density": "compact", "showRowNumbers": True, "sizeMode": "auto"},
@@ -318,6 +320,128 @@ class ReportAssistantPatchTest(unittest.TestCase):
             {"chartType": "line", "showLegend": False, "sizeMode": "auto"},
             json.loads(chart.content),
         )
+
+    def test_atomic_artifact_views_create_independent_server_owned_blocks(self) -> None:
+        """요약·KPI·차트·표는 합본이 아닌 유형별 최소 크기의 독립 block으로 저장한다."""
+
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "승인 분석의 네 가지 보기를 독립 요소로 추가합니다.",
+            "operations": [
+                {
+                    "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                    "view": view, "title": f"신규 분석 · {label}",
+                    "placement": {"width": width},
+                }
+                for view, label, width in (
+                    ("summary", "요약", "half"),
+                    ("kpi", "핵심 지표", "half"),
+                    ("chart", "차트", "full"),
+                    ("table", "표", "full"),
+                )
+            ],
+        })
+
+        result = apply_report_assistant_patch(self.definition, patch, self.bindings)
+        created = {block.title: block for block in result.blocks[2:]}
+
+        expected = {
+            "신규 분석 · 요약": (BlockType.ARTIFACT, 6, 5, ["summary"]),
+            "신규 분석 · 핵심 지표": (BlockType.ARTIFACT, 6, 6, ["kpi"]),
+            "신규 분석 · 차트": (BlockType.CHART, 12, 7, None),
+            "신규 분석 · 표": (BlockType.TABLE, 12, 5, None),
+        }
+        self.assertEqual(set(expected), set(created))
+        for title, (block_type, width, height, visible_views) in expected.items():
+            with self.subTest(title=title):
+                block = created[title]
+                settings = json.loads(block.content)
+                self.assertEqual((block_type, width, height), (block.type, block.w, block.h))
+                self.assertEqual("artifact-new", block.artifact_id)
+                self.assertEqual("query-new", block.query_id)
+                self.assertIsNone(block.view_spec_id)
+                if visible_views is not None:
+                    self.assertEqual(visible_views, settings["visibleViews"])
+                    self.assertEqual("ANSWER-ARTIFACT-BLOCK-v1", settings["schemaVersion"])
+
+    def test_atomic_artifact_view_revalidates_availability_and_server_title(self) -> None:
+        """저장 직전에는 binding의 실제 view와 서버 파생 제목이 모두 일치해야 한다."""
+
+        summary_only = {
+            "analysis_result": VerifiedArtifactBinding(
+                "artifact-new", "query-new", "a" * 64, "신규 분석",
+                frozenset({"summary"}),
+            )
+        }
+        unavailable = ReportAssistantPatch.model_validate({
+            "summary": "없는 차트를 추가합니다.",
+            "operations": [{
+                "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                "view": "chart", "title": "신규 분석 · 차트",
+            }],
+        })
+        forged_title = ReportAssistantPatch.model_validate({
+            "summary": "모델 제목을 신뢰하지 않습니다.",
+            "operations": [{
+                "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                "view": "summary", "title": "모델이 만든 제목",
+            }],
+        })
+
+        with self.assertRaisesRegex(ValueError, "사용할 수 없습니다"):
+            apply_report_assistant_patch(self.definition, unavailable, summary_only)
+        with self.assertRaisesRegex(ValueError, "서버 검증 제목"):
+            apply_report_assistant_patch(self.definition, forged_title, summary_only)
+
+    def test_legacy_whole_artifact_patch_remains_replayable(self) -> None:
+        """기존 DB에 저장된 합본 artifact operation은 마이그레이션 없이 계속 재생한다."""
+
+        legacy = ReportAssistantPatch.model_validate({
+            "summary": "기존 합본 분석 결과를 복원합니다.",
+            "operations": [{
+                "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                "view": "artifact", "title": "기존 합본 분석 결과",
+                "placement": {"width": "full"},
+            }],
+        })
+
+        result = apply_report_assistant_patch(self.definition, legacy, self.bindings)
+        restored = result.blocks[-1]
+
+        self.assertEqual(BlockType.ARTIFACT, restored.type)
+        self.assertEqual((12, 12), (restored.w, restored.h))
+        self.assertEqual("기존 합본 분석 결과", restored.title)
+        self.assertEqual({"sizeMode": "auto"}, json.loads(restored.content))
+
+    def test_all_existing_block_transforms_preserve_view_spec_lineage(self) -> None:
+        """resize·setting·reposition·duplicate 경로 모두 기존 view_spec_id를 잃지 않는다."""
+
+        view_spec_id = "00000000-0000-0000-0000-000000000777"
+        definition = self.definition.replace_blocks((
+            self.definition.blocks[0],
+            ReportBlock(
+                "current-chart", "현재 실적", "artifact-old", 12, "query-old",
+                BlockType.CHART, 0, 4, 12, 7, "", (), view_spec_id,
+            ),
+        ))
+        operations = (
+            {"op": "resize_block", "block_id": "current-chart", "block_width": 6, "block_height": 8},
+            {"op": "update_chart_settings", "block_id": "current-chart", "show_legend": False},
+            {"op": "reposition_block", "block_id": "current-chart", "width": "half"},
+            {"op": "duplicate_block", "block_id": "current-chart"},
+        )
+        for operation in operations:
+            with self.subTest(operation=operation["op"]):
+                patch = ReportAssistantPatch.model_validate({
+                    "summary": "기존 표현 계보를 보존합니다.", "operations": [operation],
+                })
+                result = apply_report_assistant_patch(definition, patch, self.bindings)
+                affected = [
+                    block for block in result.blocks
+                    if block.block_id == "current-chart" or operation["op"] == "duplicate_block"
+                    and block.title == "현재 실적"
+                ]
+                self.assertTrue(affected)
+                self.assertTrue(all(block.view_spec_id == view_spec_id for block in affected))
 
     def test_view_settings_fail_closed_for_wrong_block_type_and_conflicts(self) -> None:
         """잘못된 view 대상과 같은 대상을 지우며 변경하는 모순은 전체 patch를 거부한다."""
@@ -394,6 +518,72 @@ class ReportAssistantPatchTest(unittest.TestCase):
             ["운영 요약", "첫 번째 설명", "두 번째 설명", "현재 실적"],
             [block.title for block in ordered],
         )
+
+    def test_insert_after_short_block_uses_uneven_row_bottom(self) -> None:
+        """높이 5 요약 옆 높이 6 KPI가 있어도 다음 full block은 y=6부터 시작한다."""
+
+        uneven = self.definition.replace_blocks((
+            ReportBlock(
+                "atomic-summary", "분석 · 요약", "artifact-old", 6, "query-old",
+                BlockType.ARTIFACT, 0, 0, 6, 5,
+                json.dumps({"visibleViews": ["summary"]}),
+            ),
+            ReportBlock(
+                "atomic-kpi", "분석 · 핵심 지표", "artifact-old", 6, "query-old",
+                BlockType.ARTIFACT, 6, 0, 6, 6,
+                json.dumps({"visibleViews": ["kpi"]}),
+            ),
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "요약 행 다음에 차트를 추가합니다.",
+            "operations": [{
+                "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                "view": "chart", "title": "신규 분석 · 차트",
+                "placement": {"after_block_id": "atomic-summary", "width": "full"},
+            }],
+        })
+
+        result = apply_report_assistant_patch(uneven, patch, self.bindings)
+        chart = next(block for block in result.blocks if block.title == "신규 분석 · 차트")
+
+        self.assertEqual(6, chart.y)
+        self.assertTrue(all(
+            chart.y >= block.y + block.h or chart.y + chart.h <= block.y
+            for block in result.blocks if block.block_id != chart.block_id
+        ))
+
+    def test_full_insert_avoids_staggered_crossing_block(self) -> None:
+        """다른 x에서 먼저 시작한 block이 anchor bottom을 지나면 full 삽입은 그 아래로 간다."""
+
+        staggered = self.definition.replace_blocks((
+            ReportBlock(
+                "left-summary", "왼쪽 요약", "artifact-old", 6, "query-old",
+                BlockType.ARTIFACT, 0, 0, 6, 5,
+                json.dumps({"visibleViews": ["summary"]}),
+            ),
+            ReportBlock(
+                "right-kpi", "오른쪽 KPI", "artifact-old", 6, "query-old",
+                BlockType.ARTIFACT, 6, 2, 6, 7,
+                json.dumps({"visibleViews": ["kpi"]}),
+            ),
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "staggered 행 다음에 full 차트를 추가합니다.",
+            "operations": [{
+                "op": "add_artifact_view", "artifact_ref": "analysis_result",
+                "view": "chart", "title": "신규 분석 · 차트",
+                "placement": {"after_block_id": "left-summary", "width": "full"},
+            }],
+        })
+
+        result = apply_report_assistant_patch(staggered, patch, self.bindings)
+        chart = next(block for block in result.blocks if block.title == "신규 분석 · 차트")
+
+        self.assertEqual(9, chart.y)
+        self.assertTrue(all(
+            chart.y >= block.y + block.h or chart.y + chart.h <= block.y
+            for block in result.blocks if block.block_id != chart.block_id
+        ))
 
     def test_existing_block_can_be_repositioned_and_resized_without_lineage_change(self) -> None:
         """기존 Artifact block을 상대 위치로 옮겨도 ID와 lineage를 그대로 보존한다."""

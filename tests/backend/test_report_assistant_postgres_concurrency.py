@@ -233,6 +233,134 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
         current = await self.repository.get_assistant_session(str(self.assistant_request_id))
         self.assertIn(UUID(str(current["patch_request_id"])), replacements)
 
+    async def test_refresh_recovery_finishes_selected_patch_once(self) -> None:
+        """선택 승인 도중 새 요청으로 복구해도 선택 항목만 한 Revision에 저장한다."""
+
+        await self.repository.start_assistant_session(
+            str(self.assistant_request_id),
+            str(self.definition_id),
+            1,
+            str(self.artifact_id),
+            "a" * 64,
+            "report.assistant.turn",
+            "PROMPT-v1.8.6",
+            "b" * 64,
+        )
+        patch = {
+            "summary": "제목 변경과 요약 블록 추가를 제안합니다.",
+            "operations": [
+                {"op": "set_report_title", "title": "복구 후 저장된 보고서"},
+                {
+                    "op": "add_text",
+                    "title": "미선택 요약",
+                    "content": "선택하지 않은 변경입니다.",
+                    "evidence_refs": ["artifact_narrative"],
+                },
+            ],
+        }
+        proposed = await self.repository.record_existing_assistant_patch_proposal(
+            str(self.assistant_request_id),
+            str(self.patch_request_id),
+            "c" * 64,
+            "d" * 64,
+            "MODEL-RELEASE-v1.38.0",
+            "report.assistant.turn",
+            "PROMPT-v1.8.6",
+            "e" * 64,
+            patch,
+            (),
+            "제목만 바꿔줘",
+            "두 가지 변경안을 준비했습니다.",
+        )
+        self.assertEqual("waiting_patch_approval", proposed["phase"])
+
+        waiting_after_refresh = await PostgresReportRepository(
+            self.database_url,
+            self.owner,
+            session_factory=self.factory,
+        ).get_assistant_session(str(self.assistant_request_id))
+        self.assertEqual("waiting_patch_approval", waiting_after_refresh["phase"])
+        self.assertEqual(2, len(waiting_after_refresh["report_patch_json"]["operations"]))
+
+        saving, claimed = await self.repository.decide_existing_assistant_patch(
+            str(self.assistant_request_id),
+            str(self.patch_request_id),
+            True,
+            (0,),
+        )
+        self.assertTrue(claimed)
+        self.assertEqual("saving_revision", saving["phase"])
+        self.assertEqual((0,), tuple(saving["approved_operation_indexes"]))
+
+        recovered_repository = PostgresReportRepository(
+            self.database_url,
+            self.owner,
+            session_factory=self.factory,
+        )
+        recovered = await recovered_repository.get_assistant_session(
+            str(self.assistant_request_id)
+        )
+        self.assertEqual("saving_revision", recovered["phase"])
+        self.assertEqual((0,), tuple(recovered["approved_operation_indexes"]))
+
+        resumed, claimed_again = await recovered_repository.decide_existing_assistant_patch(
+            str(self.assistant_request_id),
+            str(self.patch_request_id),
+            True,
+            (0,),
+        )
+        self.assertFalse(claimed_again)
+        self.assertEqual("saving_revision", resumed["phase"])
+
+        source = await recovered_repository.get_version(str(self.definition_id), 1)
+        patched = replace(source, title="복구 후 저장된 보고서")
+        completed = await recovered_repository.finalize_existing_assistant_patch(
+            str(self.assistant_request_id),
+            "c" * 64,
+            "d" * 64,
+            "MODEL-RELEASE-v1.38.0",
+            "report.assistant.turn",
+            "PROMPT-v1.8.6",
+            "e" * 64,
+            patch,
+            patched,
+            expected_phase="saving_revision",
+        )
+        self.assertEqual("completed", completed["phase"])
+        self.assertEqual(2, completed["result_revision"])
+
+        completed_after_refresh = await PostgresReportRepository(
+            self.database_url,
+            self.owner,
+            session_factory=self.factory,
+        ).get_assistant_session(str(self.assistant_request_id))
+        self.assertEqual("completed", completed_after_refresh["phase"])
+        self.assertEqual(2, completed_after_refresh["result_revision"])
+
+        saved = await recovered_repository.get_version(str(self.definition_id), 2)
+        self.assertEqual("복구 후 저장된 보고서", saved.title)
+        self.assertEqual(source.blocks, saved.blocks)
+
+        repeated = await recovered_repository.finalize_existing_assistant_patch(
+            str(self.assistant_request_id),
+            "c" * 64,
+            "d" * 64,
+            "MODEL-RELEASE-v1.38.0",
+            "report.assistant.turn",
+            "PROMPT-v1.8.6",
+            "e" * 64,
+            patch,
+            patched,
+            expected_phase="saving_revision",
+        )
+        self.assertEqual(2, repeated["result_revision"])
+        with psycopg.connect(self.database_url) as connection:
+            versions = connection.execute(
+                "SELECT count(*) FROM report_v1.report_definition_versions WHERE definition_id = %s",
+                (self.definition_id,),
+            ).fetchone()[0]
+        self.assertEqual(2, versions)
+
 
 if __name__ == "__main__":
     unittest.main()

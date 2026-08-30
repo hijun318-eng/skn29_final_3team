@@ -31,7 +31,8 @@ def _deployment_values() -> dict[str, str]:
         values[key.strip()] = value.strip()
     required = {
         "APP_ADMIN_USER", "APP_ADMIN_PASSWORD", "APP_MIGRATION_USER",
-        "APP_MIGRATION_PASSWORD", "APP_DB_USER", "AUTH_PRINCIPALS_HOST_FILE",
+        "APP_MIGRATION_PASSWORD", "APP_DB_USER", "APP_CATALOG_PUBLISHER_USER",
+        "AUTH_PRINCIPALS_HOST_FILE",
     }
     missing = sorted(key for key in required if not values.get(key))
     if missing:
@@ -56,7 +57,14 @@ def _analyst_subject(values: dict[str, str]) -> UUID:
 def _dsn(user: str, password: str, database: str) -> str:
     """로컬 loopback PostgreSQL DSN을 URL credential escaping과 함께 생성한다."""
 
-    return f"postgresql://{quote(user)}:{quote(password)}@127.0.0.1:15432/{database}"
+    port_text = os.getenv("ANSWERVICE_APP_POSTGRES_PORT", "15432")
+    try:
+        port = int(port_text)
+    except ValueError as error:
+        raise RuntimeError("ANSWERVICE_APP_POSTGRES_PORT는 정수여야 합니다.") from error
+    if not 1 <= port <= 65535:
+        raise RuntimeError("ANSWERVICE_APP_POSTGRES_PORT는 1~65535 범위여야 합니다.")
+    return f"postgresql://{quote(user)}:{quote(password)}@127.0.0.1:{port}/{database}"
 
 
 def _ensure_database(values: dict[str, str]) -> None:
@@ -84,20 +92,29 @@ def _migrate(values: dict[str, str]) -> str:
     config.set_main_option("script_location", str(backend / "migrations"))
     config.set_main_option(
         "sqlalchemy.url",
-        _dsn(values["APP_MIGRATION_USER"], values["APP_MIGRATION_PASSWORD"], E2E_DATABASE),
+        _dsn(
+            values["APP_MIGRATION_USER"],
+            values["APP_MIGRATION_PASSWORD"],
+            E2E_DATABASE,
+        ).replace("%", "%%"),
     )
-    previous = os.environ.get("APP_DB_USER")
-    os.environ["APP_DB_USER"] = values["APP_DB_USER"]
+    migration_roles = {
+        "APP_DB_USER": values["APP_DB_USER"],
+        "APP_CATALOG_PUBLISHER_USER": values["APP_CATALOG_PUBLISHER_USER"],
+    }
+    previous = {name: os.environ.get(name) for name in migration_roles}
+    os.environ.update(migration_roles)
     try:
         head = ScriptDirectory.from_config(config).get_current_head()
         if head is None:
             raise RuntimeError("Alembic head를 확인할 수 없습니다.")
         command.upgrade(config, "head")
     finally:
-        if previous is None:
-            os.environ.pop("APP_DB_USER", None)
-        else:
-            os.environ["APP_DB_USER"] = previous
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     return head
 
 

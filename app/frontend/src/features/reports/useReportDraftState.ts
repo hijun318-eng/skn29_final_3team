@@ -357,7 +357,16 @@ export function useReportDraftState(
           optionsRef.current.onError?.(result.errors?.[0] || `${ARTIFACT_VIEW_LABELS[view]} 요소를 추가하지 못했습니다.`);
           return false;
         }
-        if (!commitBlocks(result.blocks)) return false;
+        const inserted = result.blocks.find((item) => item.id === blockId);
+        const positioned = position && (position.x !== undefined || position.y !== undefined)
+          ? placeDraftBlock(
+              result.blocks,
+              blockId,
+              position.requestedX ?? position.x ?? inserted?.x ?? 0,
+              position.y ?? inserted?.y ?? 0,
+            ) as readonly DraftReportBlock[]
+          : result.blocks;
+        if (!commitBlocks(positioned)) return false;
         selectBlock(blockId);
         optionsRef.current.onNotice?.(`${ARTIFACT_VIEW_LABELS[view]} 요소를 독립 블록으로 추가했습니다.`);
         return true;

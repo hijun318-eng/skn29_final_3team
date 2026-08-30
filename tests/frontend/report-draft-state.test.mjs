@@ -69,6 +69,57 @@ for (const action of [
   "updateReportTitle", "commitReportTitle",
 ]) assert.equal(typeof state[action], "function", `${action} must be a stable hook action`);
 
+const atomicArtifact = {
+  summary: "승인된 분석 요약",
+  metrics: [{ metric_id: "room_revenue", label: "객실 매출", value: 123, unit: "KRW" }],
+};
+const atomicSource = {
+  artifactId: "artifact-atomic",
+  artifactChecksum: "sha256:atomic",
+  queryId: "query-atomic",
+  title: "객실 매출 분석",
+};
+const atomicTemplates = new Map([
+  ["artifact-summary", { id: "artifact-summary", view: "summary", w: 6, h: 4 }],
+  ["artifact-kpi", { id: "artifact-kpi", view: "kpi", w: 6, h: 5 }],
+]);
+function renderAtomicDraft(initialBlocks) {
+  let atomicState;
+  function AtomicHookProbe() {
+    atomicState = useReportDraftState({
+      editable: true,
+      initialBlocks,
+      artifacts: { [atomicSource.artifactId]: atomicArtifact },
+      artifactSources: [atomicSource],
+      selectedArtifactId: atomicSource.artifactId,
+      templates: atomicTemplates,
+    });
+    return createElement("span", null, atomicState.blocks.length);
+  }
+  renderToStaticMarkup(createElement(AtomicHookProbe));
+  return atomicState;
+}
+
+const emptyAtomicDraft = renderAtomicDraft([]);
+assert.equal(emptyAtomicDraft.addTemplateBlock("artifact-summary", { x: 0, y: 0, w: 6 }), true);
+assert.deepEqual(
+  emptyAtomicDraft.blocksRef.current.map(({ type, x, y, w }) => ({ type, x, y, w })),
+  [{ type: "artifact", x: 0, y: 0, w: 6 }],
+  "an atomic summary dropped on an empty page must commit at the preview coordinates",
+);
+
+const adjacentAtomicDraft = renderAtomicDraft(sourceBlocks);
+assert.equal(adjacentAtomicDraft.addTemplateBlock("artifact-kpi", { x: 6, y: 0, w: 6, requestedX: 6 }), true);
+const adjacentBlocks = adjacentAtomicDraft.blocksRef.current;
+assert.deepEqual(
+  adjacentBlocks.map(({ type, x, y, w }) => ({ type, x, y, w })),
+  [
+    { type: "text", x: 0, y: 0, w: 6 },
+    { type: "artifact", x: 6, y: 0, w: 6 },
+  ],
+  "an atomic KPI dropped beside a full-width block must commit at the preview coordinates",
+);
+
 const draftStateSource = readFileSync(new URL("../../app/frontend/src/features/reports/useReportDraftState.ts", import.meta.url), "utf8");
 assert.match(draftStateSource, /window\.addEventListener\("beforeunload", warnBeforeUnload\)/);
 assert.match(draftStateSource, /window\.removeEventListener\("beforeunload", warnBeforeUnload\)/);

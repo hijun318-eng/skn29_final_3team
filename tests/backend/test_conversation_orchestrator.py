@@ -1874,16 +1874,17 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             factory_calls += 1
             return Service()
 
-        first = await self.orchestrator.dispatch_agent_command(
-            request,
-            ConcurrentExecutionGate(),
-            service_factory,
-        )
-        replay = await self.orchestrator.dispatch_agent_command(
-            request,
-            ConcurrentExecutionGate(),
-            service_factory,
-        )
+        with patch.dict(os.environ, {"RAG_FEATURE_ENABLED": "1"}):
+            first = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                service_factory,
+            )
+            replay = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                service_factory,
+            )
 
         self.assertEqual(first["data"]["type"], "INTERNAL_GUIDELINE")
         self.assertEqual(
@@ -1959,6 +1960,52 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(replay["data"]["status"], "FAILED")
         self.assertTrue(replay["data"]["is_idempotent_replay"])
         self.assertEqual(resolver_calls, 1)
+
+    async def test_capability_route_requires_and_accepts_explicit_dispatch_gate(self) -> None:
+        """승인된 probe 교체 시에만 dispatch에서 capability 결정을 명시적으로 연다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Capability route 연결",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="2025년 8월 객실 매출",
+                idempotency_key="agent-capability-route-enabled",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+
+        class CapabilityResolver:
+            decision_sources = frozenset(
+                {AgentDecisionSource.CAPABILITY_EVIDENCE}
+            )
+
+            async def resolve(
+                self,
+                admitted_request: AgentRequest,
+            ) -> SupervisorDecision:
+                if admitted_request.context.command_id is None:
+                    raise AssertionError("route resolver 전에 admission이 필요합니다.")
+                return SupervisorDecision(
+                    agent=AgentKind.ANALYSIS_WORKFLOW,
+                    reason="ANALYSIS_CAPABILITY_MATCH",
+                    source=AgentDecisionSource.CAPABILITY_EVIDENCE,
+                    evidence_refs=("analysis-probe:approved-replacement",),
+                )
+
+        result = await self.orchestrator.dispatch_agent_command(
+            request,
+            ConcurrentExecutionGate(),
+            lambda: None,
+            route_resolver=CapabilityResolver(),
+            capability_routing_enabled=True,
+        )
+
+        self.assertEqual(result["data"]["status"], "SUCCESS")
+        self.assertEqual(len(self.submitted_requests), 1)
 
     async def test_agent_route_renews_lease_before_port_execution(self) -> None:
         """장시간 resolver 구간도 admitted command lease heartbeat로 보호한다."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 
@@ -27,12 +28,29 @@ from app.services.execution_control import ConcurrentExecutionGate
 class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
     """미구현 ML·Report Agent가 빈 port로 등록되지 않게 한다."""
 
-    def test_registry_contains_only_concrete_conversation_agents(self) -> None:
-        supervisor = build_conversation_agent_supervisor(
-            orchestrator=object(),
-            execution_gate=ConcurrentExecutionGate(),
-            internal_manual_query_service_factory=lambda: None,
+    def test_registry_excludes_disabled_optional_agents(self) -> None:
+        with patch.dict("os.environ", {"RAG_FEATURE_ENABLED": "0"}):
+            supervisor = build_conversation_agent_supervisor(
+                orchestrator=object(),
+                execution_gate=ConcurrentExecutionGate(),
+                internal_manual_query_service_factory=lambda: None,
+            )
+
+        self.assertEqual(
+            supervisor.registered_agents,
+            frozenset({AgentKind.ANALYSIS_WORKFLOW}),
         )
+
+    def test_registry_adds_only_the_explicitly_enabled_rag_agent(self) -> None:
+        with patch.dict("os.environ", {
+            "RAG_FEATURE_ENABLED": "1",
+            "ML_FEATURE_ENABLED": "1",
+        }):
+            supervisor = build_conversation_agent_supervisor(
+                orchestrator=object(),
+                execution_gate=ConcurrentExecutionGate(),
+                internal_manual_query_service_factory=lambda: None,
+            )
 
         self.assertEqual(
             supervisor.registered_agents,

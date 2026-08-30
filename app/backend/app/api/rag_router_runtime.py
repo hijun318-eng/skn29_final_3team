@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from app.adapters.conversation_repository import ConversationRepository
 from app.contracts import RuntimeFeature
 from app.database import get_sessionmaker

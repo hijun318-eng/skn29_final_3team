@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.agent_contracts import AgentDecisionSource
+from app.contracts import RuntimeFeature
 from app.ports.agent import AgentKind
 from app.services.agent_supervisor import (
     AgentDispatchError,
@@ -18,6 +19,7 @@ from app.services.conversation_agent_ports import (
 )
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryService
+from app.runtime_features import runtime_feature_enabled
 
 
 def build_conversation_agent_supervisor(
@@ -31,7 +33,7 @@ def build_conversation_agent_supervisor(
     admission: Any | None = None,
     capability_routing_enabled: bool = False,
 ) -> DeterministicAgentSupervisor:
-    """현재 완성된 분석·내부지침 port만 등록하고 미구현 Agent는 제외한다."""
+    """필수 분석 Port와 명시적으로 활성화된 선택 Port만 production에 등록한다."""
 
     if type(capability_routing_enabled) is not bool:
         raise AgentDispatchError(
@@ -64,19 +66,22 @@ def build_conversation_agent_supervisor(
                 "현재 registry에서 자동 capability resolver가 승인되지 않았습니다.",
             )
 
+    ports = {
+        AgentKind.ANALYSIS_WORKFLOW: AnalysisWorkflowAgentPort(
+            orchestrator,
+            execution_gate,
+            admission=admission,
+        ),
+    }
+    if runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE):
+        ports[AgentKind.INTERNAL_GUIDELINE] = InternalGuidelineAgentPort(
+            orchestrator,
+            internal_manual_query_service_factory,
+            admission=admission,
+        )
+
     return DeterministicAgentSupervisor(
-        {
-            AgentKind.ANALYSIS_WORKFLOW: AnalysisWorkflowAgentPort(
-                orchestrator,
-                execution_gate,
-                admission=admission,
-            ),
-            AgentKind.INTERNAL_GUIDELINE: InternalGuidelineAgentPort(
-                orchestrator,
-                internal_manual_query_service_factory,
-                admission=admission,
-            ),
-        },
+        ports,
         route_resolver=route_resolver,
         allowed_decision_sources=frozenset(allowed_decision_sources),
     )

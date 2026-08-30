@@ -13,7 +13,8 @@ from pydantic import Field
 from app.authorization import has_capability
 from app.api.rag_router_runtime import internal_manual_query_service
 from app.context import session_context
-from app.contracts import Capability, ContractModel, RequestContext
+from app.contracts import Capability, ContractModel, RequestContext, RuntimeFeature
+from app.runtime_features import runtime_feature_enabled
 from app.services.internal_manual_query import (
     InternalManualQuery,
     InternalManualQueryError,
@@ -34,6 +35,16 @@ class RagQueryRequest(ContractModel):
 
 
 rag_router = APIRouter()
+
+
+def _require_internal_guideline_enabled() -> None:
+    """비활성 RAG API가 Gateway나 Registry에 접근하지 못하게 차단한다."""
+
+    if not runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE):
+        raise HTTPException(
+            status_code=503,
+            detail="내부지침 검색 기능이 비활성화되었습니다.",
+        )
 
 
 @rag_router.post("/rag/query", operation_id="queryInternalManual")
@@ -68,6 +79,7 @@ async def list_internal_manuals(
     """현재 역할이 열람할 수 있는 승인 문서 목록을 동적으로 반환한다."""
     if not has_capability(context.role, Capability.RUN_ANALYSIS):
         raise HTTPException(status_code=403, detail="RAG 문서 열람 권한이 없습니다.")
+    _require_internal_guideline_enabled()
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "")
     if not database_url:
         raise HTTPException(status_code=503, detail="RAG Tool Registry를 사용할 수 없습니다.")
@@ -86,6 +98,7 @@ async def get_internal_manual_pdf(
     """요청 주체가 열람할 수 있는 내부 매뉴얼 PDF만 중계한다."""
     if not has_capability(context.role, Capability.RUN_ANALYSIS):
         raise HTTPException(status_code=403, detail="RAG 문서 열람 권한이 없습니다.")
+    _require_internal_guideline_enabled()
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "")
     if not database_url:
         raise HTTPException(status_code=503, detail="RAG Tool Registry를 사용할 수 없습니다.")

@@ -962,8 +962,14 @@ class ConversationOrchestrator:
         internal_manual_query_service_factory: Callable[[], Any],
         *,
         route_resolver: "AgentRouteResolver | None" = None,
+        capability_routing_enabled: bool = False,
     ) -> dict[str, Any]:
-        """공통 admission 후 Supervisor가 고른 concrete AgentPort 하나만 실행한다."""
+        """공통 admission 후 명시적으로 승인된 Supervisor 결정만 실행한다.
+
+        ``capability_routing_enabled``는 교체 AgentPort·probe가 함께 승인된 조립
+        지점에서만 전달하는 code gate다. 공개 API의 기본 경로는 이 값을 넘기지 않아
+        기존 명시 route와 governed analysis 기본 경로만 유지한다.
+        """
 
         from app.ports.agent import AgentRequest
         from app.services.agent_supervisor import AgentDispatchError
@@ -1027,6 +1033,7 @@ class ConversationOrchestrator:
                 internal_manual_query_service_factory,
                 route_resolver=route_resolver,
                 admission=admission,
+                capability_routing_enabled=capability_routing_enabled,
             )
             route_lease_stop = asyncio.Event()
             route_lease_lost = asyncio.Event()

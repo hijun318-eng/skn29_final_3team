@@ -31,7 +31,6 @@ export const ReportDocumentView = memo(function ReportDocumentView({
   isDirty,
   notice,
   onApprove,
-  onChangeOrientation,
   onLeave,
   onOpenFinalAsset,
   onReloadFinalDocument,
@@ -72,7 +71,7 @@ export const ReportDocumentView = memo(function ReportDocumentView({
     <div ref={rootRef} className="page-content legacy-report-document generated-preview" data-report-render-root="screen-preview">
       <div className="legacy-document-actions">
         <button className="secondary" onClick={onLeave} disabled={Boolean(pending)}><ArrowLeft size={14} />보고서 목록</button>
-        <div>{currencyControl}<div className="report-orientation-switch" role="group" aria-label={approved ? "확정된 A4 용지 방향" : "PDF A4 용지 방향"}><button type="button" aria-pressed={orientation === "landscape"} disabled={approved || Boolean(pending)} onClick={() => onChangeOrientation("landscape")}><Maximize2 size={14} />가로</button><button type="button" aria-pressed={orientation === "portrait"} disabled={approved || Boolean(pending)} onClick={() => onChangeOrientation("portrait")}><Minimize2 size={14} />세로</button></div>{presentation}{fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}<button onClick={onReturnToEditor} disabled={Boolean(pending)}><ArrowLeft size={14} />{approved ? "새 버전으로 편집" : "편집으로 돌아가기"}</button>{isAdmin && approved && <button onClick={onRun} disabled={Boolean(pending)}><Send size={14} />보고서 실행</button>}</div>
+        <div>{currencyControl}<div className="report-orientation-switch" role="group" aria-label="읽기 전용 A4 용지 방향"><button type="button" aria-pressed={orientation === "landscape"} disabled><Maximize2 size={14} />가로</button><button type="button" aria-pressed={orientation === "portrait"} disabled><Minimize2 size={14} />세로</button></div>{presentation}{fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}<button onClick={onReturnToEditor} disabled={Boolean(pending)}><ArrowLeft size={14} />{approved ? "새 버전으로 편집" : "편집으로 돌아가기"}</button>{isAdmin && approved && <button onClick={onRun} disabled={Boolean(pending)}><Send size={14} />보고서 실행</button>}</div>
       </div>
       {error && <p ref={errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{error}</p>}
       {notice && <p className="report-api-state" role="status"><Check size={17} />{notice}</p>}

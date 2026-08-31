@@ -34,9 +34,9 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     <ReportCurrencyControl
       value={draft.reportCurrencyPolicy.displayUnit}
       onChange={draft.changeCurrencyDisplayUnit}
-      disabled={lifecycle.selectedDefinition?.status === "approved"}
+      disabled
     />
-  ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit, lifecycle.selectedDefinition?.status]);
+  ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit]);
   const addChartBlock = useCallback(
     (chartType) => draft.addTemplateBlock("artifact-chart", null, { chartType }),
     [draft.addTemplateBlock],
@@ -77,7 +77,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       isDirty={draft.isDirty}
       notice={lifecycle.notice}
       onApprove={page.approveDefinition}
-      onChangeOrientation={draft.changeOrientation}
       onLeave={page.leaveEditor}
       onOpenFinalAsset={lifecycle.openFinalAsset}
       onReloadFinalDocument={page.reloadFinalDocument}

@@ -551,6 +551,29 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("<svg", html)
         self.assertNotIn("<table>", html)
 
+    def test_atomic_chart_and_table_do_not_synthesize_kpi_cards(self):
+        for block_type, expected_markup in (("chart", "<svg"), ("table", "<table>")):
+            with self.subTest(block_type=block_type):
+                report_source = source()
+                block = deepcopy(
+                    report_source["blocks"][1 if block_type == "chart" else 2]
+                )
+                block.update({
+                    "block_id": f"atomic-{block_type}",
+                    "type": block_type,
+                    "content": json.dumps({"visibleViews": [block_type]}),
+                    "w": 12,
+                })
+                report_source["blocks"] = [block]
+                checksum = canonical_source_checksum(report_source, "landscape")
+
+                html = build_report_html(
+                    report_source, "landscape", APPROVED_AT, checksum
+                )
+
+                self.assertIn(expected_markup, html)
+                self.assertNotIn('<div class="metrics">', html)
+
     def test_explicit_synthetic_source_is_disclosed_on_cover_and_artifact(self):
         report_source = deepcopy(source())
         report_source["blocks"] = [report_source["blocks"][1]]

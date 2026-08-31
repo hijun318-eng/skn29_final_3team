@@ -28,6 +28,9 @@ const viewport = source("app/frontend/src/features/reports/reportEditorViewport.
 const normalization = source("app/frontend/src/contracts/reportNormalization.ts");
 const reportPresentation = source("app/frontend/src/features/reports/components/reportPresentation.js");
 const draftOperations = source("app/frontend/src/features/reports/reportDraftOperations.js");
+const documentViewBinding = page.match(
+  /return <ReportDocumentView[\s\S]*?selectedDefinition=\{lifecycle\.selectedDefinition\}\s*\/>;/,
+)?.[0] || "";
 
 assert.match(flags, /VITE_REPORT_BUILDER_V2 !== "false"/);
 assert.doesNotMatch(flags, /SHOWCASE/);
@@ -50,6 +53,11 @@ assert.match(builder, /builder-workspace/);
 assert.doesNotMatch(builder, /requestFullscreen|\{presentation\}/);
 assert.match(documentView, /requestFullscreen/);
 assert.match(documentView, /\{presentation\}/);
+assert.match(page, /const documentCurrencyControl = useMemo\([\s\S]*?<ReportCurrencyControl[\s\S]*?disabled\s*\/>/);
+assert.ok(documentViewBinding);
+assert.doesNotMatch(documentViewBinding, /onChangeOrientation=/);
+assert.match(documentView, /aria-label="읽기 전용 A4 용지 방향"/);
+assert.doesNotMatch(documentView, /onChangeOrientation/);
 assert.match(builder, /pages\.map/);
 assert.match(builder, /<ReportShortcutHelp/);
 assert.match(builder, /rightPanel === "assistant"/);
@@ -223,6 +231,10 @@ assert.doesNotMatch(artifactLibrary, /useDraggable|`artifact:\$\{/);
 for (const templateId of ["artifact-summary", "artifact-kpi", "artifact-chart", "artifact-table"]) {
   assert.match(reportPresentation, new RegExp(`id: "${templateId}"`));
 }
+assert.match(reportPresentation, /id: "performance-outlook-report"/);
+assert.match(reportPresentation, /title: "성과·원인·전망 보고서"/);
+assert.match(reportPresentation, /## 주요 성과[\s\S]*## 변동 원인[\s\S]*## 향후 전망/);
+assert.doesNotMatch(reportPresentation, /hotel-sales-report|호텔 매출 보고서|객실·F&B·연회/);
 assert.match(builderStyles, /report-artifact-library-tile\.is-selected/);
 assert.match(builderStyles, /report-library-subgroup \.report-insert-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 assert.doesNotMatch(page, /Artifact 전체로 추가/);

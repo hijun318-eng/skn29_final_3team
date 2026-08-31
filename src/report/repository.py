@@ -4,7 +4,13 @@ from collections.abc import Awaitable
 from datetime import datetime
 from typing import Protocol
 
-from .domain import ManualRunCommand, ReportBlock, ReportDefinitionVersion, ReportRun
+from .domain import (
+    ManualRunCommand,
+    ReportBlock,
+    ReportDefinitionLifecycle,
+    ReportDefinitionVersion,
+    ReportRun,
+)
 
 
 class ReportRevisionConflict(ValueError):
@@ -13,6 +19,10 @@ class ReportRevisionConflict(ValueError):
     def __init__(self, current_revision: int) -> None:
         super().__init__("REPORT_REVISION_CONFLICT")
         self.current_revision = current_revision
+
+
+class ReportLifecycleConflict(ValueError):
+    """진행 중 실행이나 Assistant 때문에 보관 전이를 안전하게 수행할 수 없음을 나타낸다."""
 
 
 class ReportRepository(Protocol):
@@ -32,8 +42,30 @@ class ReportRepository(Protocol):
 
     def list_definitions(
         self,
+        *,
+        archived: bool = False,
     ) -> tuple[ReportDefinitionVersion, ...] | Awaitable[tuple[ReportDefinitionVersion, ...]]:
-        """호출자 권한 범위에서 저장된 보고서 정의 버전들을 안정된 tuple로 반환한다."""
+        """호출자 범위에서 active 또는 명시한 archived 보고서 버전들을 반환한다."""
+        ...
+
+    def archive_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> ReportDefinitionLifecycle | Awaitable[ReportDefinitionLifecycle]:
+        """소유 보고서를 멱등 보관하고 안전하지 않은 진행 상태가 있으면 전이를 거부한다."""
+        ...
+
+    def restore_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> ReportDefinitionLifecycle | Awaitable[ReportDefinitionLifecycle]:
+        """소유 보고서를 멱등 복원하되 이전 schedule을 자동 재활성화하지 않는다."""
         ...
 
     def approve(

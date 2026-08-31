@@ -4994,6 +4994,51 @@
         "title": "ReportBlockRunResponse",
         "type": "object"
       },
+      "ReportDefinitionLifecycleResponse": {
+        "additionalProperties": false,
+        "description": "비파괴 보관·복원 후 정의 ID와 현재 lifecycle metadata를 반환한다.",
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "archived"
+        ],
+        "title": "ReportDefinitionLifecycleResponse",
+        "type": "object"
+      },
       "ReportDefinitionListResponse": {
         "additionalProperties": false,
         "description": "계약 버전과 함께 접근 가능한 보고서 정의 버전 목록을 반환한다.",
@@ -5032,6 +5077,30 @@
               }
             ],
             "title": "Approved At"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By"
           },
           "blocks": {
             "items": {
@@ -10057,9 +10126,19 @@
     },
     "/reports/definitions": {
       "get": {
-        "description": "분석가에게 자기 보고서만, 관리자에게 허용된 전체 definition version을 최신순으로 반환한다.",
+        "description": "기본 active 목록 또는 명시한 archived 목록을 역할 범위와 소유권에 맞게 반환한다.",
         "operationId": "reportListDefinitions",
         "parameters": [
+          {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archived",
+              "type": "boolean"
+            }
+          },
           {
             "in": "header",
             "name": "X-Trace-Id",
@@ -10187,6 +10266,150 @@
           }
         ],
         "summary": "Create Definition"
+      }
+    },
+    "/reports/definitions/{definition_id}/archive": {
+      "post": {
+        "description": "소유 보고서를 비파괴 보관하고 진행 중 실행·Assistant가 있으면 409로 거부한다.",
+        "operationId": "reportArchiveDefinition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDefinitionLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Archive Definition"
+      }
+    },
+    "/reports/definitions/{definition_id}/restore": {
+      "post": {
+        "description": "소유 보고서를 복원하되 보관 시 비활성화한 schedule은 자동으로 다시 켜지 않는다.",
+        "operationId": "reportRestoreDefinition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDefinitionLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Restore Definition"
       }
     },
     "/reports/definitions/{definition_id}/versions/{version}": {

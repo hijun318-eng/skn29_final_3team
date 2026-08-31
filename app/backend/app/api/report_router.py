@@ -51,6 +51,7 @@ from app.report_contracts import (
     ManualRunCommandResponse,
     ReplaceReportBlocksRequest,
     ReportDefinitionListResponse,
+    ReportDefinitionLifecycleResponse,
     ReportDefinitionResponse,
     ReportDocumentResponse,
     ReportArtifactResponse,
@@ -985,9 +986,52 @@ async def get_report_artifact(
 )
 async def list_definitions(
     context: Annotated[RequestContext, Depends(report_draft_context)],
+    archived: bool = False,
 ) -> dict[str, Any]:
-    """분석가에게 자기 보고서만, 관리자에게 허용된 전체 definition version을 최신순으로 반환한다."""
-    return await _call(lambda: _router(context).list_definitions())
+    """기본 active 목록 또는 명시한 archived 목록을 역할 범위와 소유권에 맞게 반환한다."""
+    return await _call(
+        lambda: _router(context).list_definitions(archived=archived)
+    )
+
+
+@report_router.post(
+    "/reports/definitions/{definition_id}/archive",
+    operation_id="reportArchiveDefinition",
+    response_model=ReportDefinitionLifecycleResponse,
+)
+async def archive_definition(
+    definition_id: str,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """소유 보고서를 비파괴 보관하고 진행 중 실행·Assistant가 있으면 409로 거부한다."""
+
+    return await _call(
+        lambda: _router(context).archive_definition(
+            definition_id,
+            actor_role=context.role.value,
+            trace_id=context.trace_id,
+        )
+    )
+
+
+@report_router.post(
+    "/reports/definitions/{definition_id}/restore",
+    operation_id="reportRestoreDefinition",
+    response_model=ReportDefinitionLifecycleResponse,
+)
+async def restore_definition(
+    definition_id: str,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """소유 보고서를 복원하되 보관 시 비활성화한 schedule은 자동으로 다시 켜지 않는다."""
+
+    return await _call(
+        lambda: _router(context).restore_definition(
+            definition_id,
+            actor_role=context.role.value,
+            trace_id=context.trace_id,
+        )
+    )
 
 
 @report_router.post(

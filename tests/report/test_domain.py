@@ -212,6 +212,32 @@ class ReportDomainTest(unittest.TestCase):
                     draft_revision=invalid,
                 )
 
+    def test_archived_definition_is_read_only_but_keeps_its_snapshot(self):
+        archived = ReportDefinitionVersion(
+            "report-archived",
+            1,
+            DefinitionStatus.DRAFT,
+            "보관 보고서",
+            (),
+            archived_at=datetime(2026, 8, 31, tzinfo=timezone.utc),
+            archived_by="00000000-0000-0000-0000-000000000001",
+        )
+
+        self.assertTrue(archived.is_archived)
+        with self.assertRaisesRegex(ValueError, "보관된"):
+            archived.replace_blocks(())
+        with self.assertRaisesRegex(ValueError, "보관된"):
+            archived.approve(datetime(2026, 8, 31, tzinfo=timezone.utc))
+        with self.assertRaisesRegex(ValueError, "complete"):
+            ReportDefinitionVersion(
+                "report-invalid-archive",
+                1,
+                DefinitionStatus.DRAFT,
+                "불완전 보관 보고서",
+                (),
+                archived_at=datetime(2026, 8, 31, tzinfo=timezone.utc),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -166,12 +166,34 @@ class ReportDefinitionResponse(ReportContractModel):
     orientation: ReportOrientation
     currency_display_unit: CurrencyDisplayUnit
     draft_revision: int = Field(ge=1)
+    archived_at: datetime | None = None
+    archived_by: UUID | None = None
 
 
 class ReportDefinitionListResponse(ReportContractModel):
     """계약 버전과 함께 접근 가능한 보고서 정의 버전 목록을 반환한다."""
     contract_version: str
     items: list[ReportDefinitionResponse]
+
+
+class ReportDefinitionLifecycleResponse(ReportContractModel):
+    """비파괴 보관·복원 후 정의 ID와 현재 lifecycle metadata를 반환한다."""
+
+    definition_id: UUID
+    archived: bool
+    archived_at: datetime | None = None
+    archived_by: UUID | None = None
+
+    @model_validator(mode="after")
+    def require_consistent_archive_state(self) -> "ReportDefinitionLifecycleResponse":
+        """archived flag와 시각·actor 쌍이 서로 다른 상태를 표현하지 못하게 한다."""
+
+        has_receipt = self.archived_at is not None and self.archived_by is not None
+        if self.archived != has_receipt:
+            raise ValueError("Report archive lifecycle 응답이 일관되지 않습니다.")
+        if (self.archived_at is None) != (self.archived_by is None):
+            raise ValueError("Report archive lifecycle metadata가 완전하지 않습니다.")
+        return self
 
 
 class ReportArtifactVersionResponse(ReportContractModel):

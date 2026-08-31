@@ -210,6 +210,8 @@ class ReportDefinitionVersion:
     permission_snapshot_id: str | None = None
     semantic_release_id: str | None = None
     draft_revision: int = 1
+    archived_at: datetime | None = None
+    archived_by: str | None = None
 
     def __post_init__(self) -> None:
         if not self.definition_id or self.version < 1:
@@ -236,9 +238,25 @@ class ReportDefinitionVersion:
         )
         if any(receipt) and not all(receipt):
             raise ValueError("Report definition release receipt must be complete")
+        if (self.archived_at is None) != (self.archived_by is None):
+            raise ValueError("Report archive timestamp and actor must be complete")
+        if self.archived_at is not None and (
+            self.archived_at.tzinfo is None or self.archived_at.utcoffset() is None
+        ):
+            raise ValueError("Report archive timestamp must include a timezone")
+        if self.archived_by is not None and not self.archived_by.strip():
+            raise ValueError("Report archive actor must not be blank")
+
+    @property
+    def is_archived(self) -> bool:
+        """정의 전체가 비파괴 보관되어 읽기 전용인지 반환한다."""
+
+        return self.archived_at is not None
 
     def approve(self, approved_at: datetime) -> "ReportDefinitionVersion":
         """초안만 지정 시각의 승인본으로 복제하며 이미 승인된 버전은 변경하지 않고 거부한다."""
+        if self.is_archived:
+            raise ValueError("보관된 Report definition은 승인할 수 없습니다.")
         if self.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft Report version만 승인할 수 있습니다.")
         return ReportDefinitionVersion(
@@ -258,6 +276,8 @@ class ReportDefinitionVersion:
 
     def next_draft(self) -> "ReportDefinitionVersion":
         """승인본의 내용과 표시 설정을 복사해 버전을 하나 올린 편집 가능한 초안을 만든다."""
+        if self.is_archived:
+            raise ValueError("보관된 Report definition에서 새 draft를 만들 수 없습니다.")
         if self.status is not DefinitionStatus.APPROVED:
             raise ValueError("승인된 Report version만 다음 draft의 기준이 될 수 있습니다.")
         return ReportDefinitionVersion(
@@ -283,6 +303,8 @@ class ReportDefinitionVersion:
         currency_display_unit: str | None = None,
     ) -> "ReportDefinitionVersion":
         """초안의 제목·블록·표시 설정을 교체한 새 값 객체를 반환하고 승인본 수정은 거부한다."""
+        if self.is_archived:
+            raise ValueError("보관된 Report definition은 편집할 수 없습니다.")
         if self.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
         return ReportDefinitionVersion(
@@ -302,6 +324,31 @@ class ReportDefinitionVersion:
             semantic_release_id=self.semantic_release_id,
             draft_revision=self.draft_revision,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ReportDefinitionLifecycle:
+    """보고서 정의의 active·archived 전이를 actor와 시각에 결속한 공개 상태다."""
+
+    definition_id: str
+    archived_at: datetime | None
+    archived_by: str | None
+
+    def __post_init__(self) -> None:
+        if not self.definition_id:
+            raise ValueError("Report definition id는 필수입니다.")
+        if (self.archived_at is None) != (self.archived_by is None):
+            raise ValueError("Report archive timestamp and actor must be complete")
+        if self.archived_at is not None and (
+            self.archived_at.tzinfo is None or self.archived_at.utcoffset() is None
+        ):
+            raise ValueError("Report archive timestamp must include a timezone")
+
+    @property
+    def archived(self) -> bool:
+        """현재 보고서가 보관 상태인지 반환한다."""
+
+        return self.archived_at is not None
 
 
 @dataclass(frozen=True, slots=True)

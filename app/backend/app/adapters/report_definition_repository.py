@@ -17,6 +17,7 @@ from src.report.domain import (
     BlockType,
     DefinitionStatus,
     ReportBlock,
+    ReportDefinitionLifecycle,
     ReportDefinitionVersion,
     normalize_report_block_content,
     normalize_report_title,
@@ -35,7 +36,7 @@ def _canonical_atomic_blocks(
         )
         for block in blocks
     )
-from src.report.repository import ReportRevisionConflict
+from src.report.repository import ReportLifecycleConflict, ReportRevisionConflict
 
 
 def _draft_blocks_match(
@@ -174,14 +175,17 @@ class ReportDefinitionRepositoryMixin:
                 owner = (await session.execute(
                     text(
                         """
-                        SELECT owner_id FROM report_v1.report_definitions
+                        SELECT owner_id, archived_at
+                        FROM report_v1.report_definitions
                         WHERE definition_id = :definition_id
                         """
                     ),
                     {"definition_id": definition_id},
-                )).scalar_one()
-                if owner != self._owner_id and not self._manage_all:
+                )).one()
+                if owner.owner_id != self._owner_id and not self._manage_all:
                     raise ValueError("다른 사용자의 Report definition입니다.")
+                if owner.archived_at is not None:
+                    raise ValueError("보관된 Report definition에는 draft를 추가할 수 없습니다.")
                 receipt = await self._resolve_report_receipt(
                     session,
                     (
@@ -318,14 +322,17 @@ class ReportDefinitionRepositoryMixin:
         owner = (await session.execute(
             text(
                 """
-                SELECT owner_id FROM report_v1.report_definitions
-                WHERE definition_id = :definition_id
+                    SELECT owner_id, archived_at
+                    FROM report_v1.report_definitions
+                    WHERE definition_id = :definition_id
                 """
             ),
             {"definition_id": definition_id},
-        )).scalar_one()
-        if owner != self._owner_id and not self._manage_all:
+        )).one()
+        if owner.owner_id != self._owner_id and not self._manage_all:
             raise ValueError("다른 사용자의 Report definition입니다.")
+        if owner.archived_at is not None:
+            raise ValueError("보관된 Report definition에는 draft를 추가할 수 없습니다.")
         receipt = await self._resolve_report_receipt(
             session,
             (
@@ -435,6 +442,193 @@ class ReportDefinitionRepositoryMixin:
             semantic_release_id=receipt[2],
         )
 
+    @staticmethod
+    def _validate_lifecycle_actor(actor_role: str, trace_id: str | None) -> None:
+        """감사 column 경계를 넘는 actor·trace를 lifecycle transaction 전에 거부한다."""
+
+        if not actor_role.strip() or len(actor_role) > 64:
+            raise ValueError("Report lifecycle actor role이 유효하지 않습니다.")
+        if trace_id is not None and (not trace_id.strip() or len(trace_id) > 128):
+            raise ValueError("Report lifecycle trace ID가 유효하지 않습니다.")
+
+    @staticmethod
+    def _lifecycle(row: Mapping[str, Any]) -> ReportDefinitionLifecycle:
+        return ReportDefinitionLifecycle(
+            definition_id=str(row["definition_id"]),
+            archived_at=row["archived_at"],
+            archived_by=(
+                str(row["archived_by"]) if row["archived_by"] is not None else None
+            ),
+        )
+
+    async def archive_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> ReportDefinitionLifecycle:
+        """소유 보고서를 멱등 보관하고 진행 중 작업이 없을 때 schedule을 함께 끈다."""
+
+        self._validate_lifecycle_actor(actor_role, trace_id)
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker.begin() as session:
+            current = (await session.execute(
+                text(
+                    """
+                    SELECT definition_id, archived_at, archived_by
+                    FROM report_v1.report_definitions
+                    WHERE definition_id = :definition_id AND owner_id = :owner_id
+                    FOR UPDATE
+                    """
+                ),
+                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+            )).mappings().one_or_none()
+            if current is None:
+                raise KeyError("Report definition을 찾을 수 없습니다.")
+            if current["archived_at"] is not None:
+                return self._lifecycle(current)
+
+            blocked = (await session.execute(
+                text(
+                    """
+                    SELECT
+                        EXISTS (
+                            SELECT 1 FROM report_v1.report_runs
+                            WHERE definition_id = :definition_id
+                              AND status IN ('queued', 'running')
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM report_v1.report_manual_run_commands
+                            WHERE definition_id = :definition_id
+                              AND status IN ('queued', 'running')
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM report_v1.report_assistant_requests
+                            WHERE (
+                                session_definition_id = :definition_id
+                                OR definition_id = :definition_id
+                            )
+                              AND (
+                                  status = 'running'
+                                  OR phase IN (
+                                      'ready', 'waiting_patch_approval',
+                                      'waiting_approval', 'running_data_agent',
+                                      'waiting_artifact', 'saving_revision'
+                                  )
+                              )
+                        )
+                    """
+                ),
+                {"definition_id": definition_uuid},
+            )).scalar_one()
+            if blocked:
+                raise ReportLifecycleConflict("REPORT_ARCHIVE_IN_PROGRESS")
+
+            await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_schedules
+                    SET enabled = false, updated_at = now()
+                    WHERE definition_id = :definition_id AND enabled
+                    """
+                ),
+                {"definition_id": definition_uuid},
+            )
+            archived = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_definitions
+                    SET archived_at = now(), archived_by = :owner_id
+                    WHERE definition_id = :definition_id
+                      AND owner_id = :owner_id AND archived_at IS NULL
+                    RETURNING definition_id, archived_at, archived_by
+                    """
+                ),
+                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+            )).mappings().one()
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO governance.audit_events (
+                        actor_user_id, actor_role, action_code,
+                        object_type, object_id, details_json_redacted, trace_id
+                    ) VALUES (
+                        :owner_id, :actor_role, 'REPORT_ARCHIVED',
+                        'REPORT_DEFINITION', :object_id, '{}'::jsonb, :trace_id
+                    )
+                    """
+                ),
+                {
+                    "owner_id": self._owner_id,
+                    "actor_role": actor_role,
+                    "object_id": str(definition_uuid),
+                    "trace_id": trace_id,
+                },
+            )
+            return self._lifecycle(archived)
+
+    async def restore_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> ReportDefinitionLifecycle:
+        """소유 보고서를 멱등 복원하며 보관 시 꺼진 schedule은 다시 켜지 않는다."""
+
+        self._validate_lifecycle_actor(actor_role, trace_id)
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker.begin() as session:
+            current = (await session.execute(
+                text(
+                    """
+                    SELECT definition_id, archived_at, archived_by
+                    FROM report_v1.report_definitions
+                    WHERE definition_id = :definition_id AND owner_id = :owner_id
+                    FOR UPDATE
+                    """
+                ),
+                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+            )).mappings().one_or_none()
+            if current is None:
+                raise KeyError("Report definition을 찾을 수 없습니다.")
+            if current["archived_at"] is None:
+                return self._lifecycle(current)
+
+            restored = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_definitions
+                    SET archived_at = NULL, archived_by = NULL
+                    WHERE definition_id = :definition_id
+                      AND owner_id = :owner_id AND archived_at IS NOT NULL
+                    RETURNING definition_id, archived_at, archived_by
+                    """
+                ),
+                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+            )).mappings().one()
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO governance.audit_events (
+                        actor_user_id, actor_role, action_code,
+                        object_type, object_id, details_json_redacted, trace_id
+                    ) VALUES (
+                        :owner_id, :actor_role, 'REPORT_RESTORED',
+                        'REPORT_DEFINITION', :object_id, '{}'::jsonb, :trace_id
+                    )
+                    """
+                ),
+                {
+                    "owner_id": self._owner_id,
+                    "actor_role": actor_role,
+                    "object_id": str(definition_uuid),
+                    "trace_id": trace_id,
+                },
+            )
+            return self._lifecycle(restored)
+
     async def get_version(self, definition_id: str, version: int) -> ReportDefinitionVersion:
         """접근 가능한 definition의 정확한 version과 배치 순 block을 값 객체로 복원한다.
 
@@ -449,7 +643,8 @@ class ReportDefinitionRepositoryMixin:
                     SELECT v.definition_id, v.version, v.status, v.title, v.approved_at,
                            v.orientation, v.currency_display_unit,
                            v.product_release_id, v.permission_snapshot_id,
-                           v.semantic_release_id, v.revision
+                           v.semantic_release_id, v.revision,
+                           d.archived_at, d.archived_by
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
@@ -511,6 +706,10 @@ class ReportDefinitionRepositoryMixin:
                 permission_snapshot_id=row["permission_snapshot_id"],
                 semantic_release_id=row["semantic_release_id"],
                 draft_revision=int(row["revision"]),
+                archived_at=row["archived_at"],
+                archived_by=(
+                    str(row["archived_by"]) if row["archived_by"] else None
+                ),
             )
 
     async def get_draft_revision(self, definition_id: str, version: int) -> int:
@@ -531,6 +730,7 @@ class ReportDefinitionRepositoryMixin:
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
                       AND v.status = 'draft'
+                      AND d.archived_at IS NULL
                       AND (:manage_all OR d.owner_id = :owner_id)
                     """
                 ),
@@ -544,8 +744,12 @@ class ReportDefinitionRepositoryMixin:
             raise KeyError("접근 가능한 draft Report version을 찾을 수 없습니다.")
         return int(revision)
 
-    async def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
-        """owner scope를 적용한 모든 report version을 생성 시각·ID·version 순서로 복원한다."""
+    async def list_definitions(
+        self,
+        *,
+        archived: bool = False,
+    ) -> tuple[ReportDefinitionVersion, ...]:
+        """owner scope에서 active 또는 명시한 archived report version만 복원한다."""
         async with self._sessionmaker() as session:
             keys = (await session.execute(
                 text(
@@ -554,10 +758,14 @@ class ReportDefinitionRepositoryMixin:
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE (:manage_all OR d.owner_id = :owner_id)
+                      AND (
+                          (:archived AND d.archived_at IS NOT NULL)
+                          OR (NOT :archived AND d.archived_at IS NULL)
+                      )
                     ORDER BY v.created_at DESC, v.definition_id, v.version DESC
                     """
                 ),
-                self._scope_params(),
+                {**self._scope_params(), "archived": archived},
             )).all()
         return tuple([
             await self.get_version(str(definition_id), version)
@@ -587,6 +795,7 @@ class ReportDefinitionRepositoryMixin:
                     WHERE v.definition_id = d.definition_id
                       AND v.definition_id = :definition_id AND v.version = :version
                       AND (:manage_all OR d.owner_id = :owner_id)
+                      AND d.archived_at IS NULL
                       AND v.status = 'draft'
                     """
                 ),
@@ -601,7 +810,8 @@ class ReportDefinitionRepositoryMixin:
                 existing = (await session.execute(
                     text(
                         """
-                        SELECT 1 FROM report_v1.report_definition_versions v
+                        SELECT d.archived_at
+                        FROM report_v1.report_definition_versions v
                         JOIN report_v1.report_definitions d USING (definition_id)
                         WHERE v.definition_id = :definition_id AND v.version = :version
                           AND (:manage_all OR d.owner_id = :owner_id)
@@ -612,9 +822,11 @@ class ReportDefinitionRepositoryMixin:
                         "definition_id": definition_uuid,
                         "version": version,
                     },
-                )).first()
+                )).one_or_none()
                 if existing is None:
                     raise KeyError("Report definition version을 찾을 수 없습니다.")
+                if existing.archived_at is not None:
+                    raise ValueError("보관된 Report definition은 승인할 수 없습니다.")
                 raise ValueError("draft Report version만 승인할 수 있습니다.")
         return await self.get_version(definition_id, version)
 
@@ -657,7 +869,8 @@ class ReportDefinitionRepositoryMixin:
                 JOIN report_v1.report_definitions d USING (definition_id)
                 WHERE v.definition_id = :definition_id AND v.version = :version
                   AND (:manage_all OR d.owner_id = :owner_id)
-                FOR UPDATE
+                  AND d.archived_at IS NULL
+                  FOR UPDATE
                 """
             ),
             {
@@ -813,6 +1026,7 @@ class ReportDefinitionRepositoryMixin:
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
                       AND (:manage_all OR d.owner_id = :owner_id)
+                      AND d.archived_at IS NULL
                     FOR UPDATE
                     """
                 ),

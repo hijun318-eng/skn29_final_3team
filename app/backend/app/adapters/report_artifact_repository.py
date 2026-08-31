@@ -333,14 +333,15 @@ class ReportArtifactRepositoryMixin:
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :definition_version
-                      AND d.owner_id = :owner_id AND v.status = 'draft'
+                      AND d.owner_id = :owner_id AND d.archived_at IS NULL
+                      AND v.status = 'draft'
                       AND EXISTS (
                           SELECT 1 FROM report_v1.report_blocks b
                           WHERE b.definition_id = v.definition_id
                             AND b.definition_version = v.version
                             AND b.artifact_id = :artifact_id
                       )
-                    FOR SHARE
+                    FOR SHARE OF v, d
                     """
                 ),
                 {
@@ -440,7 +441,9 @@ class ReportArtifactRepositoryMixin:
                      AND v.version = source.session_definition_version
                      AND v.status = 'draft' AND v.revision = source.base_revision
                     JOIN report_v1.report_definitions d
-                      ON d.definition_id = v.definition_id AND d.owner_id = source.owner_id
+                      ON d.definition_id = v.definition_id
+                     AND d.owner_id = source.owner_id
+                     AND d.archived_at IS NULL
                     JOIN artifact.analysis_artifacts a
                       ON a.artifact_id = source.artifact_id AND a.status = 'APPROVED'
                      AND a.artifact_checksum ~ '^[0-9a-f]{64}$'

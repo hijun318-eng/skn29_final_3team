@@ -49,7 +49,9 @@ class ReportScheduleRepositoryMixin:
                         JOIN report_v1.report_definitions d USING (definition_id)
                         WHERE v.definition_id = :definition_id AND v.version = :version
                           AND v.status = 'approved'
+                          AND d.archived_at IS NULL
                           AND (:manage_all OR d.owner_id = :owner_id)
+                        FOR KEY SHARE OF d
                         """
                     ),
                     {
@@ -147,6 +149,7 @@ class ReportScheduleRepositoryMixin:
                     FROM report_v1.report_schedules s
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE s.enabled AND s.next_run_at <= :now
+                      AND d.archived_at IS NULL
                       AND (:manage_all OR d.owner_id = :owner_id)
                     ORDER BY s.next_run_at, s.schedule_id
                     LIMIT :limit
@@ -173,6 +176,7 @@ class ReportScheduleRepositoryMixin:
                     WHERE s.schedule_id = :schedule_id
                       AND d.definition_id = s.definition_id
                       AND (:manage_all OR d.owner_id = :owner_id)
+                      AND (NOT :enabled OR d.archived_at IS NULL)
                     RETURNING s.schedule_id
                     """
                 ),
@@ -204,7 +208,8 @@ class ReportScheduleRepositoryMixin:
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE s.schedule_id = :schedule_id
                       AND (:manage_all OR d.owner_id = :owner_id)
-                    FOR UPDATE OF s
+                      AND d.archived_at IS NULL
+                    FOR UPDATE OF s, d
                     """
                 ),
                 {**self._scope_params(), "schedule_id": schedule_uuid},

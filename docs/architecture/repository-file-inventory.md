@@ -11,7 +11,7 @@
 | documentation | 134 |
 | production | 391 |
 | project-config | 202 |
-| runtime-config | 106 |
+| runtime-config | 107 |
 | runtime-contract | 45 |
 | test | 228 |
 
@@ -288,6 +288,7 @@
 | `app/backend/migrations/versions/20260831_62_ml_prediction_conversation_route.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260831_63_mcp_tool_rate_limits.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260831_64_mcp_candidate_descriptors.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260831_65_report_definition_archive.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.lock.txt` | project-config | REVIEWED |
 | `app/backend/requirements.txt` | project-config | REVIEWED |

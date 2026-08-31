@@ -109,6 +109,36 @@ class EvidenceBoundAnswerComposerTest(unittest.TestCase):
         self.assertIn("구체 직책은 문서에 별도로 명시", answer["answer"])
         self.assertEqual(answer["citations"][0]["evidence_id"], "EV-PAYMENT")
 
+    def test_group_without_requested_article_is_skipped(self) -> None:
+        answer = EvidenceBoundAnswerComposer().compose([{
+            "role": "user",
+            "content": (
+                "질문: 시설 누수 발생 시 현장 조치 절차를 알려줘\n"
+                "요청 의도: PROCESS\n\n"
+                "제공된 근거(evidence):\n"
+                "ID: EV-WRONG-ARTICLE\n"
+                "문서명: 안전 지침\n"
+                "지침번호: MANUAL-SAFETY\n"
+                "영역: 제3조 판단 기준\n"
+                "근거: [안전 지침 v1.0 p.1]\n"
+                "본문내용:\n"
+                "제3조 판단 기준 • 시설 누수 발생 시 현장을 통제하고 보고한다\n"
+                "END_EVIDENCE\n\n"
+                "ID: EV-PROCESS\n"
+                "문서명: 시설 지침\n"
+                "지침번호: MANUAL-FACILITY\n"
+                "영역: 제4조 처리 순서\n"
+                "근거: [시설 지침 v1.0 p.2]\n"
+                "본문내용:\n"
+                "제4조 처리 순서 • 전원을 차단하고 시설 책임자에게 보고한다\n"
+                "END_EVIDENCE"
+            ),
+        }])
+
+        self.assertEqual(answer["status"], "ANSWER")
+        self.assertEqual(answer["answer_type"], "PROCEDURE")
+        self.assertEqual(answer["citations"][0]["evidence_id"], "EV-PROCESS")
+
 
 if __name__ == "__main__":
     unittest.main()

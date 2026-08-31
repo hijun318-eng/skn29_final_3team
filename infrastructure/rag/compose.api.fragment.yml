@@ -1,7 +1,7 @@
 services:
   rag-api:
     profiles: [rag, rag-e2e, full]
-    image: answervice-rag-e2e-backend:20260819-orchestration2
+    image: ${RAG_RUNTIME_IMAGE:-answervice-rag-e2e-backend:20260819-orchestration2}
     container_name: answervice-rag-api
     build:
       context: ../..
@@ -45,7 +45,7 @@ services:
 
   rag-e2e:
     profiles: [rag-e2e]
-    image: answervice-rag-e2e-backend:20260819-orchestration2
+    image: ${RAG_RUNTIME_IMAGE:-answervice-rag-e2e-backend:20260819-orchestration2}
     build:
       context: ../..
       dockerfile: infrastructure/rag/Dockerfile
@@ -55,7 +55,8 @@ services:
       RAG_E2E_BASE_URL: http://rag-api:8000
       RAG_E2E_GATEWAY_HMAC_SECRET: ${RAG_E2E_GATEWAY_HMAC_SECRET:-rag-local-dev-hmac-secret-change-before-shared-use}
       RAG_E2E_ROLE: ${RAG_E2E_ROLE:-MANAGER}
-      RAG_E2E_QUERY: "\uAD00\uB9AC\uC790 \uBCF4\uACE0\uC11C \uBE14\uB85D \uAD6C\uC131 \uAE30\uC900"
+      RAG_E2E_QUERY: ${RAG_E2E_QUERY:-관리자 보고서 블록 구성 기준}
+      RAG_E2E_INTENT: ${RAG_E2E_INTENT:-REGULATION_CHECK}
       RAG_E2E_TOP_K: ${RAG_E2E_TOP_K:-3}
       RAG_E2E_ARTIFACT_DIR: /workspace/evals/runs/rag
     volumes:
@@ -72,7 +73,7 @@ services:
   rag-local-answer:
     profiles: [rag, rag-e2e, full]
     container_name: answervice-rag-local-answer
-    image: answervice-rag-e2e-backend:20260819-orchestration2
+    image: ${RAG_RUNTIME_IMAGE:-answervice-rag-e2e-backend:20260819-orchestration2}
     entrypoint: ["uvicorn"]
     command: ["src.rag.local_answer_service:app", "--host", "0.0.0.0", "--port", "8001"]
     healthcheck:

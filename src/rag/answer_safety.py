@@ -159,6 +159,10 @@ class EvidenceSafetyGate:
         scores = self._scores(group)
         if scores and max(scores) < self._settings.minimum_relevance_score:
             return False
+        if target_numbers and not set(target_numbers).intersection(
+            ManualArticleFormatter().available_numbers(group)
+        ):
+            return False
         lexical_hits = sum(term in text for term in self._query_terms(query))
         target_present = any(
             re.search(rf"제\s*{number}\s*조", text)

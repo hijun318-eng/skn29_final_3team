@@ -21,6 +21,7 @@ from app.contracts import (
 from app.ports.data_platform import DataPlatformAdapter, UnsupportedSemanticError
 from app.services.analysis.pipeline_state import AnalysisPipelineState
 from app.services.analysis.responses import AnalysisResponseFactory
+from app.services.analysis.sql_generation_mode import plan_generation_evidence_mode
 from app.services.context.builder import ContextPackage
 from app.services.execution_control import IsolatedExecutionCache, secure_cache_key
 from app.services.analysis.pipeline_support import PipelineSupport
@@ -80,8 +81,15 @@ class AnalysisQueryStage:
         try:
             if cached_query is None:
                 bind_cancellation = getattr(self._adapter, "bind_cancellation", None)
+                bind_generation_mode = getattr(
+                    self._adapter,
+                    "bind_query_generation_mode",
+                    None,
+                )
                 if bind_cancellation is not None:
                     bind_cancellation(state.cancel_check)
+                if bind_generation_mode is not None:
+                    bind_generation_mode(plan_generation_evidence_mode(plan).value)
                 try:
                     query = await self._adapter.execute_query(
                         executable_sql,
@@ -91,6 +99,8 @@ class AnalysisQueryStage:
                 finally:
                     if bind_cancellation is not None:
                         bind_cancellation(None)
+                    if bind_generation_mode is not None:
+                        bind_generation_mode(None)
                 query = await self._adapter.get_query_status(query["query_id"])
             else:
                 query = cached_query
@@ -246,7 +256,14 @@ class AnalysisQueryStage:
         if state.execution_sink is not None:
             # 외부 query가 정상 종료된 시점의 실행 근거다. G3가 Artifact 생성을
             # 차단하더라도 0행·검증 실패 사실 자체는 terminal run에 남아야 한다.
-            state.execution_sink({"plan": plan, "query": query, "package": package})
+            state.execution_sink(
+                {
+                    "plan": plan,
+                    "query": query,
+                    "package": package,
+                    "semantic_candidate_receipt": state.semantic_candidate_receipt,
+                }
+            )
         g3_violation = self._support.g3_violation(query, plan, package)
         if g3_violation:
             if g3_violation == "EMPTY_RESULT":

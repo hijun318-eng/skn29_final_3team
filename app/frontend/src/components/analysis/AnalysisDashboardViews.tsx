@@ -1,10 +1,10 @@
 /** 분석 대시보드의 대화형 요약, KPI, 차트, 데이터 테이블, 통합 뷰·액션 툴바 서브 컴포넌트들을 렌더링하는 모듈이다. */
 import React from "react";
-import { AlertTriangle, ArrowUpDown, BarChart3, Eye, FilePlus2, Link2, MessageSquareText, Save, Search, TableProperties, Target } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BarChart3, Eye, FilePlus2, Save, Search, TableProperties, Target } from "lucide-react";
 import { EnterpriseChart } from "../charts/EnterpriseChart";
 import { type AnalysisRun } from "../../contracts/analysis";
-import { type AnalysisValueScale } from "./analysisValueScale";
-import { formatCompactNumber, formatMetricValue, isNumericValue, metricUnitLabel } from "../../utils/presentation";
+import { type AnalysisValueScale, userFacingAnalysisSummary } from "./analysisValueScale";
+import { analysisTitle, formatCompactNumber, formatMetricValue, isNumericValue, localizeMetricDefinition, metricDisplayLabel, metricUnitLabel } from "../../utils/presentation";
 
 /**
  * KPI 카드의 숫자 표기를 결정한다. 1억 이상은 단위 문자열과 무관하게 축약해 카드 안에서 한 줄로 읽히게 하며,
@@ -16,31 +16,44 @@ function formatKpiValue(value: unknown, unit?: string | null) {
   return formatMetricValue(value, { includeUnit: false, unit });
 }
 
-/** 대화형 AI 내러티브 요약을 렌더링한다. 데이터 출처 고지는 보고서 artifact 화면이 담당한다. */
-export function AnalysisConversationalSummary({ run }: { run: AnalysisRun }) {
+function analysisAsOfLabel(asOf?: string | null) {
+  if (!asOf) return "";
+  const [year, month, day] = asOf.split("-");
+  if (year?.length === 4 && month?.length === 2 && day?.length === 2) {
+    return `${year}.${month}.${day}.`;
+  }
+  return asOf;
+}
+
+/** 결과 섹션의 수량과 데이터 기준일을 제목 옆 보조정보로 묶는다. */
+function AnalysisSectionMeta({ run, children, showAsOf = true }: {
+  run: AnalysisRun; children?: React.ReactNode; showAsOf?: boolean;
+}) {
+  const asOf = showAsOf ? run.meta?.asOf : "";
+  if (!children && !asOf) return null;
   return (
-    <div className="agent-conversational-bubble" aria-label="AI 분석 요약">
-      <p className="agent-narrative-text">{run.summary || "선택한 조건의 지표 계산이 완료되었습니다."}</p>
+    <div className="analysis-section-meta">
+      {children}
+      {asOf && <time dateTime={asOf}>데이터 기준 {analysisAsOfLabel(asOf)}</time>}
     </div>
   );
 }
 
-/** 동일 Artifact를 재조회 없이 다시 표현한 후속 응답임을 계보 ID와 함께 표시한다. */
-export function AnalysisArtifactReuseNotice({
-  run,
-  pending = false,
-}: {
-  run: AnalysisRun;
-  pending?: boolean;
-}) {
+/** 대화형 AI 내러티브 요약을 렌더링한다. 데이터 출처 고지는 보고서 artifact 화면이 담당한다. */
+export function AnalysisConversationalSummary({ run, valueScale }: { run: AnalysisRun; valueScale: AnalysisValueScale }) {
   return (
-    <div className={`analysis-artifact-reuse ${pending ? "is-pending" : ""}`} role="status">
-      <Link2 size={15} aria-hidden="true" />
-      <div>
-        <b>{pending ? "기존 분석 결과로 보기를 준비하고 있습니다" : "기존 분석 결과 재사용"}</b>
-        <small>추가 데이터 조회 없이 같은 Artifact와 근거를 사용합니다.</small>
+    <div className="agent-conversational-bubble" aria-label="AI 분석 요약">
+      <header className="analysis-summary-heading">
+        <div>
+          <small>분석 결과</small>
+          <h3>{analysisTitle(run)}</h3>
+        </div>
+        <AnalysisSectionMeta run={run} />
+      </header>
+      <div className="analysis-summary-answer">
+        <small>핵심 답변</small>
+        <p className="agent-narrative-text">{userFacingAnalysisSummary(run, valueScale)}</p>
       </div>
-      <code title={run.artifact?.artifactId}>{run.artifact?.artifactId || "Artifact 연결 확인 중"}</code>
     </div>
   );
 }
@@ -54,7 +67,7 @@ export function AnalysisUnavailableView({ view }: { view: "KPI" | "CHART" | "TAB
       <Icon size={17} aria-hidden="true" />
       <div>
         <b>현재 분석 결과로는 {label} 보기를 만들 수 없습니다.</b>
-        <p>기존 Artifact에 필요한 데이터가 없어 값을 임의로 생성하지 않았습니다.</p>
+        <p>현재 결과에 필요한 데이터가 없어 값을 임의로 만들지 않았습니다.</p>
       </div>
     </section>
   );
@@ -64,28 +77,31 @@ export function AnalysisUnavailableView({ view }: { view: "KPI" | "CHART" | "TAB
  * Artifact가 명시한 승인 KPI만 카드로 렌더링하며 상세 행을 새 KPI처럼 파생하지 않는다.
  * 금액은 `valueScale`이 결과 한 건 단위로 확정한 통화 배율만 사용하고, 손실 없는 원값은 `title`로 노출한다.
  */
-export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valueScale: AnalysisValueScale }) {
+export function AnalysisKpiSection({ run, valueScale, showAsOf = true }: {
+  run: AnalysisRun; valueScale: AnalysisValueScale; showAsOf?: boolean;
+}) {
+  const headingId = React.useId().replaceAll(":", "");
   if (!run.metrics || run.metrics.length === 0) return null;
 
   return (
-    <section className="analysis-kpi-section" aria-labelledby="analysis-kpi-title">
+    <section className="analysis-kpi-section" aria-labelledby={headingId}>
       {/* 차트·표 섹션과 같은 (eyebrow + 제목 + 우측 메타) 헤더 구조를 공유해 시선 이동을 단순화한다. */}
       <header>
-        <div><small>핵심 지표</small><h3 id="analysis-kpi-title">주요 KPI</h3></div>
-        <span>{run.metrics.length}개 승인 지표</span>
+        <div><small>수치 근거</small><h3 id={headingId}>핵심 지표</h3></div>
+        <AnalysisSectionMeta run={run} showAsOf={showAsOf}><span>{run.metrics.length}개 지표</span></AnalysisSectionMeta>
       </header>
       <div className="analysis-metrics">
         {run.metrics.map((metric) => (
           <article key={`total-${metric.metricId}`} className="analysis-metric-card--total">
             {/* 배지와 지표명을 세로로 쌓아, 지표명이 길어도 배지 위로 겹치지 않게 한다. */}
             <div className="metric-header-strip">
-              <small>{metric.label}</small>
+              <small>{metricDisplayLabel(metric)}</small>
             </div>
             <strong title={valueScale.exact(metric.value, metric.unit)}>
               {valueScale.isCurrency(metric.unit) ? valueScale.format(metric.value, metric.unit, metric.resultField) : formatKpiValue(metric.value, metric.unit)}
               {metric.unit && metric.value !== null && metric.value !== undefined && metric.value !== "" && <em>{valueScale.unitLabel(metric.unit, metric.resultField)}</em>}
             </strong>
-            {metric.definition && <p>{metric.definition}</p>}
+            {metric.definition && <p>{localizeMetricDefinition(metric.definition)}</p>}
           </article>
         ))}
       </div>
@@ -96,16 +112,17 @@ export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valu
 /** 차트 시각화 및 실패 시의 fallback 섹션을 렌더링한다. */
 export function AnalysisVisualSection({
   run, chart, table, canRenderChart, supportedChartType, hasTableColumns, chartTitle, chartDisplayOptions,
-  chartDisplayType, setChartDisplayOverride, chartLines, chartHeight, chartDescription, columnLabel,
-  valueScale, chartCurrencyField,
+  chartDisplayType, showDisplayControls = false, setChartDisplayOverride, chartLines, chartHeight, chartDescription, columnLabel,
+  valueScale, chartCurrencyField, showAsOf = true,
 }: {
   run: AnalysisRun; chart: NonNullable<AnalysisRun["chart"]> | null; table: NonNullable<AnalysisRun["table"]> | null;
   canRenderChart: boolean; supportedChartType: boolean; hasTableColumns: boolean; chartTitle: string;
   chartDisplayOptions: Array<{ type: string; label: string }>; chartDisplayType: string;
+  showDisplayControls?: boolean;
   setChartDisplayOverride: React.Dispatch<React.SetStateAction<string>>;
   chartLines: Array<{ key: string; label: string; color: string; unit?: string }>;
   chartHeight: number; chartDescription: string; columnLabel: (col: string, r: AnalysisRun) => string;
-  valueScale: AnalysisValueScale; chartCurrencyField: string | null;
+  valueScale: AnalysisValueScale; chartCurrencyField: string | null; showAsOf?: boolean;
 }) {
   if (chart && table && canRenderChart) {
     return (
@@ -113,8 +130,8 @@ export function AnalysisVisualSection({
         <header>
           <div><small>차트 시각화</small><h3>{chartTitle}</h3></div>
           <div className="analysis-chart-actions">
-            <span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}개 항목</span>
-            {chartDisplayOptions.length > 0 && (
+            <AnalysisSectionMeta run={run} showAsOf={showAsOf}><span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}개 항목</span></AnalysisSectionMeta>
+            {showDisplayControls && chartDisplayOptions.length > 0 && (
               <div role="group" aria-label="차트 표현 방식">
                 {chartDisplayOptions.map((option) => (
                   <button type="button" key={option.type} aria-pressed={chartDisplayType === option.type} onClick={() => setChartDisplayOverride(option.type)}>
@@ -140,16 +157,24 @@ export function AnalysisVisualSection({
       </section>
     );
   }
-  if (chart && (!hasTableColumns || (Boolean(table?.rows?.length) && !canRenderChart))) {
+  if (chart && !canRenderChart) {
+    const hasTableRows = Boolean(table?.rows?.length);
+    const missingData = !hasTableColumns || !hasTableRows;
     return (
       <section className="analysis-chart-fallback" role="status">
         <AlertTriangle size={16} aria-hidden="true" />
         <div>
-          <b>{supportedChartType ? "차트 메타데이터를 확인할 수 없습니다." : "지원하지 않는 차트 형식입니다."}</b>
+          <b>{!supportedChartType
+            ? "현재 지원하지 않는 그래프 형식입니다."
+            : missingData
+              ? "그래프로 표시할 데이터가 없습니다."
+              : "그래프 구성 정보를 확인할 수 없습니다."}</b>
           <p>
-            {supportedChartType
-              ? hasTableColumns ? "차트 필드와 상세 데이터 열이 일치하지 않아 임의로 해석하지 않았습니다. 제공된 데이터는 아래 표에서 확인할 수 있습니다." : "차트와 연결된 상세 데이터가 없어 임의로 시각화하지 않았습니다."
-              : <>데이터를 임의의 차트로 바꾸지 않고 아래 표로 표시합니다. 차트 형식 <code>{chart.chartType || "없음"}</code></>}
+            {!supportedChartType
+              ? "데이터를 임의로 바꾸지 않고 아래 표로 표시합니다."
+              : missingData
+                ? "현재 결과에 상세 데이터가 없어 값을 임의로 만들지 않았습니다."
+                : "그래프 구성과 상세 데이터가 일치하지 않아 임의로 해석하지 않았습니다. 제공된 데이터는 아래 표에서 확인할 수 있습니다."}
           </p>
         </div>
       </section>
@@ -161,7 +186,7 @@ export function AnalysisVisualSection({
 /** 상세 데이터 표 섹션을 렌더링한다. 금액 열은 KPI·차트와 같은 통화 배율(`valueScale`)로 표시한다. */
 export function AnalysisDataSection({
   run, table, resultTitle, tableSort, setTableSort, nextTableSort, numericColumns, visibleRows, columnLabel, columnUnit,
-  valueScale,
+  valueScale, showAsOf = true,
 }: {
   run: AnalysisRun; table: NonNullable<AnalysisRun["table"]> | null; resultTitle: string;
   tableSort: { column: string; direction: "" | "asc" | "desc" };
@@ -169,30 +194,55 @@ export function AnalysisDataSection({
   nextTableSort: (curr: { column: string; direction: "" | "asc" | "desc" }, col: string) => { column: string; direction: "" | "asc" | "desc" };
   numericColumns: Set<string>; visibleRows: Array<Record<string, unknown>>;
   columnLabel: (col: string, r: AnalysisRun) => string; columnUnit: (col: string, r: AnalysisRun) => string | null;
-  valueScale: AnalysisValueScale;
+  valueScale: AnalysisValueScale; showAsOf?: boolean;
 }) {
   if (!table?.columns?.length) return null;
+  const isCompactResult = table.columns.length <= 3 && visibleRows.length <= 8;
+  const isSingleValueResult = table.columns.length === 1 && visibleRows.length === 1;
+  const isWideResult = table.columns.length > 3;
+  const showRowNumbers = visibleRows.length > 1;
+  const canSort = visibleRows.length > 1;
+  const sortedColumnLabel = tableSort.column ? columnLabel(tableSort.column, run) : "";
+  const sortDescription = canSort
+    ? tableSort.direction
+      ? `${sortedColumnLabel} ${tableSort.direction === "asc" ? "오름차순" : "내림차순"}`
+      : "열 제목을 눌러 정렬"
+    : "단일 결과";
   return (
-    <section className="analysis-result-section analysis-data-section">
+    <section
+      className={`analysis-result-section analysis-data-section${isCompactResult ? " is-compact-result" : ""}${isSingleValueResult ? " is-single-value-result" : ""}${isWideResult ? " is-wide-result" : ""}`}
+      data-table-density={isSingleValueResult ? "single" : isWideResult ? "wide" : "regular"}
+      style={isWideResult ? { "--analysis-table-min-width": `${Math.max(760, table.columns.length * 156)}px` } as React.CSSProperties : undefined}
+    >
       <header>
         <div><small>데이터</small><h3>상세 데이터</h3></div>
-        <span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}행 · {(table?.columns?.length ?? 0).toLocaleString("ko-KR")}열</span>
+        <div className="analysis-data-meta">
+          <span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}행 · {(table?.columns?.length ?? 0).toLocaleString("ko-KR")}열</span>
+          <small>{sortDescription}</small>
+          {showAsOf && run.meta?.asOf && <time dateTime={run.meta.asOf}>데이터 기준 {analysisAsOfLabel(run.meta.asOf)}</time>}
+        </div>
       </header>
       <div className="analysis-table" tabIndex={0} aria-label="상세 데이터 표">
         <table>
           <caption className="sr-only">{resultTitle} 상세 데이터</caption>
           <thead>
             <tr>
-              <th scope="col" className="row-number">#</th>
+              {showRowNumbers && <th scope="col" className="row-number">#</th>}
               {table.columns.map((column) => {
                 const unit = valueScale.unitLabel(columnUnit(column, run), column);
                 const label = columnLabel(column, run);
+                const sortDirection = tableSort.column === column ? tableSort.direction : "";
+                const SortIcon = sortDirection === "asc" ? ArrowUp : sortDirection === "desc" ? ArrowDown : ArrowUpDown;
                 return (
-                  <th scope="col" aria-sort={tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none"} className={numericColumns.has(column) ? "is-numeric" : ""} key={column}>
-                    <button type="button" className="analysis-table-sort" aria-label={`${metricUnitLabel(label, unit)} 열 정렬`} onClick={() => setTableSort((current) => nextTableSort(current, column))}>
-                      <span>{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
-                      <ArrowUpDown size={12} aria-hidden="true" />
-                    </button>
+                  <th scope="col" aria-sort={canSort ? (tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none") : undefined} className={numericColumns.has(column) ? "is-numeric" : ""} key={column}>
+                    {canSort ? (
+                      <button type="button" className={`analysis-table-sort ${sortDirection ? "is-sorted" : ""}`} aria-label={`${metricUnitLabel(label, unit)} 열 정렬`} onClick={() => setTableSort((current) => nextTableSort(current, column))}>
+                        <span>{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
+                        <SortIcon size={12} aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <span className="analysis-table-label">{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
+                    )}
                   </th>
                 );
               })}
@@ -201,7 +251,7 @@ export function AnalysisDataSection({
           <tbody>
             {visibleRows.map((row, index) => (
               <tr key={`${run.requestId}-${index}`}>
-                <th scope="row" className="row-number">{index + 1}</th>
+                {showRowNumbers && <th scope="row" className="row-number">{index + 1}</th>}
                 {table.columns.map((column) => (
                   <td className={numericColumns.has(column) ? "is-numeric" : ""} key={column} title={valueScale.exact(row[column], columnUnit(column, run))}>
                     {valueScale.format(row[column], columnUnit(column, run), column)}
@@ -216,45 +266,17 @@ export function AnalysisDataSection({
   );
 }
 
-/** 후속 표현 요청과 저장·보고서·근거 액션을 하나의 일체형 툴바로 렌더링한다. */
+/** 분석 결과의 저장·보고서·근거 액션만 렌더링한다. 보기 변경은 후속 대화 요청으로 수행한다. */
 export function AnalysisUnifiedToolbar({
-  activeView, onViewChange, onSave, onCreateReportDraft, onOpenEvidence, onPreview,
-  saveDisabled = false, viewActionsDisabled = false, hasMetrics = false, hasChart = false, hasTable = false,
+  onSave, onCreateReportDraft, onOpenEvidence, onPreview, saveDisabled = false,
 }: {
-  activeView: string; onViewChange?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE") => void;
   onSave?: () => void; onCreateReportDraft?: () => void; onOpenEvidence?: () => void; onPreview?: () => void;
-  saveDisabled?: boolean; viewActionsDisabled?: boolean; hasMetrics?: boolean; hasChart?: boolean; hasTable?: boolean;
+  saveDisabled?: boolean;
 }) {
-  const norm = activeView.toUpperCase();
-  const currentView = ["BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE", "DONUT"].includes(norm) ? "CHART" : norm;
-  const viewRequests = [
-    { mode: "SUMMARY" as const, label: "요약으로 보기", icon: MessageSquareText, available: true },
-    { mode: "KPI" as const, label: "KPI만 보기", icon: Target, available: hasMetrics },
-    { mode: "TABLE" as const, label: "표로 보기", icon: TableProperties, available: hasTable },
-    { mode: "CHART" as const, label: "그래프로 보기", icon: BarChart3, available: hasChart },
-  ].filter((item) => item.available);
-  const hasActions = Boolean(onViewChange || onSave || onCreateReportDraft || onOpenEvidence || onPreview);
+  const hasActions = Boolean(onSave || onCreateReportDraft || onOpenEvidence || onPreview);
   if (!hasActions) return null;
   return (
-    <div className="analysis-unified-toolbar" aria-label="후속 요청 및 분석 액션">
-      {onViewChange && (
-        <div className="view-segment-group" role="group" aria-label="결과 보기 전환">
-          <span>결과 보기</span>
-          {viewRequests.map(({ mode, label, icon: ViewIcon }) => (
-            <button
-              type="button"
-              key={mode}
-              aria-pressed={currentView === mode}
-              className={`segment-btn ${currentView === mode ? "active" : ""}`}
-              disabled={viewActionsDisabled || currentView === mode}
-              onClick={() => onViewChange(mode)}
-            >
-              <ViewIcon size={13} /><span>{label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
+    <div className="analysis-unified-toolbar" aria-label="분석 결과 액션">
       <div className="action-button-group">
         {onSave && (
           <button type="button" className="unified-action-btn" disabled={saveDisabled} onClick={onSave} title="분석 저장하여 KPI 및 대시보드에서 활용">
@@ -272,7 +294,7 @@ export function AnalysisUnifiedToolbar({
           </button>
         )}
         {onOpenEvidence && (
-          <button type="button" className="unified-action-btn" onClick={onOpenEvidence} title="DataHub 거버넌스 및 AST SQL 검증 근거">
+          <button type="button" className="unified-action-btn" onClick={onOpenEvidence} title="승인된 데이터와 계산 근거 확인">
             <Search size={13} /><span>분석 근거</span>
           </button>
         )}
@@ -280,6 +302,3 @@ export function AnalysisUnifiedToolbar({
     </div>
   );
 }
-
-/** 하위 호환성을 위한 레거시 별칭 */
-export const AnalysisViewSwitcherBar = AnalysisUnifiedToolbar;

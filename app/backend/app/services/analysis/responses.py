@@ -45,6 +45,10 @@ from app.services.analysis.evidence import (
     _reduce_context_metric,
 )
 from app.services.context.builder import ContextMetric, ContextPackage
+from app.services.context.display_metadata import (
+    metric_display_label,
+    metric_display_unit,
+)
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
 
@@ -241,6 +245,8 @@ class AnalysisResponseFactory:
                         definition=term.definition,
                         value=int(reduced) if reduced == reduced.to_integral() else float(reduced),
                         unit=metric.unit or term.unit,
+                        display_label=metric_display_label(term),
+                        display_unit=metric_display_unit(metric.unit or term.unit),
                     )
                 )
         metrics = tuple(metric_values)
@@ -258,6 +264,8 @@ class AnalysisResponseFactory:
                 label=_metric_term(package, metric_id).label,
                 definition=_metric_term(package, metric_id).definition,
                 unit=_metric_term(package, metric_id).unit,
+                display_label=metric_display_label(_metric_term(package, metric_id)),
+                display_unit=metric_display_unit(_metric_term(package, metric_id).unit),
             )
             for metric_id in metric_ids
         )

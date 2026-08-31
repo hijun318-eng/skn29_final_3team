@@ -48,14 +48,29 @@ class ReportAssistantOperationsRepositoryMixin:
         output_tokens: int | None = None,
         estimated_cost: object | None = None,
         error_code: str | None = None,
+        accumulate_usage: bool = False,
+        expected_message_revision: int | None = None,
     ) -> dict[str, Any]:
-        """세션 metadata와 안전한 관측치만 request ID 기준으로 멱등 upsert한다."""
+        """세션 metadata와 안전한 관측치만 request ID 기준으로 멱등 upsert한다.
+
+        ``expected_message_revision``이 주어지면 request row를 잠근 뒤 현재 message turn과
+        일치할 때만 평가를 기록한다. 늦게 끝난 turn은 더 최신 평가를 덮지 않는다.
+        """
 
         request_id = _uuid(assistant_request_id, "assistant_request_id")
         async with self._sessionmaker.begin() as session:
             row = (await session.execute(
                 text(
                     """
+                    WITH current_request AS (
+                        SELECT r.*
+                        FROM report_v1.report_assistant_requests r
+                        WHERE r.assistant_request_id = :request_id
+                          AND r.owner_id = :owner_id
+                          AND (CAST(:expected_message_revision AS bigint) IS NULL
+                               OR r.message_revision = CAST(:expected_message_revision AS bigint))
+                        FOR UPDATE
+                    )
                     INSERT INTO report_v1.report_assistant_evaluations
                         (evaluation_id, assistant_request_id, owner_id, data_request_id,
                          patch_request_id, definition_id, definition_version, artifact_id,
@@ -71,8 +86,7 @@ class ReportAssistantOperationsRepositoryMixin:
                            :input_tokens, :output_tokens,
                            CAST(:estimated_cost AS numeric(18,8)),
                            (CAST(:estimated_cost AS numeric(18,8)) IS NOT NULL), :error_code
-                    FROM report_v1.report_assistant_requests r
-                    WHERE r.assistant_request_id = :request_id AND r.owner_id = :owner_id
+                    FROM current_request r
                     ON CONFLICT (assistant_request_id) DO UPDATE SET
                         data_request_id = EXCLUDED.data_request_id,
                         patch_request_id = EXCLUDED.patch_request_id,
@@ -90,16 +104,41 @@ class ReportAssistantOperationsRepositoryMixin:
                         contract_valid = COALESCE(:contract_valid,
                             report_assistant_evaluations.contract_valid),
                         final_phase = EXCLUDED.final_phase,
-                        model_attempts = COALESCE(EXCLUDED.model_attempts,
-                            report_assistant_evaluations.model_attempts),
-                        latency_ms = COALESCE(EXCLUDED.latency_ms,
-                            report_assistant_evaluations.latency_ms),
-                        input_tokens = COALESCE(EXCLUDED.input_tokens,
-                            report_assistant_evaluations.input_tokens),
-                        output_tokens = COALESCE(EXCLUDED.output_tokens,
-                            report_assistant_evaluations.output_tokens),
-                        estimated_cost = COALESCE(EXCLUDED.estimated_cost,
-                            report_assistant_evaluations.estimated_cost),
+                        model_attempts = CASE WHEN :accumulate_usage
+                            THEN CASE WHEN report_assistant_evaluations.model_attempts IS NULL
+                                           AND EXCLUDED.model_attempts IS NULL THEN NULL
+                                      ELSE COALESCE(report_assistant_evaluations.model_attempts, 0)
+                                         + COALESCE(EXCLUDED.model_attempts, 0) END
+                            ELSE COALESCE(EXCLUDED.model_attempts,
+                                report_assistant_evaluations.model_attempts) END,
+                        latency_ms = CASE WHEN :accumulate_usage
+                            THEN CASE WHEN report_assistant_evaluations.latency_ms IS NULL
+                                           AND EXCLUDED.latency_ms IS NULL THEN NULL
+                                      ELSE COALESCE(report_assistant_evaluations.latency_ms, 0)
+                                         + COALESCE(EXCLUDED.latency_ms, 0) END
+                            ELSE COALESCE(EXCLUDED.latency_ms,
+                                report_assistant_evaluations.latency_ms) END,
+                        input_tokens = CASE WHEN :accumulate_usage
+                            THEN CASE WHEN report_assistant_evaluations.input_tokens IS NULL
+                                           AND EXCLUDED.input_tokens IS NULL THEN NULL
+                                      ELSE COALESCE(report_assistant_evaluations.input_tokens, 0)
+                                         + COALESCE(EXCLUDED.input_tokens, 0) END
+                            ELSE COALESCE(EXCLUDED.input_tokens,
+                                report_assistant_evaluations.input_tokens) END,
+                        output_tokens = CASE WHEN :accumulate_usage
+                            THEN CASE WHEN report_assistant_evaluations.output_tokens IS NULL
+                                           AND EXCLUDED.output_tokens IS NULL THEN NULL
+                                      ELSE COALESCE(report_assistant_evaluations.output_tokens, 0)
+                                         + COALESCE(EXCLUDED.output_tokens, 0) END
+                            ELSE COALESCE(EXCLUDED.output_tokens,
+                                report_assistant_evaluations.output_tokens) END,
+                        estimated_cost = CASE WHEN :accumulate_usage
+                            THEN CASE WHEN report_assistant_evaluations.estimated_cost IS NULL
+                                           AND EXCLUDED.estimated_cost IS NULL THEN NULL
+                                      ELSE COALESCE(report_assistant_evaluations.estimated_cost, 0)
+                                         + COALESCE(EXCLUDED.estimated_cost, 0) END
+                            ELSE COALESCE(EXCLUDED.estimated_cost,
+                                report_assistant_evaluations.estimated_cost) END,
                         cost_is_estimate = report_assistant_evaluations.cost_is_estimate
                             OR EXCLUDED.cost_is_estimate,
                         error_code = EXCLUDED.error_code,
@@ -120,6 +159,8 @@ class ReportAssistantOperationsRepositoryMixin:
                     "output_tokens": output_tokens,
                     "estimated_cost": estimated_cost,
                     "error_code": error_code,
+                    "accumulate_usage": accumulate_usage,
+                    "expected_message_revision": expected_message_revision,
                 },
             )).mappings().one_or_none()
         if row is None:

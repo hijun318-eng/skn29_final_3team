@@ -202,6 +202,91 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("CREATE UNIQUE INDEX report_assistant_retry_source_idx", source)
         self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
 
+    def test_report_assistant_turn_retention_adds_only_minimum_runtime_grant(self):
+        """재수정 대화 보관 제한은 기존 표를 바꾸지 않고 DELETE 권한만 추가한다."""
+
+        source = (MIGRATIONS / "20260828_50_report_assistant_turn_retention.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260828_49"', source)
+        self.assertIn("GRANT DELETE ON report_v1.report_assistant_turns", source)
+        self.assertIn("REVOKE DELETE ON report_v1.report_assistant_turns", source)
+        self.assertNotIn("DROP TABLE", source)
+        self.assertNotIn("ALTER TABLE", source)
+
+    def test_report_assistant_artifact_bindings_are_bounded_and_checksum_pinned(self):
+        """다중 Artifact migration은 기존 대표 근거를 보존하고 다섯 개까지 checksum 결속한다."""
+
+        source = (MIGRATIONS / "20260828_51_report_assistant_artifact_bindings.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260828_50"', source)
+        self.assertIn("CREATE TABLE report_v1.report_assistant_artifact_bindings", source)
+        self.assertIn("ordinal BETWEEN 1 AND 5", source)
+        self.assertIn("artifact_checksum ~ '^[0-9a-f]{64}$'", source)
+        self.assertIn("'source_artifact', 1", source)
+        self.assertIn("UNIQUE (assistant_request_id, artifact_alias)", source)
+        self.assertNotIn("UPDATE artifact.analysis_artifacts", source)
+
+    def test_report_block_evidence_refs_are_additive_and_bounded(self):
+        """근거 영속 migration은 기존 block을 보존하고 별칭 개수만 DB에서 제한한다."""
+
+        source = (MIGRATIONS / "20260828_52_report_block_evidence_refs.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260828_51"', source)
+        self.assertIn("ADD COLUMN evidence_refs text[] NOT NULL DEFAULT", source)
+        self.assertIn("cardinality(evidence_refs) <= 16", source)
+        self.assertNotIn("DROP TABLE report_v1.report_blocks", source)
+
+    def test_report_assistant_patch_selection_is_additive_and_bounded(self):
+        """patch 선택 migration은 39 뒤에서 기존 세션을 보존하고 선택 개수만 제한한다."""
+
+        source = (
+            MIGRATIONS / "20260828_53_report_assistant_patch_selection.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision = "20260828_52"', source)
+        self.assertIn("ADD COLUMN patch_preview_json jsonb", source)
+        self.assertIn("ADD COLUMN approved_operation_indexes smallint[]", source)
+        self.assertIn("cardinality(approved_operation_indexes) BETWEEN 1 AND 12", source)
+        upgrade = source.split("def downgrade", 1)[0]
+        self.assertNotIn("DROP TABLE", upgrade)
+        self.assertNotIn("DELETE FROM", upgrade)
+
+    def test_report_page_break_block_is_additive_and_fail_closed(self):
+        """page break migration은 40 뒤에서 기존 block을 보존하고 안전한 downgrade만 허용한다."""
+
+        source = (
+            MIGRATIONS / "20260828_54_report_page_break_blocks.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision = "20260828_53"', source)
+        self.assertIn("'page_break'", source)
+        self.assertIn("artifact_id IS NULL", source)
+        self.assertIn("query_id IS NULL", source)
+        self.assertIn("x = 0 AND w = 12 AND h = 1", source)
+        upgrade = source.split("def downgrade", 1)[0]
+        self.assertNotIn("DROP TABLE", upgrade)
+        self.assertNotIn("DELETE FROM", upgrade)
+
+    def test_report_assistant_message_scope_and_revision_are_additive_and_typed(self):
+        """제목 전용 후속 턴을 재시작 후에도 보존할 최소 enum 컬럼만 추가한다."""
+
+        source = (
+            MIGRATIONS / "20260830_59_report_assistant_operation_scope.py"
+        ).read_text(encoding="utf-8")
+        upgrade, downgrade = source.split("def downgrade", 1)
+
+        self.assertIn('down_revision = "20260829_58"', source)
+        self.assertIn("ADD COLUMN operation_scope varchar(24) NOT NULL", upgrade)
+        self.assertIn("DEFAULT 'full_report'", upgrade)
+        self.assertIn("operation_scope IN ('full_report', 'report_title')", upgrade)
+        self.assertIn("ADD COLUMN message_revision bigint NOT NULL DEFAULT 0", upgrade)
+        self.assertIn("message_revision >= 0", upgrade)
+        self.assertNotIn("DROP TABLE", upgrade)
+        self.assertNotIn("DELETE FROM", upgrade)
+        self.assertIn("DROP COLUMN message_revision", downgrade)
+        self.assertIn("DROP COLUMN operation_scope", downgrade)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"
@@ -212,6 +297,17 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("generation_mode = 'LLM'", upgrade)
         self.assertIn("generation_mode IN ('LLM', 'TEMPLATE')", upgrade)
         self.assertIn("FALLBACK query history must be reviewed", upgrade)
+
+    def test_query_generation_mode_distinguishes_typed_compiler(self):
+        source = (
+            MIGRATIONS / "20260828_47_query_generation_mode_compiler.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('revision = "20260828_47"', source)
+        self.assertIn('down_revision = "20260826_46"', source)
+        upgrade, downgrade = source.split("def downgrade", 1)
+        self.assertIn("generation_mode IN ('LLM', 'TEMPLATE', 'COMPILER')", upgrade)
+        self.assertIn("COMPILER query history must be preserved", downgrade)
+        self.assertNotIn("SET generation_mode", downgrade)
 
     def test_report_replay_migration_persists_lineage_and_typed_failure(self):
         source = (MIGRATIONS / "20260814_20_report_replay_lineage.py").read_text(

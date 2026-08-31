@@ -15,6 +15,7 @@ import type {
 /** 최종문서 다운로드에서 지원하는 asset 형식이다. */ export type FinalAssetFormat = "html" | "pdf";
 
 /** lifecycle hook의 client·오류 focus·최종문서 의존성 주입 계약이다. */ export interface UseReportLifecycleStateOptions {
+  readonly role?: string;
   readonly isAdmin?: boolean;
   readonly autoLoad?: boolean;
   readonly reportClient?: ReportClient;

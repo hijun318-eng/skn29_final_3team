@@ -5,6 +5,9 @@ from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
+import json
+import re
+import unicodedata
 
 REPORT_CONTRACT_VERSION = "REPORT-v1.0.0"
 REPORT_PROPOSAL_VERSION = "REPORT-v1.1.0-DRAFT"
@@ -12,6 +15,68 @@ REPORT_ORIENTATIONS = frozenset({"portrait", "landscape"})
 CURRENCY_DISPLAY_UNITS = frozenset(
     {"auto", "one", "thousand", "million", "hundredMillion", "billion"}
 )
+MAX_REPORT_TITLE_LENGTH = 255
+REPORT_ARTIFACT_VIEWS = frozenset({"summary", "kpi", "chart", "table"})
+
+
+def normalize_report_block_content(block_type: "BlockType | str", content: str) -> str:
+    """data block 설정을 정확히 한 원자 Artifact view로 정규화한다.
+
+    legacy chart/table은 block type 자체가 view를 확정하므로 누락된 ``visibleViews``만
+    안전하게 보완한다. artifact 합본·unknown·복수 view는 원본 DB를 변경하지 않고 새 저장을
+    거부해 조용한 데이터 손실을 막는다.
+    """
+
+    resolved_type = BlockType(block_type)
+    if resolved_type not in {BlockType.TABLE, BlockType.CHART, BlockType.ARTIFACT}:
+        return content
+    try:
+        settings = json.loads(content or "{}")
+    except (TypeError, ValueError) as error:
+        raise ValueError("Report 분석 block 설정은 JSON 객체여야 합니다.") from error
+    if not isinstance(settings, dict):
+        raise ValueError("Report 분석 block 설정은 JSON 객체여야 합니다.")
+    expected = (
+        "chart" if resolved_type is BlockType.CHART
+        else "table" if resolved_type is BlockType.TABLE
+        else None
+    )
+    requested = settings.get("visibleViews")
+    if requested is None and expected is not None:
+        requested = [expected]
+        settings["visibleViews"] = requested
+    if (
+        not isinstance(requested, list)
+        or len(requested) != 1
+        or requested[0] not in REPORT_ARTIFACT_VIEWS
+    ):
+        raise ValueError("Report 분석 block은 허용된 visibleViews 하나만 가져야 합니다.")
+    view = requested[0]
+    if (
+        (expected is not None and view != expected)
+        or (expected is None and view not in {"summary", "kpi"})
+    ):
+        raise ValueError("Report block type과 visibleViews가 일치하지 않습니다.")
+    return json.dumps(
+        settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+
+
+def normalize_report_title(value: str) -> str:
+    """사용자가 저장하는 보고서 제목을 단일 행의 bounded 문자열로 정규화한다."""
+
+    if not isinstance(value, str):
+        raise TypeError("보고서 제목은 문자열이어야 합니다.")
+    if any(unicodedata.category(character) == "Cc" for character in value):
+        raise ValueError("보고서 제목에는 줄바꿈이나 제어 문자를 사용할 수 없습니다.")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("보고서 제목은 비어 있을 수 없습니다.")
+    if len(normalized) > MAX_REPORT_TITLE_LENGTH:
+        raise ValueError(
+            f"보고서 제목은 {MAX_REPORT_TITLE_LENGTH}자를 초과할 수 없습니다."
+        )
+    return normalized
 
 
 class DefinitionStatus(StrEnum):
@@ -68,11 +133,12 @@ class BlockFailureCode(StrEnum):
 
 
 class BlockType(StrEnum):
-    """보고서 격자 블록이 표, 차트, 일반 산출물, 사용자 텍스트 중 무엇을 렌더링할지 지정한다."""
+    """보고서 격자 블록이 데이터·텍스트·명시적 페이지 경계 중 무엇인지 지정한다."""
     TABLE = "table"
     CHART = "chart"
     ARTIFACT = "artifact"
     TEXT = "text"
+    PAGE_BREAK = "page_break"
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +155,7 @@ class ReportBlock:
     w: int | None = None
     h: int = 1
     content: str = ""
+    evidence_refs: tuple[str, ...] = ()
     view_spec_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -96,6 +163,9 @@ class ReportBlock:
             raise ValueError("Report block은 block_id와 title이 필요합니다.")
         object.__setattr__(self, "type", BlockType(self.type))
         object.__setattr__(self, "w", self.columns if self.w is None else self.w)
+        # Evidence aliases are a set-like lineage binding; canonical order prevents
+        # the model from creating a no-op Revision by merely reordering aliases.
+        object.__setattr__(self, "evidence_refs", tuple(sorted(self.evidence_refs)))
         if not 1 <= self.columns <= 12:
             raise ValueError("Report block columns는 1~12 범위여야 합니다.")
         if self.columns != self.w:
@@ -106,6 +176,23 @@ class ReportBlock:
             raise ValueError("table·chart·artifact block은 artifact_id가 필요합니다.")
         if self.type is BlockType.TEXT and not self.content.strip():
             raise ValueError("text block은 빈 content를 허용하지 않습니다.")
+        if self.type is BlockType.PAGE_BREAK and (
+            self.artifact_id is not None
+            or self.query_id is not None
+            or self.content
+            or self.x != 0
+            or self.w != 12
+            or self.h != 1
+        ):
+            raise ValueError("page break block은 내용·Artifact 없이 12열 한 행이어야 합니다.")
+        if (
+            len(self.evidence_refs) > 16
+            or len(set(self.evidence_refs)) != len(self.evidence_refs)
+            or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", ref) for ref in self.evidence_refs)
+        ):
+            raise ValueError("Report block 근거 별칭 계약이 올바르지 않습니다.")
+        if self.type is not BlockType.TEXT and self.evidence_refs:
+            raise ValueError("근거 별칭은 text block에만 저장할 수 있습니다.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,10 +209,18 @@ class ReportDefinitionVersion:
     product_release_id: str | None = None
     permission_snapshot_id: str | None = None
     semantic_release_id: str | None = None
+    draft_revision: int = 1
 
     def __post_init__(self) -> None:
-        if not self.definition_id or self.version < 1 or not self.title:
-            raise ValueError("Report definition id, version, title은 필수입니다.")
+        if not self.definition_id or self.version < 1:
+            raise ValueError("Report definition id와 version은 필수입니다.")
+        object.__setattr__(self, "title", normalize_report_title(self.title))
+        if (
+            isinstance(self.draft_revision, bool)
+            or not isinstance(self.draft_revision, int)
+            or self.draft_revision < 1
+        ):
+            raise ValueError("Report draft revision은 1 이상의 정수여야 합니다.")
         if self.status is DefinitionStatus.APPROVED and self.approved_at is None:
             raise ValueError("승인 version은 approved_at이 필요합니다.")
         if self.status is DefinitionStatus.DRAFT and self.approved_at is not None:
@@ -158,6 +253,7 @@ class ReportDefinitionVersion:
             product_release_id=self.product_release_id,
             permission_snapshot_id=self.permission_snapshot_id,
             semantic_release_id=self.semantic_release_id,
+            draft_revision=self.draft_revision,
         )
 
     def next_draft(self) -> "ReportDefinitionVersion":
@@ -175,6 +271,7 @@ class ReportDefinitionVersion:
             product_release_id=self.product_release_id,
             permission_snapshot_id=self.permission_snapshot_id,
             semantic_release_id=self.semantic_release_id,
+            draft_revision=1,
         )
 
     def replace_blocks(
@@ -203,6 +300,7 @@ class ReportDefinitionVersion:
             product_release_id=self.product_release_id,
             permission_snapshot_id=self.permission_snapshot_id,
             semantic_release_id=self.semantic_release_id,
+            draft_revision=self.draft_revision,
         )
 
 

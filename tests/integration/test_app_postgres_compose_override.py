@@ -7,6 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yml"
 OVERRIDE = ROOT / "compose.app-postgres.override.yml"
+STAGE5_COMPOSE = ROOT / "compose.report-assistant-stage5.yml"
+ENV_EXAMPLE = ROOT / "infrastructure/database/.env.example"
 BACKEND_VERIFIER = ROOT / "app/backend/scripts/verify-container.ps1"
 BACKEND_DOCKERFILE = ROOT / "app/backend/Dockerfile"
 BACKEND_COMPOSE = ROOT / "app/backend/compose.fragment.yml"
@@ -23,6 +25,31 @@ def _config() -> dict:
             "infrastructure/database/.env.example",
             "--profile",
             "dev",
+            "config",
+            "--format",
+            "json",
+        ],
+        cwd=ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+def _stage5_config() -> dict:
+    env = os.environ | {
+        "REPORT_ASSISTANT_MODEL_ENV_FILE": "infrastructure/database/.env.example"
+    }
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            "infrastructure/database/.env.example",
+            "-f",
+            "compose.report-assistant-stage5.yml",
             "config",
             "--format",
             "json",
@@ -53,6 +80,37 @@ def test_canonical_env_example_covers_datahub_runtime_secrets():
         "DATAHUB_TOKEN_SERVICE_SIGNING_KEY",
     } <= env_keys
     assert not (ROOT / ".env.example").exists()
+
+
+def test_mcp_rate_limit_is_explicit_in_both_backend_deployments():
+    example = {
+        key: value
+        for key, value in (
+            line.split("=", 1)
+            for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines()
+            if line and not line.startswith("#")
+        )
+    }
+    assert example["MCP_TOOL_RATE_LIMIT_QUOTA"] == "30"
+    assert example["MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS"] == "60"
+
+    expected = {
+        "MCP_TOOL_RATE_LIMIT_QUOTA": "30",
+        "MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS": "60",
+    }
+    for backend in (
+        _config()["services"]["backend"],
+        _stage5_config()["services"]["backend"],
+    ):
+        assert {
+            key: backend["environment"][key] for key in expected
+        } == expected
+
+    for source in (BACKEND_COMPOSE, STAGE5_COMPOSE):
+        compose = source.read_text(encoding="utf-8")
+        for key in expected:
+            assert f"{key}: ${{{key}:?{key} is required}}" in compose
+            assert f"{key}: ${{{key}:-" not in compose
 
 
 def test_root_include_applies_only_the_runtime_identity_override():

@@ -29,6 +29,7 @@ from app.services.analysis.stages.plan_stage import AnalysisPlanStage
 from app.services.analysis.stages.query_stage import AnalysisQueryStage
 from app.services.analysis.stages.result_stage import AnalysisResultStage
 from app.services.analysis.pipeline_support import PipelineSupport
+from app.services.analysis.sql_generation_mode import SqlGenerationMode
 from app.services.execution_control import (
     IsolatedExecutionCache,
     ModelCallBudget,
@@ -47,12 +48,19 @@ class AnalysisPipeline:
         support: PipelineSupport,
         responses: AnalysisResponseFactory,
         cache: IsolatedExecutionCache,
+        sql_generation_mode: SqlGenerationMode = SqlGenerationMode.HYBRID,
     ) -> None:
         self._responses = responses
         self._context_stage = AnalysisContextStage(
             adapter, model, support, responses
         )
-        self._plan_stage = AnalysisPlanStage(model, support, responses, cache)
+        self._plan_stage = AnalysisPlanStage(
+            model,
+            support,
+            responses,
+            cache,
+            sql_generation_mode,
+        )
         self._query_stage = AnalysisQueryStage(adapter, support, responses, cache)
         self._result_stage = AnalysisResultStage(model, support, responses)
 
@@ -110,7 +118,7 @@ class AnalysisPipeline:
                 PipelineStage.CONTROLLER,
                 AnalysisStatus.BLOCKED,
                 ErrorCode.ACCESS_DENIED,
-                "분석 실행 권한이 필요합니다.",
+                "분석 Agent는 analyst 권한이 필요합니다.",
                 decision,
             )
 

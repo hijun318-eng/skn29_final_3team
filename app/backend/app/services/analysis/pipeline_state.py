@@ -81,6 +81,9 @@ class AnalysisPipelineState:
     result_key: str = ""
     query: dict[str, Any] | None = None
     result_cached: bool = False
+    approved_semantic_snapshot: object | None = None
+    approved_analysis_plan: dict[str, Any] | None = None
+    semantic_candidate_receipt: dict[str, Any] | None = None
 
     def record(
         self,

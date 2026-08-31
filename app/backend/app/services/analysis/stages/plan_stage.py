@@ -30,6 +30,8 @@ from app.services.analysis.logical_plan import (
     AnalysisPlanErrorCode,
 )
 from app.services.analysis.typed_sql_compiler import TYPED_SQL_COMPILER_VERSION
+from app.services.analysis.sql_generation_mode import SqlGenerationMode
+from app.services.analysis.semantic_request import semantic_plan_identity
 from app.services.context.builder import ContextPackage
 from app.services.execution_control import IsolatedExecutionCache, secure_cache_key
 from app.services.analysis.pipeline_support import PipelineSupport
@@ -46,11 +48,13 @@ class AnalysisPlanStage:
         support: PipelineSupport,
         responses: AnalysisResponseFactory,
         cache: IsolatedExecutionCache,
+        sql_generation_mode: SqlGenerationMode = SqlGenerationMode.HYBRID,
     ) -> None:
         self._model = model
         self._support = support
         self._responses = responses
         self._cache = cache
+        self._sql_generation_mode = sql_generation_mode
 
     async def run(self, state: AnalysisPipelineState) -> AnalysisResponse | None:
         """계획 수립 단계를 실행하여 state에 검증된 plan을 저장합니다 (실패 시 AnalysisResponse 반환)."""
@@ -100,6 +104,20 @@ class AnalysisPlanStage:
                 detail=error.code.value,
             )
         analysis_plan_payload = analysis_plan.as_dict()
+        if state.approved_analysis_plan is not None and semantic_plan_identity(
+            analysis_plan_payload
+        ) != semantic_plan_identity(state.approved_analysis_plan):
+            return self._responses.error(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.G2,
+                AnalysisStatus.BLOCKED,
+                ErrorCode.SCHEMA_VERSION_MISMATCH,
+                "저장된 Semantic Request가 현재 승인 카탈로그에서 같은 의미 계획으로 재검증되지 않았습니다.",
+                decision,
+                detail="APPROVED_SEMANTIC_PLAN_MISMATCH",
+            )
         state.analysis_plan = analysis_plan_payload
         structured_for_model = {
             **state.structured_request,
@@ -127,6 +145,7 @@ class AnalysisPlanStage:
             parameters=state.payload.parameters,
             analysis_plan_checksum=analysis_plan.checksum,
             typed_sql_compiler=TYPED_SQL_COMPILER_VERSION,
+            sql_generation_mode=self._sql_generation_mode.value,
             **state.common_key,
         )
         plan = self._cache.get_plan(plan_key)
@@ -159,6 +178,21 @@ class AnalysisPlanStage:
             # Node 2 후보를 사용하되 아래의 동일한 G2 검증을 생략하지 않는다.
             plan = self._support.typed_sql_plan(analysis_plan, package)
             if plan is None:
+                if (
+                    state.approved_semantic_snapshot is not None
+                    or self._sql_generation_mode is SqlGenerationMode.COMPILER_ONLY
+                ):
+                    return self._responses.error(
+                        context,
+                        state.machine,
+                        state.trace,
+                        PipelineStage.G2,
+                        AnalysisStatus.BLOCKED,
+                        ErrorCode.SQL_POLICY_BLOCKED,
+                        "현재 승인된 SQL 컴파일 범위에서 이 분석 구조를 실행할 수 없습니다.",
+                        decision,
+                        detail="COMPILER_SCOPE_UNSUPPORTED",
+                    )
                 try:
                     plan = await state.budget.call(
                         self._model,

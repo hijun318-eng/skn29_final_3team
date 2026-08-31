@@ -1,30 +1,34 @@
 /** 대화형 분석 워크스페이스의 세션·멀티턴 상태·증적 서랍·보고서 연계를 통합 관리하는 모듈이다. */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, FilePlus2, History, MessageSquareText, Plus, Save, Send, Sparkles, TableProperties } from "lucide-react";
-import { AnalysisApiError, createAnalysisClient } from "../api/analysisClient";
+import { Eye, FilePlus2, MessageSquareText, Plus, Save, Send, Sparkles, TableProperties } from "lucide-react";
+import { AnalysisApiError, createAnalysisClient, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
-import { MetaStrip } from "../components/common/EnterpriseUi";
+import { RagAnswerCard } from "../components/rag/RagAnswerCard";
+import RagEmptyState from "../components/rag/RagEmptyState";
+import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
+import { ragRun } from "./agentResponseMappers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
-const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
 
-/** 대화형 분석 워크스페이스 최상위 화면을 렌더링한다. */
-export function AgentPage({ canDraftReport = false, onNavigate }) {
+/** 대화형 분석 워크스페이스를 렌더링하고 Report 작업은 서버 Capability가 있을 때만 노출한다. */
+export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavigate }) {
   const analysisClient = useMemo(() => createAnalysisClient(fetch), []);
   const reportClient = useMemo(() => createReportClient(undefined, fetch), []);
   const [question, setQuestion] = useState(() => window.sessionStorage.getItem(QUESTION_DRAFT_KEY) || "");
   const [inputError, setInputError] = useState("");
   const [conversationId, setConversationId] = useState(() => window.sessionStorage.getItem(CONVERSATION_KEY) || "");
   const [turns, setTurns] = useState([]);
+  const [emptyMode, setEmptyMode] = useState("analysis");
+  const [ragCatalog, setRagCatalog] = useState({ status: "idle", documents: [], error: "" });
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
@@ -36,13 +40,18 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
   const [definitions, setDefinitions] = useState([]);
   const [definitionQuery, setDefinitionQuery] = useState("");
   const [visibleDefinitionCount, setVisibleDefinitionCount] = useState(10);
-  const [savedRuns, setSavedRuns] = useState([]);
-  const [visibleRunCount, setVisibleRunCount] = useState(RUN_HISTORY_PAGE_SIZE);
   const requestInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const activeTraceId = useRef("");
   const activeCommandAbortController = useRef(null);
   const threadEndRef = useRef(null);
+
+  const scrollToLatestTurn = () => window.requestAnimationFrame(() => {
+    threadEndRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "end",
+    });
+  });
 
   const activeEvidenceRun = selectedEvidenceRun || turns.at(-1)?.run || transientRun("");
 
@@ -53,16 +62,19 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
 
   const exampleQuestions = useMemo(() => exampleQuestionsFromDefinitions(definitions), [definitions]);
   const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
-  const visibleRuns = savedRuns.slice(0, visibleRunCount);
   const latestArtifactTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
     [turns],
   );
+  const internalGuidelineEnabled = enabledFeatures.includes(SERVICE_FEATURE.internalGuideline);
+  const mlPredictionEnabled = enabledFeatures.includes(SERVICE_FEATURE.mlPrediction);
+  const ragAvailable = internalGuidelineEnabled
+    && ragCatalog.status === "ready"
+    && ragCatalog.documents.length > 0;
 
   const refreshSaved = async () => {
-    const [nextDefs, nextRuns] = await Promise.all([analysisClient.listDefinitions(), analysisClient.listRuns()]);
+    const nextDefs = await analysisClient.listDefinitions();
     setDefinitions(nextDefs);
-    setSavedRuns(nextRuns);
   };
 
   useEffect(() => {
@@ -85,6 +97,29 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         });
     }
   }, []);
+
+  useEffect(() => {
+    if (!internalGuidelineEnabled) {
+      setRagCatalog({ status: "idle", documents: [], error: "" });
+      return undefined;
+    }
+    let active = true;
+    setRagCatalog({ status: "loading", documents: [], error: "" });
+    analysisClient.listInternalManuals()
+      .then((documents) => {
+        if (active) setRagCatalog({ status: "ready", documents, error: "" });
+      })
+      .catch((error) => {
+        if (active) {
+          setRagCatalog({
+            status: "error",
+            documents: [],
+            error: error instanceof Error ? error.message : "내부 문서 목록을 불러오지 못했습니다.",
+          });
+        }
+    });
+    return () => { active = false; };
+  }, [analysisClient, internalGuidelineEnabled]);
 
   const handleCancelAnalysis = async (turnId) => {
     const cancelledTraceId = activeTraceId.current;
@@ -150,6 +185,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
     setConversationId("");
     window.sessionStorage.removeItem(CONVERSATION_KEY);
     setTurns([]);
+    setEmptyMode("analysis");
     setEvidenceOpen(false);
     setSelectedEvidenceRun(null);
     setReportModal("");
@@ -161,9 +197,11 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
   // action은 UI가 이미 아는 동작을 자연어로 바꾸지 않고 전달하는 typed 신호다(서버가 재검증).
   const analyzeQuestion = async (nextQuestion, action = null, sourceTurn = null) => {
     const normalized = nextQuestion.trim();
-    if (!normalized) { setInputError("분석할 질문을 입력해 주세요."); return; }
+    if (!normalized) { setInputError("메시지를 입력해 주세요."); return; }
     if (requestInFlight.current) return;
-    const isPresentationAction = action?.requested_route === "PRESENTATION";
+    const resolvedAction = action;
+    const isPresentationAction = resolvedAction?.requested_route === "PRESENTATION";
+    const isInternalGuidelineAction = resolvedAction?.requested_route === "INTERNAL_GUIDELINE";
     const sourceRun = sourceTurn?.run || latestArtifactTurn?.run || null;
     if (isPresentationAction && !hasReusablePresentationArtifact(sourceRun)) {
       const unavailableTurn = {
@@ -185,7 +223,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         viewSpecId: null,
       };
       setTurns((prev) => [...prev, unavailableTurn]);
-      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      scrollToLatestTurn();
       return;
     }
     const generation = requestGeneration.current + 1;
@@ -209,7 +247,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       question: normalized,
       run: canReuseArtifact
         ? { ...sourceRun, question: normalized, status: "success", traceId, elapsedSeconds: 0 }
-        : { ...transientRun(normalized, "running"), traceId },
+        : { ...transientRun(normalized, "running"), traceId, chatPending: true },
       resolvedSlots: null,
       viewType: canReuseArtifact ? action.presentation_type : null,
       isArtifactReuse: canReuseArtifact,
@@ -217,7 +255,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       viewSpecId: null,
     };
     setTurns((prev) => [...prev, optimisticTurn]);
-    window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    scrollToLatestTurn();
 
     const commandOptions = {
       traceId,
@@ -238,7 +276,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       let cmdResponse;
       try {
         cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-          ...(action || {}),
+          ...(resolvedAction || {}),
           user_message: normalized,
           expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : null,
           idempotency_key: commandIdempotencyKey,
@@ -257,7 +295,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
           activeConvId = await initConversation(generation);
           if (!activeConvId || requestGeneration.current !== generation) return;
           cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-            ...(action || {}),
+            ...(resolvedAction || {}),
             user_message: normalized,
             expected_head_turn_id: null,
             idempotency_key: commandIdempotencyKey,
@@ -271,11 +309,19 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       const data = cmdResponse?.data || cmdResponse;
       const serverTurn = data?.turn;
       const analysisRaw = data?.analysis_response;
+      const responseType = data?.type || "ANALYSIS";
       const isPresentation = serverTurn?.route === "PRESENTATION";
       const isReportAction = serverTurn?.route === "REPORT_ACTION";
 
       let finalRun;
-      if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
+      if (responseType === "OUT_OF_SCOPE" || serverTurn?.route === "OUT_OF_SCOPE") {
+        finalRun = scopeNoticeRun(
+          normalized,
+          data?.message || serverTurn?.resolved_slots?.scope_rejection?.message,
+        );
+      } else if (responseType === "INTERNAL_GUIDELINE" && data?.rag_response) {
+        finalRun = ragRun(normalized, data.rag_response);
+      } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
         const clarType = commandClarificationType(data, serverTurn);
         finalRun = {
@@ -292,7 +338,11 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
           },
         };
       } else if (["BLOCKED", "FAILED", "CANCELLED"].includes(data?.status)) {
-        finalRun = commandErrorRun(normalized, data);
+        finalRun = commandErrorRun(
+          normalized,
+          data,
+          isInternalGuidelineAction ? "INTERNAL_GUIDELINE" : "ANALYSIS",
+        );
       } else if (isPresentation) {
         const sourceArtifactId = sourceRun?.artifact?.artifactId;
         const sourceQueryId = sourceRun?.artifact?.queryId;
@@ -344,11 +394,15 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       } else if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
       } else if (data?.status === "PARTIAL") {
-        finalRun = commandErrorRun(normalized, data);
+        finalRun = commandErrorRun(
+          normalized,
+          data,
+          isInternalGuidelineAction ? "INTERNAL_GUIDELINE" : "ANALYSIS",
+        );
       } else if (isReportAction) {
         finalRun = {
           ...transientRun(normalized, "success"),
-          summary: `분석 대화 결과가 공식 보고서 초안(Draft)으로 결합되었습니다. (/reports에서 확인 가능)`,
+          summary: "분석 결과를 보고서 초안에 담았습니다.",
           reportDefinitionId: serverTurn?.report_definition_id,
         };
       } else {
@@ -366,12 +420,15 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         question: normalized,
         run: finalRun,
         resolvedSlots: serverTurn?.resolved_slots || null,
-        viewType: isPresentation
+        viewType: responseType === "OUT_OF_SCOPE" || serverTurn?.route === "OUT_OF_SCOPE"
+          ? "CHAT"
+          : isPresentation
           ? (serverTurn?.view_type || "TABLE")
           : (serverTurn?.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(finalRun),
         reusePending: false,
         viewSpecId: isPresentation ? serverTurn?.view_spec_id : null,
+        processViewModel: null,
       } : t));
 
       void refreshSaved();
@@ -381,6 +438,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         ...t,
         isArtifactReuse: false,
         reusePending: false,
+        processViewModel: null,
         run: {
           ...transientRun(normalized, error instanceof AnalysisApiError && error.status === 403 ? "blocked" : "failed"),
           error: {
@@ -391,6 +449,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
             suggestions: error instanceof AnalysisApiError ? error.suggestions : [],
             missing_requirements: error instanceof AnalysisApiError ? error.missingRequirements : [],
             trace_id: traceId,
+            service_context: isInternalGuidelineAction ? "INTERNAL_GUIDELINE" : "ANALYSIS",
           },
         },
       } : t));
@@ -400,7 +459,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
         if (activeTraceId.current === traceId) activeTraceId.current = "";
         requestInFlight.current = false;
         setSubmitting(false);
-        window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+        scrollToLatestTurn();
       }
     }
   };
@@ -408,7 +467,8 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
   const submitQuestion = (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void analyzeQuestion(String(form.get("question") || question).trim());
+    const action = emptyMode === "rag-documents" ? { requested_route: "INTERNAL_GUIDELINE" } : null;
+    void analyzeQuestion(String(form.get("question") || question).trim(), action);
   };
 
   const saveAnalysis = async (targetRun) => {
@@ -454,7 +514,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
       requestInFlight.current = false;
       setSavedBusy(false);
       setSubmitting(false);
-      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      scrollToLatestTurn();
     }
   };
 
@@ -483,7 +543,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
     <div className={`chat-layout ${evidenceOpen ? "evidence-open" : ""}`}>
       {/* 좌측: 저장된 분석 및 대화방 */}
       <aside className="chat-history" inert={Boolean(reportModal)}>
-        <button className="new-chat" onClick={handleNewChat}><Plus size={16} />새 분석</button>
+        <button className="new-chat" onClick={handleNewChat}><Plus size={16} />새 대화</button>
         <p>저장된 분석</p>
         <label className="saved-analysis-search">
           <span className="sr-only">저장된 분석 검색</span>
@@ -502,39 +562,80 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
 
       {/* 중앙: 대화 스레드 메인 */}
       <main className="chat-main" inert={Boolean(reportModal)}>
-        {activeEvidenceRun.meta?.asOf && <MetaStrip meta={activeEvidenceRun.meta} verified={Boolean(activeEvidenceRun.artifact && ["success", "partial"].includes(activeEvidenceRun.status))} />}
-        
+        <div className="chat-scroll-region">
         {turns.length === 0 && !submitting && (
-          <section className="chat-empty-state" aria-labelledby="chat-empty-title">
-            <small>대화형 데이터 분석</small>
-            <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
-            <p>호텔 운영 매출, 객실 지표, 고객 VOC 평점 등 다양한 지표와 기간을 자연어로 분석해 보세요.</p>
-            {exampleQuestions.length > 0 && (
-              <div aria-label="분석 질문 예시">
-                {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
-              </div>
-            )}
-          </section>
+          emptyMode === "rag-documents" ? (
+            <RagEmptyState
+              documents={ragCatalog.documents}
+              loading={ragCatalog.status === "loading"}
+              error={ragCatalog.error}
+              onBack={() => setEmptyMode("analysis")}
+            />
+          ) : (
+            <section className="chat-empty-state" aria-labelledby="chat-empty-title">
+              <small>ANSWERVICE AI</small>
+              <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
+              <p>{ragAvailable
+                ? "호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."
+                : "호텔 운영 데이터 분석과 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."}</p>
+              {exampleQuestions.length > 0 && (
+                <div aria-label="추천 질문">
+                  {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
+                </div>
+              )}
+              {ragAvailable && (
+                <div className="chat-support-links" aria-label="도움말">
+                  <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부 업무지침 찾아보기</button>
+                </div>
+              )}
+            </section>
+          )
         )}
 
         {turns.length > 0 && (
           <div className="conversation">
             {turns.map((turnItem, idx) => (
               <div key={turnItem.turnId || idx} className="conversation-turn-group">
-                <div className="message message--user">
+                <div className="message message--user" aria-label="사용자 메시지">
                   <div className="turn-user-bubble">
-                    <span className="user-icon">👤</span>
                     <div className="user-content">
                       <p className="user-text">{turnItem.question}</p>
                     </div>
                   </div>
+                  <span className="user-icon" aria-hidden="true">나</span>
                 </div>
 
-                <div className="message message--agent">
+                <div className="message message--agent" aria-label="AI 응답">
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
-
-                    <AnalysisStatePanel
+                    {turnItem.run.scopeNotice ? (
+                      <div className="scope-notice-response" role="status">
+                        <small>지원 범위 안내</small>
+                        <p>{turnItem.run.scopeNotice.message}</p>
+                      </div>
+                    ) : turnItem.run.rag ? (
+                      <>
+                        <small className="agent-result-type">내부지침</small>
+                        <RagAnswerCard
+                          rag={turnItem.run.rag}
+                          pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
+                            label: item.document_name || "근거 문서",
+                            url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
+                          }))}
+                          onFollowUp={turnItem.turnId === turns.at(-1)?.turnId
+                            ? (followUp) => void analyzeQuestion(followUp, {
+                                requested_route: "INTERNAL_GUIDELINE",
+                                inherit_previous_context: true,
+                              })
+                            : undefined}
+                        />
+                      </>
+                    ) : turnItem.run.chatPending && !turnItem.processViewModel ? (
+                      <div className="chat-pending-response" role="status" aria-live="polite">
+                        <span aria-hidden="true"><i /><i /><i /></span>
+                        <p>답변을 준비하고 있어요</p>
+                      </div>
+                    ) : <AnalysisStatePanel
                       run={turnItem.run}
                       viewType={turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY"}
                       artifactReuse={turnItem.isArtifactReuse ? {
@@ -544,16 +645,6 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                       processViewModel={turnItem.processViewModel}
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
-                      onQuickView={turnItem.turnId === latestArtifactTurn?.turnId ? (mode) => {
-                        if (mode === "SUMMARY" || mode === "KPI") {
-                          setTurns((prev) => prev.map((turn) => turn.turnId === turnItem.turnId
-                            ? { ...turn, viewType: mode }
-                            : turn));
-                          return;
-                        }
-                        const quick = quickViewAction(mode);
-                        if (quick) void analyzeQuestion(quick.label, quick.action, turnItem);
-                      } : undefined}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
                       onSave={["success", "partial"].includes(turnItem.run.status) ? () => void saveAnalysis(turnItem.run) : undefined}
@@ -571,8 +662,8 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                         setSelectedEvidenceRun(turnItem.run);
                         setEvidenceOpen(true);
                       } : undefined}
-                    />
-                    {turnItem.run.reportDefinitionId && (
+                    />}
+                    {canDraftReport && turnItem.run.reportDefinitionId && (
                       <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                         <button
                           type="button"
@@ -581,7 +672,7 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                           title="생성된 보고서 초안으로 이동"
                         >
                           <FilePlus2 size={13} />
-                          <span>보고서에서 확인하기 (/reports)</span>
+                          <span>보고서에서 확인하기</span>
                         </button>
                       </div>
                     )}
@@ -589,63 +680,35 @@ export function AgentPage({ canDraftReport = false, onNavigate }) {
                 </div>
               </div>
             ))}
-            <div ref={threadEndRef} />
+            <div ref={threadEndRef} className="conversation-end" aria-hidden="true" />
           </div>
         )}
 
-        {/* 하단 고정 분석 질문 입력창 */}
+        {message && <p className="analysis-notice" role="status">{message}</p>}
+
+        </div>
+
+        {/* 대화 결과를 덮지 않는 중앙 하단 입력 영역 */}
         <form className="chat-input" onSubmit={submitQuestion}>
           <div className="question-field">
             <input
-              aria-label="분석 질문"
+              aria-label="메시지"
               name="question"
               value={question}
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder="분석할 지표와 기간을 자연어로 입력하세요"
-              aria-describedby="question-help"
+              placeholder={emptyMode === "rag-documents" ? "내부 업무지침에 대해 물어보세요" : "메시지를 입력하세요"}
               aria-invalid={Boolean(inputError)}
               disabled={submitting}
               required
             />
-            <button aria-label="질문 전송" disabled={submitting || !question.trim()}><Send size={16} /></button>
+            <button aria-label="메시지 전송" disabled={submitting || !question.trim()}><Send size={16} /></button>
           </div>
-          <small id="question-help">{question.length.toLocaleString("ko-KR")}/{MAX_QUESTION_LENGTH.toLocaleString("ko-KR")}자</small>
           {inputError && <p className="analysis-input-error" role="alert">{inputError}</p>}
         </form>
-
-        {message && <p className="analysis-notice" role="status">{message}</p>}
-
-        {savedRuns.length > 0 && (
-          <details className="run-history-panel">
-            <summary><History size={15} /><span>최근 실행</span><b>{savedRuns.length}</b></summary>
-            <ul>
-              {visibleRuns.map((item) => (
-                <li key={item.request_id}>
-                  <span>
-                    <b>{savedRunStatus(item.status)}</b>
-                    <small>{formatSeoulDateTime(item.completed_at || item.started_at)}</small>
-                    <small>{item.question}</small>
-                    <small>{item.period_start && item.period_end_exclusive
-                      ? `${item.period_start} ~ ${item.period_end_exclusive} 미포함`
-                      : item.snapshot_cutoff && item.snapshot_selection === "max_source_value_lt_as_of"
-                        ? `${item.snapshot_cutoff} 이전 최신 스냅샷`
-                        : "시간 기준 없음"}</small>
-                  </span>
-                  {item.artifact_id && (
-                    <button type="button" disabled={savedBusy} onClick={() => void replaySavedDefinition(item)}>
-                      다시 실행
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {savedRuns.length > visibleRunCount && (
-              <button type="button" onClick={() => setVisibleRunCount((c) => c + RUN_HISTORY_PAGE_SIZE)}>더 보기</button>
-            )}
-          </details>
-        )}
       </main>
+
+      {mlPredictionEnabled && <MLPredictionWorkspace conversationId={conversationId || null} />}
 
       {/* 우측 슬라이드: 분석 근거 서랍 */}
       <TurnEvidenceDrawer

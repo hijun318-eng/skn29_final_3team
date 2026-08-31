@@ -403,6 +403,40 @@
         "title": "AnalysisProgressData",
         "type": "object"
       },
+      "AnalysisProgressPollResponse": {
+        "additionalProperties": false,
+        "description": "대화 라우팅 중 아직 분석이 시작되지 않은 경우까지 오류 없이 polling한다.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisProgressData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "AnalysisProgressPollResponse",
+        "type": "object"
+      },
       "AnalysisProgressResponse": {
         "additionalProperties": false,
         "description": "비동기 분석의 현재 진행 정보와 공통 메타데이터, 선택적 오류를 반환한다.",
@@ -1706,6 +1740,21 @@
             "title": "Idempotency Key",
             "type": "string"
           },
+          "inherit_previous_context": {
+            "default": false,
+            "title": "Inherit Previous Context",
+            "type": "boolean"
+          },
+          "ml_prediction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MLPredictionAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "presentation_type": {
             "anyOf": [
               {
@@ -1732,7 +1781,9 @@
                 "enum": [
                   "ANALYSIS",
                   "PRESENTATION",
-                  "REPORT_ACTION"
+                  "REPORT_ACTION",
+                  "INTERNAL_GUIDELINE",
+                  "ML_PREDICTION"
                 ],
                 "type": "string"
               },
@@ -1759,7 +1810,7 @@
       },
       "CreateAccountRequest": {
         "additionalProperties": false,
-        "description": "정규화된 login ID, 초기 비밀번호와 두 Role 중 하나만 계정 생성에 허용한다.",
+        "description": "정규화된 login ID, 초기 비밀번호와 현재 서비스 Role만 계정 생성에 허용한다.",
         "properties": {
           "password": {
             "format": "password",
@@ -1864,8 +1915,18 @@
       },
       "CreateReportAssistantSessionRequest": {
         "additionalProperties": false,
-        "description": "보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다.",
+        "description": "보고서 초안과 대표·추가 승인 Artifact 최대 다섯 개를 Assistant 세션에 결속한다.",
         "properties": {
+          "additional_artifact_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Additional Artifact Ids",
+            "type": "array"
+          },
           "artifact_id": {
             "format": "uuid",
             "title": "Artifact Id",
@@ -1898,6 +1959,7 @@
             "items": {
               "$ref": "#/components/schemas/ReportBlockRequest"
             },
+            "maxItems": 100,
             "title": "Blocks",
             "type": "array"
           },
@@ -1929,6 +1991,7 @@
             "type": "string"
           },
           "title": {
+            "maxLength": 255,
             "minLength": 1,
             "title": "Title",
             "type": "string"
@@ -2180,6 +2243,15 @@
           "MODEL_TIMEOUT",
           "MODEL_ENDPOINT_UNAVAILABLE",
           "MODEL_OUTPUT_UNGROUNDED",
+          "REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED",
+          "REPORT_ASSISTANT_MODEL_RATE_LIMITED",
+          "REPORT_ASSISTANT_MODEL_REQUEST_REJECTED",
+          "REPORT_ASSISTANT_MODEL_TIMEOUT",
+          "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED",
+          "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
+          "REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+          "REPORT_ASSISTANT_TURN_MODEL_FAILED",
+          "REPORT_ASSISTANT_TURN_MODEL_INVALID",
           "CIRCUIT_OPEN",
           "INSUFFICIENT_CONTEXT",
           "UNREPAIRABLE",
@@ -2189,6 +2261,7 @@
           "QUERY_TIMEOUT",
           "QUERY_SOURCE_FAILED",
           "EMPTY_RESULT",
+          "PRESENTATION_NOT_SUPPORTED",
           "RESULT_VALIDATION_FAILED",
           "RESULT_EVIDENCE_MISSING",
           "ARTIFACT_PERSIST_FAILED",
@@ -2602,6 +2675,14 @@
             "title": "Capabilities",
             "type": "array"
           },
+          "enabled_features": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RuntimeFeature"
+            },
+            "title": "Enabled Features",
+            "type": "array"
+          },
           "role": {
             "anyOf": [
               {
@@ -2672,6 +2753,37 @@
           "meta"
         ],
         "title": "LoginResponse",
+        "type": "object"
+      },
+      "MLPredictionAction": {
+        "additionalProperties": false,
+        "description": "클라이언트가 명시적으로 요청하는 객실 수요 예측의 typed 입력이다.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Horizon Days",
+            "type": "integer"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "as_of",
+          "horizon_days"
+        ],
+        "title": "MLPredictionAction",
         "type": "object"
       },
       "ManualRunCommandResponse": {
@@ -2768,6 +2880,28 @@
             "title": "Definition",
             "type": "string"
           },
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Label"
+          },
+          "display_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Unit"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -2808,6 +2942,28 @@
           "definition": {
             "title": "Definition",
             "type": "string"
+          },
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Label"
+          },
+          "display_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Unit"
           },
           "label": {
             "title": "Label",
@@ -2964,6 +3120,61 @@
         "title": "QueryExecutionEvidence",
         "type": "object"
       },
+      "RagQueryRequest": {
+        "additionalProperties": false,
+        "description": "내부 매뉴얼 검색에 허용되는 질문과 대화 문맥 입력을 제한한다.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "expected_head_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Turn Id"
+          },
+          "inherit_previous_context": {
+            "default": false,
+            "title": "Inherit Previous Context",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "DOCUMENT_ONLY",
+            "enum": [
+              "AUTO",
+              "DOCUMENT_ONLY"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "RagQueryRequest",
+        "type": "object"
+      },
       "ReadinessData": {
         "additionalProperties": false,
         "description": "서비스 준비 상태와 각 외부 의존성의 점검 결과를 readiness 응답으로 제공한다.",
@@ -3023,6 +3234,7 @@
             "items": {
               "$ref": "#/components/schemas/ReportBlockRequest"
             },
+            "maxItems": 100,
             "title": "Blocks",
             "type": "array"
           },
@@ -3044,6 +3256,11 @@
               }
             ],
             "title": "Currency Display Unit"
+          },
+          "expected_draft_revision": {
+            "minimum": 1.0,
+            "title": "Expected Draft Revision",
+            "type": "integer"
           },
           "orientation": {
             "anyOf": [
@@ -3075,7 +3292,8 @@
           }
         },
         "required": [
-          "blocks"
+          "blocks",
+          "expected_draft_revision"
         ],
         "title": "ReplaceReportBlocksRequest",
         "type": "object"
@@ -3122,13 +3340,8 @@
       },
       "ReportArtifactResponse": {
         "additionalProperties": false,
-        "description": "보고서가 참조할 분석 요약·지표·표·차트·증거를 산출물 ID 및 checksum과 반환한다.",
+        "description": "보고서가 렌더링할 분석 내용과 공개 가능한 증거만 반환한다.\n\nquery ID와 checksum은 저장소 내부 lineage 검증에만 사용하며 브라우저 계약에는 넣지 않는다.",
         "properties": {
-          "artifact_checksum": {
-            "pattern": "^[0-9a-f]{64}$",
-            "title": "Artifact Checksum",
-            "type": "string"
-          },
           "artifact_id": {
             "format": "uuid",
             "title": "Artifact Id",
@@ -3159,10 +3372,6 @@
             "title": "Metrics",
             "type": "array"
           },
-          "query_id": {
-            "title": "Query Id",
-            "type": "string"
-          },
           "summary": {
             "title": "Summary",
             "type": "string"
@@ -3178,12 +3387,10 @@
         "required": [
           "contract_version",
           "artifact_id",
-          "query_id",
           "title",
           "summary",
           "table",
-          "evidence",
-          "artifact_checksum"
+          "evidence"
         ],
         "title": "ReportArtifactResponse",
         "type": "object"
@@ -3613,13 +3820,47 @@
       },
       "ReportAssistantMessageRequest": {
         "additionalProperties": false,
-        "description": "ready 세션에 500자 이하의 보고서 변경 지시를 제출한다.",
+        "description": "새 요청 또는 현재 patch를 교체할 500자 이하의 보고서 변경 지시를 제출한다.",
         "properties": {
+          "expected_patch_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Patch Request Id"
+          },
           "instruction": {
             "maxLength": 500,
             "minLength": 1,
             "title": "Instruction",
             "type": "string"
+          },
+          "operation_scope": {
+            "default": "full_report",
+            "enum": [
+              "full_report",
+              "report_title"
+            ],
+            "title": "Operation Scope",
+            "type": "string"
+          },
+          "selected_block_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Block Id"
           }
         },
         "required": [
@@ -3801,6 +4042,158 @@
         "title": "ReportAssistantOperationsSummaryResponse",
         "type": "object"
       },
+      "ReportAssistantPatchApprovalRequest": {
+        "additionalProperties": false,
+        "description": "patch 승인 시 선택할 0-based operation 인덱스를 정렬된 고유 목록으로 받는다.",
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "operation_indexes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 12,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Indexes"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "approved"
+        ],
+        "title": "ReportAssistantPatchApprovalRequest",
+        "type": "object"
+      },
+      "ReportAssistantPatchPreviewItem": {
+        "additionalProperties": false,
+        "description": "식별자·SQL 없이 승인 전 변경과 nullable 1-based renderer 페이지를 반환한다.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "depends_on_indexes": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 11,
+            "title": "Depends On Indexes",
+            "type": "array"
+          },
+          "evidence_count": {
+            "maximum": 16.0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "impact_category": {
+            "enum": [
+              "CONTENT",
+              "LAYOUT",
+              "DESTRUCTIVE"
+            ],
+            "title": "Impact Category",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 11.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "operation": {
+            "enum": [
+              "set_report_title",
+              "set_report_orientation",
+              "set_currency_display_unit",
+              "compact_report_layout",
+              "add_report_page",
+              "update_block_title",
+              "resize_block",
+              "update_chart_settings",
+              "update_table_settings",
+              "set_block_size_mode",
+              "add_text",
+              "update_text",
+              "add_artifact_view",
+              "reposition_block",
+              "remove_block",
+              "duplicate_block",
+              "restore_previous_revision"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "page_index": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Index"
+          },
+          "target": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "operation",
+          "target",
+          "impact_category",
+          "evidence_required",
+          "evidence_count"
+        ],
+        "title": "ReportAssistantPatchPreviewItem",
+        "type": "object"
+      },
       "ReportAssistantProposalResponse": {
         "additionalProperties": false,
         "description": "검증된 변경 종류·사용자 메시지와 저장된 서버 세션 상태를 함께 반환한다.",
@@ -3822,6 +4215,15 @@
           },
           "session": {
             "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+          },
+          "suggestions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Suggestions",
+            "type": "array"
           }
         },
         "required": [
@@ -3845,6 +4247,144 @@
         "title": "ReportAssistantRequiredAction",
         "type": "string"
       },
+      "ReportAssistantReviewFinding": {
+        "additionalProperties": false,
+        "description": "현재 보고서를 저장하지 않고 발견한 품질 문제와 사용자가 선택할 수정 지시다.",
+        "properties": {
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "category": {
+            "enum": [
+              "duplicate_text",
+              "verbose_summary",
+              "title_mismatch",
+              "inconsistent_metric_expression",
+              "unsupported_claim"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "detail": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "suggested_instruction": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Suggested Instruction",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "severity",
+          "title",
+          "detail",
+          "suggested_instruction"
+        ],
+        "title": "ReportAssistantReviewFinding",
+        "type": "object"
+      },
+      "ReportAssistantReviewRequest": {
+        "additionalProperties": false,
+        "description": "비저장 품질 검토가 참고할 현재 편집기 선택 블록을 선택적으로 지정한다.",
+        "properties": {
+          "selected_block_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Block Id"
+          }
+        },
+        "title": "ReportAssistantReviewRequest",
+        "type": "object"
+      },
+      "ReportAssistantReviewResponse": {
+        "additionalProperties": false,
+        "description": "세션 상태나 Report revision을 바꾸지 않는 bounded 품질 검토 결과다.",
+        "properties": {
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantReviewFinding"
+            },
+            "maxItems": 10,
+            "title": "Findings",
+            "type": "array"
+          },
+          "suggestions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/ReportAssistantTraceResponse"
+          }
+        },
+        "required": [
+          "assistant_request_id",
+          "summary",
+          "findings",
+          "trace"
+        ],
+        "title": "ReportAssistantReviewResponse",
+        "type": "object"
+      },
       "ReportAssistantSessionResponse": {
         "additionalProperties": false,
         "description": "서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다.",
@@ -3859,10 +4399,27 @@
               }
             ]
           },
+          "approved_operation_indexes": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Approved Operation Indexes",
+            "type": "array"
+          },
           "artifact_id": {
             "format": "uuid",
             "title": "Artifact Id",
             "type": "string"
+          },
+          "artifact_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
           },
           "assistant_request_id": {
             "format": "uuid",
@@ -3893,11 +4450,36 @@
             ],
             "title": "Error Code"
           },
+          "operation_scope": {
+            "enum": [
+              "full_report",
+              "report_title"
+            ],
+            "title": "Operation Scope",
+            "type": "string"
+          },
+          "patch_evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Patch Evidence Refs",
+            "type": "array"
+          },
           "patch_operations": {
             "default": [],
             "items": {
               "enum": [
                 "set_report_title",
+                "set_report_orientation",
+                "set_currency_display_unit",
+                "compact_report_layout",
+                "add_report_page",
+                "update_block_title",
+                "resize_block",
+                "update_chart_settings",
+                "update_table_settings",
+                "set_block_size_mode",
                 "add_text",
                 "update_text",
                 "add_artifact_view",
@@ -3909,6 +4491,14 @@
               "type": "string"
             },
             "title": "Patch Operations",
+            "type": "array"
+          },
+          "patch_preview": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantPatchPreviewItem"
+            },
+            "title": "Patch Preview",
             "type": "array"
           },
           "patch_request_id": {
@@ -3994,11 +4584,21 @@
             "default": false,
             "title": "Retryable",
             "type": "boolean"
+          },
+          "turn_history": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantTurnMessage"
+            },
+            "maxItems": 12,
+            "title": "Turn History",
+            "type": "array"
           }
         },
         "required": [
           "assistant_request_id",
           "phase",
+          "operation_scope",
           "definition_id",
           "definition_version",
           "base_revision",
@@ -4047,6 +4647,32 @@
         "title": "ReportAssistantTraceResponse",
         "type": "object"
       },
+      "ReportAssistantTurnMessage": {
+        "additionalProperties": false,
+        "description": "새로고침 시 복구할 bounded 사용자·Assistant 대화 한 건을 반환한다.",
+        "properties": {
+          "content": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ReportAssistantTurnMessage",
+        "type": "object"
+      },
       "ReportBlockRequest": {
         "additionalProperties": false,
         "description": "12열 격자에 배치할 표·차트·산출물·텍스트 블록의 위치, 크기와 데이터 참조를 입력받는다.",
@@ -4085,6 +4711,15 @@
             "title": "Content",
             "type": "string"
           },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
           "h": {
             "default": 1,
             "minimum": 1.0,
@@ -4113,7 +4748,8 @@
               "table",
               "chart",
               "artifact",
-              "text"
+              "text",
+              "page_break"
             ],
             "title": "Type",
             "type": "string"
@@ -4190,20 +4826,17 @@
             "title": "Content",
             "type": "string"
           },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
           "h": {
             "title": "H",
             "type": "integer"
-          },
-          "query_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Query Id"
           },
           "title": {
             "title": "Title",
@@ -4214,7 +4847,8 @@
               "table",
               "chart",
               "artifact",
-              "text"
+              "text",
+              "page_break"
             ],
             "title": "Type",
             "type": "string"
@@ -4248,7 +4882,6 @@
           "title",
           "artifact_id",
           "columns",
-          "query_id",
           "view_spec_id",
           "type",
           "x",
@@ -4399,6 +5032,7 @@
             "items": {
               "$ref": "#/components/schemas/ReportBlockResponse"
             },
+            "maxItems": 100,
             "title": "Blocks",
             "type": "array"
           },
@@ -4421,6 +5055,11 @@
           "definition_id": {
             "title": "Definition Id",
             "type": "string"
+          },
+          "draft_revision": {
+            "minimum": 1.0,
+            "title": "Draft Revision",
+            "type": "integer"
           },
           "orientation": {
             "enum": [
@@ -4456,7 +5095,8 @@
           "blocks",
           "approved_at",
           "orientation",
-          "currency_display_unit"
+          "currency_display_unit",
+          "draft_revision"
         ],
         "title": "ReportDefinitionResponse",
         "type": "object"
@@ -4732,7 +5372,8 @@
           "REQUEST_ACCESS",
           "PROVIDE_CONTEXT",
           "MODIFY_REQUEST",
-          "CONTACT_SUPPORT"
+          "CONTACT_SUPPORT",
+          "CONTACT_ADMIN"
         ],
         "title": "RequiredAction",
         "type": "string"
@@ -4917,13 +5558,46 @@
         "type": "object"
       },
       "Role": {
-        "description": "사람인 인증 주체에게 부여할 수 있는 일반 사용자·관리자 역할의 허용 집합이다.",
+        "description": "인증 주체에게 부여할 수 있는 분석·보고서·데이터 관리 역할의 허용 집합이다.",
         "enum": [
           "analyst",
-          "admin"
+          "report_admin",
+          "data_admin",
+          "platform_admin"
         ],
         "title": "Role",
         "type": "string"
+      },
+      "RoomDemandRequest": {
+        "additionalProperties": false,
+        "description": "지원 대상·기준일·일 단위 horizon을 runtime capability 검증에 전달한다.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "horizon_days": {
+            "default": 7,
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Horizon Days",
+            "type": "integer"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "as_of"
+        ],
+        "title": "RoomDemandRequest",
+        "type": "object"
       },
       "RouteType": {
         "description": "질문을 동적 일반 분석으로 처리할지 승인된 템플릿 정의로 처리할지 표시한다.",
@@ -4962,6 +5636,15 @@
         ],
         "title": "RunDueReportScheduleResponse",
         "type": "object"
+      },
+      "RuntimeFeature": {
+        "description": "인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 집합이다.",
+        "enum": [
+          "internal_guideline",
+          "ml_prediction"
+        ],
+        "title": "RuntimeFeature",
+        "type": "string"
       },
       "SamplingEvidence": {
         "additionalProperties": false,
@@ -5004,6 +5687,14 @@
               "$ref": "#/components/schemas/Capability"
             },
             "title": "Capabilities",
+            "type": "array"
+          },
+          "enabled_features": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RuntimeFeature"
+            },
+            "title": "Enabled Features",
             "type": "array"
           },
           "role": {
@@ -5306,7 +5997,7 @@
     },
     "securitySchemes": {
       "BearerAuth": {
-        "description": "서버가 HMAC·DB revocation·현재 계정 상태로 검증하는 session token",
+        "description": "서버가 AUTH_PRINCIPALS_FILE의 SHA-256 digest로 검증하는 Bearer token",
         "scheme": "bearer",
         "type": "http"
       }
@@ -5320,7 +6011,7 @@
   "paths": {
     "/admin/accounts": {
       "get": {
-        "description": "삭제되지 않은 analyst/admin 계정을 login ID로 검색해 페이지 단위로 반환한다.",
+        "description": "삭제되지 않은 서비스 계정을 login ID로 검색해 페이지 단위로 반환한다.",
         "operationId": "listAdminAccounts",
         "parameters": [
           {
@@ -5391,7 +6082,7 @@
         ]
       },
       "post": {
-        "description": "analyst/admin 계정을 생성하고 verifier 원문 없이 단일 계정 상태만 반환한다.",
+        "description": "현재 허용 Role의 계정을 생성하고 verifier 원문 없이 단일 상태만 반환한다.",
         "operationId": "createAdminAccount",
         "requestBody": {
           "content": {
@@ -5879,7 +6570,7 @@
     },
     "/analysis": {
       "post": {
-        "description": "인증 사용자의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.\n\n진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로\n덮지 않으며 재시도 가능한 typed 503으로 반환한다.",
+        "description": "호텔 분석가의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.\n\n진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로\n덮지 않으며 재시도 가능한 typed 503으로 반환한다.",
         "operationId": "submitAnalysis",
         "parameters": [
           {
@@ -7370,6 +8061,55 @@
         "summary": "Replay Analysis Definition"
       }
     },
+    "/analysis/ml": {
+      "post": {
+        "description": "허용된 사용자 요청만 예측하고 provenance 감사 이벤트를 저장한다.",
+        "operationId": "createMlAnalysis",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomDemandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Createmlanalysis",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Ml Analysis",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
     "/analysis/progress/{trace_id}": {
       "get": {
         "description": "인증 사용자의 유일한 trace 실행 snapshot을 API metadata와 함께 반환한다.\n\ntrace 재사용으로 실행이 모호하면 request ID 사용을 요구하는 409를, 소유 실행이 없거나\n만료됐으면 자원 존재를 노출하지 않는 404를 반환한다.",
@@ -7458,6 +8198,51 @@
           }
         ],
         "summary": "Cancel Analysis Progress"
+      }
+    },
+    "/analysis/progress/{trace_id}/poll": {
+      "get": {
+        "description": "대화 명령의 라우팅과 분석 등록 사이에는 빈 진행 상태를 정상 응답한다.\n\n소유 분석이 시작되면 strict progress와 같은 snapshot을 반환한다. 미등록 trace와\n다른 사용자 소유 trace는 모두 ``data: null``로 처리해 자원 존재를 노출하지 않는다.\n동일 소유자의 trace가 모호한 경우에는 request ID 조회를 요구하는 409를 유지한다.",
+        "operationId": "pollAnalysisProgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgressPollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Poll Analysis Progress"
       }
     },
     "/analysis/requests/{request_id}/cancel": {
@@ -7554,9 +8339,31 @@
     },
     "/analysis/runs": {
       "get": {
-        "description": "현재 분석 주체의 run과 최신 query·artifact evidence를 시작 시각 역순으로 반환한다.",
+        "description": "현재 분석 주체의 run을 승인 여부와 서버 상한을 적용해 시작 시각 역순으로 반환한다.",
         "operationId": "analysisListRuns",
         "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "approved_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Approved Only",
+              "type": "boolean"
+            }
+          },
           {
             "in": "header",
             "name": "X-Trace-Id",
@@ -7901,7 +8708,7 @@
     },
     "/conversations/{conversation_id}/commands": {
       "post": {
-        "description": "대화방에서 발화 명령을 실행하여 라우트(ANALYSIS/PRESENTATION/REPORT_ACTION)를 수행한다.",
+        "description": "대화방에서 분석·표현·보고서·내부지침 명령을 수행한다.",
         "operationId": "executeConversationCommand",
         "parameters": [
           {
@@ -8110,6 +8917,150 @@
           }
         ],
         "summary": "Mcp Post"
+      }
+    },
+    "/ml/capabilities": {
+      "get": {
+        "description": "현재 역할과 feature flag를 확인한 뒤 runtime capability를 반환한다.",
+        "operationId": "getMlCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Getmlcapabilities",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Ml Capabilities",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
+    "/rag/documents": {
+      "get": {
+        "description": "현재 역할이 열람할 수 있는 승인 문서 목록을 동적으로 반환한다.",
+        "operationId": "listInternalManuals",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Listinternalmanuals",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Internal Manuals"
+      }
+    },
+    "/rag/documents/{manual_id}/source.pdf": {
+      "get": {
+        "description": "요청 주체가 열람할 수 있는 내부 매뉴얼 PDF만 중계한다.",
+        "operationId": "getInternalManualPdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "manual_id",
+            "required": true,
+            "schema": {
+              "title": "Manual Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Internal Manual Pdf"
+      }
+    },
+    "/rag/query": {
+      "post": {
+        "description": "사용자 권한과 대화 head를 확인해 내부 매뉴얼 검색 결과를 반환한다.",
+        "operationId": "queryInternalManual",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Queryinternalmanual",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Query Internal Manual"
       }
     },
     "/readiness": {
@@ -8625,6 +9576,78 @@
         "summary": "Decide Assistant Plan"
       }
     },
+    "/reports/assistant/sessions/{assistant_request_id}/cancel": {
+      "post": {
+        "description": "대기 중인 소유자 세션만 취소하고 실행·Revision 저장 중인 요청은 그대로 둔다.",
+        "operationId": "reportAssistantCancelSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel Assistant Session"
+      }
+    },
     "/reports/assistant/sessions/{assistant_request_id}/evaluation": {
       "get": {
         "description": "분석가는 자신의 평가만, 관리자는 전체 평가를 안전한 계약으로 조회한다.",
@@ -8699,7 +9722,7 @@
     },
     "/reports/assistant/sessions/{assistant_request_id}/messages": {
       "post": {
-        "description": "ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
+        "description": "새 지시 또는 승인 대기 patch 재수정을 strict 모델 계약으로 처리한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
         "operationId": "reportAssistantSubmitMessage",
         "parameters": [
           {
@@ -8825,7 +9848,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReportAssistantApprovalRequest"
+                "$ref": "#/components/schemas/ReportAssistantPatchApprovalRequest"
               }
             }
           },
@@ -8931,6 +9954,95 @@
           }
         ],
         "summary": "Retry Assistant Session"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/review": {
+      "post": {
+        "description": "현재 Report와 승인 Artifact를 읽기만 하고 typed 품질 finding을 반환한다.",
+        "operationId": "reportAssistantReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReportAssistantReviewRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Review Assistant Report"
       }
     },
     "/reports/definitions": {

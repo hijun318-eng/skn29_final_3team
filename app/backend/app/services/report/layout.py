@@ -17,31 +17,34 @@ from typing import Any, Mapping
 from app.services.report.chart import _chart_svg
 from app.services.report.values import (
     ARTIFACT_PRESENTATION_MODES,
-    ARTIFACT_VIEWS,
     LAYOUT_PAGE_ROWS,
     SYNTHETIC_WARNING,
     _markdown_text,
     _metrics_html,
     _table_html,
 )
+from src.report.domain import BlockType, normalize_report_block_content
 
 
 def _artifact_settings(content: object) -> tuple[str, tuple[str, ...]]:
-    """블록 content로부터 프레젠테이션 모드 및 노출할 뷰 목록을 파싱합니다."""
+    """artifact block의 정확히 한 summary/KPI view를 파싱하고 합본은 거부합니다."""
     try:
         settings = json.loads(content) if isinstance(content, str) else {}
-    except (TypeError, ValueError):
-        settings = {}
+    except (TypeError, ValueError) as error:
+        raise ValueError("Report artifact block 설정이 올바르지 않습니다.") from error
     if not isinstance(settings, dict):
-        settings = {}
+        raise ValueError("Report artifact block 설정이 올바르지 않습니다.")
     mode = settings.get("presentationMode")
     if not isinstance(mode, str) or mode not in ARTIFACT_PRESENTATION_MODES:
         mode = "standard"
     requested = settings.get("visibleViews")
-    if not isinstance(requested, list):
-        return mode, ARTIFACT_VIEWS
-    visible = tuple(dict.fromkeys(view for view in requested if view in ARTIFACT_VIEWS))
-    return mode, visible or ARTIFACT_VIEWS
+    if (
+        not isinstance(requested, list)
+        or len(requested) != 1
+        or requested[0] not in {"summary", "kpi"}
+    ):
+        raise ValueError("Report artifact block은 summary 또는 kpi view 하나만 가져야 합니다.")
+    return mode, (requested[0],)
 
 
 def _block_chart_type(block: Mapping[str, Any], artifact: Mapping[str, Any]) -> str:
@@ -116,7 +119,7 @@ def _paginate_layout(
     blocks: object,
     orientation: str,
 ) -> list[list[dict[str, Any]]]:
-    """블록들의 y좌표와 높이(h)를 계산하여 A4 페이지 한도에 맞춰 페이지별 블록 리스트로 분할합니다."""
+    """블록 좌표와 명시적 page_break를 A4 페이지 목록으로 결정론적으로 분할합니다."""
     row_limit = LAYOUT_PAGE_ROWS[orientation]
     ordered = sorted(
         enumerate(blocks if isinstance(blocks, (list, tuple)) else ()),
@@ -138,6 +141,11 @@ def _paginate_layout(
     page: list[dict[str, Any]] = []
     cursor_y = 0
     for source_y, row_blocks in rows:
+        if any(str(block.get("type")) == "page_break" for block in row_blocks):
+            pages.append(page)
+            page = []
+            cursor_y = 0
+            continue
         row_height = min(
             row_limit,
             max(max(1, int(block.get("h") or 1)) for block in row_blocks),
@@ -153,7 +161,7 @@ def _paginate_layout(
             placed["_source_y"] = source_y
             page.append(placed)
         cursor_y += row_height
-    if page or not pages:
+    if page or not pages or (rows and any(str(block.get("type")) == "page_break" for block in rows[-1][1])):
         pages.append(page)
     return pages
 
@@ -161,7 +169,11 @@ def _paginate_layout(
 def _block_html(block: Mapping[str, Any], currency_display_unit: str) -> str:
     """단일 보고서 블록의 HTML 엘리먼트를 조립합니다."""
     block_type = str(block["type"])
+    if block_type == "page_break":
+        return ""
     artifact = block.get("artifact") or {}
+    if block_type in {"artifact", "chart", "table"}:
+        normalize_report_block_content(BlockType(block_type), str(block.get("content") or ""))
     if block_type == "text":
         content = _markdown_text(str(block.get("content") or ""))
     elif block_type == "artifact":

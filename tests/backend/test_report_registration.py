@@ -50,7 +50,7 @@ from src.report.domain import (  # noqa: E402
 )
 
 
-def context(role: Role = Role.ADMIN) -> RequestContext:
+def context(role: Role = Role.REPORT_ADMIN) -> RequestContext:
     return RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         role=role,
@@ -73,6 +73,45 @@ def report_assistant_request() -> dict[str, object]:
 
 
 class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_manual_report_routes_cannot_forge_or_retain_changed_ai_evidence(self):
+        """일반 생성은 AI 근거를 만들 수 없고 근거가 붙은 본문 변경은 명시적 해제를 요구한다."""
+
+        repository = InMemoryReportRepository()
+        router = create_report_router(repository)
+        forged = {
+            "definition_id": "report-evidence",
+            "title": "근거 보고서",
+            "blocks": [{
+                "block_id": "summary", "title": "요약", "type": "text",
+                "columns": 12, "content": "요약", "evidence_refs": ["metric_1"],
+            }],
+        }
+        with self.assertRaises(ValueError):
+            await router.create_definition(forged)
+
+        grounded = ReportDefinitionVersion(
+            "report-evidence", 1, DefinitionStatus.DRAFT, "근거 보고서",
+            (ReportBlock(
+                "summary", "요약", None, 12, None, BlockType.TEXT,
+                0, 0, 12, 2, "검증된 요약", ("metric_1",),
+            ),),
+        )
+        repository.add_draft(grounded)
+        with self.assertRaises(ValueError):
+            await router.replace_draft_blocks("report-evidence", 1, {
+                "expected_draft_revision": 1,
+                "blocks": [{
+                "block_id": "summary", "title": "요약", "type": "text",
+                "columns": 12, "content": "직접 바꾼 요약", "evidence_refs": ["metric_1"],
+            }]})
+        cleared = await router.replace_draft_blocks("report-evidence", 1, {
+            "expected_draft_revision": 1,
+            "blocks": [{
+            "block_id": "summary", "title": "요약", "type": "text",
+            "columns": 12, "content": "직접 바꾼 요약", "evidence_refs": [],
+        }]})
+        self.assertEqual((), cleared["blocks"][0]["evidence_refs"])
+
     async def test_report_artifact_exposes_exact_persisted_metric_values(self):
         fixture = json.loads(
             (ROOT / "tests" / "backend" / "fixtures" / "api" / "v0.1" / "success.json")
@@ -110,6 +149,9 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("occupied_rooms", validated.metrics[0].result_field)
         self.assertEqual(120, validated.metrics[0].value)
         self.assertEqual(validated.metrics, validated.evidence.metric_values)
+        self.assertNotIn("query_id", response)
+        self.assertNotIn("artifact_checksum", response)
+        self.assertNotIn("query_id", response["evidence"])
 
     async def test_postgres_artifact_reads_and_writes_are_owner_scoped(self):
         from app.adapters.report_repository import PostgresReportRepository
@@ -157,7 +199,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             )
         write_sql = str(write_session.execute.await_args.args[0])
         self.assertIn("r.user_id = :owner_id", write_sql)
-        self.assertIn("q.trino_query_id = :query_id", write_sql)
+        self.assertIn("CAST(:query_id AS text) IS NULL", write_sql)
+        self.assertIn("q.trino_query_id = CAST(:query_id AS text)", write_sql)
 
         view_spec_id = UUID("00000000-0000-0000-0000-000000000098")
         matching_view = MagicMock()
@@ -199,7 +242,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             "y": 0,
             "w": 12,
             "h": 12,
-            "content": "{}",
+            "content": '{"visibleViews":["summary"]}',
         }
         report_context = context(Role.ANALYST)
 
@@ -215,7 +258,9 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             replaced = await report_api.replace_draft_blocks(
                 definition_id,
                 1,
-                ReplaceReportBlocksRequest.model_validate({"blocks": [block]}),
+                ReplaceReportBlocksRequest.model_validate({
+                    "blocks": [block], "expected_draft_revision": 1,
+                }),
                 report_context,
             )
 
@@ -226,6 +271,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         class TransferRepository(InMemoryReportRepository):
             artifact = {
                 "artifact_id": "00000000-0000-0000-0000-000000000099",
+                "title": "실제 분석 결과",
                 "artifact_checksum": "a" * 64,
                 "trino_query_id": "query-real",
                 "narrative_markdown": "실제 분석 요약",
@@ -291,22 +337,39 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("draft", created["status"])
         self.assertEqual("landscape", created["orientation"])
         self.assertEqual("auto", created["currency_display_unit"])
-        self.assertEqual(1, len(created["blocks"]))
-        block = created["blocks"][0]
-        self.assertEqual("artifact", block["type"])
-        self.assertEqual("실제 Artifact 보고서", block["title"])
-        self.assertEqual(str(payload.artifact_id), block["artifact_id"])
-        self.assertEqual("query-real", block["query_id"])
-        self.assertEqual((0, 0, 12, 12), (block["x"], block["y"], block["w"], block["h"]))
-        self.assertEqual({
-            "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
-            "presentationMode": "standard",
-            "sizeMode": "auto",
-            "visibleViews": ["summary", "kpi", "chart", "table"],
-        }, json.loads(block["content"]))
+        self.assertEqual(4, len(created["blocks"]))
+        self.assertEqual(
+            [
+                ("실제 분석 결과 · 요약", "artifact", 0, 0, 6, 5),
+                ("실제 분석 결과 · 핵심 지표", "artifact", 6, 0, 6, 6),
+                ("실제 분석 결과 · 차트", "chart", 0, 6, 8, 7),
+                ("실제 분석 결과 · 표", "table", 0, 13, 6, 5),
+            ],
+            [
+                (
+                    block["title"], block["type"], block["x"], block["y"],
+                    block["w"], block["h"],
+                )
+                for block in created["blocks"]
+            ],
+        )
+        self.assertTrue(
+            all(block["artifact_id"] == str(payload.artifact_id) for block in created["blocks"])
+        )
+        self.assertTrue(all("query_id" not in block for block in created["blocks"]))
+        self.assertEqual(["summary"], json.loads(created["blocks"][0]["content"])["visibleViews"])
+        self.assertEqual(["kpi"], json.loads(created["blocks"][1]["content"])["visibleViews"])
+        self.assertEqual(
+            {"showLegend": True, "sizeMode": "auto", "visibleViews": ["chart"]},
+            json.loads(created["blocks"][2]["content"]),
+        )
+        self.assertEqual(
+            {"density": "comfortable", "showRowNumbers": False, "sizeMode": "auto", "visibleViews": ["table"]},
+            json.loads(created["blocks"][3]["content"]),
+        )
 
         reloaded = await router.get_version(created["definition_id"], 1)
-        self.assertEqual([block], reloaded["blocks"])
+        self.assertEqual(created["blocks"], reloaded["blocks"])
         self.assertEqual(
             ["table"],
             report_api._artifact_visible_views({
@@ -338,7 +401,10 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(DefinitionStatus.APPROVED, approved.status)
         document = router.repository.get_document(created["definition_id"], 1)
         self.assertTrue(document["pdf_bytes"].startswith(b"%PDF-"))
-        self.assertIn('data-visible-views="summary kpi chart table"', document["html_snapshot"])
+        self.assertIn('data-visible-views="summary"', document["html_snapshot"])
+        self.assertIn('data-visible-views="kpi"', document["html_snapshot"])
+        self.assertIn('report-block--chart', document["html_snapshot"])
+        self.assertIn('report-block--table', document["html_snapshot"])
 
         with patch.object(report_api, "_router", return_value=router), self.assertRaises(HTTPException) as missing:
             await report_api.create_draft_from_analysis_artifact(
@@ -347,11 +413,12 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(404, missing.exception.status_code)
 
-    def test_aggregate_artifact_block_is_an_additive_api_type(self):
+    def test_artifact_api_block_requires_one_atomic_view(self):
         payload = ReplaceReportBlocksRequest.model_validate({
             "title": "Analysis Artifact Review",
             "orientation": "landscape",
             "currency_display_unit": "billion",
+            "expected_draft_revision": 1,
             "blocks": [{
             "block_id": "00000000-0000-0000-0000-000000000011",
             "title": "Analysis Artifact",
@@ -361,7 +428,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             "columns": 12,
             "w": 12,
             "h": 12,
-            "content": '{"presentationMode":"detail","visibleViews":["summary","kpi","chart","table"]}',
+            "content": '{"presentationMode":"detail","visibleViews":["summary"]}',
         }]})
 
         self.assertEqual("artifact", payload.blocks[0].type)
@@ -370,21 +437,75 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("billion", payload.currency_display_unit)
         with self.assertRaises(ValidationError):
             ReplaceReportBlocksRequest.model_validate({
-                "blocks": [], "currency_display_unit": "trillion"
+                "expected_draft_revision": 1,
+                "blocks": [{
+                    "block_id": "00000000-0000-0000-0000-000000000012",
+                    "title": "Legacy bundle",
+                    "type": "artifact",
+                    "artifact_id": "00000000-0000-0000-0000-000000000099",
+                    "columns": 12,
+                    "content": '{"visibleViews":["summary","kpi"]}',
+                }],
+            })
+        with self.assertRaises(ValidationError):
+            ReplaceReportBlocksRequest.model_validate({
+                "blocks": [],
+                "currency_display_unit": "trillion",
+                "expected_draft_revision": 1,
             })
 
-    def test_report_routes_require_authentication_and_report_manage(self):
-        dependency = signature(report_api.report_manage_context).parameters["context"]
+    def test_report_title_contract_is_single_line_bounded_and_requires_revision(self):
+        direct = CreateReportDefinitionRequest.model_validate({
+            "definition_id": "report-title-contract",
+            "title": "  직접 생성 제목  ",
+        })
+        transferred = CreateReportFromArtifactRequest.model_validate({
+            "artifact_id": uuid4(),
+            "title": "  Artifact 제목  ",
+        })
+        self.assertEqual("직접 생성 제목", direct.title)
+        self.assertEqual("Artifact 제목", transferred.title)
+        normalized = ReplaceReportBlocksRequest.model_validate({
+            "blocks": [],
+            "title": f"  {'가' * 255}  ",
+            "expected_draft_revision": 3,
+        })
+        self.assertEqual("가" * 255, normalized.title)
+        self.assertEqual(3, normalized.expected_draft_revision)
+        for invalid in ("", "   ", "첫 줄\n둘째 줄", "제목\t탭", "가" * 256):
+            with self.subTest(invalid=repr(invalid)), self.assertRaises(ValidationError):
+                ReplaceReportBlocksRequest.model_validate({
+                    "blocks": [],
+                    "title": invalid,
+                    "expected_draft_revision": 1,
+                })
+            with self.subTest(create_invalid=repr(invalid)), self.assertRaises(
+                ValidationError
+            ):
+                CreateReportDefinitionRequest.model_validate({
+                    "definition_id": "report-invalid-title",
+                    "title": invalid,
+                })
+        with self.assertRaises(ValidationError):
+            ReplaceReportBlocksRequest.model_validate({"blocks": [], "title": "제목"})
+        with self.assertRaises(ValidationError):
+            ReplaceReportBlocksRequest.model_validate({
+                "blocks": [], "title": "제목", "expected_draft_revision": True,
+            })
+
+    def test_report_routes_require_authentication_and_report_admin(self):
+        dependency = signature(report_api.report_admin_context).parameters["context"]
         self.assertIn("analysis_context", repr(dependency.annotation))
-        self.assertEqual(Role.ADMIN, report_api.report_manage_context(context()).role)
-        with self.assertRaises(HTTPException) as denied:
-            report_api.report_manage_context(context(Role.ANALYST))
-        self.assertEqual(403, denied.exception.status_code)
+        self.assertEqual(Role.REPORT_ADMIN, report_api.report_admin_context(context()).role)
+        for role in (Role.ANALYST, Role.DATA_ADMIN):
+            with self.assertRaises(HTTPException) as denied:
+                report_api.report_admin_context(context(role))
+            self.assertEqual(403, denied.exception.status_code)
 
     def test_report_repository_scope_follows_authenticated_role(self):
         for role, manage_all in (
             (Role.ANALYST, False),
-            (Role.ADMIN, True),
+            (Role.REPORT_ADMIN, True),
         ):
             with self.subTest(role=role), patch.dict(
                 os.environ, {"APP_RUNTIME_DATABASE_URL": "postgresql://report-db"}
@@ -451,7 +572,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 ReplaceReportBlocksRequest.model_validate({"blocks": [{
                     "block_id": "text-1", "title": "해석", "type": "text",
                     "content": "관측 결과", "x": 0, "y": 0, "w": 12, "h": 2,
-                }]}),
+                }], "expected_draft_revision": 1}),
                 report_context,
             )
             self.assertEqual("text", replaced["blocks"][0]["type"])
@@ -479,7 +600,12 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 )
             with self.assertRaises(HTTPException) as immutable:
                 await report_api.replace_draft_blocks(
-                    "report-1", 1, ReplaceReportBlocksRequest(blocks=[]), report_context
+                    "report-1",
+                    1,
+                    ReplaceReportBlocksRequest(
+                        blocks=[], expected_draft_revision=2
+                    ),
+                    report_context,
                 )
             self.assertEqual(409, immutable.exception.status_code)
             self.assertEqual(
@@ -663,7 +789,27 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
             title="제목·설정 영속화 검증 보고서",
             orientation="landscape",
             currency_display_unit="million",
+            expected_draft_revision=1,
         )
+        self.assertEqual(2, saved.draft_revision)
+        exact_retry = await repository.replace_draft_blocks(
+            definition_id,
+            1,
+            (block,),
+            title="제목·설정 영속화 검증 보고서",
+            orientation="landscape",
+            currency_display_unit="million",
+            expected_draft_revision=1,
+        )
+        self.assertEqual(2, exact_retry.draft_revision)
+        with self.assertRaisesRegex(ValueError, "REPORT_REVISION_CONFLICT"):
+            await repository.replace_draft_blocks(
+                definition_id,
+                1,
+                (block,),
+                title="오래된 화면의 다른 제목",
+                expected_draft_revision=1,
+            )
         reloaded = await repository.get_version(definition_id, 1)
         self.assertEqual(("landscape", "million"), (
             saved.orientation, saved.currency_display_unit

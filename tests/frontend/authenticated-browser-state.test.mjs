@@ -19,6 +19,7 @@ test("logout cleanup removes all Answervice user state and preserves foreign key
   const storage = storageFixture([
     ["answervice.activeConversationId", "conversation-a"],
     ["answervice.questionDraft", "question-a"],
+    ["answervice.report-assistant:v2:def:1", "assistant-a"],
     ["answervice:report-draft:v2:def:1", "draft-a"],
     ["another-application.preference", "keep"],
   ]);

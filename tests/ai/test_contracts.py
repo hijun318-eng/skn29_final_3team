@@ -339,6 +339,7 @@ VALID_PAYLOADS = {
         "analysis_operation": "aggregate",
         "analysis_time_bucket": None,
         "result_limit": None,
+        "presentation_explicit": False,
         "dimension_candidates": [],
         "filter_candidates": [],
         "period_candidates": [
@@ -408,7 +409,7 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.25.0")
+        self.assertEqual(schema_version(), "MODEL-v1.32.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():

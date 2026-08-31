@@ -1,0 +1,181 @@
+/* 책임: RAG 답변 카드의 테마·반응형·상호작용 디자인 계약을 정의한다. */
+.rag-answer-card {
+  --rag-answer-accent: #176fe5;
+  --rag-answer-accent-soft: #eaf3ff;
+  --rag-answer-border: var(--border);
+  --rag-answer-surface: var(--surface);
+  --rag-answer-surface-muted: var(--ivory);
+  --rag-answer-text: var(--charcoal);
+  --rag-answer-muted: var(--muted);
+  width: min(100%, 820px);
+  margin-top: 8px;
+  padding: 22px 24px;
+  color: var(--rag-answer-text);
+  border: 1px solid var(--rag-answer-border);
+  border-radius: 14px;
+  background: var(--rag-answer-surface);
+  box-shadow: var(--shadow);
+}
+
+.rag-answer-card__label {
+  margin-bottom: 14px;
+  color: var(--rag-answer-accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.rag-answer-card__body {
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.rag-answer-card__body > p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.rag-answer-card__body > p + p {
+  margin-top: 14px;
+}
+
+.rag-answer-card__comparison {
+  margin: 18px 0 2px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 10px;
+}
+
+.rag-answer-card__comparison-item {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--rag-answer-border);
+  border-radius: 10px;
+  background: var(--rag-answer-surface-muted);
+}
+
+.rag-answer-card__comparison-item h3 {
+  margin: 0 0 8px;
+  color: var(--rag-answer-text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.rag-answer-card__comparison-item ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--rag-answer-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.rag-answer-card__comparison-item li + li {
+  margin-top: 4px;
+}
+
+.rag-answer-card__followups {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rag-answer-border);
+}
+
+.rag-answer-card__followups > p {
+  margin: 0 0 10px;
+  color: var(--rag-answer-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rag-answer-card__chips,
+.rag-answer-card__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rag-answer-card__chips button,
+.rag-answer-card__sources a {
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 12px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--rag-answer-text);
+  border: 1px solid var(--rag-answer-border);
+  border-radius: 9px;
+  background: var(--rag-answer-surface-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  text-align: left;
+  text-decoration: none;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  white-space: normal;
+}
+
+.rag-answer-card__chips button:hover,
+.rag-answer-card__sources a:hover {
+  color: var(--rag-answer-accent);
+  border-color: color-mix(in srgb, var(--rag-answer-accent) 38%, var(--rag-answer-border));
+  background: var(--rag-answer-accent-soft);
+}
+
+.rag-answer-card__chips button:focus-visible,
+.rag-answer-card__sources a:focus-visible {
+  outline: 2px solid var(--rag-answer-accent);
+  outline-offset: 2px;
+}
+
+.rag-answer-card__sources {
+  margin-top: 16px;
+}
+
+.rag-answer-card__sources a {
+  color: var(--rag-answer-muted);
+  font-size: 12px;
+}
+
+.ppt-theme .rag-answer-card {
+  --rag-answer-accent: #75adf5;
+  --rag-answer-accent-soft: #142b47;
+  --rag-answer-border: #29384d;
+  --rag-answer-surface: #0b121c;
+  --rag-answer-surface-muted: #111d2d;
+  --rag-answer-text: #e5edf7;
+  --rag-answer-muted: #a9b8ca;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .22);
+}
+
+@media (max-width: 650px) {
+  .rag-answer-card {
+    width: 100%;
+    padding: 18px 16px;
+    border-radius: 12px;
+  }
+
+  .rag-answer-card__comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rag-answer-card__chips,
+  .rag-answer-card__sources {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rag-answer-card__chips button,
+  .rag-answer-card__sources a {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rag-answer-card__chips button,
+  .rag-answer-card__sources a {
+    transition: none;
+  }
+}

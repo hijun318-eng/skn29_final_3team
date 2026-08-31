@@ -6,7 +6,7 @@ from importlib import import_module
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.analysis_contracts import (
     AnalysisDefinitionListResponse,
@@ -17,7 +17,12 @@ from app.analysis_contracts import (
     CreateAnalysisDefinitionRequest,
 )
 from app.context import analysis_context, session_context
-from app.contracts import AnalysisProgressResponse, RequestContext, response_meta
+from app.contracts import (
+    AnalysisProgressPollResponse,
+    AnalysisProgressResponse,
+    RequestContext,
+    response_meta,
+)
 from app.services.analysis import AmbiguousTraceError
 
 
@@ -65,6 +70,33 @@ def get_analysis_progress(
     except KeyError as error:
         raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
     return AnalysisProgressResponse(data=data, meta=response_meta(context))
+
+
+@analysis_support_router.get(
+    "/analysis/progress/{trace_id}/poll",
+    response_model=AnalysisProgressPollResponse,
+    operation_id="pollAnalysisProgress",
+)
+def poll_analysis_progress(
+    trace_id: str,
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> AnalysisProgressPollResponse:
+    """대화 명령의 라우팅과 분석 등록 사이에는 빈 진행 상태를 정상 응답한다.
+
+    소유 분석이 시작되면 strict progress와 같은 snapshot을 반환한다. 미등록 trace와
+    다른 사용자 소유 trace는 모두 ``data: null``로 처리해 자원 존재를 노출하지 않는다.
+    동일 소유자의 trace가 모호한 경우에는 request ID 조회를 요구하는 409를 유지한다.
+    """
+    try:
+        data = _analysis_progress().get(trace_id, context.user_id)
+    except AmbiguousTraceError as error:
+        raise HTTPException(
+            status_code=409,
+            detail="동일한 추적 ID에 여러 분석 요청이 있습니다. 요청 ID로 조회해 주세요.",
+        ) from error
+    except KeyError:
+        data = None
+    return AnalysisProgressPollResponse(data=data, meta=response_meta(context))
 
 
 @analysis_support_router.post(
@@ -194,10 +226,19 @@ async def get_analysis_definition(
 )
 async def list_analysis_runs(
     context: Annotated[RequestContext, Depends(analysis_context)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    approved_only: bool = False,
 ) -> dict[str, Any]:
-    """현재 분석 주체의 run과 최신 query·artifact evidence를 시작 시각 역순으로 반환한다."""
+    """현재 분석 주체의 run을 승인 여부와 서버 상한을 적용해 시작 시각 역순으로 반환한다."""
     repository = _analysis_repository(context)
-    return {"items": await _repository_call(repository.list_runs)}
+    return {
+        "items": await _repository_call(
+            lambda: repository.list_runs(
+                limit=limit,
+                approved_only=approved_only,
+            )
+        )
+    }
 
 
 @analysis_support_router.get(

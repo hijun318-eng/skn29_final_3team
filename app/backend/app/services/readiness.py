@@ -16,7 +16,17 @@ from sqlalchemy import text
 from app.adapters.catalog_snapshot import DEFAULT_CATALOG_RELEASE_TTL_SECONDS
 from app.adapters.datahub_catalog import DataHubCatalogClient
 from app.adapters.trino_async import TrinoAsyncClient
+from app.auth import AuthenticationError, auth_account_store_ready
 from app.database import session_scope
+from app.services.analysis.sql_generation_mode import (
+    SqlGenerationMode,
+    configured_sql_generation_mode,
+)
+from app.services.mcp_tool_rate_limit import (
+    McpToolRateLimitConfigurationError,
+    McpToolRateLimitSettings,
+)
+from app.services.runtime_feature_availability import runtime_feature_availability
 from src.modelops.runtime_config import ActiveModelRoute, resolve_active_model_routes
 
 
@@ -43,13 +53,14 @@ class AppDatabaseReadiness:
             headers={"Accept": "application/json", "User-Agent": "answervice-readiness/1.0"},
             trust_env=False,
         ) as client:
-            database, trino, datahub, release, model, auth = await asyncio.gather(
+            database, trino, datahub, release, model, auth, optional = await asyncio.gather(
                 self._database_probe(),
                 self._trino_probe(),
                 self._datahub_probe(),
                 self._catalog_release_probe(),
                 self._model_probe(client),
                 self._auth_probe(),
+                runtime_feature_availability.check(),
             )
         probe = database
         probe["trino"] = trino
@@ -57,32 +68,21 @@ class AppDatabaseReadiness:
         probe.update(release)
         probe["model"] = model
         probe["auth_session_store"] = auth
+        probe.update(optional)
+        probe["mcp_rate_limit"] = self._mcp_rate_limit_probe()
         probe["report_scheduler"] = self._report_scheduler_probe()
         probe["conversation_recovery"] = self._conversation_recovery_probe()
         return probe
 
     @staticmethod
     async def _auth_probe() -> str:
-        """세션 secret과 DB의 마지막 활성 관리자 계정이 모두 준비됐는지 확인한다."""
-
-        secret = os.getenv("AUTH_SESSION_SECRET", "").strip()
         database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+        secret = os.getenv("AUTH_SESSION_SECRET", "").strip()
         if not database_url or len(secret) < 32:
             return "not_ready"
         try:
-            async with session_scope(database_url) as session:
-                result = await session.execute(
-                    text(
-                        """
-                        SELECT EXISTS (
-                            SELECT 1 FROM security.accounts
-                            WHERE role = 'admin' AND active AND deleted_at IS NULL
-                        )
-                        """
-                    )
-                )
-                return "ready" if result.scalar_one() else "not_ready"
-        except Exception:
+            return "ready" if await auth_account_store_ready(database_url) else "not_ready"
+        except AuthenticationError:
             return "not_ready"
 
     @staticmethod
@@ -135,6 +135,14 @@ class AppDatabaseReadiness:
         from app.services.conversation.reconciler import conversation_recovery_worker
 
         return conversation_recovery_worker.status
+
+    @staticmethod
+    def _mcp_rate_limit_probe() -> str:
+        try:
+            McpToolRateLimitSettings.from_env()
+        except McpToolRateLimitConfigurationError:
+            return "not_ready"
+        return "ready"
 
     @staticmethod
     async def _database_probe() -> dict[str, str]:
@@ -328,6 +336,8 @@ class AppDatabaseReadiness:
     async def _model_probe(client: httpx.AsyncClient) -> str:
         try:
             routes = resolve_active_model_routes()
+            if configured_sql_generation_mode() is SqlGenerationMode.COMPILER_ONLY:
+                routes = tuple(route for route in routes if "node1" in route.nodes)
         except (OSError, ValueError):
             return "not_ready"
         states = await asyncio.gather(

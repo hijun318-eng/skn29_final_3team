@@ -7,6 +7,14 @@ from typing import Protocol
 from .domain import ManualRunCommand, ReportBlock, ReportDefinitionVersion, ReportRun
 
 
+class ReportRevisionConflict(ValueError):
+    """저장 요청의 기준 revision이 현재 draft와 달라 안전하게 적용할 수 없음을 나타낸다."""
+
+    def __init__(self, current_revision: int) -> None:
+        super().__init__("REPORT_REVISION_CONFLICT")
+        self.current_revision = current_revision
+
+
 class ReportRepository(Protocol):
     """정의 승인 전이, 실행 이력과 멱등 수동 명령을 보존해야 하는 저장소 연산을 규정한다."""
 
@@ -49,8 +57,9 @@ class ReportRepository(Protocol):
         title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
+        expected_draft_revision: int | None = None,
     ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:
-        """초안의 제목·블록 전체·선택적 문서 표시 설정을 한 transaction에서 교체한다."""
+        """초안 전체를 원자 교체하고 선택적 revision token으로 동시 저장을 차단한다."""
         ...
 
     def add_run(self, run: ReportRun) -> ReportRun | Awaitable[ReportRun]:

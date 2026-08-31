@@ -52,7 +52,7 @@ function Invoke-V43Sql {
 
     $command = switch ($Engine) {
         "postgres" { 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/v43_current.sql' }
-        "mysql" { 'mysql --default-character-set=utf8mb4 --batch --show-warnings --protocol=socket -uroot -p"$MYSQL_ROOT_PASSWORD" < /tmp/v43_current.sql' }
+        "mysql" { 'mysql --batch --show-warnings --protocol=socket -uroot -p"$MYSQL_ROOT_PASSWORD" < /tmp/v43_current.sql' }
         "mssql" { '/opt/mssql-tools18/bin/sqlcmd -C -b -S localhost -d crm_db -U sa -P "$MSSQL_SA_PASSWORD" -i /tmp/v43_current.sql' }
         "clickhouse" { 'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery --queries-file /tmp/v43_current.sql' }
         "trino" { 'trino --server http://localhost:8080 --user hotel_synthetic_setup --file /tmp/v43_current.sql' }

@@ -135,12 +135,35 @@ class TrinoSchemaInspector:
         columns = page.columns
         rows = list(page.rows)
         while page.next_uri:
-            page = await self._client.next_page(page.next_uri, deadline=deadline)
+            active_page = page
+            try:
+                page = await self._client.next_page(
+                    active_page.next_uri,
+                    deadline=deadline,
+                )
+            except AdapterError:
+                await self._cancel_active_page(active_page)
+                raise
             columns = page.columns or columns
             rows.extend(page.rows)
         if page.state != "FINISHED":
             raise TrinoSchemaDriftError("Trino information_schema query did not finish")
         return columns, tuple(rows)
+
+    async def _cancel_active_page(self, page: QueryPage) -> None:
+        """metadata page 실패 뒤 남은 Trino statement를 짧은 별도 deadline으로 정리한다."""
+
+        if not page.next_uri:
+            return
+        try:
+            await self._client.cancel_query(
+                page.query_id,
+                page.next_uri,
+                deadline=monotonic() + min(2.0, self._timeout_seconds),
+            )
+        except AdapterError:
+            # 정리 실패가 원래 schema timeout·upstream 오류 분류를 덮지 않게 한다.
+            return
 
 
 def _table_query(catalog: str, schema: str, table: str) -> str:

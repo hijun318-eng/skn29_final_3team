@@ -37,6 +37,10 @@ from app.services.analysis.responses import AnalysisResponseFactory
 from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
 from app.services.execution_control import secure_cache_key
 from app.services.analysis.pipeline_support import PipelineSupport
+from app.services.analysis.semantic_request import (
+    ApprovedSemanticRequestSnapshot,
+    assert_current_semantic_bindings,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -61,13 +65,24 @@ class AnalysisContextStage:
         payload = state.payload
         context = state.context
         decision = state.decision
+        approved_snapshot = getattr(payload, "approved_semantic_snapshot", None)
+        if approved_snapshot is not None and not isinstance(
+            approved_snapshot, ApprovedSemanticRequestSnapshot
+        ):
+            raise ValueError("승인 Semantic Request replay 입력이 유효하지 않습니다.")
+        if approved_snapshot is not None:
+            approved_snapshot.assert_integrity()
 
         # ConversationSlotResolver가 기간만 확정하고 지표를 찾지 못한 typed 요청은
         # DataHub 검색 실패로 뭉개지 않는다. 반대로 기간 누락은 여기서 닫지 않는다.
         # 선택 지표의 DataHub time mode가 range인지 latest_snapshot인지 확인한 뒤에만
         # MetricResolver가 기간 필요 여부를 판정할 수 있다.
         resolved = payload.resolved_slots
-        if resolved is not None and not resolved.resolved_metric_ids:
+        if (
+            approved_snapshot is None
+            and resolved is not None
+            and not resolved.resolved_metric_ids
+        ):
             return self._responses.clarification_required(
                 context,
                 state.machine,
@@ -78,19 +93,23 @@ class AnalysisContextStage:
                 clarification_type=ClarificationType.METRIC,
             )
         # 1. 사용자 질문에 부합하는 승인된 DataHub 자산 검색
-        candidate_search_context = {
-            **context.model_dump(mode="json"),
-            "template_id": decision.template_id,
-            "parameters": payload.parameters,
-            "preferred_metric_ids": list(
-                resolved.resolved_metric_ids if resolved is not None else ()
-            ),
-        }
+        candidates = None
         try:
-            candidates = await self._adapter.search_asset_candidates(
-                payload.question,
-                candidate_search_context,
-            )
+            if approved_snapshot is not None:
+                pass
+            else:
+                candidate_search_context = {
+                    **context.model_dump(mode="json"),
+                    "template_id": decision.template_id,
+                    "parameters": payload.parameters,
+                    "preferred_metric_ids": list(
+                        resolved.resolved_metric_ids if resolved is not None else ()
+                    ),
+                }
+                candidates = await self._adapter.search_asset_candidates(
+                    payload.question,
+                    candidate_search_context,
+                )
         except NoMetricMatchError:
             return self._responses.clarification_required(
                 context,
@@ -193,48 +212,100 @@ class AnalysisContextStage:
 
         # 2. 지표/차원/기간 해석 및 ContextPackage 빌드
         try:
-            if (
-                context.product_release_id
-                not in {None, candidates.product_release_id}
-                or context.semantic_release_id
-                not in {None, candidates.context_release}
-            ):
-                raise ReleaseReceiptChangedError(
-                    "candidate release differs from the pinned request receipt"
+            if approved_snapshot is not None:
+                receipt = approved_snapshot.release_receipt
+                if (
+                    context.product_release_id != receipt.product_release_id
+                    or context.semantic_release_id != receipt.semantic_release_id
+                ):
+                    raise ReleaseReceiptChangedError(
+                        "snapshot release differs from the pinned replay receipt"
+                    )
+                context = context.model_copy(
+                    update={
+                        # 승인 당시 영수증이나 호출자가 전달한 값은 현재 권한의
+                        # 증거가 아니다. replay admission 직전에 인증 주체·현재
+                        # 중앙 정책으로 반드시 다시 계산한다.
+                        "permission_snapshot_id": permission_snapshot_id(
+                            context.user_id,
+                            context.role,
+                        ),
+                        "product_release_id": receipt.product_release_id,
+                        "semantic_release_id": receipt.semantic_release_id,
+                    }
                 )
-            _candidate_scope, normalized_question, structured_request = (
-                await self._support.select_metric(
+                state.context = context
+                if state.run_admission_sink is not None:
+                    await state.run_admission_sink(context)
+                normalized_question = payload.question
+                structured_request = approved_snapshot.structured_request()
+                assets = await self._support.resolve_snapshot_execution_assets(
+                    payload,
+                    context,
+                    approved_snapshot,
+                )
+                state.approved_semantic_snapshot = approved_snapshot
+                state.approved_analysis_plan = dict(approved_snapshot.analysis_plan)
+                state.semantic_candidate_receipt = {
+                    "context_release": receipt.context_release,
+                    "catalog_checksum": receipt.catalog_checksum,
+                    "canonical_checksum": receipt.canonical_checksum,
+                    "product_release_id": receipt.product_release_id,
+                    "runtime_projection_checksum": (
+                        receipt.runtime_projection_checksum
+                    ),
+                }
+            else:
+                assert candidates is not None
+                if (
+                    context.product_release_id
+                    not in {None, candidates.product_release_id}
+                    or context.semantic_release_id
+                    not in {None, candidates.context_release}
+                ):
+                    raise ReleaseReceiptChangedError(
+                        "candidate release differs from the pinned request receipt"
+                    )
+                _candidate_scope, normalized_question, structured_request = (
+                    await self._support.select_metric(
+                        payload,
+                        context,
+                        candidates,
+                        budget=state.budget,
+                    )
+                )
+                if getattr(self._model, "last_trace", {}).get("node") == "node1":
+                    state.record(PipelineStage.MODEL, model_trace_detail(self._model))
+                context = context.model_copy(
+                    update={
+                        "permission_snapshot_id": (
+                            context.permission_snapshot_id
+                            or permission_snapshot_id(context.user_id, context.role)
+                        ),
+                        "product_release_id": candidates.product_release_id,
+                        "semantic_release_id": candidates.context_release,
+                    }
+                )
+                state.context = context
+                # Node 1 후보가 entitlement/release/period 규칙에 exact rebind되어
+                # 하나의 typed request로 확정된 뒤에만 durable Run을 만든다.
+                if state.run_admission_sink is not None:
+                    await state.run_admission_sink(context)
+                assets = await self._support.resolve_execution_assets(
                     payload,
                     context,
                     candidates,
-                    budget=state.budget,
+                    structured_request,
                 )
-            )
-            if getattr(self._model, "last_trace", {}).get("node") == "node1":
-                state.record(PipelineStage.MODEL, model_trace_detail(self._model))
-            context = context.model_copy(
-                update={
-                    "permission_snapshot_id": (
-                        context.permission_snapshot_id
-                        or permission_snapshot_id(context.user_id, context.role)
-                    ),
+                state.semantic_candidate_receipt = {
+                    "context_release": candidates.context_release,
+                    "catalog_checksum": candidates.catalog_checksum,
+                    "canonical_checksum": candidates.canonical_checksum,
                     "product_release_id": candidates.product_release_id,
-                    "semantic_release_id": candidates.context_release,
+                    "runtime_projection_checksum": (
+                        candidates.runtime_projection_checksum
+                    ),
                 }
-            )
-            state.context = context
-            # Node 1 후보가 entitlement/release/period 규칙에 exact rebind되어
-            # 하나의 typed request로 확정된 뒤에만 durable Run을 만든다. 이후의
-            # RuntimeContextPackage/schema/G1 실패는 이미 생성된 Run의 terminal
-            # 상태로 남겨야 하므로 이 경계는 asset resolution보다 앞선다.
-            if state.run_admission_sink is not None:
-                await state.run_admission_sink(context)
-            assets = await self._support.resolve_execution_assets(
-                payload,
-                context,
-                candidates,
-                structured_request,
-            )
             package = await self._support.build_context(
                 payload,
                 context,
@@ -303,11 +374,6 @@ class AnalysisContextStage:
                 retryable=True,
             )
         except ContextBuildError as error:
-            logger.warning(
-                "governed context build rejected: code=%s detail=%s",
-                error.code.value,
-                error,
-            )
             if error.code in {
                 ContextBuildErrorCode.GOVERNANCE_VERSION_UNSUPPORTED,
                 ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
@@ -405,6 +471,30 @@ class AnalysisContextStage:
                 decision,
                 code=model_failure_code(error),
             )
+
+        if approved_snapshot is not None:
+            try:
+                assert_current_semantic_bindings(
+                    approved_snapshot,
+                    tuple(package.parameter_bindings),
+                )
+            except ValueError as error:
+                logger.info(
+                    "approved semantic replay binding mismatch: type=%s detail=%s",
+                    type(error).__name__,
+                    error,
+                )
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.CONTEXT,
+                    AnalysisStatus.BLOCKED,
+                    ErrorCode.SCHEMA_VERSION_MISMATCH,
+                    "저장된 분석 조건이 현재 실행 조건과 정확히 일치하지 않습니다.",
+                    decision,
+                    detail="APPROVED_SEMANTIC_BINDING_MISMATCH",
+                )
 
         cancelled = state.cancelled(PipelineStage.CONTEXT)
         if cancelled is not None:

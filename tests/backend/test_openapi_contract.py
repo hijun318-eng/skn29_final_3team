@@ -41,7 +41,9 @@ class OpenApiContractTest(unittest.TestCase):
                 "/admin/audit-trails/{trail_id}",
                 "/admin/connections",
                 "/analysis",
+                "/analysis/ml",
                 "/analysis/progress/{trace_id}",
+                "/analysis/progress/{trace_id}/poll",
                 "/analysis/progress/{trace_id}/cancel",
                 "/analysis/requests/{request_id}/progress",
                 "/analysis/requests/{request_id}/cancel",
@@ -59,6 +61,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "/conversations/{conversation_id}/turns",
                 "/health",
                 "/mcp",
+                "/ml/capabilities",
+                "/rag/documents",
+                "/rag/documents/{manual_id}/source.pdf",
+                "/rag/query",
                 "/readiness",
                 "/reports/definitions",
                 "/reports/drafts/from-analysis-artifact",
@@ -82,10 +88,12 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/assistant/sessions",
                 "/reports/assistant/sessions/{assistant_request_id}",
                 "/reports/assistant/sessions/{assistant_request_id}/approval",
+                "/reports/assistant/sessions/{assistant_request_id}/cancel",
                 "/reports/assistant/sessions/{assistant_request_id}/evaluation",
                 "/reports/assistant/sessions/{assistant_request_id}/messages",
                 "/reports/assistant/sessions/{assistant_request_id}/patch-approval",
                 "/reports/assistant/sessions/{assistant_request_id}/retry",
+                "/reports/assistant/sessions/{assistant_request_id}/review",
             },
             set(committed["paths"]),
         )
@@ -111,7 +119,9 @@ class OpenApiContractTest(unittest.TestCase):
                 "createAuthenticatedSession",
                 "deleteAuthenticatedSession",
                 "submitAnalysis",
+                "createMlAnalysis",
                 "getAnalysisProgress",
+                "pollAnalysisProgress",
                 "cancelAnalysisProgress",
                 "getAnalysisProgressByRequest",
                 "cancelAnalysisProgressByRequest",
@@ -125,6 +135,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "createConversation",
                 "getConversationTurns",
                 "executeConversationCommand",
+                "getMlCapabilities",
+                "queryInternalManual",
+                "listInternalManuals",
+                "getInternalManualPdf",
                 "reportCreateDefinition",
                 "reportCreateDraftFromAnalysisArtifact",
                 "reportListDefinitions",
@@ -148,8 +162,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportAssistantOperationsSummary",
                 "reportAssistantCreateSession",
                 "reportAssistantGetSession",
+                "reportAssistantCancelSession",
                 "reportAssistantDecidePlan",
                 "reportAssistantGetEvaluation",
+                "reportAssistantReview",
                 "reportAssistantSubmitMessage",
                 "reportAssistantDecidePatch",
                 "reportAssistantRetrySession",
@@ -215,6 +231,9 @@ class OpenApiContractTest(unittest.TestCase):
         evidence = schema["components"]["schemas"]["Evidence"]["properties"]
         self.assertIn("product_release_id", evidence)
         self.assertIn("evidence_cutoff", evidence)
+        metric_reference = schema["components"]["schemas"]["MetricReference"]["properties"]
+        self.assertIn("display_label", metric_reference)
+        self.assertIn("display_unit", metric_reference)
 
     def test_all_fixtures_match_typed_response(self) -> None:
         expected_names = set(contract_fixtures())

@@ -124,6 +124,8 @@ def _provision(
                             password_iterations = EXCLUDED.password_iterations,
                             role = EXCLUDED.role,
                             active = true,
+                            deactivated_at = NULL,
+                            deleted_at = NULL,
                             updated_at = now()
                         RETURNING subject
                         """

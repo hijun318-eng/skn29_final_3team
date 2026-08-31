@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from enum import Enum
 from typing import Literal
 from uuid import UUID
 
@@ -58,6 +59,8 @@ class MetricReference(ContractModel):
     label: str
     definition: str
     unit: str | None = None
+    display_label: str | None = None
+    display_unit: str | None = None
 
 
 class MetricValue(MetricReference):
@@ -240,11 +243,19 @@ class ReadinessData(ContractModel):
     dependencies: dict[str, str]
 
 
+class RuntimeFeature(str, Enum):
+    """인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 집합이다."""
+
+    INTERNAL_GUIDELINE = "internal_guideline"
+    ML_PREDICTION = "ml_prediction"
+
+
 class SessionData(ContractModel):
     """현재 인증 세션 상태와 서버가 확인한 역할·Capability를 반환한다."""
     status: str = "authenticated"
     role: Role | None = None
     capabilities: tuple[Capability, ...] = ()
+    enabled_features: tuple[RuntimeFeature, ...] = ()
 
 
 class LoginRequest(ContractModel):
@@ -285,6 +296,13 @@ class AnalysisResponse(ResponseContractModel):
 class AnalysisProgressResponse(ResponseContractModel):
     """비동기 분석의 현재 진행 정보와 공통 메타데이터, 선택적 오류를 반환한다."""
     data: AnalysisProgressData
+    meta: ResponseMeta
+    error: ErrorBody | None = None
+
+
+class AnalysisProgressPollResponse(ResponseContractModel):
+    """대화 라우팅 중 아직 분석이 시작되지 않은 경우까지 오류 없이 polling한다."""
+    data: AnalysisProgressData | None = None
     meta: ResponseMeta
     error: ErrorBody | None = None
 

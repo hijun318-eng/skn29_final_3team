@@ -16,8 +16,8 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AdminApiError, createAdminClient } from "../api/adminClient.ts";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AdminApiError } from "../api/adminClient.ts";
 import { roleLabel } from "../authorization.ts";
 import { AuditTrailPanel } from "../features/admin/audit/AuditTrailPanel.tsx";
 
@@ -67,7 +67,7 @@ function AccountDialog({ account, form, mode, pending, error, onChange, onClose,
       <div className="admin-account-dialog__fields">
         {!passwordMode && <>
           <label><span>사용자 아이디</span><input required minLength={3} maxLength={64} pattern="[a-z0-9._-]+" autoComplete="off" value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value.toLowerCase() })} /></label>
-          <label><span>역할</span><select value={form.role} onChange={(event) => onChange({ ...form, role: event.target.value })}><option value="analyst">일반 사용자 (analyst)</option><option value="admin">관리자 (admin)</option></select></label>
+          <label><span>역할</span><select value={form.role} onChange={(event) => onChange({ ...form, role: event.target.value })}><option value="analyst">호텔 분석가 (analyst)</option><option value="report_admin">보고서 관리자 (report_admin)</option><option value="data_admin">데이터 관리자 (data_admin)</option><option value="platform_admin">플랫폼 관리자 (platform_admin)</option></select></label>
         </>}
         {(mode === "create" || passwordMode) && <label><span>{passwordMode ? "새 비밀번호" : "초기 비밀번호"}</span><input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={form.password} onChange={(event) => onChange({ ...form, password: event.target.value })} /></label>}
         {mode === "edit" && <label className="admin-account-dialog__check"><input type="checkbox" checked={form.active} onChange={(event) => onChange({ ...form, active: event.target.checked })} /><span>활성 계정</span></label>}
@@ -78,14 +78,12 @@ function AccountDialog({ account, form, mode, pending, error, onChange, onClose,
   </dialog>;
 }
 
-/** `system.manage`로 보호된 관리자 기능을 실제 계정·상태·감사 API에 배선한다. */
-export function AdminPage({ role, client: suppliedClient }) {
-  const client = useMemo(() => suppliedClient ?? createAdminClient(undefined, fetch), [suppliedClient]);
+/** `system.manage`로 보호된 관리자 기능을 조립 지점에서 주입한 단일 API 포트에만 배선한다. */
+export function AdminPage({ role, client }) {
   const requestIds = useRef({ connections: 0, accounts: 0 });
   const [section, setSection] = useState("connections");
   const activeSectionRef = useRef(section);
   activeSectionRef.current = section;
-  const [apiState, setApiState] = useState("checking");
   const [loading, setLoading] = useState({ connections: false, accounts: false });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -103,17 +101,14 @@ export function AdminPage({ role, client: suppliedClient }) {
     const requestId = ++requestIds.current.connections;
     setLoading((current) => ({ ...current, connections: true }));
     setError("");
-    setApiState("checking");
     try {
       const items = await client.listConnections();
       if (requestIds.current.connections !== requestId || activeSectionRef.current !== "connections") return;
       setConnections(items);
-      setApiState("connected");
     } catch (nextError) {
       if (requestIds.current.connections !== requestId || activeSectionRef.current !== "connections") return;
       setConnections([]);
       setError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       if (requestIds.current.connections === requestId) setLoading((current) => ({ ...current, connections: false }));
     }
@@ -123,17 +118,14 @@ export function AdminPage({ role, client: suppliedClient }) {
     const requestId = ++requestIds.current.accounts;
     setLoading((current) => ({ ...current, accounts: true }));
     setError("");
-    setApiState("checking");
     try {
       const page = await client.listAccounts(accountPage, accountSearch);
       if (requestIds.current.accounts !== requestId || activeSectionRef.current !== "accounts") return;
       setAccounts(page);
-      setApiState("connected");
     } catch (nextError) {
       if (requestIds.current.accounts !== requestId || activeSectionRef.current !== "accounts") return;
       setAccounts({ ...EMPTY_PAGE, page: accountPage });
       setError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       if (requestIds.current.accounts === requestId) setLoading((current) => ({ ...current, accounts: false }));
     }
@@ -201,11 +193,9 @@ export function AdminPage({ role, client: suppliedClient }) {
         setNotice("비밀번호를 변경했습니다. 해당 계정의 기존 세션은 종료됩니다.");
       }
       await refreshAccountsAfterMutation();
-      setApiState("connected");
       setModal(null);
     } catch (nextError) {
       setDialogError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       setSaving(false);
     }
@@ -219,10 +209,8 @@ export function AdminPage({ role, client: suppliedClient }) {
       await client.deleteAccount(account.subject);
       await refreshAccountsAfterMutation();
       setNotice("계정을 삭제했습니다.");
-      setApiState("connected");
     } catch (nextError) {
       setError(adminErrorMessage(nextError));
-      setApiState("error");
     } finally {
       setSaving(false);
     }
@@ -234,7 +222,6 @@ export function AdminPage({ role, client: suppliedClient }) {
   return <div className="page-content admin-console">
     <section className="admin-console__status" aria-label="관리자 시스템 상태">
       <div><ShieldCheck size={18} /><span><b>{roleLabel(role)}</b><small>현재 세션 권한으로 접근 중</small></span></div>
-      <strong className={apiState === "connected" ? "is-online" : "is-pending"}><i />{apiState === "connected" ? "ADMIN API 연결됨" : apiState === "error" ? "ADMIN API 응답 오류" : "ADMIN API 확인 중"}</strong>
     </section>
 
     {error && <p className="admin-feedback admin-feedback--error" role="alert"><AlertTriangle size={17} />{error}</p>}
@@ -254,17 +241,17 @@ export function AdminPage({ role, client: suppliedClient }) {
     </section>}
 
     {section === "accounts" && <section className="admin-panel" id="admin-panel-accounts" role="tabpanel" aria-labelledby="admin-tab-accounts">
-      <header className="admin-panel__header"><div><small>USER ACCOUNTS</small><h2>계정 관리</h2><p>일반 사용자와 관리자 계정의 역할, 활성 상태와 비밀번호를 관리합니다.</p></div><button className="primary" type="button" disabled={saving} onClick={openCreate}><UserPlus size={15} />계정 추가</button></header>
+      <header className="admin-panel__header"><div><small>USER ACCOUNTS</small><h2>계정 관리</h2><p>서비스 계정의 역할, 활성 상태와 비밀번호를 관리합니다.</p></div><button className="primary" type="button" disabled={saving} onClick={openCreate}><UserPlus size={15} />계정 추가</button></header>
       <form className="admin-list-toolbar" onSubmit={(event) => { event.preventDefault(); setAccountPage(1); setAccountSearch(accountSearchInput.trim()); if (accountPage === 1 && accountSearch === accountSearchInput.trim()) void loadAccounts(); }}><label><Search size={15} /><input value={accountSearchInput} onChange={(event) => setAccountSearchInput(event.target.value)} placeholder="사용자 아이디 검색" aria-label="계정 검색" /></label><button type="submit">검색</button></form>
       <div className="admin-table-card card"><div className="admin-data-table admin-data-table--accounts" role="table" aria-label="사용자 계정">
         <div className="admin-data-table__head" role="row"><span role="columnheader">사용자 아이디</span><span role="columnheader">역할</span><span role="columnheader">상태</span><span role="columnheader">등록일</span><span role="columnheader">관리</span></div>
-        {accounts.items.map((account) => <div className="admin-data-table__row" role="row" key={account.subject}><b role="cell">{account.username}</b><span role="cell"><em>{roleLabel(account.role)}</em></span><span role="cell"><strong className={`admin-status admin-status--${account.active ? "ready" : "down"}`}><i />{account.active ? "활성" : "비활성"}</strong></span><span role="cell">{formatTimestamp(account.created_at)}</span><span className="admin-row-actions" role="cell"><button type="button" disabled={saving} onClick={() => openEdit(account)}><Pencil size={13} />수정</button><button type="button" disabled={saving} onClick={() => openPassword(account)}><KeyRound size={13} />비밀번호</button><button className="danger" type="button" disabled={saving} onClick={() => void deleteAccount(account)}><Trash2 size={13} />삭제</button></span></div>)}
+        {accounts.items.map((account) => <div className="admin-data-table__row" role="row" key={account.subject}><b role="cell" data-label="사용자 아이디">{account.username}</b><span role="cell" data-label="역할"><em>{roleLabel(account.role)}</em></span><span role="cell" data-label="상태"><strong className={`admin-status admin-status--${account.active ? "ready" : "down"}`}><i />{account.active ? "활성" : "비활성"}</strong></span><span role="cell" data-label="등록일">{formatTimestamp(account.created_at)}</span><span className="admin-row-actions" role="cell" data-label="관리"><button type="button" disabled={saving} onClick={() => openEdit(account)}><Pencil size={13} />수정</button><button type="button" disabled={saving} onClick={() => openPassword(account)}><KeyRound size={13} />비밀번호</button><button className="danger" type="button" disabled={saving} onClick={() => void deleteAccount(account)}><Trash2 size={13} />삭제</button></span></div>)}
         {!loading.accounts && accounts.items.length === 0 && <div className="admin-empty" role="row"><div role="cell"><UserCog size={24} /><b>조건에 맞는 계정이 없습니다.</b><span>검색 조건을 변경하거나 계정을 추가해 주세요.</span></div></div>}
       </div></div>
       <div className="admin-pagination"><span>총 {accounts.total.toLocaleString()}개 · {accounts.page}/{accountPageCount} 페이지</span><div><button type="button" disabled={accountPage <= 1 || loading.accounts} onClick={() => setAccountPage((current) => current - 1)}><ChevronLeft size={15} />이전</button><button type="button" disabled={accountPage >= accountPageCount || loading.accounts} onClick={() => setAccountPage((current) => current + 1)}>다음<ChevronRight size={15} /></button></div></div>
     </section>}
 
-    {section === "audit" && <AuditTrailPanel client={client} onApiStateChange={setApiState} />}
+    {section === "audit" && <AuditTrailPanel client={client} />}
 
     {modal && <AccountDialog account={modal.account} form={accountForm} mode={modal.mode} pending={saving} error={dialogError} onChange={setAccountForm} onClose={() => setModal(null)} onSubmit={submitAccount} />}
   </div>;

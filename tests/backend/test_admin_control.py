@@ -9,6 +9,7 @@ import sys
 from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
+from functools import wraps
 from pathlib import Path
 from unittest.mock import patch
 from uuid import UUID
@@ -32,6 +33,16 @@ from app.auth import create_authenticated_session  # noqa: E402
 from app.contracts import CONTRACT_VERSION, RequestContext, Role  # noqa: E402
 from app.database import get_database_session  # noqa: E402
 from app.main import app  # noqa: E402
+
+
+def _run_async(test):
+    """추가 pytest plugin 없이 coroutine 테스트를 격리 event loop에서 실행한다."""
+
+    @wraps(test)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(test(*args, **kwargs))
+
+    return wrapper
 
 
 class _Result:
@@ -77,7 +88,7 @@ def _context(role: Role) -> RequestContext:
     )
 
 
-def _account(subject: UUID, role: str = "admin") -> dict:
+def _account(subject: UUID, role: str = "platform_admin") -> dict:
     now = datetime(2026, 8, 26, tzinfo=timezone.utc)
     return {
         "subject": subject,
@@ -91,23 +102,29 @@ def _account(subject: UUID, role: str = "admin") -> dict:
     }
 
 
-def test_system_manage_dependency_rejects_analyst_and_accepts_admin() -> None:
+def test_system_manage_dependency_rejects_analyst_and_accepts_platform_admin() -> None:
     with pytest.raises(HTTPException) as denied:
         system_manage_context(_context(Role.ANALYST))
     assert denied.value.status_code == 403
-    assert system_manage_context(_context(Role.ADMIN)).role is Role.ADMIN
+    assert (
+        system_manage_context(_context(Role.PLATFORM_ADMIN)).role
+        is Role.PLATFORM_ADMIN
+    )
 
 
-def test_admin_contract_rejects_legacy_roles_and_masks_password_repr() -> None:
+def test_admin_contract_accepts_current_roles_and_masks_password_repr() -> None:
     request = CreateAccountRequest(
-        username="new-user", password="new-password", role="admin"
+        username="new-user", password="new-password", role="platform_admin"
     )
     assert "new-password" not in repr(request)
-    for role in ("report_admin", "data_admin", "platform_admin"):
-        with pytest.raises(ValidationError):
-            CreateAccountRequest(
-                username="new-user", password="new-password", role=role
-            )
+    for role in Role:
+        assert CreateAccountRequest(
+            username="new-user", password="new-password", role=role.value
+        ).role is role
+    with pytest.raises(ValidationError):
+        CreateAccountRequest(
+            username="new-user", password="new-password", role="admin"
+        )
     with pytest.raises(ValidationError):
         UpdateAccountRequest()
     with pytest.raises(ValidationError):
@@ -116,7 +133,7 @@ def test_admin_contract_rejects_legacy_roles_and_masks_password_repr() -> None:
         )
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_last_active_admin_cannot_be_demoted() -> None:
     subject = UUID(int=2)
     session = _Session(
@@ -127,14 +144,14 @@ async def test_last_active_admin_cannot_be_demoted() -> None:
         await AdminAccountRepository(session).update_account(
             subject,
             changes={"role": Role.ANALYST},
-            actor=_context(Role.ADMIN),
+            actor=_context(Role.PLATFORM_ADMIN),
         )
     statements = [statement for statement, _ in session.calls]
     assert "pg_advisory_xact_lock" in statements[0]
     assert any("FOR UPDATE" in statement for statement in statements[1:])
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_deactivation_sets_timestamp_and_revokes_sessions() -> None:
     subject = UUID(int=3)
     current = _account(subject, "analyst")
@@ -147,7 +164,7 @@ async def test_deactivation_sets_timestamp_and_revokes_sessions() -> None:
     account = await AdminAccountRepository(session).update_account(
         subject,
         changes={"active": False},
-        actor=_context(Role.ADMIN),
+        actor=_context(Role.PLATFORM_ADMIN),
     )
     assert account["deactivated_at"] is not None
     statements = "\n".join(statement for statement, _ in session.calls)
@@ -155,11 +172,11 @@ async def test_deactivation_sets_timestamp_and_revokes_sessions() -> None:
     assert "UPDATE security.auth_sessions" in statements
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_connection_check_audit_contains_only_public_statuses() -> None:
     session = _Session()
     await AdminAccountRepository(session).record_connection_check(
-        actor=_context(Role.ADMIN),
+        actor=_context(Role.PLATFORM_ADMIN),
         connections=(
             {
                 "id": "pms",
@@ -178,10 +195,10 @@ async def test_connection_check_audit_contains_only_public_statuses() -> None:
     assert "must-not-be-audited" not in rendered
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_last_admin_conflict_survives_actual_http_error_envelope() -> None:
     async def admin_context_override() -> RequestContext:
-        return _context(Role.ADMIN)
+        return _context(Role.PLATFORM_ADMIN)
 
     async def session_override():
         yield _Session()
@@ -210,7 +227,7 @@ async def test_last_admin_conflict_survives_actual_http_error_envelope() -> None
     assert "detail" not in body
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_password_reset_revokes_sessions_and_audits_without_verifier() -> None:
     subject = UUID(int=2)
     session = _Session(_Result(row=_account(subject)))
@@ -221,7 +238,7 @@ async def test_password_reset_revokes_sessions_and_audits_without_verifier() -> 
         await AdminAccountRepository(session).reset_password(
             subject,
             password="new-password",
-            actor=_context(Role.ADMIN),
+            actor=_context(Role.PLATFORM_ADMIN),
         )
 
     statements = "\n".join(statement for statement, _ in session.calls)
@@ -233,7 +250,7 @@ async def test_password_reset_revokes_sessions_and_audits_without_verifier() -> 
     assert "password_hash" not in str(audit_parameters)
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_login_insert_and_password_reset_are_serialized_by_account_lock() -> None:
     """reset은 로그인 FOR SHARE transaction 뒤에 lock을 얻어 방금 발급한 session도 폐기한다."""
 
@@ -242,7 +259,7 @@ async def test_login_insert_and_password_reset_are_serialized_by_account_lock() 
     salt = b"0123456789abcdef0123456789abcdef"
     credential_row = {
         "subject": subject,
-        "role": "admin",
+        "role": "platform_admin",
         "password_salt": urlsafe_b64encode(salt).decode().rstrip("="),
         "password_hash": hashlib.pbkdf2_hmac(
             "sha256", password.encode(), salt, 210_000
@@ -299,7 +316,7 @@ async def test_login_insert_and_password_reset_are_serialized_by_account_lock() 
                 await AdminAccountRepository(ResetSession()).reset_password(
                     subject,
                     password="replacement-password",
-                    actor=_context(Role.ADMIN),
+                    actor=_context(Role.PLATFORM_ADMIN),
                 )
         finally:
             if row_lock.locked():

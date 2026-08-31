@@ -18,7 +18,7 @@ const server = await createServer({
 });
 
 try {
-  const { EnterpriseChart, normalizeChartType } = await server.ssrLoadModule("/src/components/charts/EnterpriseChart.jsx");
+  const { EnterpriseChart, normalizeChartType, resolveBarValueDomain } = await server.ssrLoadModule("/src/components/charts/EnterpriseChart.jsx");
   const render = (props) => renderToStaticMarkup(createElement(EnterpriseChart, props));
   const base = {
     data: [{ month: "2026-01", revenue: 0 }, { month: "2026-02", revenue: 12_500_000 }],
@@ -32,6 +32,11 @@ try {
   assert.equal(normalizeChartType(" STACKED-BAR "), "stacked-bar");
   assert.equal(normalizeChartType("column"), null);
   assert.equal(normalizeChartType(undefined), null);
+  const domainSeries = [{ key: "value" }];
+  assert.deepEqual(resolveBarValueDomain([{ value: 0 }, { value: 12 }], domainSeries), [0, "auto"]);
+  assert.deepEqual(resolveBarValueDomain([{ value: -12 }, { value: 0 }], domainSeries), ["auto", 0]);
+  assert.deepEqual(resolveBarValueDomain([{ value: -12 }, { value: 8 }], domainSeries), ["auto", "auto"]);
+  assert.equal((chartSource.match(/domain=\{barValueDomain\}/g) || []).length, 2);
   assert.match(chartSource, /enterprise-chart-axis--category/);
   assert.match(chartSource, /enterprise-chart-axis--value/);
   assert.match(chartSource, /tick=\{CATEGORY_AXIS_TICK\}/);

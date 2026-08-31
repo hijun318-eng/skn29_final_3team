@@ -6,6 +6,11 @@ from typing import Any
 from uuid import UUID
 
 from app.contracts import AnalysisRequest, ResolvedSlots
+from app.services.analysis.semantic_request import (
+    ApprovedSemanticRequestSnapshot,
+    SemanticReplayAnalysisRequest,
+    parse_approved_semantic_request_snapshot,
+)
 from app.services.conversation.slot_resolver import ResolvedTurnSlots
 
 
@@ -63,6 +68,28 @@ def build_structured_analysis_request(
             result_limit=slots.result_limit,
         )
     return AnalysisRequest(question=user_message, resolved_slots=resolved)
+
+
+def build_replay_analysis_request(
+    definition: dict[str, Any],
+    parameters: dict[str, object],
+) -> SemanticReplayAnalysisRequest:
+    """독립 저장된 승인 snapshot만 재실행 요청으로 만들고 override를 거부한다."""
+
+    snapshot = approved_snapshot_from_definition(definition)
+    if dict(parameters) != snapshot.parameters:
+        raise ValueError("Approved Semantic Request parameter는 변경할 수 없습니다.")
+    return SemanticReplayAnalysisRequest(approved_semantic_snapshot=snapshot)
+
+
+def approved_snapshot_from_definition(
+    definition: dict[str, Any],
+) -> ApprovedSemanticRequestSnapshot:
+    """저장소가 독립 row에서 읽은 snapshot만 검증해 legacy replay를 차단한다."""
+
+    return parse_approved_semantic_request_snapshot(
+        definition.get("approved_semantic_snapshot")
+    )
 
 
 def extract_artifact_id(analysis_response: Any) -> UUID | None:

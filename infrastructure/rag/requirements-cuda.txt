@@ -1,0 +1,6 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+-r requirements.txt
+torch==2.6.0+cu124
+transformers==4.57.6
+sentence-transformers==5.5.1

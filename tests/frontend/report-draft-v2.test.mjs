@@ -13,8 +13,10 @@ import {
   analysisArtifactTitle,
   analysisRunArtifactSources,
   analysisTimeLabel,
+  artifactViewTitle,
   artifactViewBlockSettings,
   artifactMetricCards,
+  availableArtifactViews,
   createFrontendDraftSnapshot,
   deleteFrontendBlock,
   estimateArtifactBlockLayout,
@@ -29,6 +31,8 @@ import {
   moveFrontendBlock,
   orientFrontendBlocks,
   reportArtifactLibrarySources,
+  reportAssistantArtifactOptions,
+  reportAssistantRepresentativeBlock,
   saveFrontendDraft,
 } from "../../app/frontend/src/features/reports/reportDraftV2.js";
 import { reportEvidenceReady } from "../../app/frontend/src/features/reports/reportArtifactEvidence.ts";
@@ -48,21 +52,115 @@ const sourceA = {
 };
 const sourceB = { artifactId: "artifact-b", queryId: "query-b", title: "채널 구성 분석" };
 
-const first = insertFrontendArtifact([textBlock], { ...sourceA, blockId: "whole-a" }, report);
+const rejectedWhole = insertFrontendArtifact([textBlock], { ...sourceA, blockId: "legacy-whole" }, report);
+assert.equal(rejectedWhole.ok, false);
+assert.match(rejectedWhole.errors[0], /하나의 view/);
+const first = insertFrontendArtifact([textBlock], {
+  ...sourceA, blockId: "whole-a", visibleViews: ["summary"], width: 12,
+}, report);
 assert.equal(first.ok, true, first.errors?.join("; "));
 assert.equal(first.blocks.find((block) => block.id === "whole-a").type, "artifact");
 assert.equal(first.blocks.find((block) => block.id === "whole-a").artifactId, "artifact-a");
 assert.equal(JSON.parse(first.blocks.find((block) => block.id === "whole-a").content).sizeMode, "auto");
 
+const atomicArtifact = {
+  summary: "핵심 결론",
+  metrics: [{ metric_id: "metric-a", label: "승인 지표", value: 12, unit: "count" }],
+  chart: { chart_type: "bar", x_field: "period", y_fields: ["metric_a"] },
+  table: { columns: ["period", "metric_a"], rows: [{ period: "1월", metric_a: 12 }] },
+};
+assert.deepEqual(availableArtifactViews(atomicArtifact), ["summary", "kpi", "chart", "table"]);
+assert.deepEqual(availableArtifactViews({ summary: "요약만" }), ["summary"]);
+assert.deepEqual(
+  availableArtifactViews({
+    chart: { chart_type: "bar", x_field: "period", y_fields: ["value"] },
+    table: { columns: ["period", "value"], rows: [] },
+  }),
+  [],
+  "chart and table views require actual rows just like the server availability contract",
+);
+assert.equal(artifactViewTitle("객실 매출 분석", "kpi"), "객실 매출 분석 · 핵심 지표");
+const boundedArtifactTitle = artifactViewTitle("가".repeat(255), "kpi");
+assert.equal(Array.from(boundedArtifactTitle).length, 255);
+assert.match(boundedArtifactTitle, / · 핵심 지표$/);
+const atomicSummary = insertFrontendArtifact([textBlock], {
+  ...sourceA,
+  blockId: "atomic-summary",
+  artifact: atomicArtifact,
+  visibleViews: ["summary"],
+}, report);
+assert.equal(atomicSummary.ok, true, atomicSummary.errors?.join("; "));
+const atomicKpi = insertFrontendArtifact(atomicSummary.blocks, {
+  ...sourceA,
+  blockId: "atomic-kpi",
+  artifact: atomicArtifact,
+  visibleViews: ["kpi"],
+}, report);
+assert.equal(atomicKpi.ok, true, atomicKpi.errors?.join("; "));
+assert.deepEqual(
+  atomicKpi.blocks.filter((block) => block.id.startsWith("atomic-")).map((block) => ({
+    id: block.id,
+    type: block.type,
+    views: JSON.parse(block.content).visibleViews,
+  })),
+  [
+    { id: "atomic-summary", type: "artifact", views: ["summary"] },
+    { id: "atomic-kpi", type: "artifact", views: ["kpi"] },
+  ],
+  "summary and KPI must persist as separate blocks that share only the governed artifact reference",
+);
+const atomicDocument = frontendBlocksToDocument({ ...report, blocks: atomicKpi.blocks });
+assert.equal(atomicDocument.ok, true, atomicDocument.errors?.join("; "));
+assert.deepEqual(
+  atomicDocument.document.pages.flatMap((page) => page.blocks)
+    .filter((block) => block.id.startsWith("atomic-"))
+    .map((block) => block.visibleViews),
+  [["summary"], ["kpi"]],
+);
+const legacyDocument = frontendBlocksToDocument({
+  ...report,
+  blocks: [{
+    ...atomicSummary.blocks.find((block) => block.id === "atomic-summary"),
+    content: JSON.stringify({ visibleViews: ["summary", "kpi"] }),
+  }],
+});
+assert.equal(legacyDocument.ok, false);
+assert.match(legacyDocument.errors[0], /Artifact 참조|원자 view|데이터 블록/);
+const migratedChartRequest = toReportBlockRequest({
+  id: "legacy-chart-request", title: "차트", type: "chart", artifactId: "artifact-a",
+  columns: 6, x: 0, y: 0, w: 6, h: 7, content: '{"showLegend":true}',
+});
+assert.deepEqual(JSON.parse(migratedChartRequest.content).visibleViews, ["chart"]);
+assert.equal(frontendBlocksToDocument({
+  ...report,
+  blocks: [{
+    id: "migrated-chart", title: "차트", type: "chart", artifactId: "artifact-a",
+    columns: 6, x: 0, y: 0, w: 6, h: 7, content: '{"showLegend":true}',
+  }],
+}).ok, true);
+assert.equal(frontendBlocksToDocument({
+  ...report,
+  blocks: [{
+    id: "mismatched-chart", title: "잘못된 차트", type: "chart", artifactId: "artifact-a",
+    columns: 6, x: 0, y: 0, w: 6, h: 7, content: '{"visibleViews":["table"]}',
+  }],
+}).ok, false);
+assert.throws(() => toReportBlockRequest({
+  id: "legacy-bundle-request", title: "합본", type: "artifact", artifactId: "artifact-a",
+  columns: 12, x: 0, y: 0, w: 12, h: 12,
+  content: '{"visibleViews":["summary","kpi"]}',
+}), /visibleViews 하나/);
+
 const side = insertFrontendArtifact(first.blocks, {
   ...sourceB,
   blockId: "whole-b",
+  visibleViews: ["summary"],
   placement: { type: "side", targetBlockId: "whole-a", edge: "right" },
 }, report);
 assert.equal(side.ok, true, side.errors?.join("; "));
 assert.deepEqual(side.blocks.filter((block) => block.id.startsWith("whole-")).map(({ id, x, w, h }) => [id, x, w, h]), [
-  ["whole-a", 0, 6, 18],
-  ["whole-b", 6, 6, 18],
+  ["whole-a", 0, 6, 5],
+  ["whole-b", 6, 6, 5],
 ]);
 
 const beforeMove = structuredClone(side.blocks);
@@ -125,8 +223,9 @@ assert.deepEqual(frontendTextBlockLayout({ ...summary, content: "매우 긴 문�
 const keyboardDrop = keyboardEndDropPosition(side.blocks, {
   pageId: "report-1:page:1", width: 12, height: 16,
 });
+const sideBottom = side.blocks.reduce((bottom, block) => Math.max(bottom, block.y + block.h), 0);
 assert.deepEqual(keyboardDrop, {
-  pageId: "report-1:page:1", x: 0, requestedX: 0, y: 22, w: 12, h: 16,
+  pageId: "report-1:page:1", x: 0, requestedX: 0, y: sideBottom, w: 12, h: 16,
   placement: { type: "end", pageId: "report-1:page:1" },
 });
 
@@ -145,17 +244,64 @@ const analysisSources = analysisRunArtifactSources(
   analysisLibraryFixture.definitions,
 );
 assert.deepEqual(analysisSources.map(({ artifactId, requestId, title }) => [artifactId, requestId, title]), [
-  ["artifact-occupancy", "request-occupancy", "2026-06-01–2026-07-01 주요 지표 분석"],
+  ["artifact-occupancy", "request-occupancy", "2026년 6월 1일부터 30일까지 주요 지표 분석"],
   ["artifact-revenue", "request-revenue-new", "월간 객실 매출 추이"],
 ]);
 assert.equal(analysisSources.some((source) => Object.hasOwn(source, "question")), false);
+assert.equal(analysisSources[0].completedAt, "2026-07-03T00:00:02Z");
+assert.equal(
+  analysisTimeLabel({}, { periodStart: "2026-03-01", periodEndExclusive: "2026-08-30" }),
+  "2026년 3월 1일부터 8월 29일까지",
+);
+
+const manyAssistantOptions = Array.from({ length: 222 }, (_, index) => ({
+  artifactId: `artifact-${index + 1}`,
+  title: `Artifact ${index + 1}`,
+}));
+assert.deepEqual(
+  reportAssistantArtifactOptions(
+    manyAssistantOptions,
+    "artifact-120",
+    [],
+    ["artifact-222", "artifact-221", "artifact-220", "artifact-219", "artifact-218", "artifact-217", "artifact-216"],
+  ).map(({ artifactId }) => artifactId),
+  ["artifact-120", "artifact-222", "artifact-221", "artifact-220", "artifact-219", "artifact-218", "artifact-217"],
+);
+assert.deepEqual(
+  reportAssistantArtifactOptions(
+    manyAssistantOptions,
+    "artifact-120",
+    ["artifact-8", "artifact-9"],
+    ["artifact-222", "artifact-221", "artifact-220", "artifact-219", "artifact-218"],
+  ).map(({ artifactId }) => artifactId),
+  ["artifact-120", "artifact-8", "artifact-9", "artifact-222", "artifact-221", "artifact-220", "artifact-219"],
+  "explicitly selected evidence must stay visible before recent candidates fill the seven slots",
+);
+assert.deepEqual(reportAssistantArtifactOptions([manyAssistantOptions[0]], "artifact-1"), [manyAssistantOptions[0]]);
+
+const assistantBlocks = [
+  { id: "summary", type: "text", content: "요약" },
+  { id: "revenue-chart", type: "chart", artifactId: "artifact-revenue" },
+  { id: "occupancy-table", type: "table", artifactId: "artifact-occupancy" },
+];
+assert.equal(
+  reportAssistantRepresentativeBlock(assistantBlocks, "occupancy-table")?.artifactId,
+  "artifact-occupancy",
+  "선택한 Artifact 블록의 실제 근거가 대표 Artifact여야 한다",
+);
+assert.equal(
+  reportAssistantRepresentativeBlock(assistantBlocks, "summary")?.artifactId,
+  "artifact-revenue",
+  "텍스트 블록 선택 시 보고서에 배치된 첫 Artifact를 대표 근거로 사용해야 한다",
+);
+assert.equal(reportAssistantRepresentativeBlock([{ id: "summary", type: "text" }], "summary"), null);
 
 const analysisArtifactBefore = structuredClone(analysisLibraryFixture.artifact);
 const adaptedAnalysisArtifact = adaptAnalysisRunArtifact(analysisLibraryFixture.artifact);
 assert.equal(adaptedAnalysisArtifact.artifact_id, "artifact-revenue");
-assert.equal(adaptedAnalysisArtifact.query_id, "query-revenue");
+assert.equal(Object.hasOwn(adaptedAnalysisArtifact, "query_id"), false);
 assert.equal(adaptedAnalysisArtifact.evidence.artifact_id, "artifact-revenue");
-assert.equal(adaptedAnalysisArtifact.evidence.query_id, "query-revenue");
+assert.equal(Object.hasOwn(adaptedAnalysisArtifact.evidence, "query_id"), false);
 assert.equal(adaptedAnalysisArtifact.evidence.product_release_id, "walkerhill-v4-synthetic");
 assert.equal(adaptedAnalysisArtifact.evidence.evidence_cutoff, "2026-07-02");
 assert.equal(adaptedAnalysisArtifact.evidence.period.end_exclusive, "2026-07-01");
@@ -164,8 +310,29 @@ assert.equal(adaptedAnalysisArtifact.evidence.sources[0].synthetic, true);
 assert.equal(adaptedAnalysisArtifact.metrics[0].result_field, "room_revenue");
 assert.equal(Object.hasOwn(adaptedAnalysisArtifact, "question"), false);
 assert.deepEqual(analysisLibraryFixture.artifact, analysisArtifactBefore, "analysis adaptation must not mutate the API result");
-assert.equal(analysisArtifactTitle(adaptedAnalysisArtifact), "2026-01-01–2026-07-01 객실 매출 분석");
+assert.equal(analysisArtifactTitle(adaptedAnalysisArtifact), "2026년 1월 1일부터 6월 30일까지 객실 매출 분석");
 assert.equal(adaptAnalysisRunArtifact({ ...analysisLibraryFixture.artifact, evidenceReady: false }), null);
+
+const presentationRun = structuredClone(analysisLibraryFixture.artifact);
+presentationRun.metrics[0] = {
+  ...presentationRun.metrics[0],
+  label: "Room Revenue",
+  displayLabel: "객실 매출",
+  unit: "KRW",
+  displayUnit: "원",
+};
+presentationRun.evidence.metrics[0] = {
+  ...presentationRun.evidence.metrics[0],
+  label: "Room Revenue",
+  displayLabel: "객실 매출",
+  unit: "KRW",
+  displayUnit: "원",
+};
+const presentationArtifact = adaptAnalysisRunArtifact(presentationRun);
+assert.equal(presentationArtifact.metrics[0].display_label, "객실 매출");
+assert.equal(presentationArtifact.metrics[0].display_unit, "원");
+assert.equal(presentationArtifact.evidence.metrics[0].display_label, "객실 매출");
+assert.equal(presentationArtifact.evidence.metrics[0].display_unit, "원");
 
 const snapshotRun = structuredClone(analysisLibraryFixture.artifact);
 delete snapshotRun.evidence.period;
@@ -190,20 +357,19 @@ const insertedAnalysisArtifact = insertFrontendArtifact([], {
   blockId: "analysis-whole",
   sourceKind: "analysisRun",
   requestId: "request-revenue-new",
+  visibleViews: ["summary"],
 }, report);
 assert.equal(insertedAnalysisArtifact.ok, true, insertedAnalysisArtifact.errors?.join("; "));
 const persistedAnalysisBlock = toReportBlockRequest(insertedAnalysisArtifact.blocks[0]);
 assert.equal(persistedAnalysisBlock.type, "artifact");
-assert.equal(persistedAnalysisBlock.query_id, "query-revenue");
+assert.equal(Object.hasOwn(persistedAnalysisBlock, "query_id"), false);
 assert.equal(persistedAnalysisBlock.content, insertedAnalysisArtifact.blocks[0].content);
-assert.throws(
-  () => toReportBlockRequest({ ...insertedAnalysisArtifact.blocks[0], queryId: undefined }),
-  /Query/,
-);
+assert.doesNotThrow(() => toReportBlockRequest({ ...insertedAnalysisArtifact.blocks[0], queryId: undefined }));
 const serverOnlyDefinition = normalizeReportDefinition({
   contract_version: REPORT_CONTRACT_VERSION,
   definition_id: report.definitionId,
   version: report.version,
+  draft_revision: 1,
   status: "draft",
   title: report.title,
   blocks: [{ ...persistedAnalysisBlock, view_spec_id: "view-spec-1" }],
@@ -214,7 +380,7 @@ const serverOnlyDefinition = normalizeReportDefinition({
 assert.equal(loadFrontendDraft({ getItem: () => null }, report.definitionId, report.version), null);
 assert.equal(serverOnlyDefinition.blocks[0].type, "artifact");
 assert.equal(serverOnlyDefinition.blocks[0].artifactId, "artifact-revenue");
-assert.equal(serverOnlyDefinition.blocks[0].queryId, "query-revenue");
+assert.equal(serverOnlyDefinition.blocks[0].queryId, undefined);
 assert.equal(serverOnlyDefinition.blocks[0].viewSpecId, "view-spec-1");
 assert.equal(toReportBlockRequest(serverOnlyDefinition.blocks[0]).view_spec_id, "view-spec-1");
 assert.equal(serverOnlyDefinition.orientation, "landscape");
@@ -256,9 +422,10 @@ assert.deepEqual(
 
 const monthlyArtifact = fixture("artifact-monthly-revenue.json");
 const monthlyBeforeSizing = structuredClone(monthlyArtifact);
-assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape" }), { width: 12, height: 12 });
-assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "portrait" }), { width: 12, height: 18 });
-assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape", width: 6 }), { width: 6, height: 17 });
+assert.throws(
+  () => estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape" }),
+  /원자 view 하나/,
+);
 assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape", visibleViews: ["chart"] }), { width: 6, height: 8 });
 assert.deepEqual(estimateArtifactBlockLayout(monthlyArtifact, { orientation: "landscape", visibleViews: ["table"] }), { width: 6, height: 8 });
 const longSummaryLayout = estimateArtifactBlockLayout({ ...monthlyArtifact, summary: "긴 한국어 분석 요약입니다. ".repeat(30) }, {
@@ -274,19 +441,27 @@ assert.equal(wideTableLayout.height <= 18, true);
 assert.deepEqual(monthlyArtifact, monthlyBeforeSizing, "Artifact sizing must be pure");
 const manualArtifactBlock = {
   id: "manual-size", title: "수동 크기", type: "artifact", artifactId: monthlyArtifact.artifact_id,
-  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary", "chart"], sizeMode: "manual" }),
+  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary"], sizeMode: "manual" }),
   columns: 6, x: 0, y: 0, w: 6, h: 8,
 };
 assert.equal(fitFrontendArtifactBlock(manualArtifactBlock, monthlyArtifact, { orientation: "portrait" }), manualArtifactBlock);
 const autoFittedBlock = fitFrontendArtifactBlock(manualArtifactBlock, monthlyArtifact, { orientation: "portrait", force: true });
-assert.equal(autoFittedBlock.w, 12);
-assert.equal(autoFittedBlock.h > manualArtifactBlock.h, true);
+assert.deepEqual([autoFittedBlock.w, autoFittedBlock.h], [6, 5]);
 assert.equal(JSON.parse(autoFittedBlock.content).sizeMode, "auto");
 assert.deepEqual(manualArtifactBlock, {
   id: "manual-size", title: "수동 크기", type: "artifact", artifactId: monthlyArtifact.artifact_id,
-  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary", "chart"], sizeMode: "manual" }),
+  content: JSON.stringify({ presentationMode: "standard", visibleViews: ["summary"], sizeMode: "manual" }),
   columns: 6, x: 0, y: 0, w: 6, h: 8,
 }, "fit must not mutate manual input");
+const legacyBundleBlock = {
+  ...manualArtifactBlock,
+  content: JSON.stringify({ visibleViews: ["summary", "chart"], sizeMode: "auto" }),
+};
+assert.equal(
+  fitFrontendArtifactBlock(legacyBundleBlock, monthlyArtifact, { orientation: "portrait", force: true }),
+  legacyBundleBlock,
+  "legacy multi-view blocks must fail closed instead of silently selecting a view",
+);
 
 const legacyChart = { id: "legacy-chart", title: "월별 차트", type: "chart", artifactId: monthlyArtifact.artifact_id, content: JSON.stringify({ showLegend: true }), columns: 6, x: 0, y: 0, w: 6, h: 7 };
 const legacyMonthlyTable = { id: "legacy-monthly-table", title: "월별 표", type: "table", artifactId: monthlyArtifact.artifact_id, content: JSON.stringify({ density: "compact" }), columns: 6, x: 6, y: 0, w: 6, h: 7 };
@@ -296,6 +471,8 @@ assert.equal(artifactViewBlockSettings(legacyChart).sizeMode, "auto");
 assert.equal(artifactViewBlockSettings(legacyMonthlyTable).sizeMode, "auto");
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyChart, monthlyArtifact, { orientation: "landscape" }), { width: 6, height: 8 });
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyMonthlyTable, monthlyArtifact, { orientation: "landscape" }), { width: 6, height: 10 });
+assert.deepEqual(estimateArtifactViewBlockLayout({ type: "chart" }, monthlyArtifact, { orientation: "landscape", autoWidth: true }), { width: 8, height: 8 });
+assert.deepEqual(estimateArtifactViewBlockLayout({ type: "table" }, monthlyArtifact, { orientation: "landscape", autoWidth: true }), { width: 6, height: 11 });
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyChannelTable, channelArtifact, { orientation: "landscape" }), { width: 6, height: 8 });
 assert.deepEqual(estimateArtifactViewBlockLayout(legacyMonthlyTable, monthlyArtifact, { orientation: "portrait" }), { width: 6, height: 11 });
 assert.deepEqual(estimateArtifactViewBlockLayout({ ...legacyChannelTable, w: 12, columns: 12 }, channelArtifact, { orientation: "portrait" }), { width: 12, height: 9 });
@@ -327,16 +504,21 @@ assert.match(
   /if \(draft\.isDirty\) \{\s*lifecycle\.setError\("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요\."\)/,
 );
 assert.match(reportSources.lifecycle, /createAnalysisClient\(fetch\)/);
-assert.match(reportSources.artifacts, /analysisClient\.listRuns\(\)/);
+assert.match(reportSources.artifacts, /analysisClient\.listRuns\(\{ limit: 7, approvedOnly: true \}\)/);
 assert.match(reportSources.artifacts, /analysisClient\.getRunArtifact\(source\.requestId \|\| source\.artifactRequestId\)/);
+assert.match(reportSources.artifacts, /sources\.filter\([\s\S]*hydrationIds\.has\(source\.artifactId\)/);
+assert.match(reportSources.artifacts, /const setAssistantArtifacts = useCallback\(async/);
+assert.match(reportSources.artifacts, /const primaryArtifactId = representativeArtifactId \|\| artifactSelection \|\| uniqueIds\[0\] \|\| ""/);
+assert.match(reportSources.artifacts, /const selectedIds = \[primaryArtifactId, \.\.\.requested\]/);
+assert.match(reportSources.artifacts, /setArtifactSelection\(primaryArtifactId\)/);
 assert.match(reportSources.controller, /const persistedBlocks = compactDraftLayout\(draft\.orderedBlocks\)/);
 assert.doesNotMatch(
   reportFeatureSource,
   /pdfUnsupportedBlocks|orderedBlocks\.filter\(\(block\) => block\.type !== "artifact"\)/,
 );
 assert.match(reportSources.documentView, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
-assert.match(reportSources.controller, /wholeArtifactTemplateFor/);
-assert.match(reportSources.dragAndDrop, /wholeArtifactTemplateFor\(libraryArtifact, dropWidth\)\.h/);
+assert.doesNotMatch(reportSources.controller, /wholeArtifactTemplateFor|WHOLE_ARTIFACT_TEMPLATE/);
+assert.doesNotMatch(reportSources.dragAndDrop, /activeId\.startsWith\("artifact:"\)|addWholeArtifact/);
 assert.match(reportSources.draftMutations, /sizeMode: "manual"/);
 assert.match(reportSources.blockControls, /내용에 맞춤/);
 assert.match(reportSources.controller, /draftBridgeRef\.current\?\.fitHydratedArtifactViews\(artifactMap\)/);
@@ -347,11 +529,17 @@ assert.doesNotMatch(hydratedFit, /commitBlocks\(/, "artifact hydration must not 
 assert.match(reportSources.draftState, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
 assert.match(reportSources.draftMutations, /const compacted = compactDraftLayout\(inputBlocks\)/);
 assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
+assert.match(reportSources.draftMutations, /block\.type === "artifact"[\s\S]*fitFrontendArtifactBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
 assert.match(reportSources.draftMutations, /\["artifact", "chart", "table"\]\.includes\(block\.type \?\? ""\)[\s\S]*sizeMode: "manual"/);
 assert.match(reportSources.draftState, /density: "comfortable", sizeMode: "auto"/);
 
-assert.equal(reportEvidenceReady(monthlyArtifact), true);
-const snapshotArtifact = structuredClone(monthlyArtifact);
+const publicMonthlyArtifact = {
+  ...monthlyArtifact,
+  query_id: undefined,
+  evidence: { ...monthlyArtifact.evidence, query_id: undefined },
+};
+assert.equal(reportEvidenceReady(publicMonthlyArtifact), true);
+const snapshotArtifact = structuredClone(publicMonthlyArtifact);
 delete snapshotArtifact.evidence.period;
 snapshotArtifact.evidence.snapshot = {
   cutoff: "2026-08-20",
@@ -364,7 +552,7 @@ snapshotArtifact.evidence.period = {
 };
 assert.equal(reportEvidenceReady(snapshotArtifact), false);
 assert.equal(
-  reportEvidenceReady({ ...monthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["unknown_measure"] } }),
+  reportEvidenceReady({ ...publicMonthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["unknown_measure"] } }),
   false,
   "an artifact chart must not reference an ungoverned result field",
 );

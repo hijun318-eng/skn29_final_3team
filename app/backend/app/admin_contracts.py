@@ -13,7 +13,7 @@ from app.contract_core import ContractModel
 
 
 class CreateAccountRequest(ContractModel):
-    """정규화된 login ID, 초기 비밀번호와 두 Role 중 하나만 계정 생성에 허용한다."""
+    """정규화된 login ID, 초기 비밀번호와 현재 서비스 Role만 계정 생성에 허용한다."""
 
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9._-]+$")
     password: SecretStr = Field(min_length=12, max_length=128)

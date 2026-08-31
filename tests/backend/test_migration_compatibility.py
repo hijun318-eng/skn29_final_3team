@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import runpy
 import subprocess
 import sys
 import unittest
@@ -47,7 +49,6 @@ KNOWN_REVISIONS = (
     "20260819_26",
     "20260820_27",
     "20260820_28",
-    "20260821_29",
     "20260822_29",
     "20260822_30",
     "20260822_31",
@@ -66,8 +67,25 @@ KNOWN_REVISIONS = (
     "20260826_44",
     "20260826_45",
     "20260826_46",
-    "20260827_31",
     "20260828_47",
+    "20260828_48",
+    "20260828_49",
+    "20260828_50",
+    "20260828_51",
+    "20260828_52",
+    "20260828_53",
+    "20260828_54",
+    "20260828_55",
+    "20260827_41",
+    "20260828_56",
+    "20260829_57",
+    "20260829_58",
+    "20260830_59",
+    "20260831_60",
+    "20260831_61",
+    "20260831_62",
+    "20260831_63",
+    "20260831_64",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -94,11 +112,25 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260828_47"], script.get_heads())
+        self.assertEqual(["20260831_64"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
         )
+
+    def test_deployed_seung_head_is_a_reconciled_compatibility_ancestor(self) -> None:
+        config = Config(str(BACKEND / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND / "migrations"))
+        script = ScriptDirectory.from_config(config)
+
+        legacy = script.get_revision("20260827_41")
+        reconciliation = script.get_revision("20260828_56")
+
+        self.assertIsNotNone(legacy)
+        self.assertIsNotNone(reconciliation)
+        self.assertEqual("20260828_55", legacy.down_revision)
+        self.assertEqual("20260827_41", reconciliation.down_revision)
+        self.assertEqual("20260831_64", script.get_current_head())
 
     def test_unknown_revision_is_native_nonzero_before_database_start(self) -> None:
         result = alembic("upgrade", "20260803_03", "--sql")
@@ -119,6 +151,67 @@ class MigrationGraphTest(unittest.TestCase):
         )
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+
+class SeungHeadReconciliationContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.namespace = runpy.run_path(
+            str(
+                BACKEND
+                / "migrations"
+                / "versions"
+                / "20260828_56_seung_head_reconciliation.py"
+            )
+        )
+
+    def test_source_fingerprint_accepts_only_complete_legacy_or_current_state(self) -> None:
+        source_state = self.namespace["_source_state"]
+        states = source_state.__globals__
+
+        with patch.dict(
+            states,
+            {"_schema_sentinels": lambda: {"a": lambda: False, "b": lambda: False}},
+        ):
+            self.assertEqual("SEUNG_LEGACY", source_state())
+        with patch.dict(
+            states,
+            {"_schema_sentinels": lambda: {"a": lambda: True, "b": lambda: True}},
+        ):
+            self.assertEqual("DAESUNG_CURRENT", source_state())
+        with patch.dict(
+            states,
+            {"_schema_sentinels": lambda: {"a": lambda: True, "b": lambda: False}},
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "SEUNG_DAESUNG_RECONCILIATION_AMBIGUOUS"
+            ):
+                source_state()
+
+    def test_reconciliation_does_not_replay_equivalent_report_assistant_ddl(self) -> None:
+        revisions = set(self.namespace["_DAESUNG_ONLY_REVISIONS"])
+
+        self.assertNotIn("20260826_37_report_assistant_sessions", revisions)
+        self.assertNotIn("20260828_54_report_page_break_blocks", revisions)
+        self.assertEqual(
+            {
+                "20260822_29_capability_evidence_contract",
+                "20260822_30_conversation_safety_foundation",
+                "20260822_31_runtime_catalog_projection",
+                "20260822_32_report_release_receipts",
+                "20260822_33_bounded_multi_turn_focus",
+                "20260823_34_phase10_runtime_query_terminal_grants",
+                "20260823_35_phase10_runtime_audit_grants",
+                "20260825_36_catalog_publisher_role",
+                "20260826_45_runtime_context_receipts",
+                "20260826_46_database_auth_accounts",
+                "20260828_47_query_generation_mode_compiler",
+                "20260828_48_rag_integration",
+                "20260828_49_ml_prediction_audit",
+                "20260828_55_admin_control_plane",
+            },
+            revisions,
+        )
 
 
 class IsolatedPostgresUpgradeTest(unittest.TestCase):
@@ -193,7 +286,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         result = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual("20260826_46", self.revision(self.empty_database))
+        self.assertEqual("20260831_64", self.revision(self.empty_database))
         engine = create_engine(self.base_url.set(database=self.empty_database))
         with engine.connect() as connection:
             widths = connection.execute(
@@ -219,7 +312,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260826_46", self.revision(self.known_database))
+        self.assertEqual("20260831_64", self.revision(self.known_database))
 
     def test_report_head_upgrades_to_analysis_persistence_head(self) -> None:
         database = self.create_database("migration_report")
@@ -230,7 +323,130 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260826_46", self.revision(database))
+        self.assertEqual("20260831_64", self.revision(database))
+
+    def test_report_assistant_message_contract_roundtrips_and_replays(self) -> None:
+        database = self.create_database("migration_assistant_scope")
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        previous = alembic("upgrade", "20260829_58", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+
+        upgraded = alembic("upgrade", "20260830_59", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        self.assertEqual("20260830_59", self.revision(database))
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            column = connection.execute(
+                text(
+                    """
+                    SELECT is_nullable, column_default
+                    FROM information_schema.columns
+                    WHERE table_schema = 'report_v1'
+                      AND table_name = 'report_assistant_requests'
+                      AND column_name = 'operation_scope'
+                    """
+                )
+            ).one()
+            constraint = connection.execute(
+                text(
+                    """
+                    SELECT pg_get_constraintdef(c.oid)
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    WHERE n.nspname = 'report_v1'
+                      AND t.relname = 'report_assistant_requests'
+                      AND c.conname = 'report_assistant_operation_scope_check'
+                    """
+                )
+            ).scalar_one()
+            message_column = connection.execute(
+                text(
+                    """
+                    SELECT is_nullable, column_default, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = 'report_v1'
+                      AND table_name = 'report_assistant_requests'
+                      AND column_name = 'message_revision'
+                    """
+                )
+            ).one()
+            message_constraint = connection.execute(
+                text(
+                    """
+                    SELECT pg_get_constraintdef(c.oid)
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                    WHERE n.nspname = 'report_v1'
+                      AND t.relname = 'report_assistant_requests'
+                      AND c.conname = 'report_assistant_message_revision_check'
+                    """
+                )
+            ).scalar_one()
+        self.assertEqual("NO", column[0])
+        self.assertIn("'full_report'", str(column[1]))
+        self.assertIn("report_title", str(constraint))
+        self.assertEqual("NO", message_column[0])
+        self.assertIn("0", str(message_column[1]))
+        self.assertEqual("bigint", message_column[2])
+        self.assertIn("message_revision >= 0", str(message_constraint))
+
+        downgraded = alembic("downgrade", "20260829_58", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        with engine.connect() as connection:
+            remaining = connection.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM information_schema.columns
+                    WHERE table_schema = 'report_v1'
+                      AND table_name = 'report_assistant_requests'
+                      AND column_name IN ('operation_scope', 'message_revision')
+                    """
+                )
+            ).scalar_one()
+        self.assertEqual(0, remaining)
+        engine.dispose()
+
+        replayed = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+        self.assertEqual("20260831_64", self.revision(database))
+
+    def test_rag_candidate_registers_disabled_and_roundtrips(self) -> None:
+        database = self.create_database("migration_rag_candidate")
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        previous = alembic("upgrade", "20260828_47", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+
+        candidate = alembic("upgrade", "20260828_48", database_url=url)
+        self.assertEqual(0, candidate.returncode, candidate.stdout + candidate.stderr)
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            registered = connection.execute(
+                text(
+                    "SELECT tool_code, semantic_version, is_enabled "
+                    "FROM tooling.tool_registry "
+                    "WHERE tool_id = '8edce655-e454-5b76-b56f-5e49aa2884d4'"
+                )
+            ).one()
+        self.assertEqual(("rag.answer", "1.1.0", False), tuple(registered))
+
+        downgraded = alembic("downgrade", "20260828_47", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        with engine.connect() as connection:
+            remaining = connection.execute(
+                text(
+                    "SELECT count(*) FROM tooling.tool_registry "
+                    "WHERE tool_id = '8edce655-e454-5b76-b56f-5e49aa2884d4'"
+                )
+            ).scalar_one()
+        engine.dispose()
+        self.assertEqual(0, remaining)
+
+        replayed = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+        self.assertEqual("20260831_64", self.revision(database))
 
     def test_database_auth_accounts_roundtrips_from_previous_head(self) -> None:
         database = self.create_database("migration_auth_accounts")
@@ -314,7 +530,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
             {
                 "username", "password_salt", "password_hash",
                 "password_iterations", "subject", "role", "active",
-                "created_at", "updated_at",
+                "created_at", "updated_at", "deactivated_at", "deleted_at",
             },
             set(columns),
         )
@@ -355,7 +571,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         replayed = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
-        self.assertEqual("20260826_46", self.revision(database))
+        self.assertEqual("20260831_64", self.revision(database))
 
     def test_analysis_head_roundtrips_through_context_registry_and_run_parameters(self) -> None:
         database = self.create_database("migration_context")
@@ -365,7 +581,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
-        self.assertEqual("20260826_46", self.revision(database))
+        self.assertEqual("20260831_64", self.revision(database))
         downgrade = alembic("downgrade", "20260810_06", database_url=url)
         self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260810_06", self.revision(database))
@@ -397,7 +613,448 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual((None, None, None, None, False, False), tuple(rolled_back))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260826_46", self.revision(database))
+        self.assertEqual("20260831_64", self.revision(database))
+
+    def test_approved_semantic_snapshot_59_60_roundtrip_and_db_guards(self) -> None:
+        database = self.create_database("migration_semantic_snapshot")
+        url = self.base_url.set(database=database).render_as_string(
+            hide_password=False
+        )
+        previous = alembic("upgrade", "20260830_59", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+        self.assertEqual("20260830_59", self.revision(database))
+        upgraded = alembic("upgrade", "20260831_60", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        self.assertEqual("20260831_60", self.revision(database))
+
+        engine = create_engine(self.base_url.set(database=database))
+        owner_id = uuid4()
+        request_one, request_two = uuid4(), uuid4()
+        query_one, query_two = uuid4(), uuid4()
+        artifact_one, artifact_two = uuid4(), uuid4()
+        snapshot_id = uuid4()
+        product_release = (
+            "ANSWERVICE-LEGACY-UNVERIFIED-v1:"
+            "d3ad30ebad6b36f0c0347df769096c886031fd59d3afd1d34feb88e98e7dcdb6"
+        )
+        permission_release = "legacy-unverified"
+        semantic_release = "legacy-unverified"
+
+        def seed_terminal_lineage(
+            connection,
+            request_id,
+            query_execution_id,
+            artifact_id,
+            suffix: str,
+        ) -> None:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO chat.analysis_requests (
+                        request_id, request_type, user_id, user_role,
+                        question_text_redacted, question_hash, ambiguity_status,
+                        sql_policy_version, status, trace_id, started_at, completed_at,
+                        product_release_id, permission_snapshot_id, semantic_release_id
+                    ) VALUES (
+                        :request_id, 'CHAT', :owner_id, 'analyst', 'approved request',
+                        :question_hash, 'CLEAR', 'policy-v1', 'SUCCEEDED', :trace_id,
+                        now(), now(), :product_release, :permission_release,
+                        :semantic_release
+                    )
+                    """
+                ),
+                {
+                    "request_id": request_id,
+                    "owner_id": owner_id,
+                    "question_hash": suffix * 64,
+                    "trace_id": uuid4().hex,
+                    "product_release": product_release,
+                    "permission_release": permission_release,
+                    "semantic_release": semantic_release,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO query.query_executions (
+                        query_execution_id, request_id, attempt_no, generation_mode,
+                        generated_sql_redacted, sql_hash, ast_validation_json,
+                        join_validation_json, permission_validation_json, explain_json,
+                        validation_status, trino_query_id, execution_status, row_count,
+                        scan_bytes, result_checksum, source_urns_json, source_cutoff_json
+                    ) VALUES (
+                        :query_execution_id, :request_id, 1, 'LLM', 'SELECT 1',
+                        :sql_hash, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                        'ALLOWED', :trino_query_id, 'SUCCEEDED', 1, 1,
+                        :result_checksum, '[]'::jsonb, '{}'::jsonb
+                    )
+                    """
+                ),
+                {
+                    "query_execution_id": query_execution_id,
+                    "request_id": request_id,
+                    "sql_hash": suffix * 64,
+                    "trino_query_id": f"semantic-snapshot-{suffix}",
+                    "result_checksum": suffix * 64,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO artifact.analysis_artifacts (
+                        artifact_id, request_id, query_execution_id, artifact_type,
+                        title, data_snapshot_json, chart_spec_json, narrative_markdown,
+                        evidence_json, freshness_status, status, artifact_checksum,
+                        product_release_id, permission_snapshot_id, semantic_release_id
+                    ) VALUES (
+                        :artifact_id, :request_id, :query_execution_id, 'TABLE',
+                        'Approved result', '{"columns":[],"rows":[]}'::jsonb,
+                        '{"chart_type":"table"}'::jsonb, 'Approved result',
+                        '{"policy_version":"policy-v1"}'::jsonb, 'FRESH',
+                        'APPROVED', :artifact_checksum, :product_release,
+                        :permission_release, :semantic_release
+                    )
+                    """
+                ),
+                {
+                    "artifact_id": artifact_id,
+                    "request_id": request_id,
+                    "query_execution_id": query_execution_id,
+                    "artifact_checksum": suffix * 64,
+                    "product_release": product_release,
+                    "permission_release": permission_release,
+                    "semantic_release": semantic_release,
+                },
+            )
+
+        with engine.begin() as connection:
+            seed_terminal_lineage(
+                connection, request_one, query_one, artifact_one, "a"
+            )
+            seed_terminal_lineage(
+                connection, request_two, query_two, artifact_two, "b"
+            )
+
+        def snapshot_json(
+            source_request_id,
+            query_execution_id,
+            artifact_id,
+            *,
+            semantic: str = semantic_release,
+        ) -> dict[str, object]:
+            plan_identity = {
+                "version": "ANSWERVICE-ANALYSIS-PLAN-v4",
+                "operation": "aggregate",
+                "output_metric_ids": ["reviewed_measure"],
+                "dependency_metric_ids": ["reviewed_measure"],
+                "dimension_fields": [],
+                "filter_fields": [],
+                "time_mode": "range",
+                "time_fields": [
+                    {
+                        "asset_fqn": "serving.semantic.measure_events",
+                        "column": "recorded_on",
+                    }
+                ],
+                "time_bucket": "none",
+                "period_parameters": [
+                    {
+                        "start_parameter": "window_start",
+                        "end_parameter": "window_end",
+                    }
+                ],
+                "snapshot_parameter": None,
+                "result_limit": None,
+                "query_strategy": "VIEW_REUSE",
+                "joins": [],
+                "context_package_hash": "d" * 64,
+            }
+            plan = {
+                **plan_identity,
+                "checksum": hashlib.sha256(
+                    json.dumps(
+                        plan_identity,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest(),
+            }
+            payload = {
+                "schema_version": "ANSWERVICE-APPROVED-SEMANTIC-REQUEST-v1",
+                "snapshot_id": str(snapshot_id),
+                "execution_as_of": "2026-08-31",
+                "timezone": "Asia/Seoul",
+                "analysis_plan": plan,
+                "parameter_bindings": [
+                    {
+                        "name": "window_start",
+                        "value_type": "date",
+                        "value": "2026-08-01",
+                    },
+                    {
+                        "name": "window_end",
+                        "value_type": "date",
+                        "value": "2026-08-31",
+                    },
+                ],
+                "dimension_member_receipts": [],
+                "release_receipt": {
+                    "product_release_id": product_release,
+                    "permission_snapshot_id": permission_release,
+                    "semantic_release_id": semantic,
+                    "context_release": semantic,
+                    "policy_version": "policy-v1",
+                    "catalog_checksum": "1" * 64,
+                    "canonical_checksum": "2" * 64,
+                    "runtime_projection_checksum": "3" * 64,
+                },
+                "lineage": {
+                    "source_request_id": str(source_request_id),
+                    "query_execution_id": str(query_execution_id),
+                    "artifact_id": str(artifact_id),
+                },
+            }
+            return {
+                **payload,
+                "snapshot_hash": hashlib.sha256(
+                    json.dumps(
+                        payload,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest(),
+            }
+
+        insert_snapshot = text(
+            """
+            INSERT INTO analysis_v1.approved_semantic_request_snapshots (
+                snapshot_id, source_request_id, owner_id, query_execution_id,
+                artifact_id, schema_version, snapshot_json, snapshot_hash,
+                product_release_id, permission_snapshot_id, semantic_release_id
+            ) VALUES (
+                :snapshot_id, :source_request_id, :owner_id, :query_execution_id,
+                :artifact_id, 'ANSWERVICE-APPROVED-SEMANTIC-REQUEST-v1',
+                CAST(:snapshot_json AS jsonb), :snapshot_hash, :product_release,
+                :permission_release, :semantic_release
+            )
+            """
+        )
+
+        def insert_parameters(
+            source_request_id,
+            query_execution_id,
+            artifact_id,
+            payload: dict[str, object],
+            *,
+            owner=owner_id,
+            semantic: str = semantic_release,
+        ) -> dict[str, object]:
+            return {
+                "snapshot_id": snapshot_id,
+                "source_request_id": source_request_id,
+                "owner_id": owner,
+                "query_execution_id": query_execution_id,
+                "artifact_id": artifact_id,
+                "snapshot_json": json.dumps(payload),
+                "snapshot_hash": str(payload.get("snapshot_hash") or "c" * 64),
+                "product_release": product_release,
+                "permission_release": permission_release,
+                "semantic_release": semantic,
+            }
+
+        with engine.connect() as connection:
+            transaction = connection.begin()
+            with self.assertRaises(DBAPIError):
+                connection.execute(
+                    insert_snapshot,
+                    insert_parameters(
+                        request_one, query_one, artifact_one, {}
+                    ),
+                )
+            transaction.rollback()
+
+        required_top_level = (
+            "analysis_plan",
+            "parameter_bindings",
+            "dimension_member_receipts",
+            "lineage",
+            "release_receipt",
+        )
+        required_release = (
+            "context_release",
+            "policy_version",
+            "catalog_checksum",
+            "canonical_checksum",
+            "runtime_projection_checksum",
+        )
+        for top_level_key, release_key in (
+            *((key, None) for key in required_top_level),
+            *((None, key) for key in required_release),
+        ):
+            missing_payload = snapshot_json(
+                request_one, query_one, artifact_one
+            )
+            if top_level_key is not None:
+                missing_payload.pop(top_level_key)
+            else:
+                missing_payload["release_receipt"].pop(release_key)
+            with engine.connect() as connection:
+                transaction = connection.begin()
+                with self.assertRaises(DBAPIError):
+                    connection.execute(
+                        insert_snapshot,
+                        insert_parameters(
+                            request_one,
+                            query_one,
+                            artifact_one,
+                            missing_payload,
+                        ),
+                    )
+                transaction.rollback()
+
+        invalid_receipts = []
+        invalid_timezone = snapshot_json(request_one, query_one, artifact_one)
+        invalid_timezone["timezone"] = "UTC"
+        invalid_receipts.append(invalid_timezone)
+        for key, value in (
+            ("context_release", ""),
+            ("policy_version", " "),
+            ("catalog_checksum", "not-a-checksum"),
+        ):
+            invalid_payload = snapshot_json(
+                request_one, query_one, artifact_one
+            )
+            invalid_payload["release_receipt"][key] = value
+            invalid_receipts.append(invalid_payload)
+        for invalid_payload in invalid_receipts:
+            with engine.connect() as connection:
+                transaction = connection.begin()
+                with self.assertRaises(DBAPIError):
+                    connection.execute(
+                        insert_snapshot,
+                        insert_parameters(
+                            request_one,
+                            query_one,
+                            artifact_one,
+                            invalid_payload,
+                        ),
+                    )
+                transaction.rollback()
+
+        with engine.begin() as connection:
+            connection.execute(
+                insert_snapshot,
+                insert_parameters(
+                    request_one,
+                    query_one,
+                    artifact_one,
+                    snapshot_json(request_one, query_one, artifact_one),
+                ),
+            )
+
+        for statement in (
+            text(
+                "UPDATE analysis_v1.approved_semantic_request_snapshots "
+                "SET snapshot_hash = :snapshot_hash WHERE snapshot_id = :snapshot_id"
+            ),
+            text(
+                "DELETE FROM analysis_v1.approved_semantic_request_snapshots "
+                "WHERE snapshot_id = :snapshot_id"
+            ),
+        ):
+            with engine.connect() as connection:
+                transaction = connection.begin()
+                with self.assertRaises(DBAPIError):
+                    connection.execute(
+                        statement,
+                        {"snapshot_hash": "d" * 64, "snapshot_id": snapshot_id},
+                    )
+                transaction.rollback()
+
+        for parameters in (
+            insert_parameters(
+                request_one,
+                query_two,
+                artifact_two,
+                snapshot_json(request_one, query_two, artifact_two),
+            ),
+            insert_parameters(
+                request_two,
+                query_two,
+                artifact_two,
+                snapshot_json(
+                    request_two, query_two, artifact_two, semantic="different-release"
+                ),
+                owner=uuid4(),
+                semantic="different-release",
+            ),
+        ):
+            parameters["snapshot_id"] = uuid4()
+            payload = json.loads(str(parameters["snapshot_json"]))
+            payload["snapshot_id"] = str(parameters["snapshot_id"])
+            parameters["snapshot_json"] = json.dumps(payload)
+            with engine.connect() as connection:
+                transaction = connection.begin()
+                with self.assertRaises(DBAPIError):
+                    connection.execute(insert_snapshot, parameters)
+                transaction.rollback()
+        engine.dispose()
+
+        downgraded = alembic("downgrade", "20260830_59", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        self.assertEqual("20260830_59", self.revision(database))
+        reupgraded = alembic("upgrade", "20260831_60", database_url=url)
+        self.assertEqual(0, reupgraded.returncode, reupgraded.stdout + reupgraded.stderr)
+        self.assertEqual("20260831_60", self.revision(database))
+
+    def test_mcp_output_schema_60_61_roundtrips_without_registry_expansion(self) -> None:
+        """MCP schema closure가 기존 Tool 한 건만 바꾸고 안전하게 왕복한다."""
+
+        database = self.create_database("migration_mcp_schema")
+        url = self.base_url.set(database=database).render_as_string(
+            hide_password=False
+        )
+        previous = alembic("upgrade", "20260831_60", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+
+        def registry_receipt() -> tuple[object, ...]:
+            engine = create_engine(self.base_url.set(database=database))
+            try:
+                with engine.connect() as connection:
+                    row = connection.execute(
+                        text(
+                            "SELECT semantic_version, transport, timeout_seconds, "
+                            "required_roles_json, is_enabled, output_schema_json "
+                            "FROM tooling.tool_registry "
+                            "WHERE tool_code = 'analysis.get_run'"
+                        )
+                    ).one()
+                    count = connection.execute(
+                        text("SELECT count(*) FROM tooling.tool_registry")
+                    ).scalar_one()
+                return (*tuple(row), count)
+            finally:
+                engine.dispose()
+
+        before = registry_receipt()
+        self.assertNotIn("additionalProperties", before[5])
+        upgraded = alembic("upgrade", "20260831_61", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        after = registry_receipt()
+        self.assertEqual(before[:5], after[:5])
+        self.assertFalse(after[5]["additionalProperties"])
+        self.assertEqual(before[6], after[6])
+
+        downgraded = alembic("downgrade", "20260831_60", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        self.assertNotIn("additionalProperties", registry_receipt()[5])
+        replayed = alembic("upgrade", "20260831_61", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+        self.assertFalse(registry_receipt()[5]["additionalProperties"])
 
     def test_phase1_downgrade_preserves_preexisting_manual_conversation_objects(self) -> None:
         database = self.create_database("migration_conversation_legacy")
@@ -582,7 +1239,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260826_46", self.revision(database))
+        self.assertEqual("20260831_64", self.revision(database))
 
     def test_capability_evidence_contract_roundtrips_and_is_immutable(self) -> None:
         database = self.create_database("migration_evidence")
@@ -698,7 +1355,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual("20260820_28", self.revision(database))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260826_46", self.revision(database))
+        self.assertEqual("20260831_64", self.revision(database))
 
 
 if __name__ == "__main__":

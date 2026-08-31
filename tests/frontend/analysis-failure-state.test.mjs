@@ -116,6 +116,22 @@ try {
   assert.equal((timeoutHtml.match(/같은 질문 다시 분석/g) ?? []).length, 1);
   assert.doesNotMatch(timeoutHtml, /internal detail/);
 
+  const internalGuidelineUnavailableHtml = render({
+    ...baseRun,
+    status: "failed",
+    error: {
+      code: "DEPENDENCY_UNAVAILABLE",
+      message: "필수 서비스가 준비되지 않았습니다.",
+      retryable: true,
+      required_action: "RETRY",
+      service_context: "INTERNAL_GUIDELINE",
+    },
+  }, "ERROR");
+  assert.match(internalGuidelineUnavailableHtml, /현재 내부 업무지침 서비스를 사용할 수 없습니다/);
+  assert.match(internalGuidelineUnavailableHtml, /승인된 내부 문서 검색 서비스/);
+  assert.equal((internalGuidelineUnavailableHtml.match(/같은 질문 다시 요청/g) ?? []).length, 1);
+  assert.doesNotMatch(internalGuidelineUnavailableHtml, /다시 분석|분석에 필요한 데이터 서비스/);
+
   const policyHtml = render({
     ...baseRun,
     error: {
@@ -142,6 +158,21 @@ try {
   assert.match(semanticContractHtml, /이 지표 조합을 안전하게 분석할 수 없습니다/);
   assert.match(semanticContractHtml, /승인 관계·분석 단위 계약/);
   assert.doesNotMatch(semanticContractHtml, /internal-request-id|internal-trace-id/);
+
+  const presentationUnsupportedHtml = render({
+    ...baseRun,
+    error: {
+      code: "PRESENTATION_NOT_SUPPORTED",
+      message: "현재 결과에는 그래프 비교에 필요한 기간 또는 분류 축이 없습니다.",
+      retryable: false,
+      required_action: "MODIFY_REQUEST",
+    },
+  }, "ERROR");
+  assert.match(presentationUnsupportedHtml, /data-tone="clarification"/);
+  assert.match(presentationUnsupportedHtml, /현재 결과를 요청한 방식으로 표시하기 어렵습니다/);
+  assert.match(presentationUnsupportedHtml, /그래프 비교에 필요한 기간 또는 분류 축/);
+  assert.match(presentationUnsupportedHtml, /기간별 추이나 항목별 비교/);
+  assert.doesNotMatch(presentationUnsupportedHtml, /검증 근거나 계약이 완전하지 않아/);
 
   const emptyHtml = render({ ...baseRun, status: "success", rowCount: 0, error: undefined }, "EMPTY");
   assert.match(emptyHtml, /조건에 맞는 결과가 없습니다/);

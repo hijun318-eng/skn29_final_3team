@@ -1,0 +1,14 @@
+{
+  "provider": "openai",
+  "model_id": "text-embedding-3-large",
+  "local_path": "models/Qwen3-Embedding-0.6B",
+  "revision": "text-embedding-3-large:d1024",
+  "dimension": 1024,
+  "normalize_embeddings": true,
+  "device": "auto",
+  "batch_size": 8,
+  "query_prompt_name": "query",
+  "query_prefix": "",
+  "document_prefix": "",
+  "max_sequence_length": 2048
+}

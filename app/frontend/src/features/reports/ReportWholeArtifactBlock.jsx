@@ -1,10 +1,19 @@
-/** artifact library tile과 전체 artifact block 조합 UI를 제공하는 모듈이다. */
-import { GripVertical, Layers3 } from "lucide-react";
-import { useDraggable } from "@dnd-kit/core";
+/** artifact 원본 선택 tile과 레거시 전체 artifact block UI를 제공하는 모듈이다. */
+import { AlertTriangle, Inbox, Layers3, RotateCcw } from "lucide-react";
 
-import { formatMetricValue } from "../../utils/presentation";
+import {
+  formatMetricDisplayValue,
+  localizeAnalysisPeriod,
+  localizeAnalysisSummary,
+  metricDisplayLabel,
+} from "../../utils/presentation";
 import { formatCurrencyAmount, isCurrencyMetricUnit } from "./reportCurrency";
-import { WHOLE_ARTIFACT_VIEWS, artifactMetricCards, wholeArtifactSettings } from "./reportDraftV2";
+import {
+  ARTIFACT_VIEW_LABELS,
+  artifactMetricCards,
+  availableArtifactViews,
+  wholeArtifactSettings,
+} from "./reportDraftV2";
 import { analysisTimeLabel } from "./reportAnalysisArtifacts";
 
 function shortSummary(summary) {
@@ -13,62 +22,86 @@ function shortSummary(summary) {
   return value.length > 240 ? `${value.slice(0, 239).trimEnd()}…` : value;
 }
 
-/** governed artifact source의 근거 준비 상태를 표시하고 준비된 항목만 삽입하게 한다. */
-export function ReportArtifactLibraryTile({ source, artifact, disabled = false, onAdd }) {
-  const dragId = `artifact:${source.artifactId}`;
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
-    id: dragId,
-    disabled,
-    data: { kind: "artifact", artifactId: source.artifactId },
-  });
-  const availableViews = [
-    artifact?.summary && "요약",
-    artifactMetricCards(artifact).length && "KPI",
-    artifact?.chart && "차트",
-    artifact?.table && "표",
-  ].filter(Boolean);
-  return <article ref={setNodeRef} className={`report-artifact-library-tile ${isDragging ? "is-dragging" : ""}`}>
-    <button type="button" className="report-artifact-library-add" disabled={disabled} onClick={() => onAdd(source.artifactId)}>
+/** governed artifact source의 근거 준비 상태를 표시하고 삽입 원본만 선택한다. */
+export function ReportArtifactLibraryTile({ source, artifact, disabled = false, selected = false, onSelect }) {
+  const metrics = artifactMetricCards(artifact);
+  const metricLabels = [...new Set(metrics.map((metric) => metricDisplayLabel(metric)).filter(Boolean))];
+  const primaryLabel = metricLabels.length > 1
+    ? `${metricLabels[0]} 외 ${metricLabels.length - 1}개 지표`
+    : metricLabels[0] || source.title || source.definitionTitle || "분석 결과";
+  const periodLabel = analysisTimeLabel(artifact?.evidence, source);
+  const availableViews = availableArtifactViews(artifact);
+  return <article className={`report-artifact-library-tile ${selected ? "is-selected" : ""}`}>
+    <button type="button" className="report-artifact-library-add" disabled={disabled} aria-pressed={selected} onClick={() => onSelect(source.artifactId)}>
       <span className="report-artifact-library-icon"><Layers3 size={16} aria-hidden="true" /></span>
-      <span><b>{source.title || source.definitionTitle || "분석 결과"}</b><small>{availableViews.length ? availableViews.join(" · ") : "분석 보기 확인 중"}</small></span>
+      <span>
+        <b>{primaryLabel}</b>
+        {periodLabel && <small className="report-artifact-library-period">{periodLabel}</small>}
+        <small>{availableViews.length ? availableViews.map((view) => ARTIFACT_VIEW_LABELS[view]).join(" · ") : "분석 요소 확인 중"}</small>
+      </span>
     </button>
-    <button ref={setActivatorNodeRef} type="button" className="report-artifact-library-drag" disabled={disabled} aria-label={`${source.title || "분석 결과"} Artifact 전체 끌어서 추가`} title="Artifact 전체를 캔버스에 끌어서 추가" {...listeners} {...attributes}><GripVertical size={15} aria-hidden="true" /></button>
   </article>;
 }
 
-/** 전체 artifact의 선택 view를 근거 상태·통화 정책과 함께 한 블록으로 렌더링한다. */
-export function ReportWholeArtifactBlock({ block, artifact, artifactState, currency, renderView }) {
-  if (!artifact || artifactState?.status !== "success") return renderView("table", { height: 5 });
-  const settings = wholeArtifactSettings(block) || { visibleViews: WHOLE_ARTIFACT_VIEWS };
+/** 정확히 하나의 summary/KPI view를 근거 상태·통화 정책과 함께 렌더링한다. */
+export function ReportWholeArtifactBlock({ block, artifact, artifactState, currency, onRetry }) {
+  const settings = wholeArtifactSettings(block);
+  if (!settings) {
+    return <section className="report-whole-artifact report-api-state" role="alert">
+      <b>이전 합본 분석 요소는 표시할 수 없습니다.</b>
+      <span>요약·핵심 지표·차트·표 중 하나를 독립 블록으로 다시 추가해 주세요.</span>
+    </section>;
+  }
+  const view = settings.visibleViews[0];
+  if (!artifactState || artifactState.status === "loading") {
+    return <section className="report-whole-artifact report-api-state" role="status">
+      <b>{ARTIFACT_VIEW_LABELS[view]} 요소를 불러오고 있습니다.</b>
+    </section>;
+  }
+  if (artifactState.status === "error") {
+    return <section className="report-whole-artifact report-artifact-state is-error" role="alert">
+      <AlertTriangle size={17} aria-hidden="true" />
+      <div><b>이 블록의 분석 데이터를 불러오지 못했습니다.</b>
+        <p>{artifactState.message || "다른 블록은 계속 확인할 수 있습니다."}</p>
+        {onRetry && artifactState.requiredAction === "RETRY" && <button type="button" onClick={onRetry}><RotateCcw size={13} aria-hidden="true" />다시 불러오기</button>}
+      </div>
+    </section>;
+  }
+  if (artifactState.status === "empty") {
+    return <section className="report-whole-artifact report-artifact-state is-empty" role="status">
+      <Inbox size={17} aria-hidden="true" />
+      <div><b>조건에 맞는 데이터가 없습니다.</b><p>오류가 아니라 유효한 빈 분석 결과입니다.</p></div>
+    </section>;
+  }
+  if (!artifact) {
+    return <section className="report-whole-artifact report-api-state" role="alert">
+      <b>{ARTIFACT_VIEW_LABELS[view]} 데이터를 표시할 수 없습니다.</b>
+    </section>;
+  }
   const metrics = artifactMetricCards(artifact);
-  const visibleViewIds = settings.visibleViews.filter((view) => ({
+  const available = ({
     summary: Boolean(String(artifact.summary || "").trim()),
     kpi: metrics.length > 0,
-    chart: Boolean(artifact.chart),
-    table: Boolean(artifact.table),
-  })[view]);
-  const views = new Set(visibleViewIds.length ? visibleViewIds : ["summary"]);
-  const viewLabels = { summary: "요약", kpi: "KPI", chart: "차트", table: "표" };
+  })[view];
+  if (!available) {
+    return <section className="report-whole-artifact report-api-state" role="alert">
+      <b>{ARTIFACT_VIEW_LABELS[view]} 데이터를 표시할 수 없습니다.</b>
+    </section>;
+  }
+  const visibleViewLabel = ARTIFACT_VIEW_LABELS[view];
   const visibleMetrics = metrics.slice(0, block.w <= 6 ? 2 : 4);
-  const rows = artifact.table?.rows || [];
-  const rowLimit = block.w <= 6 ? 3 : 4;
-  const visibleRows = rows.slice(0, rowLimit);
-  const tableArtifact = artifact.table ? { ...artifact, table: { ...artifact.table, rows: visibleRows } } : artifact;
-  const timeLabel = analysisTimeLabel(artifact.evidence);
-  const hasPeriodTime = Boolean(
-    artifact.evidence?.period?.start && artifact.evidence?.period?.end_exclusive,
+  const summaryMetrics = artifact.evidence?.metrics?.length
+    ? artifact.evidence.metrics
+    : metrics;
+  const localizedSummary = localizeAnalysisPeriod(
+    localizeAnalysisSummary(artifact.summary || "", summaryMetrics),
+    artifact.evidence?.period?.start,
+    artifact.evidence?.period?.end_exclusive,
   );
-  const timeDescription = hasPeriodTime && timeLabel
-    ? `${timeLabel} 미포함`
-    : timeLabel;
-  const gridRows = ["auto", views.has("summary") && "auto", views.has("kpi") && "auto", (views.has("chart") || views.has("table")) && "minmax(0, 1fr)"].filter(Boolean).join(" ");
-  return <section className={`report-whole-artifact ${block.w <= 6 ? "is-half" : ""}`} style={{ gridTemplateRows: gridRows }} aria-label={`${block.title} Artifact 전체`}>
-    <header className="report-whole-artifact-heading"><div><small>ANALYSIS ARTIFACT</small><b>{timeDescription || "분석 결과"}</b></div><span>{[...views].map((view) => viewLabels[view]).join(" · ")}</span></header>
-    {views.has("summary") && <p className="report-whole-artifact-summary">{shortSummary(artifact.summary)}</p>}
-    {views.has("kpi") && <div className="report-whole-artifact-kpis" aria-label="주요 KPI">{visibleMetrics.length ? visibleMetrics.map((metric) => { const currencyMetric = isCurrencyMetricUnit(metric.unit); const meta = [metric.context, currencyMetric ? currency.label : ""].filter(Boolean).join(" · "); return <dl key={metric.metric_id || metric.metricId || metric.label}><dt>{metric.label}{meta && <small>{meta}</small>}</dt><dd>{currencyMetric ? formatCurrencyAmount(metric.value, currency.unit, currency.policy) : formatMetricValue(metric.value, { unit: metric.unit })}</dd></dl>; }) : <p>별도 대표 KPI가 제공되지 않았습니다.</p>}{metrics.length > visibleMetrics.length && <small>외 {metrics.length - visibleMetrics.length}개 지표</small>}</div>}
-    <div className="report-whole-artifact-views">
-      {views.has("chart") && artifact.chart && <section><h3>변화와 구성</h3>{renderView("chart", { height: 6 })}</section>}
-      {views.has("table") && artifact.table && <section><h3>상세 데이터</h3>{renderView("table", { height: 5, artifact: tableArtifact })}{rows.length > visibleRows.length && <p className="report-whole-artifact-more">현재 {visibleRows.length}행 표시 · 외 {rows.length - visibleRows.length}행은 원본 Artifact에서 확인</p>}</section>}
-    </div>
+  const timeDescription = analysisTimeLabel(artifact.evidence);
+  return <section className={`report-whole-artifact ${block.w <= 6 ? "is-half" : ""}`} aria-label={`${block.title} ${visibleViewLabel} 분석 요소`}>
+    <header className="report-whole-artifact-heading"><div><small>분석 결과</small><b>{timeDescription || "분석 결과"}</b></div><span>{visibleViewLabel}</span></header>
+    {view === "summary" && <p className="report-whole-artifact-summary">{shortSummary(localizedSummary)}</p>}
+    {view === "kpi" && <div className="report-whole-artifact-kpis" aria-label="주요 지표">{visibleMetrics.map((metric) => { const currencyMetric = isCurrencyMetricUnit(metric.unit); const meta = [metric.context, currencyMetric ? currency.label : ""].filter(Boolean).join(" · "); return <dl key={metric.metric_id || metric.metricId || metric.label}><dt>{metricDisplayLabel(metric)}{meta && <small>{meta}</small>}</dt><dd>{currencyMetric ? formatCurrencyAmount(metric.value, currency.unit, currency.policy) : formatMetricDisplayValue(metric.value, metric)}</dd></dl>; })}{metrics.length > visibleMetrics.length && <small>외 {metrics.length - visibleMetrics.length}개 지표</small>}</div>}
   </section>;
 }

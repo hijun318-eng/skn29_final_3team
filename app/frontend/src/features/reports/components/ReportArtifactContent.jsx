@@ -7,8 +7,10 @@ import remarkGfm from "remark-gfm";
 import { EnterpriseChart } from "../../../components/charts/EnterpriseChart";
 import {
   dataProvenanceLabel,
+  formatMetricDisplayValue,
   formatMetricValue,
   isNumericValue,
+  metricDisplayUnit,
   metricUnitLabel,
   seriesColor,
 } from "../../../utils/presentation";
@@ -18,6 +20,7 @@ import {
   isCurrencyMetricUnit,
 } from "../reportCurrency";
 import { ReportWholeArtifactBlock } from "../ReportWholeArtifactBlock";
+import { reportEvidenceLabel } from "../../../contracts/report";
 import { sampleReportTableRows } from "../reportTableRows";
 import {
   artifactMetric,
@@ -183,8 +186,11 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
               {showRowNumbers && <th scope="col">#</th>}
               {artifact.table.columns.map((column) => {
                 const label = reportColumnLabel(artifact, column);
-                const sourceUnit = artifactMetric(artifact, column)?.unit;
-                const unit = isCurrencyMetricUnit(sourceUnit) ? currency.label : sourceUnit;
+                const metric = artifactMetric(artifact, column);
+                const sourceUnit = metric?.unit;
+                const unit = isCurrencyMetricUnit(sourceUnit)
+                  ? currency.label
+                  : metricDisplayUnit(sourceUnit, metric?.display_unit ?? metric?.displayUnit);
                 const numeric = artifact.table.rows.some((row) => isNumericValue(row[column]));
                 return (
                   <th
@@ -201,7 +207,10 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
                       aria-label={`${metricUnitLabel(label, unit)} 열 정렬`}
                       onClick={() => setSorting((current) => nextTableSort(current, column))}
                     >
-                      <span>{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span>
+                      <span className="report-table-sort-label">
+                        {label}
+                        {unit && <small className="analysis-column-unit">{unit}</small>}
+                      </span>
                       <ArrowUpDown size={12} aria-hidden="true" />
                     </button>
                   </th>
@@ -243,15 +252,20 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
     const chartType = settings.chartType || artifact.chart.chart_type || artifact.chart.type || "bar";
     const showLegend = settings.showLegend !== false;
     const series = artifact.chart.y_fields.map((field, index) => {
-      const sourceUnit = artifactMetric(artifact, field)?.unit;
+      const metric = artifactMetric(artifact, field);
+      const sourceUnit = metric?.unit;
       const currencyMetric = isCurrencyMetricUnit(sourceUnit);
+      const displayUnit = currencyMetric
+        ? currency.label
+        : metricDisplayUnit(sourceUnit, metric?.display_unit ?? metric?.displayUnit);
       return {
         key: field,
         label: reportColumnLabel(artifact, field),
         color: seriesColor(index),
         sourceUnit,
+        displayUnit,
         currencyMetric,
-        unit: currencyMetric ? currency.label : sourceUnit,
+        unit: displayUnit,
       };
     });
     const allCurrency = series.every((item) => item.currencyMetric);
@@ -279,7 +293,10 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
           showLegend={showLegend}
           valueFormatter={(value, item) => item?.currencyMetric
             ? formatCurrencyAmount(value, currency.unit, currency.policy)
-            : formatMetricValue(value, { unit: item?.unit })}
+            : formatMetricDisplayValue(value, {
+                unit: item?.sourceUnit,
+                displayUnit: item?.displayUnit,
+              })}
           {...currencyFormatters}
           ariaLabel={`${block.title} ${chartLabel}`}
           description={description}
@@ -325,6 +342,7 @@ export const GeneratedReportBlock = memo(function GeneratedReportBlock({
         artifact={artifact}
         artifactState={artifactState}
         currency={currency}
+        onRetry={onRetry}
         renderView={(type, options = {}) => (
           <ReportArtifactContent
             block={{ ...block, type, h: options.height ?? block.h }}
@@ -355,6 +373,11 @@ export const GeneratedReportBlock = memo(function GeneratedReportBlock({
         {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
       </header>
       {content}
+      {block.type === "text" && block.evidenceRefs?.length ? (
+        <p className="report-text-evidence" role="note">
+          근거 · {block.evidenceRefs.map(reportEvidenceLabel).join(" · ")}
+        </p>
+      ) : null}
       {textLayout.overflow && (
         <p className="report-content-overflow-note" role="note">
           내용이 한 페이지를 초과합니다. 편집 화면에서 문단을 나누어 전체 내용을 표시하세요.

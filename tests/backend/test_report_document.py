@@ -335,6 +335,51 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("grid-column:1 / span 12;grid-row:1;--report-min-rows:8", html)
         self.assertLess(html.index('data-block-id="left"'), html.index('data-block-id="right"'))
 
+    def test_explicit_page_break_creates_one_blank_trailing_page(self):
+        """페이지 추가 marker는 출력 block이 아니라 내용 없는 다음 A4 페이지가 된다."""
+
+        blocks = [
+            {
+                "block_id": "summary", "type": "text", "title": "요약",
+                "content": "본문", "x": 0, "y": 0, "w": 12, "h": 4,
+            },
+            {
+                "block_id": "break", "type": "page_break", "title": "새 페이지",
+                "content": "", "x": 0, "y": 4, "w": 12, "h": 1,
+            },
+        ]
+
+        pages = _paginate_layout(blocks, "portrait")
+
+        self.assertEqual(2, len(pages))
+        self.assertEqual(["summary"], [block["block_id"] for block in pages[0]])
+        self.assertEqual([], pages[1])
+
+    def test_page_count_uses_orientation_specific_overflow_contract(self):
+        """같은 세 행도 renderer의 세로·가로 row 상한에 따라 실제 페이지 수가 달라진다."""
+
+        blocks = [
+            {
+                "block_id": f"section-{index}", "type": "text", "title": "본문",
+                "content": "내용", "x": 0, "y": index * 10, "w": 12, "h": 10,
+            }
+            for index in range(3)
+        ]
+
+        portrait = _paginate_layout(blocks, "portrait")
+        landscape = _paginate_layout(blocks, "landscape")
+
+        self.assertEqual(1, len(portrait))
+        self.assertEqual(3, len(landscape))
+        self.assertEqual(
+            [["section-0", "section-1", "section-2"]],
+            [[block["block_id"] for block in page] for page in portrait],
+        )
+        self.assertEqual(
+            [["section-0"], ["section-1"], ["section-2"]],
+            [[block["block_id"] for block in page] for page in landscape],
+        )
+
     def test_bar_chart_handles_negative_values_without_negative_svg_height(self):
         report_source = deepcopy(source())
         artifact = report_source["blocks"][1]["artifact"]
@@ -402,12 +447,29 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
                 "value": None, "unit": "₩",
             },
         ]
-        report_source["blocks"] = [{
-            **report_source["blocks"][1],
-            "type": "artifact",
-            "w": 12,
-            "content": json.dumps({"presentationMode": "detail"}),
-        }]
+        source_block = report_source["blocks"][1]
+        report_source["blocks"] = [
+            {
+                **source_block,
+                "block_id": "currency-kpi",
+                "type": "artifact", "y": 0, "h": 4, "w": 12,
+                "content": json.dumps({
+                    "presentationMode": "detail", "visibleViews": ["kpi"],
+                }),
+            },
+            {
+                **source_block,
+                "block_id": "currency-chart",
+                "type": "chart", "y": 4, "h": 6, "w": 12,
+                "content": json.dumps({"visibleViews": ["chart"]}),
+            },
+            {
+                **source_block,
+                "block_id": "currency-table",
+                "type": "table", "y": 10, "h": 6, "w": 12,
+                "content": json.dumps({"visibleViews": ["table"]}),
+            },
+        ]
         checksum = canonical_source_checksum(report_source, "landscape")
 
         html = build_report_html(report_source, "landscape", APPROVED_AT, checksum)
@@ -466,16 +528,16 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('content="billion"', html)
         self.assertIn("금액 단위 십억 원", html)
 
-    def test_aggregate_artifact_renders_narrative_kpis_chart_and_table(self):
+    def test_atomic_artifact_renders_exactly_one_summary_view(self):
         report_source = source()
         artifact_block = deepcopy(report_source["blocks"][1])
         artifact_block.update({
-            "block_id": "artifact-whole",
+            "block_id": "artifact-summary",
             "type": "artifact",
             "w": 12,
             "content": json.dumps({
                 "presentationMode": "detail",
-                "visibleViews": ["summary", "kpi", "chart", "table"],
+                "visibleViews": ["summary"],
             }),
         })
         report_source["blocks"] = [artifact_block]
@@ -485,10 +547,9 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("artifact-bundle--detail", html)
         self.assertIn("분석 요약", html)
-        self.assertIn("주요 KPI", html)
-        self.assertIn("<svg", html)
-        self.assertIn("<table>", html)
-        self.assertIn("1,080,000,000", html)
+        self.assertNotIn("주요 KPI", html)
+        self.assertNotIn("<svg", html)
+        self.assertNotIn("<table>", html)
 
     def test_explicit_synthetic_source_is_disclosed_on_cover_and_artifact(self):
         report_source = deepcopy(source())
@@ -515,39 +576,29 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertNotIn(warning, html)
 
-    def test_aggregate_artifact_settings_are_safe_and_malformed_content_falls_back(self):
+    def test_legacy_aggregate_and_malformed_artifact_settings_fail_closed(self):
         report_source = source()
         artifact_block = deepcopy(report_source["blocks"][1])
         artifact_block.update({"block_id": "artifact-whole", "type": "artifact", "w": 12})
         report_source["blocks"] = [artifact_block]
 
-        artifact_block["content"] = json.dumps({
-            "presentationMode": "summary",
-            "visibleViews": ["summary", "summary", "unknown"],
-        })
-        summary_html = build_report_html(
-            report_source,
-            "portrait",
-            APPROVED_AT,
-            canonical_source_checksum(report_source, "portrait"),
-        )
-        self.assertIn('data-visible-views="summary"', summary_html)
-        self.assertNotIn("<svg", summary_html)
-        self.assertNotIn("<table>", summary_html)
-
-        for malformed in ("{not-json", "[]", '{"presentationMode":{},"visibleViews":"all"}'):
+        for malformed in (
+            "{not-json",
+            "[]",
+            '{"presentationMode":{},"visibleViews":"all"}',
+            '{"visibleViews":[]}',
+            '{"visibleViews":["summary","kpi"]}',
+            '{"visibleViews":["unknown"]}',
+        ):
             with self.subTest(content=malformed):
                 artifact_block["content"] = malformed
-                html = build_report_html(
-                    report_source,
-                    "portrait",
-                    APPROVED_AT,
-                    canonical_source_checksum(report_source, "portrait"),
-                )
-                self.assertIn("artifact-bundle--standard", html)
-                self.assertIn('data-visible-views="summary kpi chart table"', html)
-                self.assertIn("<svg", html)
-                self.assertIn("<table>", html)
+                with self.assertRaisesRegex(ValueError, "block"):
+                    build_report_html(
+                        report_source,
+                        "portrait",
+                        APPROVED_AT,
+                        canonical_source_checksum(report_source, "portrait"),
+                    )
 
     async def test_render_failure_never_calls_atomic_approval(self):
         class BrokenHTML:
@@ -652,7 +703,7 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         router = create_report_router(repository)
         request_context = RequestContext(
             user_id=UUID("00000000-0000-0000-0000-000000000001"),
-            role=Role.ADMIN,
+            role=Role.REPORT_ADMIN,
         )
         payload = ApproveReportVersionRequest(approved_at=APPROVED_AT)
         with patch.object(report_api, "_router", return_value=router), patch.dict(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 from typing import Annotated, Any
@@ -59,6 +60,7 @@ from app.api.analysis_router_runtime import (
     repository_call as _repository_call,
     routing_service as _routing_service,
 )
+from app.api.rag_router_runtime import internal_manual_query_service
 from app.api.analysis_router_support import (
     analysis_support_router,
     cancel_analysis_progress,
@@ -73,15 +75,40 @@ from app.api.analysis_router_support import (
     list_analysis_runs,
 )
 from app.controllers.analysis_controller import AnalysisController
+from app.ports.agent import (
+    AgentKind,
+    AgentRequest,
+    MLPredictionInvocation,
+)
+from app.ports.data_platform import MetadataUnavailableError
 from app.services.analysis import AnalysisService, analysis_progress
+from app.services.analysis.release_receipt import (
+    ActiveReleaseUnavailable,
+    active_product_release_receipt,
+)
+from app.services.analysis.sql_generation_mode import configured_sql_generation_mode
+from app.services.agent_supervisor import AgentDispatchError
+from app.services.conversation.analysis_request import (
+    approved_snapshot_from_definition,
+    build_replay_analysis_request,
+)
 from app.services.execution_control import ConcurrentExecutionGate
+from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
+from app.services.runtime_feature_availability import available_runtime_features
+
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
 def _controller() -> AnalysisController:
     return AnalysisController(
-        AnalysisService(_data_platform(), _model()),
+        AnalysisService(
+            _data_platform(),
+            _model(),
+            sql_generation_mode=configured_sql_generation_mode(),
+        ),
         _routing_service(),
     )
 
@@ -94,21 +121,14 @@ execution_gate = ConcurrentExecutionGate()
 async def _active_product_release_receipt() -> tuple[str, str]:
     """Read one executable active product/semantic release pair fail-closed."""
 
-    platform = _controller().data_platform
-    semantic_before = await platform.get_active_context_release()
-    stages, product_release = await platform.get_catalog_readiness()
-    semantic_after = await platform.get_active_context_release()
-    if (
-        semantic_before != semantic_after
-        or not product_release
-        or any(value != "ready" for value in stages.values())
-    ):
+    try:
+        return await active_product_release_receipt(_controller().data_platform)
+    except ActiveReleaseUnavailable as error:
         raise ContextValidationError(
             ErrorCode.DEPENDENCY_UNAVAILABLE,
             "활성 product release receipt를 원자적으로 확정하지 못했습니다.",
             503,
-        )
-    return product_release, semantic_after
+        ) from error
 
 
 @router.get(
@@ -166,7 +186,7 @@ async def ready(request: Request) -> ReadinessResponse:
     response_model=SessionResponse,
     operation_id="getAuthenticatedSession",
 )
-def authenticated_session(
+async def authenticated_session(
     request: Request,
     context: Annotated[RequestContext | None, Depends(optional_session_context)],
 ) -> SessionResponse:
@@ -177,6 +197,11 @@ def authenticated_session(
         data=SessionData(
             role=context.role,
             capabilities=capabilities_for(context.role),
+            enabled_features=(
+                await available_runtime_features(context.role)
+                if has_capability(context.role, Capability.RUN_ANALYSIS)
+                else ()
+            ),
         ),
         meta=response_meta(context),
     )
@@ -221,6 +246,11 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
         data=LoginData(
             role=principal.role,
             capabilities=capabilities_for(principal.role),
+            enabled_features=(
+                await available_runtime_features(principal.role)
+                if has_capability(principal.role, Capability.RUN_ANALYSIS)
+                else ()
+            ),
         ),
         meta=response_meta(context),
     )
@@ -277,7 +307,7 @@ async def analysis(
     ],
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> AnalysisResponse | JSONResponse:
-    """인증 사용자의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.
+    """호텔 분석가의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.
 
     진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로
     덮지 않으며 재시도 가능한 typed 503으로 반환한다.
@@ -285,7 +315,7 @@ async def analysis(
     if not has_capability(context.role, Capability.RUN_ANALYSIS):
         raise ContextValidationError(
             ErrorCode.ACCESS_DENIED,
-            "분석 실행 권한이 필요합니다.",
+            "분석 Agent는 호텔 분석가 역할만 사용할 수 있습니다.",
             403,
         )
     wait_seconds = float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
@@ -404,23 +434,32 @@ async def replay_analysis_definition(
     definition = await _repository_call(
         lambda: repository.get_definition(definition_id, replay=True)
     )
-    saved_release = str(
-        (definition.get("semantic_request") or {}).get("context_release") or ""
-    )
+    try:
+        snapshot = approved_snapshot_from_definition(definition)
+    except ValueError as error:
+        raise ContextValidationError(
+            ErrorCode.SCHEMA_VERSION_MISMATCH,
+            "이 legacy Analysis Definition에는 재실행 가능한 승인 Semantic Request가 없습니다.",
+            409,
+        ) from error
+    saved_release = snapshot.release_receipt.context_release
     product_release, active_release = await _active_product_release_receipt()
-    if saved_release != active_release:
+    if (
+        saved_release != active_release
+        or snapshot.release_receipt.product_release_id != product_release
+    ):
         raise ContextValidationError(
             ErrorCode.SCHEMA_VERSION_MISMATCH,
             "저장된 Analysis Definition의 context release가 현재 활성 release와 다릅니다.",
             409,
         )
-    unknown_parameters = set(payload.parameters) - set(definition["parameters"])
-    if unknown_parameters:
+    if payload.parameters:
         raise HTTPException(
             status_code=422,
-            detail=f"정의되지 않은 Analysis parameter: {', '.join(sorted(unknown_parameters))}",
+            detail="승인된 Semantic Request parameter는 재실행 시 변경할 수 없습니다.",
         )
-    parameters = {**definition["parameters"], **payload.parameters}
+    parameters = snapshot.parameters
+    replay_request = build_replay_analysis_request(definition, parameters)
     replay_context = context.model_copy(
         update={
             "product_release_id": product_release,
@@ -430,13 +469,15 @@ async def replay_analysis_definition(
             ),
             "semantic_release_id": active_release,
             "require_fresh_query": True,
+            "as_of": snapshot.execution_as_of,
+            "timezone": snapshot.timezone,
         }
     )
     request_id, created = await _repository_call(
         lambda: repository.begin_run(
             definition,
             replay_context,
-            context.as_of,
+            snapshot.execution_as_of,
             payload.idempotency_key,
             parameters,
         )
@@ -463,10 +504,7 @@ async def replay_analysis_definition(
 
     try:
         response = await _controller().submit(
-            AnalysisRequest(
-                question=definition["question"],
-                parameters=parameters,
-            ),
+            replay_request,
             replay_context,
             execution.update,
             context_receipt_sink=_persist_context_receipt,
@@ -484,7 +522,21 @@ async def replay_analysis_definition(
         raise
     finally:
         execution_gate.release()
-    await _repository_call(lambda: repository.finish_run(request_id, response, execution))
+    try:
+        await _repository_call(
+            lambda: repository.finish_run(request_id, response, execution)
+        )
+    except HTTPException as error:
+        try:
+            await repository.fail_run(request_id, "PERSISTENCE")
+        except Exception:
+            pass
+        if error.status_code == 503:
+            raise
+        raise HTTPException(
+            status_code=503,
+            detail="승인 Semantic Request 재실행 결과를 저장하지 못했습니다.",
+        ) from error
     return await _repository_call(lambda: repository.get_run(request_id))
 
 
@@ -504,7 +556,19 @@ async def create_conversation(
     from app.api.analysis_router_runtime import conversation_orchestrator
     title = str(payload.get("title") or "새 분석 대화").strip()
     orch = conversation_orchestrator(_controller())
-    conv = await orch.create_conversation(context, title)
+    try:
+        conv = await orch.create_conversation(context, title)
+    except MetadataUnavailableError as error:
+        logger.warning(
+            "conversation release receipt is unavailable: type=%s detail=%s",
+            type(error).__name__,
+            error,
+        )
+        raise ContextValidationError(
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            "분석 데이터 연결을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.",
+            503,
+        ) from error
     return {"status": "SUCCESS", "data": conv}
 
 
@@ -519,10 +583,10 @@ async def get_conversation_turns(
     """대화방의 불변 턴 목록을 순서대로 조회해 프론트엔드 상태를 수화(Hydration)한다."""
     from app.api.analysis_router_runtime import conversation_orchestrator
     orch = conversation_orchestrator(_controller())
-    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
+    conv = await orch.get_conversation(conversation_id, context.user_id)
     if not conv:
         raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
-    turns = await orch._repo.list_turns(conversation_id)
+    turns = await orch.list_turns(conversation_id)
     return {
         "status": "SUCCESS",
         "data": {
@@ -541,10 +605,10 @@ async def execute_conversation_command(
     payload: ConversationCommandRequest,
     context: RequestContext = Depends(session_context),
 ) -> dict[str, Any]:
-    """대화방에서 발화 명령을 실행하여 라우트(ANALYSIS/PRESENTATION/REPORT_ACTION)를 수행한다."""
+    """대화방에서 분석·표현·보고서·내부지침 명령을 수행한다."""
     from app.api.analysis_router_runtime import conversation_orchestrator
     orch = conversation_orchestrator(_controller())
-    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
+    conv = await orch.get_conversation(conversation_id, context.user_id)
     if not conv:
         raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
     if conv["status"] == "ARCHIVED":
@@ -553,94 +617,79 @@ async def execute_conversation_command(
             "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
             409,
         )
-    final_status = AnalysisStatus.FAILED
-    analysis_progress.start(
-        context.trace_id,
-        context.user_id,
-        context.role,
-        context.request_id,
+    ml_invocation = (
+        MLPredictionInvocation(**payload.ml_prediction.model_dump(mode="python"))
+        if payload.ml_prediction is not None
+        else None
+    )
+    agent_request = AgentRequest(
+        conversation_id=conversation_id,
+        command=payload,
+        context=context,
+        target_agent=(
+            AgentKind.ML_PREDICTION if ml_invocation is not None else None
+        ),
+        invocation=ml_invocation,
     )
     try:
-        configured_timeout = float(
-            os.getenv("CONVERSATION_COMMAND_TIMEOUT_SECONDS", "90")
+        result = await orch.dispatch_agent_command(
+            agent_request,
+            execution_gate,
+            internal_manual_query_service,
         )
-        recovery_stale = float(
-            os.getenv("CONVERSATION_RECOVERY_STALE_SECONDS", "120")
+    except TimeoutError as error:
+        execution_state = getattr(error, "agent_execution_state", None)
+        if (
+            execution_state is None
+            or execution_state.selected_agent is not AgentKind.ANALYSIS_WORKFLOW
+        ):
+            raise
+        response = ErrorResponse(
+            data=EmptyData(),
+            meta=response_meta(context),
+            error=ErrorBody(
+                code=ErrorCode.QUERY_TIMEOUT,
+                message="분석 명령의 전체 실행 시간이 초과되었습니다.",
+                retryable=True,
+            ),
         )
-        command_timeout = max(
-            1.0,
-            min(configured_timeout, max(1.0, recovery_stale - 5.0)),
+        return JSONResponse(
+            status_code=504,
+            content=response.model_dump(mode="json"),
         )
-        try:
-            async with asyncio.timeout(command_timeout):
-                result = await orch.execute_command(
-                    conversation_id,
-                    payload.model_dump(mode="python"),
-                    context,
-                    progress_sink=lambda stage, outcome: analysis_progress.record(
-                        context.request_id,
-                        stage,
-                        outcome,
-                    ),
-                    cancel_check=lambda: analysis_progress.cancelled(
-                        context.request_id
-                    ),
-                    analysis_gate=execution_gate,
-                    analysis_queue_wait_seconds=float(
-                        os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")
-                    ),
-                )
-        except TimeoutError:
-            response = ErrorResponse(
-                data=EmptyData(),
-                meta=response_meta(context),
-                error=ErrorBody(
-                    code=ErrorCode.QUERY_TIMEOUT,
-                    message="분석 명령의 전체 실행 시간이 초과되었습니다.",
-                    retryable=True,
-                ),
-            )
-            return JSONResponse(
-                status_code=504,
-                content=response.model_dump(mode="json"),
-            )
-        final_status = {
-            "SUCCESS": AnalysisStatus.SUCCEEDED,
-            "PARTIAL": AnalysisStatus.PARTIAL,
-            "BLOCKED": AnalysisStatus.BLOCKED,
-            "CLARIFICATION_REQUIRED": AnalysisStatus.BLOCKED,
-            "CANCELLED": AnalysisStatus.CANCELLED,
-        }.get(str(result.get("status")), AnalysisStatus.FAILED)
-        if result.get("status") in {"CONFLICT", "BUSY"}:
-            raw_code = str(result.get("code") or "")
-            code_map = {
-                "CONVERSATION_CONFLICT": ErrorCode.CONVERSATION_CONFLICT,
-                "CONVERSATION_BUSY": ErrorCode.CONVERSATION_BUSY,
-                "CONVERSATION_ARCHIVED": ErrorCode.CONVERSATION_ARCHIVED,
-                "IDEMPOTENCY_CONFLICT": ErrorCode.IDEMPOTENCY_CONFLICT,
-                "IDEMPOTENCY_PAYLOAD_MISMATCH": ErrorCode.IDEMPOTENCY_CONFLICT,
-                "RESOURCE_CONFLICT": ErrorCode.RESOURCE_CONFLICT,
-                "PRODUCT_RELEASE_MISMATCH": ErrorCode.RESOURCE_CONFLICT,
-                "ACCESS_DENIED": ErrorCode.ACCESS_DENIED,
-                "PERMISSION_SNAPSHOT_MISMATCH": ErrorCode.ACCESS_DENIED,
-                "RATE_LIMITED": ErrorCode.RATE_LIMITED,
-            }
-            public_code = code_map.get(raw_code, ErrorCode.RESOURCE_CONFLICT)
-            status_code = (
-                403
-                if public_code is ErrorCode.ACCESS_DENIED
-                else 429
-                if public_code is ErrorCode.RATE_LIMITED
-                else 409
-            )
+    except InternalManualQueryError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail=str(error),
+        ) from error
+    except AgentDispatchError as error:
+        if error.code in {
+            "AGENT_ROUTE_NOT_RESOLVED",
+            "AGENT_ROUTE_AMBIGUOUS",
+            "AGENT_INVOCATION_MISMATCH",
+        }:
             raise ContextValidationError(
-                public_code,
-                str(result.get("message") or "현재 대화 상태와 요청이 충돌합니다."),
-                status_code,
-            )
-        return {"status": "SUCCESS", "data": result}
-    finally:
-        analysis_progress.finish(context.request_id, final_status)
+                ErrorCode.CONTEXT_INCOMPLETE,
+                str(error),
+                422,
+            ) from error
+        if error.code in {
+            "AGENT_NOT_CONFIGURED",
+            "AGENT_CAPABILITY_NOT_CONFIGURED",
+            "AGENT_CAPABILITY_PROBE_FAILED",
+            "AGENT_PORT_NOT_READY",
+        }:
+            raise ContextValidationError(
+                ErrorCode.SOURCE_NOT_READY,
+                "요청한 기능의 실행 서비스가 현재 준비되지 않았습니다.",
+                503,
+            ) from error
+        raise ContextValidationError(
+            ErrorCode.CONTEXT_SOURCE_FAILED,
+            "요청을 처리할 승인된 Agent를 확정하지 못했습니다.",
+            503,
+        ) from error
+    return result
 
 
 router.include_router(analysis_support_router)

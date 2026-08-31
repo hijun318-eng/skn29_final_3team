@@ -5,6 +5,7 @@ import {
   assertReportContractVersion,
   assertReportCurrencyDisplayUnit,
   assertReportOrientation,
+  normalizeAtomicReportBlockContent,
   type DraftLayoutBlock,
   type ReportBlock,
   type ReportBlockRequest,
@@ -23,11 +24,11 @@ function normalizeBlock(block: ReportBlockResponse): DraftLayoutBlock {
     id: block.block_id,
     title: block.title,
     artifactId: block.artifact_id ?? undefined,
-    queryId: block.query_id ?? undefined,
     viewSpecId: block.view_spec_id ?? undefined,
     columns: block.columns,
     type: block.type,
     content: block.content,
+    evidenceRefs: [...(block.evidence_refs ?? [])],
     x: block.x,
     y: block.y,
     w: block.w,
@@ -39,11 +40,15 @@ function normalizeBlock(block: ReportBlockResponse): DraftLayoutBlock {
 export function normalizeReportDefinition(response: ReportDefinitionResponse): ReportDefinitionVersion {
   assertReportContractVersion(response.contract_version);
   if (!["draft", "approved"].includes(response.status)) throw new Error(`지원하지 않는 Report 상태입니다: ${response.status}`);
+  if (!Number.isInteger(response.draft_revision) || response.draft_revision < 1) {
+    throw new Error("Report draft revision은 1 이상의 정수여야 합니다.");
+  }
   assertReportOrientation(response.orientation);
   assertReportCurrencyDisplayUnit(response.currency_display_unit);
   return {
     definitionId: response.definition_id,
     version: response.version,
+    draftRevision: response.draft_revision,
     status: response.status,
     title: response.title,
     blocks: response.blocks.map(normalizeBlock),
@@ -108,15 +113,13 @@ export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
   if (["table", "chart", "artifact"].includes(type) && !block.artifactId) {
     throw new Error("table·chart·artifact block은 Artifact가 필요합니다.");
   }
-  if (type === "artifact" && !block.queryId) throw new Error("artifact block은 Query 참조가 필요합니다.");
-  const content = block.content ?? "";
+  const content = normalizeAtomicReportBlockContent(type, block.content ?? "");
   if (type === "text" && !content.trim()) throw new Error("text block 내용은 비어 있을 수 없습니다.");
   const w = block.w ?? block.columns;
   return {
     block_id: block.id,
     title: block.title,
     ...(block.artifactId ? { artifact_id: block.artifactId } : {}),
-    ...(block.queryId ? { query_id: block.queryId } : {}),
     ...(block.viewSpecId ? { view_spec_id: block.viewSpecId } : {}),
     columns: w,
     type,
@@ -125,6 +128,7 @@ export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
     w,
     h: block.h ?? 1,
     content,
+    evidence_refs: [...(block.evidenceRefs ?? [])],
   };
 }
 
@@ -134,6 +138,7 @@ export function createDraft(approved: ReportDefinitionVersion): ReportDefinition
   return {
     definitionId: approved.definitionId,
     version: approved.version + 1,
+    draftRevision: 1,
     status: "draft",
     title: approved.title,
     blocks: approved.blocks.map((block) => ({ ...block })),

@@ -19,6 +19,7 @@ export interface AdminAccount {
   active: boolean;
   created_at: string;
   updated_at: string;
+  deactivated_at: string | null;
   deleted_at: string | null;
 }
 
@@ -101,10 +102,11 @@ function normalizeAccount(value: unknown): AdminAccount {
   if (!isRecord(value)
     || typeof value.subject !== "string"
     || typeof value.username !== "string"
-    || !["analyst", "admin"].includes(value.role)
+    || !["analyst", "report_admin", "data_admin", "platform_admin"].includes(value.role)
     || typeof value.active !== "boolean"
     || typeof value.created_at !== "string"
     || typeof value.updated_at !== "string"
+    || !(value.deactivated_at === null || typeof value.deactivated_at === "string")
     || !(value.deleted_at === null || typeof value.deleted_at === "string")) {
     throw new Error("관리자 계정 API가 올바르지 않은 응답을 반환했습니다.");
   }

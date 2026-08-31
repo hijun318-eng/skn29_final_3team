@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections import Counter
 from datetime import date, datetime, time, timedelta
+import json
 import os
 import re
 from time import monotonic
@@ -59,6 +60,7 @@ from app.services.context.node1_interpretation import (
     build_node1_interpretation_context,
 )
 from app.services.context.runtime_contracts import (
+    comparison_time_parameter_names,
     time_parameter_names,
     time_selection_mode,
 )
@@ -125,7 +127,7 @@ def _reconcile_explicit_calendar_bucket(
         bucket is None
         or normalized.get("metric_resolution") != "selected"
         or enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES)
-        in {"PRESENTATION", "REPORT_ACTION"}
+        == "REPORT_ACTION"
         or operation not in {None, "aggregate", "breakdown", "time_trend"}
         or normalized.get("result_limit") is not None
     ):
@@ -152,9 +154,11 @@ def _reconcile_comparison_axis(
     """검증된 기간 수와 일반 비교 결과 형태의 중복 신호를 일관되게 결속한다.
 
     질문 문자열을 다시 파싱하지 않고 이미 검증된 구조만 사용한다. 정확히 두 기간과
-    comparison 관계가 확정됐는데 일반 aggregate/breakdown으로 남은 응답은
-    period_comparison으로 좁힌다. 반대로 서로 다른 측정값이 둘 이상 확정됐지만 두 번째
-    기간이 없으면 하나의 공유 기간에서 지표들을 나란히 조회하는 일반 형태로 복구한다.
+    서로 다른 두 기간이 확정됐는데 일반 aggregate/breakdown으로 남은 응답은
+    period_comparison으로 좁힌다. 이때 모델이 두 기간을 모두 반환하고도 관계만 single로
+    잘못 표기한 경우까지 구조적으로 보정한다. 반대로 서로 다른 측정값이 둘 이상
+    확정됐지만 두 번째 기간이 없으면 하나의 공유 기간에서 지표들을 나란히 조회하는
+    일반 형태로 복구한다.
     추이·순위처럼 별도 의미가 있는 충돌과 시간 모호성은 보정하지 않고 후속 검증이
     fail-closed하도록 둔다.
     """
@@ -162,9 +166,15 @@ def _reconcile_comparison_axis(
     is_ambiguous = (
         isinstance(ambiguity, dict) and ambiguity.get("is_ambiguous") is True
     )
+    distinct_periods = {
+        (period.get("start"), period.get("end_exclusive"))
+        for period in periods
+        if isinstance(period, dict)
+    }
     if (
-        relationship == "comparison"
+        relationship in {"single", "comparison"}
         and len(periods) == 2
+        and len(distinct_periods) == 2
         and analysis_operation in {"aggregate", "breakdown"}
         and intents == [analysis_operation]
         and bool(selected_metric_ids)
@@ -172,7 +182,7 @@ def _reconcile_comparison_axis(
         and result_limit is None
         and not is_ambiguous
     ):
-        return "period_comparison", relationship, ["period_comparison"]
+        return "period_comparison", "comparison", ["period_comparison"]
     if not (
         analysis_operation == "period_comparison"
         and relationship == "comparison"
@@ -777,6 +787,25 @@ def _range_period_recheck_required(
         return False
 
 
+def _merge_period_recheck(
+    original: dict[str, Any],
+    rechecked: dict[str, Any],
+) -> dict[str, Any]:
+    """기간 재검토 응답에서 기간 계약만 원래 해석에 병합한다.
+
+    ``interpretation_recheck.target``이 ``period_candidates``인 호출은 다른 route,
+    metric, result-shape 결정을 바꿀 권한이 없다. 재검토 응답 전체로 원본을 교체하면
+    표현 전환 요청이 새 분석으로 바뀌는 등 unrelated slot drift가 생길 수 있으므로,
+    기간 후보와 그 후보들의 관계만 좁게 채택한다.
+    """
+
+    merged = dict(original)
+    for field in ("period_candidates", "period_relationship"):
+        if field in rechecked:
+            merged[field] = rechecked[field]
+    return merged
+
+
 def _analysis_shape_recheck_violation(normalized: dict[str, Any]) -> str | None:
     """선택된 분석 요청의 결과 형태 위반을 bounded 재검토 코드로 반환한다.
 
@@ -930,15 +959,14 @@ def _finalize_metric_scope(
 
     keep_ids = set(selected_metric_ids)
     synthetic: list[dict[str, object]] = []
+    has_comparison_ratio = False
     for metric_id in selected_metric_ids:
         ratio = _ratio_reference(metric_terms, executable_by_id, metric_id)
         if ratio is None:
             continue
         if is_period_comparison:
-            raise ContextBuildError(
-                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
-                "Ratio metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
-            )
+            _validate_ratio_comparison_operands(ratio, executable_by_id)
+            has_comparison_ratio = True
         keep_ids.update(
             {
                 ratio["numerator_metric_id"],
@@ -958,7 +986,89 @@ def _finalize_metric_scope(
         keep_ids,
         tuple(synthetic),
     )
+    if has_comparison_ratio:
+        selected_asset_fqns = {
+            str(asset.get("fqn") or "")
+            for asset in selected_assets
+        }
+        if len(selected_asset_fqns) != 1 or "" in selected_asset_fqns:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "Ratio 기간 비교는 단일 승인 asset 실행 범위만 지원합니다.",
+            )
+        try:
+            comparison_parameters = comparison_time_parameter_names(selected_assets)
+        except ContextBuildError as error:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "Ratio 기간 비교의 공통 시간 계약이 유효하지 않습니다.",
+            ) from error
+        if comparison_parameters is None:
+            raise ContextBuildError(
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                "Ratio 기간 비교에는 승인된 comparison window가 필요합니다.",
+            )
     return selected_assets, keep_ids, time_selection_mode(selected_assets)
+
+
+def _validate_ratio_comparison_operands(
+    ratio: dict[str, str],
+    executable_by_id: dict[str, dict[str, object]],
+) -> None:
+    """Ratio 비교를 동일 asset·time field·filter 의미의 두 operand로 제한한다."""
+
+    numerator = executable_by_id.get(ratio["numerator_metric_id"])
+    denominator = executable_by_id.get(ratio["denominator_metric_id"])
+    if numerator is None or denominator is None:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교 operand가 현재 실행 registry에 없습니다.",
+        )
+    numerator_scope = _ratio_operand_scope(numerator)
+    denominator_scope = _ratio_operand_scope(denominator)
+    if numerator_scope != denominator_scope:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교의 분자·분모는 동일 asset·시간·필터 계약이어야 합니다.",
+        )
+
+
+def _ratio_operand_scope(
+    metric: dict[str, object],
+) -> tuple[str, str, tuple[str, ...]]:
+    asset_fqn = metric.get("asset_fqn")
+    time_field = metric.get("time_field")
+    raw_filters = metric.get("required_filters")
+    if (
+        not isinstance(asset_fqn, str)
+        or not asset_fqn
+        or not isinstance(time_field, str)
+        or not time_field
+        or not isinstance(raw_filters, (list, tuple))
+        or any(not isinstance(item, dict) for item in raw_filters)
+    ):
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교 operand의 실행 scope가 불완전합니다.",
+        )
+    try:
+        filters = tuple(
+            sorted(
+                json.dumps(
+                    item,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                for item in raw_filters
+            )
+        )
+    except (TypeError, ValueError) as error:
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "Ratio 기간 비교 operand의 필터 계약이 유효하지 않습니다.",
+        ) from error
+    return asset_fqn, time_field, filters
 
 
 def _structured_request(
@@ -1808,9 +1918,10 @@ class MetricResolver:
                 "attempt": 1,
                 "violation": "PERIOD_REQUIRED_OR_OUT_OF_RANGE",
             }
-            normalized = await normalize()
-            if not isinstance(normalized, dict):
+            period_recheck = await normalize()
+            if not isinstance(period_recheck, dict):
                 raise ValueError("Node1 기간 재검토 응답은 객체여야 합니다.")
+            normalized = _merge_period_recheck(normalized, period_recheck)
             interpretation_rechecked = True
         normalized = _reconcile_explicit_calendar_bucket(
             normalized,
@@ -1898,7 +2009,15 @@ class MetricResolver:
             and normalized.get("is_elliptical") is True
             and not intents
         )
-        if len(intents) != 1 and not shape_elided_followup:
+        unresolved_metric_without_intent = (
+            normalized.get("metric_resolution") in {"missing", "unsupported"}
+            and not intents
+        )
+        if (
+            len(intents) != 1
+            and not shape_elided_followup
+            and not unresolved_metric_without_intent
+        ):
             raise ValueError("Node1은 정확히 1개의 분석 의도를 선택해야 합니다.")
         raw_dimensions = normalized.get("dimension_candidates", ())
         if not isinstance(raw_dimensions, list):
@@ -2037,6 +2156,15 @@ class MetricResolver:
                 if item in support_terms
             )
         )
+        requested_route = enum_signal(
+            normalized.get("requested_route"), CONVERSATION_ROUTES
+        )
+        presentation_explicit = normalized.get("presentation_explicit") is True
+        presentation_type = (
+            enum_signal(normalized.get("presentation_type"), PRESENTATION_TYPES)
+            if presentation_explicit
+            else None
+        )
         partial_context = {
             "intent_candidates": intents,
             "metric_ids": selected_metric_ids or suggestion_ids,
@@ -2056,12 +2184,9 @@ class MetricResolver:
             "filter_fields": filter_fields,
             "period_candidates": periods,
             "period_relationship": relationship,
-            "requested_route": enum_signal(
-                normalized.get("requested_route"), CONVERSATION_ROUTES
-            ),
-            "presentation_type": enum_signal(
-                normalized.get("presentation_type"), PRESENTATION_TYPES
-            ),
+            "requested_route": requested_route,
+            "presentation_type": presentation_type,
+            "presentation_explicit": presentation_explicit,
             "is_elliptical": normalized.get("is_elliptical"),
         }
         if requested_support_ids:
@@ -2288,12 +2413,9 @@ class MetricResolver:
             model_signals={
                 # Node1의 route/표현/생략문 신호는 후보다. 계약 enum 안의 값만 통과시키고
                 # 라우트 확정과 전제조건 검증은 ConversationSlotResolver가 한다.
-                "requested_route": enum_signal(
-                    normalized.get("requested_route"), CONVERSATION_ROUTES
-                ),
-                "presentation_type": enum_signal(
-                    normalized.get("presentation_type"), PRESENTATION_TYPES
-                ),
+                "requested_route": requested_route,
+                "presentation_type": presentation_type,
+                "presentation_explicit": presentation_explicit,
                 "is_elliptical": normalized.get("is_elliptical"),
                 "measurement_source_text": measurement_source_text,
                 "measurement_source_texts": measurement_source_texts,

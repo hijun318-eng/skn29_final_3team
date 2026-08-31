@@ -96,7 +96,7 @@ async def list_accounts(
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
     search: Annotated[str, Query(max_length=128)] = "",
 ) -> AccountListResponse:
-    """삭제되지 않은 analyst/admin 계정을 login ID로 검색해 페이지 단위로 반환한다."""
+    """삭제되지 않은 서비스 계정을 login ID로 검색해 페이지 단위로 반환한다."""
 
     try:
         rows, total = await AdminAccountRepository(session).list_accounts(
@@ -126,7 +126,7 @@ async def create_account(
     context: Annotated[RequestContext, Depends(system_manage_context)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
 ) -> AccountResponse:
-    """analyst/admin 계정을 생성하고 verifier 원문 없이 단일 계정 상태만 반환한다."""
+    """현재 허용 Role의 계정을 생성하고 verifier 원문 없이 단일 상태만 반환한다."""
 
     try:
         account = await AdminAccountRepository(session).create_account(

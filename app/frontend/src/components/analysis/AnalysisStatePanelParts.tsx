@@ -20,6 +20,7 @@ import type {
   AnalysisViewState,
   ProcessState,
 } from "../../contracts/analysis";
+import { metricDisplayLabel } from "../../utils/presentation";
 
 /** 기존 import 경로를 사용하는 화면·테스트를 위해 과정 ViewModel 타입을 다시 공개한다. */
 export type { AnalysisProcessStep, AnalysisProcessViewModel, ProcessState } from "../../contracts/analysis";
@@ -31,6 +32,14 @@ export type TableSort = { column: string; direction: "" | "asc" | "desc" };
 export interface AnalysisProcessViewModelInput extends Omit<AnalysisProcessViewModel, "steps"> {
   steps?: AnalysisProcessStep[];
 }
+
+const TERMINAL_PROCESS_STATE: Record<AnalysisProcessViewModel["status"], ProcessState> = {
+  running: "active",
+  success: "complete",
+  blocked: "blocked",
+  failed: "failed",
+  cancelled: "cancelled",
+};
 
 /** 서버가 확정한 분석 뷰 상태별 제목·설명·아이콘. 상태 판정은 하지 않고 표시만 담당한다. */
 export const VIEW_COPY: Record<AnalysisViewState, { title: string; description: string; icon: typeof CheckCircle2 }> = {
@@ -71,13 +80,6 @@ export function progressMessage(elapsed: number) {
  * @returns {AnalysisProcessViewModel} 화면에서 바로 사용할 과정 ViewModel.
  */
 export function createAnalysisProcessViewModel(input: AnalysisProcessViewModelInput): AnalysisProcessViewModel {
-  const terminalStepState: Record<AnalysisProcessViewModel["status"], ProcessState> = {
-    running: "active",
-    success: "complete",
-    blocked: "blocked",
-    failed: "failed",
-    cancelled: "cancelled",
-  };
   const fallbackLabel = input.kind === "PRESENTATION"
     ? "요청한 보기를 준비하고 있습니다"
     : "분석 요청을 처리하고 있습니다";
@@ -89,7 +91,7 @@ export function createAnalysisProcessViewModel(input: AnalysisProcessViewModelIn
     cancelRequested: input.cancelRequested,
     steps: input.steps?.length
       ? input.steps.map((step) => ({ ...step }))
-      : [{ id: `${input.kind.toLowerCase()}-status`, label: fallbackLabel, state: terminalStepState[input.status] }],
+      : [{ id: `${input.kind.toLowerCase()}-status`, label: fallbackLabel, state: TERMINAL_PROCESS_STATE[input.status] }],
   };
 }
 
@@ -120,23 +122,41 @@ function processStepMarker(state: ProcessState, index: number) {
 /** 서버가 확인한 과정 단계만 렌더링하며 ANALYSIS와 PRESENTATION 안내 문맥을 분리한다. */
 export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel }) {
   const isPresentation = model.kind === "PRESENTATION";
+  const isTerminal = model.status !== "running";
+  const displayedSteps: AnalysisProcessStep[] = isPresentation
+    ? [{
+        id: "presentation-response",
+        label: "요청한 보기 구성",
+        state: model.cancelRequested ? "cancelled" as const : TERMINAL_PROCESS_STATE[model.status],
+      }]
+    : model.steps;
+  const completedStepCount = displayedSteps.filter((step) => step.state === "complete").length;
   return (
     <section
-      className="analysis-trace analysis-trace--indeterminate"
+      className={`analysis-trace ${isTerminal ? "analysis-trace--complete" : "analysis-trace--indeterminate"}`}
       aria-label={isPresentation ? "보기 준비 상태" : "분석 진행 상태"}
       aria-live="polite"
       data-process-kind={model.kind}
       data-process-status={model.status}
+      data-process-flow="vertical"
     >
       <header>
         <div>
           <small>{isPresentation ? "표현 준비" : "분석 과정"}</small>
-          <h3>{isPresentation ? "기존 분석 결과로 보기를 준비합니다" : "승인된 범위에서 분석하고 있습니다"}</h3>
+          <h3>{isTerminal
+            ? (isPresentation ? "요청한 형태로 답변을 구성했습니다" : "분석 과정을 완료했습니다")
+            : (isPresentation ? "요청한 형태로 답변을 구성하고 있습니다" : "승인된 범위에서 분석하고 있습니다")}</h3>
         </div>
-        <span>{model.cancelRequested ? "취소 요청됨" : `${model.elapsedSeconds}초 경과`}</span>
+        <span>
+          {model.cancelRequested
+            ? "취소 요청됨"
+            : isTerminal
+              ? `${completedStepCount}/${displayedSteps.length} 단계 완료`
+              : `${completedStepCount}/${displayedSteps.length} 단계 · ${model.elapsedSeconds}초`}
+        </span>
       </header>
       <ol>
-        {model.steps.map((step, index) => (
+        {displayedSteps.map((step, index) => (
           <li key={step.id} className={processStepClass(step.state)} data-state={step.state}>
             <i aria-hidden="true">{processStepMarker(step.state, index)}</i>
             <div>
@@ -150,8 +170,8 @@ export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel })
       {!isPresentation && model.status === "running" && <p>{progressMessage(model.elapsedSeconds)}</p>}
       <p className="analysis-progress-boundary">
         {isPresentation
-          ? "기존 분석 결과와 근거를 유지하고 요청한 표현만 준비합니다."
-          : "서버가 확인한 단계만 표시하며 내부 처리 순서는 추측해 표시하지 않습니다."}
+          ? "요청한 형식에 맞춰 답변을 준비합니다."
+          : "서버가 반환한 실행 트레이스를 업무 단계로 묶어 표시합니다."}
       </p>
     </section>
   );
@@ -165,9 +185,9 @@ export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel })
  */
 export function columnLabel(column: string, run: AnalysisRun) {
   if (column === "period") return "기간";
-  return run.metrics.find((item) => item.resultField === column)?.label
-    ?? run.evidence?.metrics.find((item) => item.resultField === column)?.label
-    ?? column;
+  const metric = run.metrics.find((item) => item.resultField === column)
+    ?? run.evidence?.metrics.find((item) => item.resultField === column);
+  return metric ? metricDisplayLabel(metric) : column;
 }
 
 /**

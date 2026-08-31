@@ -1,7 +1,7 @@
 """외부 entitlement Role 문자열을 현재 인증 Role에 안전하게 연결하는 공유 계약이다.
 
-발행기와 runtime은 같은 canonical Role 집합을 사용하며 미등록 문자열을 모두 거부한다.
-분석 entitlement 상속은 이 정규화 경계가 아니라 애플리케이션 중앙 권한 정책이 결정한다.
+분석 역할은 ``analyst`` 하나만 사용한다. 발행기와 runtime은 같은 집합을 사용하며
+미등록 문자열을 모두 거부한다.
 """
 
 from __future__ import annotations
@@ -9,7 +9,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 
-CANONICAL_ENTITLEMENT_ROLES = frozenset({"analyst", "admin"})
+CANONICAL_ENTITLEMENT_ROLES = frozenset(
+    {"analyst", "report_admin", "data_admin", "platform_admin"}
+)
 SUPPORTED_ENTITLEMENT_ROLES = CANONICAL_ENTITLEMENT_ROLES
 
 

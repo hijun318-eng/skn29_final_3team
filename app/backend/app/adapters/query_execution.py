@@ -62,6 +62,10 @@ class QueryExecutionService:
         self._lifecycle: ContextVar[
             Callable[[dict[str, Any]], Awaitable[None]] | None
         ] = ContextVar("query_execution_lifecycle", default=None)
+        self._generation_mode: ContextVar[str] = ContextVar(
+            "query_execution_generation_mode",
+            default="LLM",
+        )
 
     def bind_cancellation(self, check: Callable[[], bool] | None) -> None:
         """현재 request context에만 적용할 취소 predicate를 등록해 concurrent query 사이의 취소 전파를 막는다."""
@@ -74,6 +78,14 @@ class QueryExecutionService:
         """현재 request의 durable query lifecycle sink만 async context에 결속한다."""
 
         self._lifecycle.set(sink)
+
+    def bind_generation_mode(self, generation_mode: str | None) -> None:
+        """현재 request가 실제로 사용한 SQL 후보 생성 경로를 lifecycle에 결속한다."""
+
+        value = generation_mode or "LLM"
+        if value not in {"LLM", "TEMPLATE", "COMPILER"}:
+            raise ValueError("query generation mode is invalid")
+        self._generation_mode.set(value)
 
     async def execute(
         self,
@@ -391,7 +403,9 @@ class QueryExecutionService:
     async def _notify_lifecycle(self, event: dict[str, Any]) -> None:
         sink = self._lifecycle.get()
         if sink is not None:
-            await sink(dict(event))
+            payload = dict(event)
+            payload.setdefault("generation_mode", self._generation_mode.get())
+            await sink(payload)
 
     async def _record_adapter_failure(
         self,

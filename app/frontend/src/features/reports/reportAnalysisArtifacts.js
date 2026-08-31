@@ -1,10 +1,14 @@
 /** 저장 분석 실행과 보고서 artifact library 사이의 근거 보존 adapter 모듈이다. */
+import { metricDisplayLabel, userFacingPeriodLabel } from "../../utils/presentation.ts";
 function analysisPeriodLabel(period = {}) {
-  const start = String(period.start || period.period_start || "").slice(0, 10);
-  const end = String(
-    period.endExclusive || period.end_exclusive || period.period_end_exclusive || "",
+  const start = String(
+    period.start || period.periodStart || period.period_start || "",
   ).slice(0, 10);
-  return start && end ? `${start}\u2013${end}` : "";
+  const end = String(
+    period.endExclusive || period.periodEndExclusive || period.end_exclusive
+      || period.period_end_exclusive || "",
+  ).slice(0, 10);
+  return userFacingPeriodLabel(start, end);
 }
 
 function analysisSnapshotLabel(snapshot = {}) {
@@ -29,7 +33,7 @@ export function analysisArtifactTitle(artifact, preferredTitle = "", fallbackPer
   if (savedTitle) return savedTitle;
   const definitions = artifact?.metrics?.length ? artifact.metrics : artifact?.evidence?.metrics || [];
   const labels = [...new Set(definitions
-    .map((metric) => String(metric.label || "").trim())
+    .map((metric) => metricDisplayLabel(metric))
     .filter(Boolean))];
   const metricLabel = labels.length > 1
     ? `${labels[0]} \uc678 ${labels.length - 1}\uac1c \uc9c0\ud45c`
@@ -64,7 +68,6 @@ export function analysisRunArtifactSources(runs = [], definitions = []) {
         type: "artifact",
         sourceKind: "analysisRun",
         artifactId: run.artifact_id,
-        queryId: run.query_id || undefined,
         requestId: run.request_id,
         analysisDefinitionId: run.definition_id,
         analysisDefinitionVersion: run.definition_version,
@@ -72,10 +75,41 @@ export function analysisRunArtifactSources(runs = [], definitions = []) {
         title: analysisArtifactTitle(null, definitionTitle, run),
         periodStart: run.period_start || undefined,
         periodEndExclusive: run.period_end_exclusive || undefined,
+        completedAt: run.completed_at || undefined,
         snapshotCutoff: run.snapshot_cutoff || undefined,
         snapshotSelection: run.snapshot_selection || undefined,
       }];
     });
+}
+
+/** 대표·명시 선택을 보존하고 최신순 후보로 채워 Assistant 선택기를 최대 7개로 제한한다. */
+export function reportAssistantArtifactOptions(options = [], primaryArtifactId = "", selectedArtifactIds = [], recentArtifactIds = []) {
+  const byId = new Map(options
+    .filter((option) => option?.artifactId)
+    .map((option) => [option.artifactId, option]));
+  const result = [];
+  const seen = new Set();
+  const orderedIds = [
+    primaryArtifactId,
+    ...selectedArtifactIds,
+    ...recentArtifactIds,
+    ...options.map((option) => option?.artifactId),
+  ];
+  for (const artifactId of orderedIds) {
+    if (result.length >= 7) break;
+    const option = byId.get(artifactId);
+    if (!option || seen.has(artifactId)) continue;
+    seen.add(artifactId);
+    result.push(option);
+  }
+  return result;
+}
+
+/** 현재 선택 블록의 근거를 우선하고, 텍스트 선택 시 보고서에 실제 배치된 첫 근거를 대표로 삼는다. */
+export function reportAssistantRepresentativeBlock(blocks = [], selectedBlockId = "") {
+  const selected = blocks.find((block) => block?.id === selectedBlockId);
+  if (selected?.artifactId) return selected;
+  return blocks.find((block) => block?.artifactId) || null;
 }
 
 function analysisMetricToReport(metric) {
@@ -83,9 +117,11 @@ function analysisMetricToReport(metric) {
     metric_id: metric.metricId,
     result_field: metric.resultField,
     label: metric.label,
+    display_label: metric.displayLabel ?? metric.display_label ?? null,
     definition: metric.definition,
     value: metric.value,
     unit: metric.unit ?? null,
+    display_unit: metric.displayUnit ?? metric.display_unit ?? null,
   };
 }
 
@@ -94,20 +130,18 @@ function analysisMetricReferenceToReport(metric) {
   return reference;
 }
 
-/** 근거 gate와 artifact/query identity가 일치한 분석 실행만 보고서 wire artifact로 변환한다. */
+/** 근거 gate와 artifact identity가 일치한 분석 실행만 안전한 보고서 artifact로 변환한다. */
 export function adaptAnalysisRunArtifact(run) {
   if (!["success", "partial"].includes(run?.status) || run.evidenceReady !== true) return null;
   const artifactId = run.artifact?.artifactId;
-  const queryId = run.artifact?.queryId;
   const evidence = run.evidence;
-  if (!artifactId || !queryId || evidence?.artifactId !== artifactId || evidence?.queryId !== queryId) return null;
+  if (!artifactId || evidence?.artifactId !== artifactId) return null;
   return {
     contract_version: run.meta?.contractVersion,
     request_id: run.requestId,
     trace_id: run.traceId,
     status: run.status.toUpperCase(),
     artifact_id: artifactId,
-    query_id: queryId,
     summary: run.summary || "",
     metrics: (run.metrics || []).map(analysisMetricToReport),
     table: run.table
@@ -121,7 +155,6 @@ export function adaptAnalysisRunArtifact(run) {
     } : null,
     evidence: {
       artifact_id: evidence.artifactId,
-      query_id: evidence.queryId,
       as_of: evidence.asOf,
       timezone: evidence.timezone,
       period: evidence.period

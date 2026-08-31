@@ -24,6 +24,26 @@ from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 ANALYSIS_PLAN_VERSION = "ANSWERVICE-ANALYSIS-PLAN-v4"
+ANALYSIS_PLAN_FIELDS = frozenset(
+    {
+        "version",
+        "operation",
+        "output_metric_ids",
+        "dependency_metric_ids",
+        "dimension_fields",
+        "filter_fields",
+        "time_mode",
+        "time_fields",
+        "time_bucket",
+        "period_parameters",
+        "snapshot_parameter",
+        "result_limit",
+        "query_strategy",
+        "joins",
+        "context_package_hash",
+        "checksum",
+    }
+)
 ANALYSIS_TIME_BUCKETS = frozenset({"day", "week", "month", "quarter", "year"})
 _SAFE_TIME_ROLLUPS = {
     "day": ANALYSIS_TIME_BUCKETS,
@@ -56,7 +76,7 @@ class AnalysisTimeMode(str, Enum):
 ACTIVE_ANALYSIS_TIME_MODES = frozenset(
     {AnalysisTimeMode.RANGE, AnalysisTimeMode.LATEST_SNAPSHOT}
 )
-PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS = frozenset({"exists", "ratio"})
+PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS = frozenset({"exists"})
 
 
 def active_analysis_capabilities() -> dict[str, object]:
@@ -328,49 +348,40 @@ def build_analysis_plan(
     )
 
 
-def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPlan:
-    """캐시나 단계 사이에서 전달된 계획이 현재 Context와 동일한지 재컴파일해 검증한다."""
+def validate_analysis_plan_structure(value: object) -> None:
+    """Runtime package와 무관한 sealed AnalysisPlan의 중첩 형태·조합을 검증한다."""
 
-    if not isinstance(value, Mapping):
-        raise _error(
-            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
-            "서버 소유 AnalysisPlan payload가 누락되었습니다.",
-        )
-    required = {
-        "version",
-        "operation",
-        "output_metric_ids",
-        "dependency_metric_ids",
-        "dimension_fields",
-        "filter_fields",
-        "time_mode",
-        "time_fields",
-        "time_bucket",
-        "period_parameters",
-        "snapshot_parameter",
-        "result_limit",
-        "query_strategy",
-        "joins",
-        "context_package_hash",
-        "checksum",
-    }
-    if set(value) != required or value.get("version") != ANALYSIS_PLAN_VERSION:
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != ANALYSIS_PLAN_FIELDS
+        or value.get("version") != ANALYSIS_PLAN_VERSION
+    ):
         raise _error(
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
             "AnalysisPlan version 또는 필드 계약이 일치하지 않습니다.",
         )
-    identity = {name: value[name] for name in required - {"checksum"}}
-    if (
-        value.get("context_package_hash") != getattr(package, "package_hash", None)
-        or value.get("checksum") != _checksum(identity)
-    ):
+    identity = {
+        name: value[name] for name in ANALYSIS_PLAN_FIELDS - {"checksum"}
+    }
+    if value.get("checksum") != _checksum(identity):
         raise _error(
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
-            "AnalysisPlan checksum이 현재 Runtime Context와 일치하지 않습니다.",
+            "AnalysisPlan checksum이 sealed payload와 일치하지 않습니다.",
         )
     try:
         operation = AnalysisOperation(str(value["operation"]))
         time_mode = AnalysisTimeMode(str(value["time_mode"]))
+        array_fields = (
+            "output_metric_ids",
+            "dependency_metric_ids",
+            "dimension_fields",
+            "filter_fields",
+            "time_fields",
+            "period_parameters",
+            "joins",
+        )
+        if any(not isinstance(value[name], list) for name in array_fields):
+            raise TypeError("AnalysisPlan array field must be a list")
         dimensions = tuple(_field_from_payload(item) for item in value["dimension_fields"])
         filters = tuple(_filter_from_payload(item) for item in value["filter_fields"])
         time_fields = tuple(_field_from_payload(item) for item in value["time_fields"])
@@ -397,20 +408,50 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
             "AnalysisPlan payload 값을 typed 계약으로 해석할 수 없습니다.",
         ) from error
+    raw_field_items = (
+        *value["dimension_fields"],
+        *value["time_fields"],
+        *value["filter_fields"],
+    )
     if (
-        len(dimensions) != len(value["dimension_fields"])
+        any(
+            not isinstance(item, Mapping)
+            or not all(isinstance(item.get(key), str) for key in ("asset_fqn", "column"))
+            or len(str(item["asset_fqn"]).split(".")) != 3
+            or any(not part for part in str(item["asset_fqn"]).split("."))
+            for item in raw_field_items
+        )
+        or any(not isinstance(item, str) or not item for item in value["output_metric_ids"])
+        or any(not isinstance(item, str) or not item for item in value["dependency_metric_ids"])
+        or len(dimensions) != len(value["dimension_fields"])
         or len(filters) != len(value["filter_fields"])
         or len(time_fields) != len(value["time_fields"])
         or len(joins) != len(value["joins"])
         or len(periods) != len(value["period_parameters"])
         or (
             snapshot_parameter is not None
-            and (not isinstance(snapshot_parameter, str) or not snapshot_parameter)
+            and not _valid_parameter_name(snapshot_parameter)
         )
     ):
         raise _error(
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
             "AnalysisPlan 배열에 유효하지 않은 항목이 포함되어 있습니다.",
+        )
+    if (
+        not output_ids
+        or len(output_ids) > MAX_ANALYSIS_METRICS
+        or len(output_ids) != len(set(output_ids))
+        or not dependency_ids
+        or len(dependency_ids) != len(set(dependency_ids))
+        or not set(output_ids).issubset(dependency_ids)
+        or not time_fields
+        or len(dimensions) != len(set(dimensions))
+        or len(filters) != len(set(filters))
+        or len(time_fields) != len(set(time_fields))
+    ):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "AnalysisPlan metric·field 항목은 비어 있지 않고 고유해야 합니다.",
         )
     result_limit = value["result_limit"]
     if result_limit is not None and (
@@ -422,6 +463,123 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
             "AnalysisPlan result_limit이 유효하지 않습니다.",
         )
+    _validate_operation_shape(operation, dimensions)
+    if (operation in {AnalysisOperation.TOP_N, AnalysisOperation.BOTTOM_N}) != (
+        result_limit is not None
+    ) or (result_limit is not None and result_limit > 100):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_OPERATION,
+            "AnalysisPlan 연산과 result_limit 조합이 유효하지 않습니다.",
+        )
+    bucket = value["time_bucket"]
+    if not isinstance(bucket, str) or (
+        operation is AnalysisOperation.TIME_TREND
+        and (time_mode is not AnalysisTimeMode.RANGE or bucket not in ANALYSIS_TIME_BUCKETS)
+    ) or (
+        operation is not AnalysisOperation.TIME_TREND and bucket != "none"
+    ):
+        raise _error(
+            AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
+            "AnalysisPlan operation과 time bucket 조합이 유효하지 않습니다.",
+        )
+    parameter_names = [item.parameter for item in filters]
+    parameter_names.extend(name for pair in periods for name in pair)
+    if snapshot_parameter is not None:
+        parameter_names.append(snapshot_parameter)
+    if (
+        any(not _valid_parameter_name(name) for name in parameter_names)
+        or len(parameter_names) != len(set(parameter_names))
+    ):
+        raise _error(
+            AnalysisPlanErrorCode.PERIOD_CONTRACT_MISMATCH,
+            "AnalysisPlan parameter 이름은 유효하고 고유해야 합니다.",
+        )
+    if time_mode is AnalysisTimeMode.RANGE:
+        expected_period_count = (
+            2 if operation is AnalysisOperation.PERIOD_COMPARISON else 1
+        )
+        time_shape_valid = (
+            len(periods) == expected_period_count and snapshot_parameter is None
+        )
+    else:
+        time_shape_valid = (
+            not periods
+            and snapshot_parameter is not None
+            and operation
+            not in {AnalysisOperation.TIME_TREND, AnalysisOperation.PERIOD_COMPARISON}
+        )
+    if not time_shape_valid:
+        raise _error(
+            AnalysisPlanErrorCode.PERIOD_CONTRACT_MISMATCH,
+            "AnalysisPlan time mode와 period·snapshot parameter가 일치하지 않습니다.",
+        )
+    join_ids = [item.join_id for item in joins]
+    if (
+        len(join_ids) != len(set(join_ids))
+        or any(
+            not isinstance(item, Mapping)
+            or not all(
+                isinstance(item.get(key), str)
+                for key in ("join_id", "plan", "reason")
+            )
+            for item in value["joins"]
+        )
+        or any(
+            not item.join_id
+            or item.plan not in {member.value for member in FanoutPlan}
+            or not item.reason
+            for item in joins
+        )
+        or not isinstance(value["query_strategy"], str)
+        or not value["query_strategy"]
+        or not isinstance(value["context_package_hash"], str)
+        or len(value["context_package_hash"]) != 64
+        or any(character not in "0123456789abcdef" for character in value["context_package_hash"])
+    ):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "AnalysisPlan JOIN·query strategy·package hash 형태가 유효하지 않습니다.",
+        )
+
+
+def _valid_parameter_name(value: object) -> bool:
+    """SQL placeholder 이름을 소문자 snake_case 식별자로 제한한다."""
+
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and "a" <= value[0] <= "z"
+        and all(character == "_" or character.isdigit() or "a" <= character <= "z" for character in value)
+    )
+
+
+def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPlan:
+    """캐시나 단계 사이에서 전달된 계획이 현재 Context와 동일한지 재컴파일해 검증한다."""
+
+    validate_analysis_plan_structure(value)
+    assert isinstance(value, Mapping)
+    if value.get("context_package_hash") != getattr(package, "package_hash", None):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "AnalysisPlan checksum이 현재 Runtime Context와 일치하지 않습니다.",
+        )
+    operation = AnalysisOperation(str(value["operation"]))
+    time_mode = AnalysisTimeMode(str(value["time_mode"]))
+    dimensions = tuple(_field_from_payload(item) for item in value["dimension_fields"])
+    filters = tuple(_filter_from_payload(item) for item in value["filter_fields"])
+    time_fields = tuple(_field_from_payload(item) for item in value["time_fields"])
+    joins = tuple(
+        PlannedJoin(str(item["join_id"]), str(item["plan"]), str(item["reason"]))
+        for item in value["joins"]
+    )
+    periods = tuple(
+        (str(item["start_parameter"]), str(item["end_parameter"]))
+        for item in value["period_parameters"]
+    )
+    output_ids = tuple(value["output_metric_ids"])
+    dependency_ids = tuple(value["dependency_metric_ids"])
+    snapshot_parameter = value["snapshot_parameter"]
+    result_limit = value["result_limit"]
     contracts = _runtime_contracts(package)
     schemas = _schemas(contracts)
     rules = _metric_rules(contracts)

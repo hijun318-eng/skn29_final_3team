@@ -2,7 +2,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-/** 개발 UI는 localhost origin 하나만 열고 compose mode에서만 공식 loopback backend 계약을 적용한다. */
+/** 일반 개발은 명시적 origin만 허용하고 compose mode에서만 공식 loopback backend 계약을 적용한다. */
 export default defineConfig(({ mode }) => {
   const composeMode = mode === "compose";
   const developmentBackendOrigin = process.env.ANSWERVICE_DEV_BACKEND_ORIGIN?.trim()
@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       define: { "import.meta.env.VITE_BACKEND_BASE_URL": JSON.stringify(backendBaseUrl) },
     } : {}),
     server: {
-      host: "localhost",
+      host: true,
       ...(developmentBackendOrigin ? {
         proxy: {
           "/api": {

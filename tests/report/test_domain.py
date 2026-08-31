@@ -1,4 +1,5 @@
 import unittest
+import json
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 
@@ -11,6 +12,7 @@ from src.report.domain import (
     ReportDefinitionVersion,
     ReportRun,
     RunStatus,
+    normalize_report_block_content,
 )
 from tests.support.report_repository import InMemoryReportRepository
 
@@ -104,12 +106,42 @@ class ReportDomainTest(unittest.TestCase):
         )
         self.assertEqual(chart.columns, chart.w)
         self.assertIsNone(text.artifact_id)
-        artifact = ReportBlock(
+        legacy_artifact = ReportBlock(
             "artifact-whole", "Analysis Artifact", "artifact-1", 12, "query-1",
             BlockType.ARTIFACT, 0, 7, 12, 12,
             '{"presentationMode":"standard","visibleViews":["summary","kpi","chart","table"]}',
         )
-        self.assertEqual(BlockType.ARTIFACT, artifact.type)
+        self.assertEqual(BlockType.ARTIFACT, legacy_artifact.type)
+        with self.assertRaisesRegex(ValueError, "visibleViews"):
+            normalize_report_block_content(legacy_artifact.type, legacy_artifact.content)
+        self.assertEqual(
+            ["chart"],
+            json.loads(normalize_report_block_content(BlockType.CHART, ""))["visibleViews"],
+        )
+        self.assertEqual(
+            ["table"],
+            json.loads(normalize_report_block_content(BlockType.TABLE, "{}"))["visibleViews"],
+        )
+        for block_type, mismatched in (
+            (BlockType.CHART, '{"visibleViews":["table"]}'),
+            (BlockType.TABLE, '{"visibleViews":["chart"]}'),
+        ):
+            with self.subTest(block_type=block_type), self.assertRaisesRegex(
+                ValueError, "type.*visibleViews"
+            ):
+                normalize_report_block_content(block_type, mismatched)
+        self.assertEqual(
+            ["summary"],
+            json.loads(normalize_report_block_content(
+                BlockType.ARTIFACT, '{"visibleViews":["summary"]}',
+            ))["visibleViews"],
+        )
+        for invalid in (
+            "{}", '{"visibleViews":[]}', '{"visibleViews":["unknown"]}',
+            '{"visibleViews":["summary","kpi"]}',
+        ):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "visibleViews"):
+                normalize_report_block_content(BlockType.ARTIFACT, invalid)
         with self.assertRaisesRegex(ValueError, "12-column bounds"):
             ReportBlock("bad", "초과", "artifact-1", 6, None, BlockType.TABLE, 7, 0, 6, 1)
         with self.assertRaisesRegex(ValueError, "positive height"):
@@ -132,6 +164,53 @@ class ReportDomainTest(unittest.TestCase):
         approved = self.draft.approve(datetime(2026, 8, 3, tzinfo=timezone.utc))
         with self.assertRaisesRegex(ValueError, "draft Report version"):
             approved.replace_blocks((text,))
+
+    def test_report_title_is_trimmed_and_rejects_non_single_line_values(self):
+        normalized = ReportDefinitionVersion(
+            "report-title",
+            1,
+            DefinitionStatus.DRAFT,
+            f"  {'가' * 255}  ",
+            (),
+        )
+        self.assertEqual("가" * 255, normalized.title)
+        for invalid in ("", "   ", "첫 줄\n둘째 줄", "제목\t탭", "가" * 256):
+            with self.subTest(invalid=repr(invalid)), self.assertRaises(
+                (TypeError, ValueError)
+            ):
+                ReportDefinitionVersion(
+                    "report-invalid-title",
+                    1,
+                    DefinitionStatus.DRAFT,
+                    invalid,
+                    (),
+                )
+
+    def test_report_draft_revision_is_positive_and_survives_domain_transitions(self):
+        revised = ReportDefinitionVersion(
+            "report-revision",
+            1,
+            DefinitionStatus.DRAFT,
+            "Revision report",
+            (),
+            draft_revision=7,
+        )
+        self.assertEqual(7, revised.replace_blocks(()).draft_revision)
+        approved = revised.approve(datetime(2026, 8, 3, tzinfo=timezone.utc))
+        self.assertEqual(7, approved.draft_revision)
+        self.assertEqual(1, approved.next_draft().draft_revision)
+        for invalid in (0, -1, True):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                ValueError, "revision"
+            ):
+                ReportDefinitionVersion(
+                    "report-invalid-revision",
+                    1,
+                    DefinitionStatus.DRAFT,
+                    "Invalid revision",
+                    (),
+                    draft_revision=invalid,
+                )
 
 
 if __name__ == "__main__":

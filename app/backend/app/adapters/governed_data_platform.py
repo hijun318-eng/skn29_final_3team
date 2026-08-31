@@ -208,6 +208,11 @@ class GovernedDataPlatformAdapter:
 
         self._execution.bind_lifecycle_sink(sink)
 
+    def bind_query_generation_mode(self, generation_mode: str | None) -> None:
+        """현재 async request의 SQL 후보 provenance를 durable lifecycle에 결속한다."""
+
+        self._execution.bind_generation_mode(generation_mode)
+
     async def get_source_health(self) -> list[dict[str, Any]]:
         """DataHub와 Trino probe를 병렬 수행해 각 source의 ``HEALTHY``/``UNHEALTHY`` 상태를 독립적으로 반환한다."""
         datahub, trino = await _source_health(self._datahub, self._trino)

@@ -187,23 +187,33 @@ class PipelineResultValidator:
             if numerator is None or denominator is None:
                 return True
             for row in rows:
-                try:
-                    numerator_value = Decimal(str(row[numerator.result_field]))
-                    denominator_value = Decimal(str(row[denominator.result_field]))
-                    actual_raw = row[metric.result_field]
-                    if denominator_value == 0:
-                        if actual_raw is not None:
+                suffixes = [""]
+                if f"{metric.result_field}__comparison" in row:
+                    suffixes.append("__comparison")
+                for suffix in suffixes:
+                    try:
+                        numerator_value = Decimal(
+                            str(row[f"{numerator.result_field}{suffix}"])
+                        )
+                        denominator_value = Decimal(
+                            str(row[f"{denominator.result_field}{suffix}"])
+                        )
+                        actual_raw = row[f"{metric.result_field}{suffix}"]
+                        if denominator_value == 0:
+                            if actual_raw is not None:
+                                return True
+                            continue
+                        if actual_raw is None:
                             return True
-                        continue
-                    if actual_raw is None:
+                        actual = Decimal(str(actual_raw))
+                        expected = numerator_value / denominator_value
+                    except (InvalidOperation, KeyError, TypeError, ValueError):
                         return True
-                    actual = Decimal(str(actual_raw))
-                    expected = numerator_value / denominator_value
-                except (InvalidOperation, KeyError, TypeError, ValueError):
-                    return True
-                tolerance = max(Decimal("1e-12"), abs(expected) * Decimal("1e-9"))
-                if abs(actual - expected) > tolerance:
-                    return True
+                    tolerance = max(
+                        Decimal("1e-12"), abs(expected) * Decimal("1e-9")
+                    )
+                    if abs(actual - expected) > tolerance:
+                        return True
         return False
 
     @classmethod

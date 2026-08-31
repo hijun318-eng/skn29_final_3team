@@ -353,15 +353,50 @@ class ConversationSlotResolver:
             if isinstance(item, str) and item
         )
 
+        operations = {
+            "aggregate",
+            "breakdown",
+            "time_trend",
+            "top_n",
+            "bottom_n",
+            "period_comparison",
+        }
+        candidate_operation = node1_output.get("analysis_operation")
+        if candidate_operation not in operations:
+            candidate_operation = None
+        candidate_time_bucket = node1_output.get("analysis_time_bucket")
+        if candidate_time_bucket not in {"day", "week", "month", "quarter", "year"}:
+            candidate_time_bucket = None
+
         # PRESENTATION은 저장된 Artifact를 다시 그릴 뿐 질의를 재실행하지 않는다. 따라서
-        # 무엇을 측정할지(metric), 어떻게 나눌지(dimension), 어떤 행을 볼지(filter) 중 하나라도
-        # 바뀌면 재사용으로 답할 수 없다. 이 중 하나라도 후보가 오면 신호와 무관하게 모든
-        # 게이트를 거치는 ANALYSIS로 보낸다. 그러지 않으면 사용자가 요청한 분해·필터가
-        # 조용히 사라지고 이전 결과가 다시 표시된다.
+        # 무엇을 측정할지(metric), 어떻게 나눌지(dimension), 어떤 행을 볼지(filter),
+        # 어떤 집계 형태·시간 버킷을 쓸지 중 하나라도 바뀌면 재사용으로 답할 수 없다.
+        # 이 중 하나라도 후보가 오면 신호와 무관하게 모든 게이트를 거치는 ANALYSIS로
+        # 보낸다. 그러지 않으면 사용자가 요청한 재집계가 조용히 사라진다.
+        candidate_changes_metric = bool(candidate_metric_ids) and (
+            frozenset(candidate_metric_ids) != frozenset(stored_analysis_metric_ids)
+        )
         changes_query_shape = bool(
-            candidate_metric_ids
+            candidate_changes_metric
             or node1_output.get("dimension_fields")
             or node1_output.get("filter_fields")
+            or node1_output.get("period_candidates")
+            or (
+                candidate_operation is not None
+                and candidate_operation
+                != analysis_inheritance_slots.get("analysis_operation")
+            )
+            or (
+                candidate_time_bucket is not None
+                and candidate_time_bucket
+                != analysis_inheritance_slots.get("analysis_time_bucket")
+            )
+            or (
+                isinstance(node1_output.get("result_limit"), int)
+                and not isinstance(node1_output.get("result_limit"), bool)
+                and node1_output.get("result_limit")
+                != analysis_inheritance_slots.get("result_limit")
+            )
         )
         # 재사용할 선행 Artifact가 실제로 있는지는 오케스트레이터가 실행 직전에 확인해
         # 없으면 typed 실패로 닫는다(조용한 우회 금지).
@@ -433,25 +468,11 @@ class ConversationSlotResolver:
             metric_ids = (metric_id,) if metric_id else ()
             metric_changes = (metric_change,)
 
-        operations = {
-            "aggregate",
-            "breakdown",
-            "time_trend",
-            "top_n",
-            "bottom_n",
-            "period_comparison",
-        }
-        candidate_operation = node1_output.get("analysis_operation")
-        if candidate_operation not in operations:
-            candidate_operation = None
         analysis_operation = candidate_operation or (
             analysis_inheritance_slots.get("analysis_operation")
             if is_followup
             else None
         )
-        candidate_time_bucket = node1_output.get("analysis_time_bucket")
-        if candidate_time_bucket not in {"day", "week", "month", "quarter", "year"}:
-            candidate_time_bucket = None
         analysis_time_bucket = (
             candidate_time_bucket
             if candidate_operation == "time_trend"
@@ -762,7 +783,8 @@ class ConversationSlotResolver:
     ) -> str:
         """ANALYSIS 라우트에서 질문이 명시한 초기 시각화 타입을 확정합니다.
 
-        표현을 지목하지 않은 질문은 확정된 연산과 출력 지표 unit으로 기본 표현을 정한다.
+        표현을 지목하지 않은 질문은 결과에 집중하도록 요약 뷰로 시작한다. 표현 요청은
+        질문 문구를 서버에서 다시 파싱하지 않고 Node1의 typed 신호만 사용한다.
 
         Args:
             msg: 사용자 발화(현재 분기 판단에는 쓰지 않으며 추적용으로 유지)
@@ -771,39 +793,11 @@ class ConversationSlotResolver:
         Returns:
             허용 목록에 속하는 뷰 타입
         """
-        signal = cls._presentation_signal(node1_output)
-        if signal is not None:
-            return signal
-        if not node1_output:
+        # 연산 종류만으로 차트를 추정하지 않는다. Node1이 표현 타입뿐 아니라 현재
+        # 질문에 그 표현이 명시됐다는 typed 증거까지 반환한 경우에만 초기 뷰로 쓴다.
+        if not node1_output or node1_output.get("presentation_explicit") is not True:
             return "SUMMARY"
-        operation = node1_output.get("analysis_operation")
-        if operation == "time_trend":
-            return "LINE"
-        if operation in {"period_comparison", "top_n", "bottom_n"}:
-            return "BAR"
-        if operation != "breakdown":
-            return "SUMMARY"
-
-        raw_ids = node1_output.get("selected_metric_ids")
-        metric_ids = (
-            [item for item in raw_ids if isinstance(item, str) and item]
-            if isinstance(raw_ids, (list, tuple))
-            else []
-        )
-        raw_terms = node1_output.get("metric_terms")
-        units = []
-        if metric_ids and isinstance(raw_terms, dict):
-            for metric_id in metric_ids:
-                term = raw_terms.get(metric_id)
-                unit = term.get("unit") if isinstance(term, dict) else None
-                if not isinstance(unit, str) or not unit.strip():
-                    units = []
-                    break
-                units.append(unit.strip().casefold())
-        rate_or_per_unit = bool(units) and all(
-            unit == "ratio" or "_per_" in unit for unit in units
-        )
-        return "SUMMARY" if rate_or_per_unit else "BAR"
+        return cls._presentation_signal(node1_output) or "SUMMARY"
 
     @classmethod
     def _presentation_signal(cls, node1_output: dict[str, Any] | None) -> str | None:

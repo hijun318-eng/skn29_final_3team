@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 import hashlib
 import json
+import math
 import os
 from typing import Annotated, Any, Awaitable, Callable
 from uuid import uuid4
@@ -33,10 +34,10 @@ def report_draft_context(
     return context
 
 
-def report_manage_context(
+def report_admin_context(
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> RequestContext:
-    """승인·실행 관리 작업을 ``report.manage`` Capability 보유 주체로 제한한다."""
+    """승인·실행 관리 작업을 ``REPORT_ADMIN`` 주체로만 제한한다."""
     if not has_capability(context.role, Capability.MANAGE_REPORT):
         raise HTTPException(status_code=403, detail="Report 실행 관리 권한이 없습니다.")
     return context
@@ -45,7 +46,7 @@ def report_manage_context(
 def build_report_router(context: RequestContext):
     """요청 사용자와 역할 범위가 적용된 PostgreSQL repository로 보고서 router를 조립한다.
 
-    ``report.manage`` 보유 주체에만 전체 관리 범위를 부여하며 runtime DB URL이 없으면 메모리 대체재를
+    ``REPORT_ADMIN``에만 전체 관리 범위를 부여하며 runtime DB URL이 없으면 메모리 대체재를
     만들지 않고 503으로 fail closed 한다.
     """
     from app.adapters.report_repository import PostgresReportRepository
@@ -94,21 +95,111 @@ def build_execution_service(repository):
 
 
 def _artifact_visible_views(artifact: Mapping[str, Any]) -> list[str]:
+    """실제 렌더링 가능한 원자 view만 고정된 사용자 순서로 반환한다."""
+
     views: list[str] = []
     if str(artifact.get("narrative_markdown") or "").strip():
         views.append("summary")
     evidence = artifact.get("evidence_json")
     metrics = evidence.get("metric_values") if isinstance(evidence, Mapping) else None
-    if isinstance(metrics, (list, tuple)) and metrics:
+    if isinstance(metrics, (list, tuple)) and any(
+        isinstance(metric, Mapping)
+        and bool(str(metric.get("label") or "").strip())
+        and _is_public_scalar(metric.get("value"))
+        and metric.get("value") is not None
+        for metric in metrics
+    ):
         views.append("kpi")
-    snapshot = artifact.get("data_snapshot_json")
-    rows = snapshot.get("rows") if isinstance(snapshot, Mapping) else None
-    has_rows = isinstance(rows, (list, tuple)) and bool(rows)
-    if artifact.get("chart_spec_json") and has_rows:
+    columns, has_scalar_row, _ = _artifact_snapshot_shape(artifact)
+    chart_spec = artifact.get("chart_spec_json")
+    chart_fields_match = False
+    if isinstance(chart_spec, Mapping) and columns and has_scalar_row:
+        x_field = chart_spec.get("x_field")
+        y_fields = chart_spec.get("y_fields")
+        chart_fields_match = (
+            isinstance(x_field, str)
+            and x_field in columns
+            and isinstance(y_fields, (list, tuple))
+            and bool(y_fields)
+            and all(isinstance(field, str) and field in columns for field in y_fields)
+        )
+    if chart_fields_match:
         views.append("chart")
-    if has_rows:
+    if columns and has_scalar_row:
         views.append("table")
     return views
+
+
+_TABLE_SNAPSHOT_MAX_COLUMNS = 16
+
+
+def _is_public_scalar(value: object) -> bool:
+    """외부 모델 경계에서 구조체·비정상 수치를 제외한 분석 scalar만 식별한다."""
+
+    return (
+        value is None
+        or isinstance(value, (bool, int, str))
+        or isinstance(value, float) and math.isfinite(value)
+    )
+
+
+def _artifact_snapshot_shape(
+    artifact: Mapping[str, Any],
+) -> tuple[tuple[str, ...], bool, int]:
+    """원문 값을 복사하지 않고 실제 scalar column·row 존재와 전체 행 수만 확인한다."""
+
+    snapshot = artifact.get("data_snapshot_json")
+    raw_columns = snapshot.get("columns") if isinstance(snapshot, Mapping) else None
+    raw_rows = snapshot.get("rows") if isinstance(snapshot, Mapping) else None
+    source_rows = list(raw_rows) if isinstance(raw_rows, (list, tuple)) else []
+    candidates: list[str] = []
+    if isinstance(raw_columns, (list, tuple)):
+        for column in raw_columns:
+            name = column.get("name") if isinstance(column, Mapping) else column
+            if isinstance(name, str) and name.strip() and name.strip() not in candidates:
+                candidates.append(name.strip())
+    if not candidates:
+        for row in source_rows[:20]:
+            if not isinstance(row, Mapping):
+                continue
+            for name in row:
+                if isinstance(name, str) and name.strip() and name.strip() not in candidates:
+                    candidates.append(name.strip())
+
+    scalar_columns = tuple(
+        name
+        for name in candidates
+        if any(
+            isinstance(row, Mapping)
+            and name in row
+            and _is_public_scalar(row[name])
+            for row in source_rows[:20]
+        )
+    )
+    has_scalar_row = any(
+        isinstance(row, Mapping)
+        and any(name in row and _is_public_scalar(row[name]) for name in scalar_columns)
+        for row in source_rows[:20]
+    )
+    return scalar_columns, has_scalar_row, len(source_rows)
+
+
+def _artifact_table_snapshot(artifact: Mapping[str, Any]) -> dict[str, Any]:
+    """외부 모델에는 원문 column명·cell 값 없이 bounded 구조 메타데이터만 제공한다.
+
+    Assistant는 view를 선택할 뿐 표 데이터를 다시 생성하지 않으며 실제 renderer는 승인된
+    Artifact를 직접 읽는다. 따라서 schema 폭과 행 수만 익명화하고 raw rows는 fail-closed로
+    전송하지 않는다.
+    """
+
+    source_columns, _, row_count = _artifact_snapshot_shape(artifact)
+    visible_column_count = min(len(source_columns), _TABLE_SNAPSHOT_MAX_COLUMNS)
+    return {
+        "columns": [f"column_{index}" for index in range(1, visible_column_count + 1)],
+        "rows": [],
+        "row_count": row_count,
+        "truncated": row_count > 0 or len(source_columns) > visible_column_count,
+    }
 
 
 async def create_artifact_draft(
@@ -118,10 +209,11 @@ async def create_artifact_draft(
 ) -> dict[str, Any]:
     """소유권이 검증된 분석 artifact를 참조하는 landscape 보고서 초안을 저장한다.
 
-    실제 artifact 내용으로 노출 가능한 summary·KPI·chart·table view만 선언하고 artifact 및
-    Trino query ID를 block lineage에 보존한다. 조회·저장 실패는 ``repository_call``의 HTTP
-    오류 계약을 따르며 성공 시 version 1 definition 응답을 반환한다.
+    실제 artifact 내용으로 노출 가능한 summary·KPI·chart·table을 원자 block으로 분리하고
+    artifact 및 Trino query ID를 block lineage에 보존한다. 조회·저장 실패는
+    ``repository_call``의 HTTP 오류 계약을 따르며 성공 시 version 1 definition을 반환한다.
     """
+    from app.report_patch import artifact_view_default_height, artifact_view_title
     from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
 
     artifact = await repository_call(
@@ -130,18 +222,51 @@ async def create_artifact_draft(
     artifact_id = str(artifact["artifact_id"])
     query_id = str(artifact["trino_query_id"])
     report_title = payload.title.strip()
-    content = json.dumps({
-        "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
-        "presentationMode": "standard",
-        "sizeMode": "auto",
-        "visibleViews": _artifact_visible_views(artifact),
-    }, ensure_ascii=False, separators=(",", ":"))
-    blocks = (ReportBlock(
-        str(uuid4()), report_title, artifact_id, 12, query_id,
-        BlockType.ARTIFACT, 0, 0, 12, 12, content,
-    ),)
+    source_title = str(artifact.get("title") or "").strip()
+    views = _artifact_visible_views(artifact)
+    if not source_title or not views:
+        raise ValueError("승인 Artifact에 보고서로 만들 수 있는 원자 view가 없습니다.")
+    blocks: list[ReportBlock] = []
+    view_widths = {"summary": 6, "kpi": 6, "chart": 8, "table": 6}
+    row_x = row_y = row_height = 0
+    for view in views:
+        block_type = (
+            BlockType.ARTIFACT if view in {"summary", "kpi"} else BlockType(view)
+        )
+        settings: dict[str, object] = {"sizeMode": "auto"}
+        if view in {"summary", "kpi"}:
+            settings.update({
+                "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
+                "presentationMode": "standard",
+                "visibleViews": [view],
+            })
+        elif view == "chart":
+            settings.update({"visibleViews": ["chart"], "showLegend": True})
+        else:
+            settings.update({
+                "visibleViews": ["table"],
+                "density": "comfortable",
+                "showRowNumbers": False,
+            })
+        width = view_widths[view]
+        height = artifact_view_default_height(view)
+        if row_x and row_x + width > 12:
+            row_y += row_height
+            row_x = row_height = 0
+        blocks.append(ReportBlock(
+            str(uuid4()), artifact_view_title(source_title, view), artifact_id, width,
+            query_id, block_type, row_x, row_y, width, height,
+            json.dumps(
+                settings, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ),
+        ))
+        row_x += width
+        row_height = max(row_height, height)
+        if row_x == 12:
+            row_y += row_height
+            row_x = row_height = 0
     draft = ReportDefinitionVersion(
-        str(uuid4()), 1, DefinitionStatus.DRAFT, report_title, blocks,
+        str(uuid4()), 1, DefinitionStatus.DRAFT, report_title, tuple(blocks),
         orientation="landscape", currency_display_unit="auto",
     )
     await repository_call(lambda: router.repository.add_draft(draft))
@@ -149,20 +274,20 @@ async def create_artifact_draft(
 
 
 def report_artifact_response(artifact: Mapping[str, Any]) -> dict[str, Any]:
-    """영속된 분석 artifact를 보고서 전송 계약으로 투영하고 lineage checksum을 보존한다."""
+    """영속 artifact를 query ID·checksum 없는 보고서 공개 계약으로 투영한다."""
     from src.report.domain import REPORT_CONTRACT_VERSION
 
+    evidence = dict(artifact["evidence_json"] or {})
+    evidence.pop("query_id", None)
     return {
         "contract_version": REPORT_CONTRACT_VERSION,
         "artifact_id": artifact["artifact_id"],
-        "query_id": artifact["trino_query_id"],
         "title": artifact["title"],
         "summary": artifact["narrative_markdown"],
-        "metrics": (artifact["evidence_json"] or {}).get("metric_values", []),
+        "metrics": evidence.get("metric_values", []),
         "table": artifact["data_snapshot_json"],
         "chart": artifact["chart_spec_json"] or None,
-        "evidence": artifact["evidence_json"],
-        "artifact_checksum": artifact["artifact_checksum"],
+        "evidence": evidence,
     }
 
 
@@ -322,12 +447,12 @@ async def create_assistant_report_draft(
                 ReportBlock(
                     str(uuid4()), proposal["table_title"],
                     str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.TABLE, 0, 2, 12, 4,
+                    BlockType.TABLE, 0, 2, 12, 4, '{"visibleViews":["table"]}',
                 ),
                 ReportBlock(
                     str(uuid4()), proposal["chart_title"],
                     str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.CHART, 0, 6, 12, 4,
+                    BlockType.CHART, 0, 6, 12, 4, '{"visibleViews":["chart"]}',
                 ),
             ),
         )

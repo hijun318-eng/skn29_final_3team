@@ -12,6 +12,7 @@ import pytest
 
 from app.adapters.contract_model import ContractModelAdapter, _openai_payload, _qwen_payload
 from app.adapters.model_schemas import (
+    bounded_node_output_limit,
     canonical_model_input,
     serving_schema,
     sql_only_serving_schema,
@@ -257,6 +258,30 @@ def test_openai_and_qwen_use_identical_canonical_messages() -> None:
     assert openai["max_completion_tokens"] == 1_280
     assert qwen["max_tokens"] == 1_024
     assert qwen["seed"] == 0
+
+
+def test_report_assistant_uses_router_budget_without_expanding_other_nodes() -> None:
+    """Report patch만 4,096토큰을 쓰고 SQL·review 노드의 기존 제한은 보존한다."""
+
+    assert bounded_node_output_limit("report_assistant", 4_096) == 4_096
+    assert bounded_node_output_limit("report_assistant_turn", 4_096) == 4_096
+    assert bounded_node_output_limit("report_assistant_turn", 1_280) == 1_280
+    assert bounded_node_output_limit("report_assistant_review", 4_096) == 900
+    assert bounded_node_output_limit("node2", 4_096) == 1_280
+    capacity = SimpleNamespace(runtime_max_output_tokens=4_096)
+    manifest = SimpleNamespace(capacity_for=lambda _model, provider: capacity)
+    with patch(
+        "app.adapters.model_schemas.load_model_runtime_manifest",
+        return_value=manifest,
+    ):
+        openai = _openai_payload(
+            "report-openai", "report_assistant_turn", {"input": "bounded"}
+        )
+        initial = _openai_payload(
+            "report-openai", "report_assistant", {"input": "bounded"}
+        )
+    assert openai["max_completion_tokens"] == 4_096
+    assert initial["max_completion_tokens"] == 4_096
 
 
 def test_openai_and_qwen_schema_dual_adaptation() -> None:

@@ -53,7 +53,7 @@ def _approved_row(**overrides: object) -> dict[str, object]:
     row: dict[str, object] = {
         "template_id": "runtime-template-alpha",
         "parameter_names_json": ["window_start"],
-        "allowed_roles_json": [Role.ADMIN.value],
+        "allowed_roles_json": [Role.DATA_ADMIN.value],
         "sql_text": "SELECT CAST(:window_start AS DATE) AS window_start LIMIT 1",
         "source_fqns_json": ["catalog_alpha.schema_beta.table_gamma"],
         "requires_g1": True,
@@ -74,7 +74,7 @@ class RoutingServiceTest(unittest.IsolatedAsyncioTestCase):
         payload = AnalysisRequest(question="승인 템플릿 실행", template_id="runtime-template-alpha")
 
         with self.assertRaises(RoutingError) as raised:
-            await RoutingService().decide(payload, Role.ADMIN)
+            await RoutingService().decide(payload, Role.DATA_ADMIN)
 
         self.assertEqual(ErrorCode.ACCESS_DENIED, raised.exception.code)
 
@@ -89,7 +89,7 @@ class RoutingServiceTest(unittest.IsolatedAsyncioTestCase):
         with patch("app.services.routing_service.session_scope", scope):
             decision = await RoutingService.from_database("postgresql+psycopg://runtime").decide(
                 payload,
-                Role.ADMIN,
+                Role.DATA_ADMIN,
             )
 
         self.assertEqual(RouteType.TEMPLATE, decision.route_type)
@@ -99,7 +99,7 @@ class RoutingServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("allowed_roles_json", session.query)
 
     async def test_unknown_or_duplicate_role_metadata_is_not_repaired_in_process(self) -> None:
-        for roles in (["unknown-role"], [Role.ADMIN.value, Role.ADMIN.value], []):
+        for roles in (["unknown-role"], [Role.DATA_ADMIN.value, Role.DATA_ADMIN.value], []):
             _session, scope = _session_scope_for(_approved_row(allowed_roles_json=roles))
             payload = AnalysisRequest(
                 question="승인 템플릿 실행",
@@ -111,7 +111,7 @@ class RoutingServiceTest(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(RoutingError) as raised:
                     await RoutingService.from_database("postgresql+psycopg://runtime").decide(
                         payload,
-                        Role.ADMIN,
+                        Role.DATA_ADMIN,
                     )
                 self.assertEqual(ErrorCode.ACCESS_DENIED, raised.exception.code)
 
@@ -122,8 +122,8 @@ class RoutingServiceTest(unittest.IsolatedAsyncioTestCase):
             parameters={"window_start": "2041-03-01"},
         )
         for role, parameters, expected in (
-            (Role.ANALYST, payload.parameters, ErrorCode.ACCESS_DENIED),
-            (Role.ADMIN, {}, ErrorCode.CONTEXT_INCOMPLETE),
+            (Role.REPORT_ADMIN, payload.parameters, ErrorCode.ACCESS_DENIED),
+            (Role.DATA_ADMIN, {}, ErrorCode.CONTEXT_INCOMPLETE),
         ):
             _session, scope = _session_scope_for(_approved_row())
             request = payload.model_copy(update={"parameters": parameters})

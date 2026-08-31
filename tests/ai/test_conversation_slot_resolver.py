@@ -14,6 +14,7 @@ from app.services.conversation.slot_resolver import (
 )
 from app.services.conversation.analysis_request import build_structured_analysis_request
 from app.services.conversation.time_algebra import TimeAlgebraEngine
+from app.services.context.model_signals import client_action_signals
 
 
 def _node1_period(start: str, end_exclusive: str, source_text: str) -> dict:
@@ -226,12 +227,12 @@ def test_conversation_slot_resolver_routes_and_views():
     assert turn5_slots.source_turn_ids == ("turn-1",)
 
 
-def test_initial_chart_defaults_follow_typed_operation_and_metric_unit() -> None:
+def test_initial_view_defaults_to_summary_unless_explicitly_requested() -> None:
     resolve = ConversationSlotResolver._resolve_initial_chart_type
 
-    assert resolve("", {"analysis_operation": "time_trend"}) == "LINE"
-    assert resolve("", {"analysis_operation": "period_comparison"}) == "BAR"
-    assert resolve("", {"analysis_operation": "top_n"}) == "BAR"
+    assert resolve("", {"analysis_operation": "time_trend"}) == "SUMMARY"
+    assert resolve("", {"analysis_operation": "period_comparison"}) == "SUMMARY"
+    assert resolve("", {"analysis_operation": "top_n"}) == "SUMMARY"
     assert resolve(
         "",
         {
@@ -247,11 +248,37 @@ def test_initial_chart_defaults_follow_typed_operation_and_metric_unit() -> None
             "selected_metric_ids": ["voc_average_rating"],
             "metric_terms": {"voc_average_rating": {"unit": "rating_1_to_5"}},
         },
-    ) == "BAR"
+    ) == "SUMMARY"
     assert resolve(
-        "",
-        {"analysis_operation": "time_trend", "presentation_type": "TABLE"},
+        "표로 보여줘",
+        {
+            "analysis_operation": "time_trend",
+            "presentation_type": "TABLE",
+            "presentation_explicit": True,
+        },
     ) == "TABLE"
+    assert resolve(
+        "두 기간 객실 매출을 비교해줘",
+        {"analysis_operation": "period_comparison", "presentation_type": "BAR"},
+    ) == "SUMMARY"
+    assert resolve(
+        "두 기간 객실 매출을 비교해줘",
+        {
+            "analysis_operation": "period_comparison",
+            "presentation_type": "BAR",
+            "presentation_explicit": False,
+        },
+    ) == "SUMMARY"
+
+
+def test_typed_client_presentation_action_carries_explicit_evidence() -> None:
+    assert client_action_signals(
+        {"requested_route": "PRESENTATION", "presentation_type": "TABLE"}
+    ) == {
+        "requested_route": "PRESENTATION",
+        "presentation_type": "TABLE",
+        "presentation_explicit": True,
+    }
 
 
 def test_conversation_slots_preserve_multi_metric_operation_and_followup_inheritance():
@@ -834,6 +861,42 @@ def test_presentation_signal_yields_to_a_new_measurement_request():
     assert slots.metric_id == "fnb_revenue"
 
 
+def test_presentation_signal_yields_to_explicit_monthly_reaggregation() -> None:
+    """월별 cadence는 기존 단일 합계 Artifact의 View 전환으로 처리하지 않는다."""
+
+    previous = _prior_analysis_turn()
+    previous["resolved_slots"].update(
+        {
+            "metric_ids": ["room_revenue"],
+            "analysis_operation": "aggregate",
+            "analysis_time_bucket": None,
+            "dimension_fields": [],
+            "user_filters": [],
+        }
+    )
+    slots = ConversationSlotResolver.resolve(
+        user_message="월별로 그래프로 비교해줘",
+        node1_output={
+            "requested_route": "PRESENTATION",
+            "presentation_type": "BAR",
+            "presentation_explicit": True,
+            "metric_resolution": "missing",
+            "is_elliptical": True,
+            "analysis_operation": "time_trend",
+            "analysis_time_bucket": "month",
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 30),
+    )
+
+    assert slots.route == "ANALYSIS"
+    assert slots.metric_id == "room_revenue"
+    assert slots.is_inherited_metric is True
+    assert slots.analysis_operation == "time_trend"
+    assert slots.analysis_time_bucket == "month"
+    assert slots.target_chart_type == "BAR"
+
+
 def test_presentation_type_outside_allowlist_is_rejected():
     """허용 목록 밖 표현 타입은 채택하지 않고 순환 기본값으로 닫는지 검증."""
     slots = ConversationSlotResolver.resolve(
@@ -1066,3 +1129,50 @@ def test_presentation_yields_when_the_question_changes_the_query_shape():
         as_of=date(2026, 8, 18),
     )
     assert render_only.route == "PRESENTATION"
+
+
+def test_presentation_yields_to_typed_period_or_rank_changes() -> None:
+    """기간 후보나 순위 개수 변경은 기존 Artifact의 표현 전환으로 처리하지 않는다."""
+
+    previous = _prior_analysis_turn()
+    base = {
+        "requested_route": "PRESENTATION",
+        "presentation_type": "TABLE",
+        "presentation_explicit": True,
+        "metric_resolution": "missing",
+        "is_elliptical": True,
+    }
+
+    period_change = ConversationSlotResolver.resolve(
+        user_message="다른 기간을 표로 보여줘",
+        node1_output={
+            **base,
+            **_node1_period(
+                "2026-06-01T00:00:00+09:00",
+                "2026-07-01T00:00:00+09:00",
+                "다른 기간",
+            ),
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 18),
+    )
+    rank_change = ConversationSlotResolver.resolve(
+        user_message="상위 항목만 표로 보여줘",
+        node1_output={
+            **base,
+            "analysis_operation": "top_n",
+            "result_limit": 5,
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 18),
+    )
+
+    assert period_change.route == "ANALYSIS"
+    assert period_change.time_range == ResolvedTimeRange(
+        start=date(2026, 6, 1),
+        end_exclusive=date(2026, 7, 1),
+        source_text="다른 기간",
+    )
+    assert rank_change.route == "ANALYSIS"
+    assert rank_change.analysis_operation == "top_n"
+    assert rank_change.result_limit == 5

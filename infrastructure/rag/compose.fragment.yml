@@ -1,0 +1,30 @@
+services:
+  rag-postgres:
+    profiles: [rag, rag-candidate, rag-e2e]
+    image: pgvector/pgvector:pg16@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
+    container_name: answervice-rag-pgvector
+    environment:
+      POSTGRES_DB: ${RAG_DB_NAME:-answervice_rag}
+      POSTGRES_USER: ${RAG_DB_USER:-rag_local}
+      # 비활성 profile도 root Compose가 파싱되도록 비워 두되, 선택 시 PostgreSQL이 빈 암호로 시작하지 못하게 한다.
+      POSTGRES_PASSWORD: ${RAG_DB_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${RAG_DB_PORT:-55432}:5432"
+    volumes:
+      - answervice-rag-pgdata:/var/lib/postgresql/data
+      - ../rag/db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - database-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  answervice-rag-pgdata: {}
+
+networks:
+  database-network:
+    name: ${RAG_NETWORK_NAME:-answervice-network}

@@ -12,10 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.router import _controller, execution_gate, router
 from app.api.admin_router import admin_router
+from app.api.router import _controller, execution_gate, router
 from app.api.report_router import report_router
-from app.api.mcp_router import mcp_router
+from app.api.mcp_router import HEADER_MISMATCH, mcp_router
+from app.api.rag_router import rag_router
+from app.api.ml_router import router as ml_router
 from app.context import ContextValidationError, request_context, valid_trace_id
 from app.database import dispose_database
 from app.contracts import (
@@ -26,6 +28,7 @@ from app.contracts import (
     OPENAPI_DOCUMENT_VERSION,
     response_meta,
 )
+from app.report_contracts import report_assistant_retry_policy
 from app.services.report.scheduler import report_scheduler
 from app.services.report.scheduler import _enabled as report_scheduler_enabled
 from app.services.conversation.reconciler import conversation_recovery_worker
@@ -43,6 +46,52 @@ _HTTP_ERROR_MAP = {
     429: (ErrorCode.RATE_LIMITED, "요청이 많습니다. 잠시 후 다시 시도해 주세요."),
     503: (ErrorCode.DEPENDENCY_UNAVAILABLE, "필수 서비스가 준비되지 않았습니다."),
 }
+
+_REPORT_ASSISTANT_MODEL_ERROR_CODES = frozenset(
+    {
+        ErrorCode.REPORT_ASSISTANT_MODEL_AUTHENTICATION_FAILED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_RATE_LIMITED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_REQUEST_REJECTED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_TIMEOUT,
+        ErrorCode.REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED,
+        ErrorCode.REPORT_ASSISTANT_MODEL_CONTRACT_INVALID,
+        ErrorCode.REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID,
+        ErrorCode.REPORT_ASSISTANT_TURN_MODEL_FAILED,
+        ErrorCode.REPORT_ASSISTANT_TURN_MODEL_INVALID,
+    }
+)
+
+
+def _public_report_assistant_model_error(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> ErrorBody | None:
+    """승인된 Assistant 모델 실패만 내부 detail 없이 공개 재시도 계약으로 변환한다."""
+
+    path_parts = request.url.path.split("/")
+    if (
+        exc.status_code != 502
+        or len(path_parts) != 6
+        or path_parts[:4] != ["", "reports", "assistant", "sessions"]
+        or not path_parts[4]
+        or path_parts[5] not in {"messages", "review"}
+        or not isinstance(exc.detail, dict)
+    ):
+        return None
+    try:
+        code = ErrorCode(exc.detail.get("code"))
+    except (TypeError, ValueError):
+        return None
+    if code not in _REPORT_ASSISTANT_MODEL_ERROR_CODES:
+        return None
+
+    policy = report_assistant_retry_policy(code.value)
+    return ErrorBody(
+        code=code,
+        message="보고서 AI 요청을 처리하지 못했습니다.",
+        retryable=policy.retryable,
+        required_action=policy.required_action.value,
+    )
 
 
 def _allowed_origins() -> list[str]:
@@ -113,11 +162,13 @@ app.add_middleware(
         "Mcp-Method",
         "Mcp-Name",
     ],
-    expose_headers=["X-Request-Id", "X-Trace-Id"],
+    expose_headers=["X-Request-Id", "X-Trace-Id", "Retry-After"],
 )
 app.include_router(router)
 app.include_router(report_router)
 app.include_router(mcp_router)
+app.include_router(rag_router)
+app.include_router(ml_router)
 app.include_router(admin_router)
 
 
@@ -157,7 +208,18 @@ async def context_error(request: Request, exc: ContextValidationError) -> JSONRe
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """FastAPI body/header 검증 오류에서 누락 필드만 추출해 typed 422 응답을 만든다."""
+    """MCP header 오류 또는 일반 API의 누락 필드를 각 공개 계약으로 변환한다."""
+    if request.url.path == "/mcp":
+        return JSONResponse(
+            status_code=400,
+            content={
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": HEADER_MISMATCH,
+                    "message": "Required MCP request header is missing or malformed",
+                },
+            },
+        )
     context = request_context(request)
     missing = tuple(
         sorted(
@@ -184,14 +246,17 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
 async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """내부 HTTP detail을 노출하지 않고 상태별 공개 error code와 메시지로 정규화한다."""
     context = request_context(request)
-    code, message = _HTTP_ERROR_MAP.get(
-        exc.status_code,
-        (ErrorCode.INTERNAL_ERROR, "요청을 처리하지 못했습니다."),
-    )
+    error = _public_report_assistant_model_error(request, exc)
+    if error is None:
+        code, message = _HTTP_ERROR_MAP.get(
+            exc.status_code,
+            (ErrorCode.INTERNAL_ERROR, "요청을 처리하지 못했습니다."),
+        )
+        error = ErrorBody(code=code, message=message)
     body = ErrorResponse(
         data=EmptyData(),
         meta=response_meta(context),
-        error=ErrorBody(code=code, message=message),
+        error=error,
     )
     return JSONResponse(
         status_code=exc.status_code,

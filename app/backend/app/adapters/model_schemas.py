@@ -342,8 +342,9 @@ _NODE_OUTPUT_LIMITS: MappingProxyType[str, int] = MappingProxyType(
         "node2": 1280,
         "node2_repair": 1280,
         "node3": 500,
-        "report_assistant": 1280,
-        "report_assistant_turn": 700,
+        "report_assistant": 4096,
+        "report_assistant_turn": 4096,
+        "report_assistant_review": 900,
     }
 )
 
@@ -352,8 +353,9 @@ def bounded_node_output_limit(node: str, capacity_limit: int) -> int:
     """노드별 필요한 JSON 스키마 크기에 맞춰 출력 토큰 상한을 바운딩한다.
 
     Node 1(지표/기간 추출, ~100토큰)과 Node 3(한국어 2~4문장 요약, ~250토큰)의
-    불필요한 장문 생성을 제한하여 추론 지연을 대폭 단축하고, Node 2(복잡한 SQL)는
-    전체 용량을 유지한다.
+    불필요한 장문 생성을 제한한다. Report Assistant는 최대 12개의 typed
+    operation으로 다중 페이지를 구성할 수 있게 router의 검증된 출력 상한까지 사용하고,
+    Node 2 등 다른 노드의 별도 제한은 유지한다.
     """
     node_limit = _NODE_OUTPUT_LIMITS.get(node, capacity_limit)
     return min(capacity_limit, node_limit)

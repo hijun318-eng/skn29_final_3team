@@ -28,7 +28,6 @@ import {
   type TableSort,
 } from "./AnalysisStatePanelParts";
 import {
-  AnalysisArtifactReuseNotice,
   AnalysisConversationalSummary,
   AnalysisDataSection,
   AnalysisKpiSection,
@@ -40,12 +39,35 @@ import {
 /** 상태 패널이 표시할 수 있는 뷰 모드. 서버가 확정한 target_chart_type을 그대로 받는다. */
 export type ViewTypeMode = "SUMMARY" | "KPI" | "CHART" | "TABLE" | "FULL" | string;
 
+/** 렌더링할 구조화 결과의 개수와 형태만으로 대화 결과 폭을 결정한다. */
+export function analysisResultDensity(run: AnalysisRun, viewType: ViewTypeMode = "SUMMARY") {
+  const mode = (viewType || "SUMMARY").toUpperCase();
+  const showsMetrics = mode === "SUMMARY" || mode === "KPI" || mode === "FULL";
+  const showsTable = mode === "TABLE" || mode === "FULL";
+  const showsChart = mode === "CHART" || mode === "FULL"
+    || ["BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE", "DONUT"].includes(mode);
+  const metricCount = showsMetrics ? (run.metrics?.length ?? 0) : 0;
+  const columnCount = showsTable ? (run.table?.columns?.length ?? 0) : 0;
+  const rowCount = showsTable ? (run.table?.rows?.length ?? 0) : 0;
+
+  // 열 수는 가로 폭을, 행 수는 표 내부의 세로 스크롤을 결정한다.
+  // 행이 많다는 이유만으로 대화 말풍선 전체를 넓히지 않는다.
+  if (showsTable && columnCount > 3) return "wide";
+  if (showsChart && run.chart) return "regular";
+  if (showsTable) return columnCount === 1 && rowCount === 1 && metricCount <= 1 ? "compact" : "regular";
+  if (showsMetrics) {
+    if (metricCount <= 1) return "compact";
+    if (metricCount <= 3) return "regular";
+    return "wide";
+  }
+  return "regular";
+}
+
 /** 서버가 정규화한 분석 상태와 근거를 렌더링하며, 대화형 내러티브와 유연한 뷰 전환 툴바를 제공한다. */
 export function AnalysisStatePanel({
   run,
   viewType = "SUMMARY",
   onSuggestion,
-  onQuickView,
   onRetry,
   onCancel,
   onSave,
@@ -61,7 +83,6 @@ export function AnalysisStatePanel({
   run: AnalysisRun;
   viewType?: ViewTypeMode;
   onSuggestion?: (suggestion: string) => void;
-  onQuickView?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE" | "REPORT") => void;
   onRetry?: () => void;
   onCancel?: () => void;
   onSave?: () => void;
@@ -93,6 +114,12 @@ export function AnalysisStatePanel({
   const hasMetrics = Boolean(run.metrics?.length);
   const hasTableRows = Boolean(table?.columns?.length && table?.rows?.length);
   const isPresentationPending = Boolean(artifactReuse?.pending);
+  const resultDensity = !showResult || isPresentationPending
+    ? "compact"
+    : analysisResultDensity(run, normalizedViewType);
+  const widthClass = `analysis-state--${resultDensity}-width`;
+  // 차트 표현 전환은 서버가 확정한 차트 보기 요청에서만 제공한다. 기본 요약·KPI·전체 보기에는 노출하지 않는다.
+  const showChartDisplayControls = isChartMode;
   const displayedProcessViewModel = processViewModel ?? createAnalysisProcessViewModel({
     kind: isPresentationPending ? "PRESENTATION" : "ANALYSIS",
     status: "running",
@@ -104,9 +131,9 @@ export function AnalysisStatePanel({
     ["BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE", "DONUT"].includes(normalizedViewType)
       ? normalizedViewType.toLowerCase().replace("_", "-")
       : chart?.chartType?.toLocaleLowerCase("en-US") || "bar"
-  );
+  ).replaceAll("_", "-");
 
-  const supportedChartType = ["bar", "line", "area", "horizontal_bar", "horizontal-bar", "pie"].includes(chartType);
+  const supportedChartType = ["bar", "line", "area", "horizontal-bar", "pie", "donut"].includes(chartType);
   const hasTableColumns = Boolean(table?.columns?.length);
   const chartColumns = new Set(table?.columns ?? []);
   const chartFieldsMatchTable = Boolean(
@@ -116,7 +143,7 @@ export function AnalysisStatePanel({
     && chartColumns.has(chart.xField)
     && chart.yFields.every((field) => chartColumns.has(field)),
   );
-  const canRenderChart = supportedChartType && (chartFieldsMatchTable || (table?.rows?.length ?? 0) > 0);
+  const canRenderChart = supportedChartType && chartFieldsMatchTable && (table?.rows?.length ?? 0) > 0;
   // KPI·차트·표가 같은 통화 배율을 쓰도록 결과 한 건당 한 번만 배율을 정한다.
   const valueScale = useMemo(
     () => createAnalysisValueScale(run.metrics ?? [], table?.rows ?? []),
@@ -128,7 +155,6 @@ export function AnalysisStatePanel({
     color: seriesColor(index),
     unit: valueScale.unitLabel(columnUnit(field, run), field) ?? undefined,
   })) ?? [];
-  // 모든 y 계열이 통화일 때만 축·툴팁을 확정 배율로 바꾼다. 단위가 섞이면 계열별 원래 표기를 유지한다.
   // 모든 y 계열이 같은 통화 배율일 때만 축·툴팁을 그 배율로 통일한다. 배율이 갈리면 계열별 원래 표기를 유지한다.
   const chartCurrencyField = valueScale.sharedCurrencyLabel(chart?.yFields ?? []) ? (chart?.yFields?.[0] ?? null) : null;
   const chartTitle = chart ? `${columnLabel(chart.xField, run)}별 ${chartLines.map((line) => line.label).join("·")}` : "데이터 시각화";
@@ -141,6 +167,9 @@ export function AnalysisStatePanel({
     { type: "horizontal-bar", label: "가로 막대" },
     { type: "line", label: "선 그래프" },
     { type: "area", label: "영역 차트" },
+    ...(["pie", "donut"].includes(chartType)
+      ? [{ type: "pie", label: "원형" }, { type: "donut", label: "도넛" }]
+      : []),
   ];
 
   const chartDisplayType = chartDisplayOptions.some((option) => option.type === chartDisplayOverride)
@@ -185,13 +214,9 @@ export function AnalysisStatePanel({
     return () => window.cancelAnimationFrame(frame);
   }, [run.error?.code, run.traceId, viewState]);
 
-  const handleViewChange = (newView: "SUMMARY" | "KPI" | "CHART" | "TABLE") => {
-    onQuickView?.(newView);
-  };
-
   if (viewState === "LOADING" || viewState === "DELAYED") {
     return (
-      <section className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite" aria-busy="true">
+      <section className={`analysis-state analysis-state--${viewState.toLowerCase()} ${widthClass}`} data-result-density={resultDensity} aria-live="polite" aria-busy="true">
         <header>
           <LoaderCircle className="spin" size={18} aria-hidden="true" />
           <div><b>{copy.title}</b></div>
@@ -207,7 +232,7 @@ export function AnalysisStatePanel({
   }
 
   return (
-    <section ref={terminalStateRef} tabIndex={-1} className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite">
+    <section ref={terminalStateRef} tabIndex={-1} className={`analysis-state analysis-state--${viewState.toLowerCase()} ${widthClass}`} data-result-density={resultDensity} aria-live="polite">
       {!showResult && (
         <AnalysisFailureState
           run={run}
@@ -220,15 +245,13 @@ export function AnalysisStatePanel({
 
       {showResult && (
         <div className="analysis-conversational-container">
-          {isPresentationPending
-            ? <AnalysisProgress model={displayedProcessViewModel} />
-            : artifactReuse && <AnalysisArtifactReuseNotice run={run} pending={false} />}
+          {isPresentationPending && <AnalysisProgress model={displayedProcessViewModel} />}
 
           {!isPresentationPending && <div className="analysis-visual-body">
             {isSummaryMode && (
               <div className="analysis-summary-stack">
-                <AnalysisConversationalSummary run={run} />
-                {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} />}
+                <AnalysisConversationalSummary run={run} valueScale={valueScale} />
+                {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} showAsOf={false} />}
               </div>
             )}
 
@@ -250,6 +273,7 @@ export function AnalysisStatePanel({
                     chartTitle={chartTitle}
                     chartDisplayOptions={chartDisplayOptions}
                     chartDisplayType={chartDisplayType}
+                    showDisplayControls={showChartDisplayControls}
                     setChartDisplayOverride={setChartDisplayOverride}
                     chartLines={chartLines}
                     chartHeight={chartHeight}
@@ -281,8 +305,8 @@ export function AnalysisStatePanel({
 
             {isFullMode && (
               <div className="analysis-full-view-stack">
-                <AnalysisConversationalSummary run={run} />
-                {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} />}
+                <AnalysisConversationalSummary run={run} valueScale={valueScale} />
+                {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} showAsOf={false} />}
                 {chart && <AnalysisVisualSection
                   run={run}
                   chart={chart}
@@ -293,6 +317,7 @@ export function AnalysisStatePanel({
                   chartTitle={chartTitle}
                   chartDisplayOptions={chartDisplayOptions}
                   chartDisplayType={chartDisplayType}
+                  showDisplayControls={false}
                   setChartDisplayOverride={setChartDisplayOverride}
                   chartLines={chartLines}
                   chartHeight={chartHeight}
@@ -300,6 +325,7 @@ export function AnalysisStatePanel({
                   columnLabel={columnLabel}
                   valueScale={valueScale}
                   chartCurrencyField={chartCurrencyField}
+                  showAsOf={false}
                 />}
                 {hasTableRows && <AnalysisDataSection
                   run={run}
@@ -313,23 +339,18 @@ export function AnalysisStatePanel({
                   columnLabel={columnLabel}
                   columnUnit={columnUnit}
                   valueScale={valueScale}
+                  showAsOf={false}
                 />}
               </div>
             )}
           </div>}
 
           {!isPresentationPending && <AnalysisUnifiedToolbar
-            activeView={viewType}
-            onViewChange={onQuickView ? handleViewChange : undefined}
             onSave={onSave}
             onCreateReportDraft={onCreateReportDraft}
             onOpenEvidence={onOpenEvidence}
             onPreview={onPreview}
             saveDisabled={saveDisabled}
-            viewActionsDisabled={suggestionsDisabled || Boolean(artifactReuse?.pending)}
-            hasMetrics={hasMetrics}
-            hasChart={Boolean(chart && canRenderChart)}
-            hasTable={hasTableRows}
           />}
         </div>
       )}

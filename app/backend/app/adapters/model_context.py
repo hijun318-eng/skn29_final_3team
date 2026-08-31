@@ -10,6 +10,8 @@ from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app.services.context.display_metadata import metric_display_label
+
 
 _MODEL_CONTRACT_NAMES = (
     "schema_context",
@@ -110,7 +112,7 @@ def metric_term(metric_id: str, package: Any) -> Any:
 
 def metric_label(metric_id: str, package: Any) -> str:
     """DataHub Glossary가 소유하는 지표의 사용자 표시명을 반환한다."""
-    return metric_term(metric_id, package).label
+    return metric_display_label(metric_term(metric_id, package))
 
 
 def metric_unit(metric_id: str, package: Any) -> str:

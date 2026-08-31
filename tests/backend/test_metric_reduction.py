@@ -10,7 +10,8 @@ path.insert(0, str(BACKEND))
 
 from app.services.analysis.evidence import _reduce_context_metric, _reduce_metric_values
 from app.services.analysis.responses import _presentation_rows
-from app.services.analysis.result_narrative import _format_value, explanation_is_grounded
+from app.services.analysis.result_narrative import _format_value, explanation_is_grounded, grounded_summary
+from app.services.context.display_metadata import metric_display_label, metric_display_unit
 from app.services.analysis.result_validator import PipelineResultValidator
 from app.contracts import PeriodEvidence
 from app.services.context.builder import ContextMetric
@@ -78,7 +79,40 @@ class MetricReductionTests(unittest.TestCase):
 
     def test_ratio_display_is_percent_rounded_and_zero_is_not_erased(self):
         self.assertEqual("65.23%", _format_value(Decimal("0.652306318"), "ratio"))
-        self.assertEqual("0 KRW", _format_value(Decimal("0"), "KRW"))
+        self.assertEqual("0 원", _format_value(Decimal("0"), "KRW"))
+
+    def test_user_display_metadata_uses_governed_korean_alias_without_metric_registry(self):
+        term = SimpleNamespace(
+            label="Arbitrary Revenue Measure",
+            aliases=("Arbitrary Revenue Measure", "승인 매출 지표"),
+        )
+
+        self.assertEqual("승인 매출 지표", metric_display_label(term))
+        self.assertEqual("원", metric_display_unit("KRW_per_business_unit"))
+
+    def test_grounded_summary_uses_display_metadata_but_keeps_canonical_metric_contract(self):
+        metric = ContextMetric(
+            "revenue", "serving.metrics", "amount", "sum", "business_date", (),
+            "revenue_value", "KRW",
+        )
+        term = SimpleNamespace(
+            id="revenue",
+            label="Arbitrary Revenue Measure",
+            aliases=("Arbitrary Revenue Measure", "승인 매출 지표"),
+            unit="KRW",
+        )
+        package = SimpleNamespace(metrics=(metric,), metric_terms=(term,))
+
+        summary = grounded_summary(
+            {
+                "rows": [{"revenue_value": 1200}],
+                "period": {"start": "2026-08-01", "end_exclusive": "2026-09-01"},
+            },
+            package,
+        )
+
+        self.assertEqual("2026년 8월의 승인 매출 지표 합계 계산 결과는 1,200 원입니다.", summary)
+        self.assertEqual("Arbitrary Revenue Measure", term.label)
 
     def test_support_metric_columns_are_hidden_only_from_user_presentation(self):
         package = SimpleNamespace(
@@ -141,6 +175,56 @@ class MetricReductionTests(unittest.TestCase):
             rows,
         )
         self.assertNotIn("alpha_value__comparison", rows[1])
+
+    def test_ratio_period_comparison_preserves_business_values_and_hides_operands(self):
+        numerator = ContextMetric(
+            "numerator", "serving.metrics", "numerator", "sum", "business_date", (),
+            "internal_numerator", "units", visibility="SUPPORT",
+        )
+        denominator = ContextMetric(
+            "denominator", "serving.metrics", "denominator", "sum", "business_date", (),
+            "internal_denominator", "units", visibility="SUPPORT",
+        )
+        ratio = ContextMetric(
+            "ratio", "", "", "ratio", "", (), "business_ratio", "ratio",
+            numerator_metric_id="numerator",
+            denominator_metric_id="denominator",
+            zero_policy="null_on_zero_denominator",
+        )
+        package = SimpleNamespace(
+            metrics=(numerator, denominator, ratio),
+            metric_terms=(SimpleNamespace(id="ratio"),),
+        )
+        source_rows = (
+            {
+                "business_ratio": 2.0,
+                "business_ratio__comparison": 3.0,
+                "internal_numerator": 10,
+                "internal_numerator__comparison": 9,
+                "internal_denominator": 5,
+                "internal_denominator__comparison": 3,
+            },
+        )
+
+        self.assertFalse(
+            PipelineResultValidator._ratio_value_violation(list(source_rows), package)
+        )
+        self.assertEqual(
+            Decimal("3"),
+            _reduce_context_metric(ratio, package, source_rows, "__comparison"),
+        )
+        self.assertEqual(
+            (
+                {"period": "2042-06-01", "business_ratio": 2.0},
+                {"period": "2042-05-01", "business_ratio": 3.0},
+            ),
+            _presentation_rows(
+                package,
+                source_rows,
+                PeriodEvidence(start="2042-06-01", end_exclusive="2042-07-01"),
+                PeriodEvidence(start="2042-05-01", end_exclusive="2042-06-01"),
+            ),
+        )
 
     def test_narrative_rejects_inclusive_wording_for_exclusive_period_end(self):
         query = {

@@ -168,7 +168,12 @@ def test_time_and_comparison_gaps_are_visible_instead_of_silently_enabled() -> N
     unsupported_ids = {
         item["id"]
         for item in candidate["metrics"]
-        if "operands" in item or item.get("aggregation") == "exists"
+        if item.get("aggregation") == "exists"
+    }
+    ratio_ids = {
+        item["id"]
+        for item in candidate["metrics"]
+        if "operands" in item
     }
 
     assert trend_cases and all(
@@ -198,6 +203,13 @@ def test_time_and_comparison_gaps_are_visible_instead_of_silently_enabled() -> N
         in case["technical_blockers"]
         for case in comparison_cases
         if case["metric_ids"][0] in unsupported_ids
+    )
+    assert ratio_ids
+    assert all(
+        "PERIOD_COMPARISON_AGGREGATION_UNSUPPORTED"
+        not in case["technical_blockers"]
+        for case in comparison_cases
+        if case["metric_ids"][0] in ratio_ids
     )
 
 

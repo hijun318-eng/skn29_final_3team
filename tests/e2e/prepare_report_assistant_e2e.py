@@ -17,6 +17,87 @@ import psycopg
 
 E2E_DATABASE = "app_db_report_assistant_e2e"
 NAMESPACE = UUID("6b711229-e54e-4f3a-8d0e-525ef9101cf5")
+E2E_PRODUCT_RELEASE_ID = "ANSWERVICE-E2E-REPORT-ASSISTANT-v1:" + "1" * 64
+E2E_PERMISSION_SNAPSHOT_ID = "permission:e2e-report-assistant-v1"
+E2E_SEMANTIC_RELEASE_ID = "semantic:e2e-report-assistant-v1"
+_E2E_RELEASE_CREATED_AT = "2026-08-28T00:00:00+00:00"
+
+
+def _canonical_sha256(payload: object) -> str:
+    """운영 release contract와 같은 canonical JSON SHA-256을 계산한다."""
+
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _release_fixture() -> dict[str, object]:
+    """실제 release로 가장하지 않는 결정론적 E2E 전용 complete receipt를 만든다."""
+
+    images = [{
+        "component": "report-assistant-e2e",
+        "digest": "sha256:" + "2" * 64,
+    }]
+    release_vector = {
+        "data_release_id": "data:e2e-report-assistant-v1",
+        "semantic_release_id": E2E_SEMANTIC_RELEASE_ID,
+        "prompt_release_id": "prompt:e2e-report-assistant-v1",
+        "policy_release_id": "policy:e2e-report-assistant-v1",
+        "runtime_release_id": "runtime:e2e-report-assistant-v1",
+    }
+    evidence = {
+        "source": {
+            "commit_sha": "3" * 40,
+            "dirty": False,
+            "dirty_patch_sha256": None,
+        },
+        "images": images,
+        "migration": {
+            "revision": "report-assistant-e2e-v1",
+            "chain_sha256": "4" * 64,
+        },
+        "model": {
+            "release_id": "MODEL-RELEASE-E2E-v1",
+            "manifest_sha256": "5" * 64,
+        },
+        "catalog": {
+            "release_id": E2E_SEMANTIC_RELEASE_ID,
+            "manifest_sha256": "6" * 64,
+            "projection_sha256": "7" * 64,
+        },
+        "release_vector": release_vector,
+    }
+    checksum_payload = {
+        "schema_version": "ProductReleaseEvidenceManifest.v1",
+        "product_release_id": E2E_PRODUCT_RELEASE_ID,
+        "evidence": evidence,
+        "created_at": _E2E_RELEASE_CREATED_AT,
+    }
+    manifest = {
+        **checksum_payload,
+        "manifest_sha256": _canonical_sha256(checksum_payload),
+    }
+    return {
+        "product_release_id": E2E_PRODUCT_RELEASE_ID,
+        "permission_snapshot_id": E2E_PERMISSION_SNAPSHOT_ID,
+        "semantic_release_id": E2E_SEMANTIC_RELEASE_ID,
+        "manifest": manifest,
+        "images": images,
+        "release_vector": release_vector,
+    }
+
+
+def _require_e2e_connection(connection: psycopg.Connection[object]) -> None:
+    """fixture write가 이름이 고정된 격리 DB 밖으로 향하면 즉시 차단한다."""
+
+    current_database = connection.execute("SELECT current_database()").fetchone()
+    if current_database is None or current_database[0] != E2E_DATABASE:
+        raise RuntimeError("Report Assistant fixture는 격리 E2E DB에서만 실행할 수 있습니다.")
 
 
 def _deployment_values() -> dict[str, str]:
@@ -31,7 +112,8 @@ def _deployment_values() -> dict[str, str]:
         values[key.strip()] = value.strip()
     required = {
         "APP_ADMIN_USER", "APP_ADMIN_PASSWORD", "APP_MIGRATION_USER",
-        "APP_MIGRATION_PASSWORD", "APP_DB_USER", "AUTH_PRINCIPALS_HOST_FILE",
+        "APP_MIGRATION_PASSWORD", "APP_DB_USER", "APP_CATALOG_PUBLISHER_USER",
+        "AUTH_PRINCIPALS_HOST_FILE",
     }
     missing = sorted(key for key in required if not values.get(key))
     if missing:
@@ -56,7 +138,17 @@ def _analyst_subject(values: dict[str, str]) -> UUID:
 def _dsn(user: str, password: str, database: str) -> str:
     """로컬 loopback PostgreSQL DSN을 URL credential escaping과 함께 생성한다."""
 
-    return f"postgresql://{quote(user)}:{quote(password)}@127.0.0.1:15432/{database}"
+    port_text = os.getenv("ANSWERVICE_APP_POSTGRES_PORT", "15432")
+    try:
+        port = int(port_text)
+    except ValueError as error:
+        raise RuntimeError("ANSWERVICE_APP_POSTGRES_PORT는 정수여야 합니다.") from error
+    if not 1 <= port <= 65535:
+        raise RuntimeError("ANSWERVICE_APP_POSTGRES_PORT는 1~65535 범위여야 합니다.")
+    return (
+        f"postgresql://{quote(user, safe='')}:{quote(password, safe='')}"
+        f"@127.0.0.1:{port}/{database}"
+    )
 
 
 def _ensure_database(values: dict[str, str]) -> None:
@@ -84,20 +176,29 @@ def _migrate(values: dict[str, str]) -> str:
     config.set_main_option("script_location", str(backend / "migrations"))
     config.set_main_option(
         "sqlalchemy.url",
-        _dsn(values["APP_MIGRATION_USER"], values["APP_MIGRATION_PASSWORD"], E2E_DATABASE),
+        _dsn(
+            values["APP_MIGRATION_USER"],
+            values["APP_MIGRATION_PASSWORD"],
+            E2E_DATABASE,
+        ).replace("%", "%%"),
     )
-    previous = os.environ.get("APP_DB_USER")
-    os.environ["APP_DB_USER"] = values["APP_DB_USER"]
+    migration_roles = {
+        "APP_DB_USER": values["APP_DB_USER"],
+        "APP_CATALOG_PUBLISHER_USER": values["APP_CATALOG_PUBLISHER_USER"],
+    }
+    previous = {name: os.environ.get(name) for name in migration_roles}
+    os.environ.update(migration_roles)
     try:
         head = ScriptDirectory.from_config(config).get_current_head()
         if head is None:
             raise RuntimeError("Alembic head를 확인할 수 없습니다.")
         command.upgrade(config, "head")
     finally:
-        if previous is None:
-            os.environ.pop("APP_DB_USER", None)
-        else:
-            os.environ["APP_DB_USER"] = previous
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     return head
 
 
@@ -105,13 +206,19 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
     """승인 Artifact lineage와 이를 참조하는 draft 한 건만 test DB에 멱등 저장한다."""
 
     ids = {
-        name: uuid5(NAMESPACE, name)
+        name: uuid5(NAMESPACE, f"complete-receipt-v1:{name}")
         for name in (
             "analysis_definition", "analysis_request", "query_execution",
             "artifact", "report_definition", "report_block",
         )
     }
-    query_id = "e2e_query_report_assistant_1"
+    query_id = "e2e_query_report_assistant_complete_receipt_v1"
+    release = _release_fixture()
+    receipt = (
+        str(release["product_release_id"]),
+        str(release["permission_snapshot_id"]),
+        str(release["semantic_release_id"]),
+    )
     snapshot = {"columns": ["month", "revenue"], "rows": [{"month": "2026-08", "revenue": 17000000}]}
     chart = {"chart_type": "bar", "x_field": "month", "y_fields": ["revenue"]}
     revenue_metric = {
@@ -139,6 +246,9 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
         "policy_version": "e2e-policy-v1",
         "metrics": [revenue_metric],
         "metric_values": [{**revenue_metric, "value": 17000000}],
+        "product_release_id": receipt[0],
+        "permission_snapshot_id": receipt[1],
+        "semantic_release_id": receipt[2],
     }
     checksum = hashlib.sha256(
         json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -146,7 +256,44 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
     with psycopg.connect(
         _dsn(values["APP_MIGRATION_USER"], values["APP_MIGRATION_PASSWORD"], E2E_DATABASE)
     ) as connection:
+        _require_e2e_connection(connection)
         with connection.cursor() as cursor:
+            manifest = release["manifest"]
+            if not isinstance(manifest, dict):
+                raise RuntimeError("E2E product release manifest 형식이 올바르지 않습니다.")
+            cursor.execute(
+                """
+                INSERT INTO governance.product_release_manifests (
+                    product_release_id, contract_version, manifest_sha256,
+                    manifest_json, source_commit_sha, source_dirty,
+                    dirty_patch_sha256, image_digests_json, migration_revision,
+                    migration_chain_sha256, model_release_id,
+                    model_manifest_sha256, catalog_release_id,
+                    catalog_manifest_sha256, catalog_projection_sha256,
+                    release_vector_json, created_at
+                ) VALUES (
+                    %s, 'ProductReleaseEvidenceManifest.v1', %s,
+                    %s::jsonb, %s, false, NULL, %s::jsonb, %s, %s,
+                    %s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz
+                )
+                ON CONFLICT (product_release_id) DO NOTHING
+                """,
+                (
+                    receipt[0], manifest["manifest_sha256"],
+                    json.dumps(manifest, ensure_ascii=False, sort_keys=True),
+                    manifest["evidence"]["source"]["commit_sha"],
+                    json.dumps(release["images"], ensure_ascii=False),
+                    manifest["evidence"]["migration"]["revision"],
+                    manifest["evidence"]["migration"]["chain_sha256"],
+                    manifest["evidence"]["model"]["release_id"],
+                    manifest["evidence"]["model"]["manifest_sha256"],
+                    manifest["evidence"]["catalog"]["release_id"],
+                    manifest["evidence"]["catalog"]["manifest_sha256"],
+                    manifest["evidence"]["catalog"]["projection_sha256"],
+                    json.dumps(release["release_vector"], ensure_ascii=False),
+                    manifest["created_at"],
+                ),
+            )
             cursor.execute(
                 """
                 INSERT INTO analysis_v1.analysis_definitions
@@ -164,12 +311,20 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                 INSERT INTO chat.analysis_requests
                     (request_id, request_type, user_id, user_role,
                      question_text_redacted, question_hash, ambiguity_status,
-                     sql_policy_version, status, trace_id, started_at, completed_at)
+                     sql_policy_version, status, trace_id, started_at, completed_at,
+                     product_release_id, permission_snapshot_id, semantic_release_id)
                 VALUES (%s, 'CHAT', %s, 'analyst', '월별 승인 매출 요약', %s,
-                        'CLEAR', 'e2e-policy-v1', 'SUCCEEDED', %s, now(), now())
-                ON CONFLICT (request_id) DO NOTHING
+                        'CLEAR', 'e2e-policy-v1', 'SUCCEEDED', %s, now(), now(),
+                        %s, %s, %s)
+                ON CONFLICT (request_id) DO UPDATE SET
+                    product_release_id = EXCLUDED.product_release_id,
+                    permission_snapshot_id = EXCLUDED.permission_snapshot_id,
+                    semantic_release_id = EXCLUDED.semantic_release_id
                 """,
-                (ids["analysis_request"], owner, "b" * 64, uuid5(NAMESPACE, "trace").hex),
+                (
+                    ids["analysis_request"], owner, "b" * 64,
+                    uuid5(NAMESPACE, "complete-receipt-v1:trace").hex, *receipt,
+                ),
             )
             cursor.execute(
                 """
@@ -201,10 +356,11 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                 INSERT INTO artifact.analysis_artifacts
                     (artifact_id, request_id, query_execution_id, artifact_type,
                      title, data_snapshot_json, chart_spec_json, narrative_markdown,
-                     evidence_json, freshness_status, status, artifact_checksum)
+                     evidence_json, freshness_status, status, artifact_checksum,
+                     product_release_id, permission_snapshot_id, semantic_release_id)
                 VALUES (%s, %s, %s, 'TABLE', 'E2E 월별 승인 매출',
                         %s::jsonb, %s::jsonb, '2026년 8월 승인 매출 근거입니다.',
-                        %s::jsonb, 'FRESH', 'APPROVED', %s)
+                        %s::jsonb, 'FRESH', 'APPROVED', %s, %s, %s, %s)
                 ON CONFLICT (artifact_id) DO UPDATE SET
                     data_snapshot_json = EXCLUDED.data_snapshot_json,
                     chart_spec_json = EXCLUDED.chart_spec_json,
@@ -212,11 +368,15 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                     evidence_json = EXCLUDED.evidence_json,
                     freshness_status = EXCLUDED.freshness_status,
                     status = EXCLUDED.status,
-                    artifact_checksum = EXCLUDED.artifact_checksum
+                    artifact_checksum = EXCLUDED.artifact_checksum,
+                    product_release_id = EXCLUDED.product_release_id,
+                    permission_snapshot_id = EXCLUDED.permission_snapshot_id,
+                    semantic_release_id = EXCLUDED.semantic_release_id
                 """,
                 (
                     ids["artifact"], ids["analysis_request"], ids["query_execution"],
                     json.dumps(snapshot), json.dumps(chart), json.dumps(evidence), checksum,
+                    *receipt,
                 ),
             )
             cursor.execute(
@@ -226,11 +386,14 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
             cursor.execute(
                 """
                 INSERT INTO report_v1.report_definition_versions
-                    (definition_id, version, status, title, orientation, currency_display_unit)
-                VALUES (%s, 1, 'draft', 'Report Assistant E2E 보고서', 'portrait', 'auto')
+                    (definition_id, version, status, title, orientation,
+                     currency_display_unit, product_release_id,
+                     permission_snapshot_id, semantic_release_id)
+                VALUES (%s, 1, 'draft', 'Report Assistant E2E 보고서',
+                        'portrait', 'auto', %s, %s, %s)
                 ON CONFLICT (definition_id, version) DO NOTHING
                 """,
-                (ids["report_definition"],),
+                (ids["report_definition"], *receipt),
             )
             cursor.execute(
                 """
@@ -247,6 +410,61 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                     query_id, ids["analysis_definition"],
                 ),
             )
+            for object_kind, object_id, capability in (
+                ("ARTIFACT", str(ids["artifact"]), '{"analysis.run":"1.0.0"}'),
+                (
+                    "REPORT",
+                    f"definition:{ids['report_definition']}:v1",
+                    '{"report.lifecycle":"1.0.0"}',
+                ),
+            ):
+                cursor.execute(
+                    """
+                    INSERT INTO governance.product_release_bindings (
+                        object_kind, object_id, product_release_id,
+                        permission_snapshot_id, semantic_release_id,
+                        capability_release_vector_json, evidence_refs_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, '[]'::jsonb)
+                    ON CONFLICT (object_kind, object_id) DO NOTHING
+                    """,
+                    (object_kind, object_id, *receipt, capability),
+                )
+            verified = cursor.execute(
+                """
+                SELECT
+                    (a.product_release_id, a.permission_snapshot_id,
+                     a.semantic_release_id) = (%s, %s, %s),
+                    (v.product_release_id, v.permission_snapshot_id,
+                     v.semantic_release_id) = (%s, %s, %s),
+                    count(binding.binding_id) = 2
+                FROM artifact.analysis_artifacts a
+                JOIN report_v1.report_definition_versions v
+                  ON v.definition_id = %s AND v.version = 1
+                JOIN governance.product_release_bindings binding
+                  ON (
+                    binding.object_kind = 'ARTIFACT'
+                    AND binding.object_id = %s
+                  ) OR (
+                    binding.object_kind = 'REPORT'
+                    AND binding.object_id = %s
+                  )
+                WHERE a.artifact_id = %s
+                  AND binding.product_release_id = %s
+                  AND binding.permission_snapshot_id = %s
+                  AND binding.semantic_release_id = %s
+                GROUP BY a.product_release_id, a.permission_snapshot_id,
+                         a.semantic_release_id, v.product_release_id,
+                         v.permission_snapshot_id, v.semantic_release_id
+                """,
+                (
+                    *receipt, *receipt, ids["report_definition"],
+                    str(ids["artifact"]),
+                    f"definition:{ids['report_definition']}:v1",
+                    ids["artifact"], *receipt,
+                ),
+            ).fetchone()
+            if verified != (True, True, True):
+                raise RuntimeError("E2E Artifact·Report release receipt 결속 검증에 실패했습니다.")
     return {name: str(value) for name, value in ids.items()}
 
 

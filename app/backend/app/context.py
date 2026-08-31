@@ -23,7 +23,7 @@ from app.database import get_database_session
 bearer_auth = HTTPBearer(
     auto_error=False,
     scheme_name="BearerAuth",
-    description="서버가 HMAC·DB revocation·현재 계정 상태로 검증하는 session token",
+    description="서버가 AUTH_PRINCIPALS_FILE의 SHA-256 digest로 검증하는 Bearer token",
 )
 SESSION_COOKIE = "answervice_session"
 _TRACE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")

@@ -4,11 +4,17 @@ import {
   ENTERPRISE_SERIES_COLORS,
   analysisTitle,
   formatCompactNumber,
+  formatMetricDisplayValue,
   formatMetricValue,
   isNumericValue,
+  localizeAnalysisSummary,
+  localizeMetricDefinition,
+  metricDisplayLabel,
+  metricDisplayUnit,
   metricUnitLabel,
   reportTitleForAnalysis,
   seriesColor,
+  userFacingPeriodLabel,
 } from "../../app/frontend/src/utils/presentation.ts";
 
 const structuredRun = {
@@ -34,6 +40,10 @@ assert.equal(analysisTitle({
 assert.equal(reportTitleForAnalysis(structuredRun), "2026년 7월 객실 매출 분석 보고서");
 assert.doesNotMatch(reportTitleForAnalysis(structuredRun), /이 문장을 제목으로 쓰지 마세요/);
 assert.equal(reportTitleForAnalysis({ question: "원문 질문" }), "분석 결과 보고서");
+assert.equal(userFacingPeriodLabel("2026-05-01", "2026-06-01"), "2026년 5월 1일부터 31일까지");
+assert.equal(userFacingPeriodLabel("2026-12-15", "2027-01-03"), "2026년 12월 15일부터 2027년 1월 2일까지");
+assert.equal(userFacingPeriodLabel("2026-06-01", "2026-06-01"), "");
+assert.equal(userFacingPeriodLabel("invalid", "2026-06-01"), "");
 
 assert.equal(formatMetricValue(0), "0");
 assert.equal(formatMetricValue(null, { unit: "원" }), "—");
@@ -42,11 +52,31 @@ assert.equal(formatMetricValue(0.652306318, { unit: "ratio" }), "65.23%");
 assert.equal(formatMetricValue(0.652306318, { unit: "ratio", includeUnit: false }), "65.23");
 assert.equal(formatMetricValue(-12.345, { maximumFractionDigits: 1 }), "-12.3");
 assert.equal(formatMetricValue("계산 불가", { unit: "원" }), "계산 불가");
+assert.equal(formatMetricDisplayValue(29, { unit: "count" }), "29 건");
+assert.equal(formatMetricDisplayValue(0.652306318, { unit: "ratio" }), "65.23%");
+assert.equal(formatMetricDisplayValue(6114218700, { unit: "KRW", displayUnit: "원" }), "6,114,218,700 원");
+assert.equal(formatMetricDisplayValue("계산 불가", { unit: "count" }), "계산 불가");
 assert.equal(formatCompactNumber(125000000), "1.3억");
 assert.equal(isNumericValue("0"), true);
 assert.equal(isNumericValue(""), false);
 assert.equal(isNumericValue(null), false);
 assert.equal(metricUnitLabel("객실 매출", "원"), "객실 매출 (원)");
+assert.equal(metricDisplayLabel({ label: "Any Metric", displayLabel: "승인 지표" }), "승인 지표");
+assert.equal(metricDisplayLabel({ label: "원본 지표" }), "원본 지표");
+assert.equal(metricDisplayUnit("KRW"), "원");
+assert.equal(metricDisplayUnit("KRW_per_available_room_night"), "원");
+assert.equal(localizeAnalysisSummary(
+  "2026년 6월의 Room Revenue 합계 계산 결과는 6,632,629,550 KRW입니다.",
+  [{ label: "Room Revenue", displayLabel: "객실 매출", unit: "KRW", displayUnit: "원" }],
+), "2026년 6월 객실 매출 합계는 6,632,629,550 원입니다.");
+assert.equal(localizeAnalysisSummary(
+  "Room Revenue는 요청 기간에 계산됩니다.",
+  [{ label: "Room Revenue", displayLabel: "객실 매출", unit: "KRW", displayUnit: "원" }],
+), "객실 매출은 요청 기간에 계산됩니다.");
+assert.equal(
+  localizeMetricDefinition("승인된 금액은 KRW 단위다."),
+  "승인된 금액은 원 단위다.",
+);
 
 assert.equal(new Set(ENTERPRISE_SERIES_COLORS).size, 8);
 assert.equal(seriesColor(0), ENTERPRISE_SERIES_COLORS[0]);

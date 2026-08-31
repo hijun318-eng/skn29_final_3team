@@ -14,6 +14,7 @@ const definition = {
   contract_version: "REPORT-v1.0.0",
   definition_id: "00000000-0000-0000-0000-000000000010",
   version: 3,
+  draft_revision: 4,
   status: "approved",
   title: "7월 영업 실적 보고서",
   blocks: [],
@@ -66,11 +67,15 @@ assert.equal(approved.orientation, "landscape");
 assert.equal(approved.currencyDisplayUnit, "million");
 
 await client.replaceDraftBlocks(definition.definition_id, 3, [], {
+  title: "  8월 영업 실적 보고서  ",
+  expectedDraftRevision: 4,
   orientation: "landscape",
   currencyDisplayUnit: "million",
 });
 assert.deepEqual(JSON.parse(requests.at(-1).init.body), {
   blocks: [],
+  title: "8월 영업 실적 보고서",
+  expected_draft_revision: 4,
   orientation: "landscape",
   currency_display_unit: "million",
 });
@@ -78,9 +83,25 @@ assert.deepEqual(JSON.parse(requests.at(-1).init.body), {
 const reentered = await client.getDefinition(definition.definition_id, 3);
 assert.equal(reentered.orientation, "landscape");
 assert.equal(reentered.currencyDisplayUnit, "million");
-
-await client.replaceDraftBlocks(definition.definition_id, 3, []);
-assert.deepEqual(JSON.parse(requests.at(-1).init.body), { blocks: [] }, "legacy caller remains compatible");
+assert.equal(reentered.draftRevision, 4);
+await assert.rejects(
+  () => client.replaceDraftBlocks(definition.definition_id, 3, [], { expectedDraftRevision: 0 }),
+  /draft revision/,
+);
+await assert.rejects(
+  () => client.replaceDraftBlocks(definition.definition_id, 3, [], {
+    expectedDraftRevision: 4,
+    title: "잘못된\n제목",
+  }),
+  /줄바꿈·제어문자 없이/,
+);
+await assert.rejects(
+  () => client.replaceDraftBlocks(definition.definition_id, 3, [], {
+    expectedDraftRevision: 4,
+    title: "잘못된\t제목",
+  }),
+  /줄바꿈·제어문자 없이/,
+);
 
 const legacyUnit = normalizeReportDefinition({ ...definition, currency_display_unit: "billion" });
 assert.equal(legacyUnit.currencyDisplayUnit, "billion");
@@ -91,6 +112,10 @@ assert.throws(
 assert.throws(
   () => normalizeReportDefinition({ ...definition, currency_display_unit: "trillion" }),
   /금액 표시 단위/,
+);
+assert.throws(
+  () => normalizeReportDefinition({ ...definition, draft_revision: 0 }),
+  /draft revision/,
 );
 
 const metadata = await client.getFinalDocument(definition.definition_id, 3);
@@ -127,7 +152,7 @@ assert.match(applicationStyles, /--answer-report-workbench:#e8eef6/);
 assert.doesNotMatch(applicationStyles, /\.theme-light \[data-report-render-root="print"\]/);
 assert.match(
   reportSources.controller,
-  /replaceDraftBlocks\([\s\S]*\{ orientation: draft\.reportOrientation, currencyDisplayUnit: draft\.reportCurrencyPolicy\.displayUnit \}/,
+  /replaceDraftBlocks\([\s\S]*title,[\s\S]*expectedDraftRevision: definition\.draftRevision,[\s\S]*orientation: draft\.reportOrientation,[\s\S]*currencyDisplayUnit: draft\.reportCurrencyPolicy\.displayUnit/,
   "the editor must persist display settings with the server draft",
 );
 const previewSource = sourceSection(reportSources.controller, "const openPreview", "const openEditor");
@@ -139,6 +164,11 @@ assert.doesNotMatch(
 );
 const editorSource = sourceSection(reportSources.controller, "const openEditor", "const saveDraft");
 assert.match(editorSource, /loadFrontendDraft\(window\.sessionStorage, current\.definitionId, current\.version\)/);
+assert.doesNotMatch(
+  editorSource,
+  /localDraft\.title !== current\.title|title: localDraft\.title/,
+  "server revision title must remain authoritative when a local layout snapshot is restored",
+);
 const saveSource = sourceSection(reportSources.controller, "const saveDraft", "const approveDefinition");
 assert.ok(
   saveSource.indexOf("replaceDraftBlocks") < saveSource.indexOf("saveFrontendDraft"),
@@ -157,6 +187,7 @@ assert.match(
   /catch \{\s*localSnapshotSaved = false;\s*\}\s*applyDefinition\(\{ \.\.\.saved/,
 );
 assert.match(saveSource, /서버에는 저장했지만 이 브라우저의 임시 복구본은 갱신하지 못했습니다/);
+assert.match(saveSource, /title: draft\.titleRef\.current\.trim|const title = draft\.titleRef\.current\.trim/);
 assert.match(reportSources.finalDocument, /new AbortController\(\)/);
 assert.match(reportSources.finalDocument, /FINAL_DOCUMENT_TIMEOUT_MS = 15_000/);
 assert.match(reportSources.finalDocument, /controller\.abort\(\)/);

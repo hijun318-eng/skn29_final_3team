@@ -2103,14 +2103,14 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         bundle = _bundle_with_dimension_bridge()
         for asset in bundle["schema_context"]["assets"]:
             if asset["fqn"] == "orbit.lake.helium_fact":
-                asset["entitlements"] = {"roles": ["admin"], "domains": []}
+                asset["entitlements"] = {"roles": ["report_admin"], "domains": []}
         for metric in bundle["metric_rules"]:
             source = metric["source"]
             if (
                 source["kind"] == "column"
                 and source["field"]["asset_fqn"] == "orbit.lake.helium_fact"
             ):
-                metric["governance"]["permission"]["roles"] = ["admin"]
+                metric["governance"]["permission"]["roles"] = ["report_admin"]
         transport = RuntimeTransport(bundle)
         datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.datahub))
         trino_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.trino))

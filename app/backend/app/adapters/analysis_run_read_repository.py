@@ -108,8 +108,15 @@ class AnalysisRunReadRepositoryMixin:
             raise KeyError("Analysis Run을 찾을 수 없습니다.")
         return self._run(row)
 
-    async def list_runs(self) -> list[dict[str, Any]]:
-        """현재 owner의 run에 최신 query ID와 artifact 시간 증거를 결합해 시작 시각 역순으로 반환한다."""
+    async def list_runs(
+        self,
+        *,
+        limit: int = 100,
+        approved_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        """현재 owner의 run을 승인 여부와 개수 상한을 적용해 시작 시각 역순으로 반환한다."""
+        if not 1 <= limit <= 100:
+            raise ValueError("limit은 1 이상 100 이하여야 합니다.")
         try:
             async with self._sessionmaker() as session:
                 rows = (await session.execute(
@@ -135,14 +142,34 @@ class AnalysisRunReadRepositoryMixin:
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
                         LEFT JOIN LATERAL (
-                            SELECT artifact_id, evidence_json FROM artifact.analysis_artifacts
-                            WHERE request_id = r.request_id LIMIT 1
+                            SELECT artifact_id, evidence_json, status
+                            FROM artifact.analysis_artifacts
+                            WHERE request_id = r.request_id
+                              AND (NOT :approved_only OR status = 'APPROVED')
+                            ORDER BY CASE status
+                              WHEN 'APPROVED' THEN 0
+                              WHEN 'DRAFT' THEN 1
+                              ELSE 2
+                            END, artifact_id
+                            LIMIT 1
                         ) a ON true
                         WHERE d.owner_id = :owner_id
+                          AND (
+                            NOT :approved_only
+                            OR (
+                              r.status IN ('SUCCEEDED', 'PARTIAL')
+                              AND a.artifact_id IS NOT NULL
+                            )
+                          )
                         ORDER BY l.created_at DESC, l.request_id DESC
+                        LIMIT :limit
                         """
                     ),
-                    {"owner_id": self._owner_id},
+                    {
+                        "owner_id": self._owner_id,
+                        "approved_only": approved_only,
+                        "limit": limit,
+                    },
                 )).mappings()
                 return [self._run(row) for row in rows]
         except SQLAlchemyError as error:

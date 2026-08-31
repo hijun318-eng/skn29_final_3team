@@ -69,6 +69,8 @@ from app.services.analysis.result_validator import PipelineResultValidator  # no
 from app.services.context.metric_resolver import (  # noqa: E402
     MetricResolver,
     _explicit_calendar_time_bucket,
+    _merge_period_recheck,
+    _reconcile_explicit_calendar_bucket,
     _reconcile_comparison_axis,
     _validate_selected_data_availability,
 )
@@ -103,6 +105,41 @@ from src.data.governance_contract import (  # noqa: E402
     dimension_members,
 )
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V1  # noqa: E402
+
+
+def test_period_recheck_cannot_overwrite_route_or_result_shape() -> None:
+    """기간 전용 재검토가 표현 전환을 새 분석으로 오염시키지 않는다."""
+
+    original = {
+        "requested_route": "PRESENTATION",
+        "presentation_type": "TABLE",
+        "presentation_explicit": True,
+        "analysis_operation": None,
+        "intent_candidates": [],
+        "period_candidates": [],
+        "period_relationship": "single",
+    }
+    rechecked = {
+        **original,
+        "requested_route": "ANALYSIS",
+        "analysis_operation": "aggregate",
+        "intent_candidates": ["aggregate"],
+        "period_candidates": [
+            {
+                "start": "2026-08-01T00:00:00+09:00",
+                "end_exclusive": "2026-09-01T00:00:00+09:00",
+                "source_text": "8월",
+            }
+        ],
+    }
+
+    merged = _merge_period_recheck(original, rechecked)
+
+    assert merged["requested_route"] == "PRESENTATION"
+    assert merged["presentation_type"] == "TABLE"
+    assert merged["analysis_operation"] is None
+    assert merged["intent_candidates"] == []
+    assert merged["period_candidates"] == rechecked["period_candidates"]
 
 
 def _runtime_bundle(
@@ -595,8 +632,19 @@ def test_pre_resolved_ratio_keeps_an_independent_business_operand_term() -> None
     } == {"amount_per_event", "amount_total"}
 
 
-def test_pre_resolved_ratio_period_comparison_is_a_typed_unsupported_strategy() -> None:
-    """미승인 ratio 기간 비교는 지표 모호성이 아니라 실행 전 semantic 차단이다."""
+def _add_comparison_window(assets: list[dict]) -> None:
+    for asset in assets:
+        asset["time_metadata"] = {
+            **deepcopy(asset["time_metadata"]),
+            "comparison_window": {
+                "start_parameter": "comparison_start_at",
+                "end_parameter": "comparison_end_at",
+            },
+        }
+
+
+def test_pre_resolved_ratio_period_comparison_uses_the_approved_runtime_scope() -> None:
+    """동일 asset·time·filter 계약과 comparison window가 있는 ratio는 실행 요청으로 확정한다."""
 
     engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
     assets = asyncio.run(
@@ -610,11 +658,98 @@ def test_pre_resolved_ratio_period_comparison_is_a_typed_unsupported_strategy() 
             },
         )
     )
+    _add_comparison_window(assets)
     model = _Normalizer()
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000023"),
         trace_id="v2-runtime-pre-resolved-ratio-comparison",
         user_id=UUID("20000000-0000-0000-0000-000000000024"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    selected_assets, _question, structured = asyncio.run(
+        MetricResolver(engine, model).resolve(
+            AnalysisRequest(
+                question="selected intervals only",
+                resolved_slots=ResolvedSlots(
+                    metric_id="amount_per_event",
+                    metric_ids=("amount_per_event",),
+                    period_start="2026-08-01",
+                    period_end_exclusive="2026-08-02",
+                    comparison_period_start="2026-07-01",
+                    comparison_period_end_exclusive="2026-07-02",
+                    analysis_operation="period_comparison",
+                ),
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert model.input is None
+    assert structured["analysis_operation"] == "period_comparison"
+    assert structured["period_relationship"] == "comparison"
+    assert len(structured["period_candidates"]) == 2
+    assert set(structured["metric_ids"]) == {
+        "amount_per_event",
+        "amount_total",
+        "event_count",
+    }
+    assert {
+        metric["id"]
+        for asset in selected_assets
+        for metric in asset["metrics"]
+    } == {"amount_per_event", "amount_total", "event_count"}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing_window", "different_asset", "different_time", "different_filters"],
+)
+def test_pre_resolved_ratio_period_comparison_fails_closed_on_scope_mismatch(
+    mutation: str,
+) -> None:
+    engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "selected intervals only",
+            {
+                "role": "analyst",
+                "parameters": {},
+                "preferred_metric_ids": ["amount_per_event"],
+            },
+        )
+    )
+    if mutation != "missing_window":
+        _add_comparison_window(assets)
+    metrics = {
+        metric["id"]: metric
+        for asset in assets
+        for metric in asset["metrics"]
+    }
+    denominator = metrics["event_count"]
+    if mutation == "different_asset":
+        denominator["asset_fqn"] = "other.core.events"
+    elif mutation == "different_time":
+        denominator["time_field"] = "other_event_at"
+    elif mutation == "different_filters":
+        denominator["required_filters"] = [
+            {
+                "field": "active",
+                "operator": "eq",
+                "value_type": "boolean",
+                "value": True,
+                "parameter": "active_flag",
+            }
+        ]
+
+    model = _Normalizer()
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000025"),
+        trace_id=f"v2-runtime-ratio-comparison-{mutation}",
+        user_id=UUID("20000000-0000-0000-0000-000000000026"),
         role=Role.ANALYST,
         as_of=date(2026, 8, 19),
     )
@@ -1016,8 +1151,9 @@ class _Normalizer:
                 }
             ],
             "period_relationship": "single",
-            "requested_route": "general",
-            "presentation_type": "table",
+            "requested_route": "ANALYSIS",
+            "presentation_type": "BAR",
+            "presentation_explicit": False,
             "is_elliptical": False,
         }
 
@@ -1268,12 +1404,17 @@ class _TwoPeriodMultiMetricNormalizer(_CrossMetricComparisonNormalizer):
 
 
 @pytest.mark.parametrize(
-    ("operation", "dimensions"),
-    (("aggregate", []), ("breakdown", ["observation_segment"])),
+    ("operation", "dimensions", "relationship"),
+    (
+        ("aggregate", [], "comparison"),
+        ("breakdown", ["observation_segment"], "comparison"),
+        ("aggregate", [], "single"),
+    ),
 )
 def test_verified_two_period_axis_reconciles_only_general_result_shapes(
     operation: str,
     dimensions: list[str],
+    relationship: str,
 ) -> None:
     periods = [
         {"start": "2042-05-01", "end_exclusive": "2042-06-01"},
@@ -1282,7 +1423,7 @@ def test_verified_two_period_axis_reconciles_only_general_result_shapes(
 
     reconciled = _reconcile_comparison_axis(
         analysis_operation=operation,
-        relationship="comparison",
+        relationship=relationship,
         intents=[operation],
         periods=periods,
         selected_metric_ids=["measure_alpha", "measure_beta"],
@@ -1297,6 +1438,24 @@ def test_verified_two_period_axis_reconciles_only_general_result_shapes(
         "comparison",
         ["period_comparison"],
     )
+
+
+def test_duplicate_periods_do_not_promote_single_axis_to_comparison() -> None:
+    period = {"start": "2042-05-01", "end_exclusive": "2042-06-01"}
+
+    reconciled = _reconcile_comparison_axis(
+        analysis_operation="aggregate",
+        relationship="single",
+        intents=["aggregate"],
+        periods=[period, dict(period)],
+        selected_metric_ids=["measure_alpha"],
+        measurement_source_texts=["Measure Alpha"],
+        selected_dimensions=[],
+        result_limit=None,
+        ambiguity={"is_ambiguous": False},
+    )
+
+    assert reconciled == ("aggregate", "single", ["aggregate"])
 
 
 @pytest.mark.parametrize("operation", ("time_trend", "top_n"))
@@ -1384,6 +1543,15 @@ class _MissingNormalizer(_Normalizer):
         return result
 
 
+class _NonEllipticalMissingNormalizer(_MissingNormalizer):
+    """승인 지표와 무관한 완결형 발화를 재현한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["is_elliptical"] = False
+        return result
+
+
 def test_node1_can_identify_support_metric_but_only_business_metric_is_selectable() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
@@ -1401,6 +1569,8 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
         user_id=UUID("20000000-0000-0000-0000-000000000002"),
         role=Role.ANALYST,
         as_of=date(2026, 8, 19),
+        product_release_id="verified-product-release",
+        semantic_release_id=str(assets[0]["context_release"]),
     )
 
     selected_assets, _question, structured = asyncio.run(
@@ -1423,6 +1593,9 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
         if term["kind"] == "support_metric"
     }
     assert structured["selected_metric_id"] == "amount_per_event"
+    assert structured["requested_route"] == "ANALYSIS"
+    assert structured["presentation_explicit"] is False
+    assert structured["presentation_type"] is None
     assert set(structured["metric_ids"]) == {
         "amount_total",
         "event_count",
@@ -1488,6 +1661,8 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
         user_id=UUID("20000000-0000-0000-0000-000000000002"),
         role=Role.ANALYST,
         as_of=date(2026, 8, 19),
+        product_release_id="verified-product-release",
+        semantic_release_id=str(assets[0]["context_release"]),
     )
     request = AnalysisRequest(
         question="Amount per Event",
@@ -1497,6 +1672,8 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
     selected_assets, _question, structured = asyncio.run(
         resolver.resolve(request, context, assets)
     )
+    for asset in selected_assets:
+        asset["product_release_id"] = "verified-product-release"
     package = asyncio.run(
         PipelineContextService(engine, ContextPackageBuilder()).build(
             request,
@@ -1885,6 +2062,27 @@ def test_explicit_calendar_cadence_is_finite_and_ambiguous_safe(
     """날짜 자체나 충돌 단위를 cadence로 만들지 않고 명시 문법만 typed bucket으로 변환한다."""
 
     assert _explicit_calendar_time_bucket(question) == expected
+
+
+def test_explicit_calendar_cadence_survives_presentation_candidate() -> None:
+    """월별 재집계 요구를 단순 View 전환 후보가 지우지 않는지 검증한다."""
+
+    reconciled = _reconcile_explicit_calendar_bucket(
+        {
+            "metric_resolution": "selected",
+            "requested_route": "PRESENTATION",
+            "analysis_operation": "aggregate",
+            "intent_candidates": ["aggregate"],
+            "analysis_time_bucket": None,
+            "result_limit": None,
+        },
+        "월별로 그래프로 비교해줘",
+    )
+
+    assert reconciled["requested_route"] == "PRESENTATION"
+    assert reconciled["analysis_operation"] == "time_trend"
+    assert reconciled["intent_candidates"] == ["time_trend"]
+    assert reconciled["analysis_time_bucket"] == "month"
 
 
 def test_explicit_calendar_cadence_repairs_dimensionless_shape_without_second_model_call() -> None:
@@ -2338,7 +2536,7 @@ def test_cross_metric_comparison_uses_one_shared_period_without_requesting_a_sec
     ]
 
 
-def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
+def test_two_period_ratio_comparison_rejects_a_different_asset_output() -> None:
     engine = _engine(_runtime_bundle())
     question = "Amount per Event and Account Count across two periods"
     assets = asyncio.run(
@@ -2348,6 +2546,7 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
             {"role": "analyst", "parameters": {"active": True}},
         )
     )
+    _add_comparison_window(assets)
     resolver = MetricResolver(engine, _TwoPeriodMultiMetricNormalizer())
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000001"),
@@ -2357,7 +2556,7 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
         as_of=date(2026, 8, 19),
     )
 
-    with pytest.raises(ContextBuildError, match="Ratio metric"):
+    with pytest.raises(ContextBuildError) as raised:
         asyncio.run(
             resolver.resolve(
                 AnalysisRequest(question=question, parameters={"active": True}),
@@ -2365,6 +2564,8 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
                 assets,
             )
         )
+
+    assert raised.value.code is ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED
 
 
 def test_support_metric_search_reaches_asset_and_returns_typed_unavailable_error() -> None:
@@ -2605,6 +2806,44 @@ def test_missing_measurement_alone_offers_approved_business_metrics() -> None:
     assert [
         option.metric_id for option in raised.value.disambiguation_options
     ] == ["amount_per_event"]
+
+
+def test_non_elliptical_missing_measurement_returns_typed_context_error() -> None:
+    """범위 밖 완결형 발화는 런타임 장애(ValueError)가 아닌 typed 미일치여야 한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _NonEllipticalMissingNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-non-elliptical-missing-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="오늘 서울 날씨를 알려줘",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert raised.value.partial_context["metric_resolution"] == "missing"
+    assert raised.value.partial_context["intent_candidates"] == []
+    assert raised.value.partial_context["is_elliptical"] is False
 
 
 def test_selected_v2_metric_prunes_unapproved_join_edges() -> None:

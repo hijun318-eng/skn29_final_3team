@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
+from functools import wraps
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-
-import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "app" / "backend"), str(ROOT)]
@@ -22,7 +21,17 @@ from app.services.admin_connections import (  # noqa: E402
 from app.services.readiness import AppDatabaseReadiness  # noqa: E402
 
 
-@pytest.mark.asyncio
+def _run_async(test):
+    """추가 pytest plugin 없이 coroutine 테스트를 격리 event loop에서 실행한다."""
+
+    @wraps(test)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(test(*args, **kwargs))
+
+    return wrapper
+
+
+@_run_async
 async def test_source_catalog_probe_uses_only_fixed_read_only_sql_and_closes() -> None:
     calls: list[tuple[str, float]] = []
     closed: list[bool] = []
@@ -64,7 +73,7 @@ async def test_source_catalog_probe_uses_only_fixed_read_only_sql_and_closes() -
     assert all(deadline > 0 for _sql, deadline in calls)
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_source_catalog_probe_closes_after_bounded_transport_failure() -> None:
     state = {"closed": False, "deadline": 0.0}
 
@@ -88,7 +97,7 @@ async def test_source_catalog_probe_closes_after_bounded_transport_failure() -> 
     assert state["closed"] is True
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_admin_connection_projection_contains_exact_nine_server_targets() -> None:
     with (
         patch.object(

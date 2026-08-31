@@ -7,4 +7,5 @@
 *.docx binary
 *.xlsx binary
 *.pptx binary
+infrastructure/database/**/04_sqlserver_crm/*.sql -text -whitespace
 docs/markdown/ai_docs/legacy/** -whitespace

@@ -76,19 +76,7 @@ def match_metric(
     expression = projection.this if isinstance(projection, exp.Alias) else projection
     filter_where: frozenset[tuple[str, str, str]] = frozenset()
 
-    # 1. FILTER (WHERE ...) 구문 검증
-    if filtered:
-        if not isinstance(expression, exp.Filter):
-            return None
-        filter_clause = expression.args.get("expression")
-        if not isinstance(filter_clause, exp.Where) or filter_clause.this is None:
-            return None
-        filter_where = frozenset(clause_comparisons(filter_clause.this, scope.scope))
-        expression = expression.this
-    elif isinstance(expression, exp.Filter):
-        return None
-
-    # 2. 비율 지표 (Ratio Metric) 검증
+    # 1. 비율 지표는 기간 FILTER가 ratio 전체가 아니라 두 leaf 집계에 있어야 한다.
     if str(metric.aggregation).casefold() == "ratio":
         if metrics_by_id is None:
             return None
@@ -99,8 +87,21 @@ def match_metric(
             assets,
             scope.scope,
             unique_fields,
+            filtered=filtered,
         )
         return MetricMatch(str(metric.id), where) if where is not None else None
+
+    # 2. 일반 집계의 FILTER (WHERE ...) 구문 검증
+    if filtered:
+        if not isinstance(expression, exp.Filter):
+            return None
+        filter_clause = expression.args.get("expression")
+        if not isinstance(filter_clause, exp.Where) or filter_clause.this is None:
+            return None
+        filter_where = frozenset(clause_comparisons(filter_clause.this, scope.scope))
+        expression = expression.this
+    elif isinstance(expression, exp.Filter):
+        return None
 
     try:
         field = field_identity(f"{metric.asset_fqn}.{metric.field}", assets)
@@ -133,8 +134,10 @@ def _match_ratio_expression(
     assets: dict[str, tuple[Any, frozenset[str]]],
     scope: ScopeEvidence,
     unique_fields: frozenset[str],
+    *,
+    filtered: bool,
 ) -> frozenset[tuple[str, str, str]] | None:
-    """Trino 정수 나눗셈을 막는 ``CAST(분자식 AS DOUBLE) / NULLIF(분모식, 0)``를 검증합니다."""
+    """비율 형태와, 비교 시 두 operand의 동일한 leaf 기간 FILTER를 검증한다."""
     if metric.zero_policy != "null_on_zero_denominator" or not isinstance(expression, exp.Div):
         return None
     numerator = metrics_by_id.get(metric.numerator_metric_id)
@@ -158,25 +161,63 @@ def _match_ratio_expression(
         denominator_field = field_identity(f"{denominator.asset_fqn}.{denominator.field}", assets)
     except ValueError:
         return None
+    numerator_expression = numerator_node.this
+    denominator_expression = denominator_node.this
+    numerator_filter: frozenset[tuple[str, str, str]] = frozenset()
+    denominator_filter: frozenset[tuple[str, str, str]] = frozenset()
+    if filtered:
+        numerator_leaf = _filtered_ratio_operand(numerator_expression, scope)
+        denominator_leaf = _filtered_ratio_operand(denominator_expression, scope)
+        if numerator_leaf is None or denominator_leaf is None:
+            return None
+        numerator_expression, numerator_filter = numerator_leaf
+        denominator_expression, denominator_filter = denominator_leaf
+        if numerator_filter != denominator_filter:
+            return None
+    elif isinstance(numerator_expression, exp.Filter) or isinstance(
+        denominator_expression, exp.Filter
+    ):
+        return None
     numerator_where = _match_expression(
-        numerator_node.this,
+        numerator_expression,
         str(numerator.aggregation).casefold(),
         numerator_field,
         scope,
-        frozenset(),
+        numerator_filter,
         unique_fields,
     )
     denominator_where = _match_expression(
-        denominator_node.this,
+        denominator_expression,
         str(denominator.aggregation).casefold(),
         denominator_field,
         scope,
-        frozenset(),
+        denominator_filter,
         unique_fields,
     )
-    if numerator_where is None or denominator_where is None:
+    if (
+        numerator_where is None
+        or denominator_where is None
+        or (filtered and numerator_where != denominator_where)
+    ):
         return None
     return numerator_where | denominator_where
+
+
+def _filtered_ratio_operand(
+    expression: exp.Expression,
+    scope: ScopeEvidence,
+) -> tuple[exp.Expression, frozenset[tuple[str, str, str]]] | None:
+    """한 ratio operand의 leaf aggregate와 그 기간 predicate 증거를 분리한다."""
+
+    if not isinstance(expression, exp.Filter):
+        return None
+    filter_clause = expression.args.get("expression")
+    if not isinstance(filter_clause, exp.Where) or filter_clause.this is None:
+        return None
+    comparisons = frozenset(clause_comparisons(filter_clause.this, scope))
+    if not comparisons:
+        return None
+    return expression.this, comparisons
 
 
 def _match_exists_expression(

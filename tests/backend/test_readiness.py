@@ -37,6 +37,50 @@ class _Session:
 
 
 class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
+    def test_mcp_rate_limit_probe_rejects_missing_settings(self) -> None:
+        for environment in (
+            {},
+            {"MCP_TOOL_RATE_LIMIT_QUOTA": "30"},
+            {"MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS": "60"},
+        ):
+            with self.subTest(environment=environment), patch.dict(
+                "os.environ", environment, clear=True
+            ):
+                self.assertEqual(
+                    "not_ready", AppDatabaseReadiness._mcp_rate_limit_probe()
+                )
+
+    def test_mcp_rate_limit_probe_rejects_invalid_settings(self) -> None:
+        for quota, window_seconds in (
+            ("invalid", "60"),
+            ("0", "60"),
+            ("30", "0"),
+        ):
+            with self.subTest(
+                quota=quota, window_seconds=window_seconds
+            ), patch.dict(
+                "os.environ",
+                {
+                    "MCP_TOOL_RATE_LIMIT_QUOTA": quota,
+                    "MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS": window_seconds,
+                },
+                clear=True,
+            ):
+                self.assertEqual(
+                    "not_ready", AppDatabaseReadiness._mcp_rate_limit_probe()
+                )
+
+    def test_mcp_rate_limit_probe_accepts_explicit_valid_settings(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "MCP_TOOL_RATE_LIMIT_QUOTA": "30",
+                "MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS": "60",
+            },
+            clear=True,
+        ):
+            self.assertEqual("ready", AppDatabaseReadiness._mcp_rate_limit_probe())
+
     def test_probe_timeout_uses_bounded_two_second_production_budget(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(2.0, AppDatabaseReadiness._probe_timeout())
@@ -172,19 +216,16 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         }
         for active, expected in ((True, "ready"), (False, "not_ready")):
             with self.subTest(active=active):
-                session = AsyncMock()
-                session.execute.return_value = MagicMock(scalar_one=lambda: active)
-
-                @asynccontextmanager
-                async def account_scope(*_args, **_kwargs):
-                    yield session
-
+                account_probe = AsyncMock(return_value=active)
                 with (
                     patch.dict("os.environ", environment, clear=True),
-                    patch("app.services.readiness.session_scope", account_scope),
+                    patch(
+                        "app.services.readiness.auth_account_store_ready",
+                        account_probe,
+                    ),
                 ):
                     self.assertEqual(expected, await AppDatabaseReadiness._auth_probe())
-                session.execute.assert_awaited_once()
+                account_probe.assert_awaited_once_with("postgresql://readiness")
 
     async def test_trino_probe_follows_same_origin_pages_to_terminal_success(self) -> None:
         requests: list[httpx.Request] = []
@@ -300,6 +341,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(probe, "_model_probe", AsyncMock(return_value="ready")),
             patch.object(probe, "_auth_probe", AsyncMock(return_value="ready")),
+            patch.object(probe, "_mcp_rate_limit_probe", return_value="ready"),
             patch.object(probe, "_report_scheduler_probe", return_value="ready"),
         ):
             result = await probe.check()
@@ -309,6 +351,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("ready", result["trino"])
         self.assertEqual("ready", result["datahub_transport"])
         self.assertEqual("ready", result["catalog_manifest"])
+        self.assertEqual("ready", result["mcp_rate_limit"])
 
     async def test_datahub_probe_uses_canonical_environment_client(self) -> None:
         class Catalog:
@@ -554,6 +597,36 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
                 (request.url.host, request.url.path, request.headers["authorization"])
                 for request in requests
             },
+        )
+
+    async def test_compiler_only_model_probe_does_not_call_node2(self) -> None:
+        requests: list[httpx.Request] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "gpt-5.4-mini"}]},
+                request=request,
+            )
+
+        environment = {
+            "OPENAI_ENDPOINT": "https://primary.model.invalid",
+            "OPENAI_API_KEY": "primary-token",
+            "OPENAI_MODEL": "gpt-5.4-mini",
+            "NODE2_MODEL_PROVIDER": "qwen",
+            "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
+            "NODE2_MODEL_API_TOKEN": "node2-token",
+            "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
+            "ANALYSIS_SQL_GENERATION_MODE": "compiler_only",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                self.assertEqual("ready", await AppDatabaseReadiness._model_probe(client))
+
+        self.assertEqual(
+            [("primary.model.invalid", "/v1/models")],
+            [(request.url.host, request.url.path) for request in requests],
         )
 
     async def test_model_probe_rejects_invalid_route_token(self) -> None:

@@ -9,16 +9,17 @@ class PromptRegistryTests(unittest.TestCase):
         first = list_prompt_metadata()
         second = list_prompt_metadata()
         self.assertEqual(first, second)
-        self.assertEqual(len(first), 7)
+        self.assertEqual(len(first), 8)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.29.0",
+                "node1.normalize": "PROMPT-v1.30.0",
                 "node2.repair": "PROMPT-v1.4.0",
                 "node2.sql": "PROMPT-v1.8.0",
                 "node2.sql_only": "PROMPT-v1.2.0",
-                "node3.explain": "PROMPT-v1.2.5",
+                "node3.explain": "PROMPT-v1.3.0",
                 "report.assistant": "PROMPT-v1.0.0",
-                "report.assistant.turn": "PROMPT-v1.5.0",
+                "report.assistant.review": "PROMPT-v1.2.1",
+                "report.assistant.turn": "PROMPT-v1.13.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
         )
@@ -58,6 +59,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("query repairer", prompts["node2.repair"].text)
         self.assertIn("사용자용 근거 설명자", prompts["node3.explain"].text)
         self.assertIn("자연스러운 한국어 2~4문장", prompts["node3.explain"].text)
+        self.assertIn("첫 문장에서 질문에 대한 결론", prompts["node3.explain"].text)
+        self.assertNotIn("화면 하단의 KPI 카드", prompts["node3.explain"].text)
         assistant = get_prompt("report.assistant")
         self.assertNotIn(
             assistant.metadata()["hash"],
@@ -65,11 +68,6 @@ class PromptRegistryTests(unittest.TestCase):
         )
         self.assertIn("APPROVED Analysis Artifact", assistant.text)
         self.assertIn("Do not generate SQL", assistant.text)
-
-        assistant_turn = get_prompt("report.assistant.turn")
-        self.assertIn("Use update_text only", assistant_turn.text)
-        self.assertIn("type is text", assistant_turn.text)
-        self.assertIn("use add_text", assistant_turn.text)
 
     def test_sql_only_node2_prompt_is_dormant_and_has_one_output_field(self):
         prompt = get_prompt("node2.sql_only")

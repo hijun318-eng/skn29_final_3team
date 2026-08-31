@@ -100,6 +100,48 @@ ALLOWED_RUNTIME_JSON = {
     "infrastructure/database/datahub/decisions/metric_retirement_20260820.v1.json": (
         "validated product-scope retirement decision"
     ),
+    "config/rag/access_policy.json": "RAG role policy validated by SearchAccessPolicy tests",
+    "config/rag/answer.json": "RAG answer safety limits validated by AnswerSafetySettings",
+    "config/rag/benchmark.json": "RAG evaluation-only benchmark configuration",
+    "config/rag/embedding.json": "versioned RAG embedding runtime configuration",
+    "config/rag/embedding_models.json": "RAG evaluation-only embedding comparison matrix",
+    "config/rag/vector_retrieval.json": "RAG retrieval limits validated by VectorSettings tests",
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/feature_contract.json": (
+        "frozen synthetic ML candidate feature contract"
+    ),
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/freeze_manifest.json": (
+        "checksum-bound synthetic ML candidate freeze receipt"
+    ),
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/hidden_test_d_approval.json": (
+        "synthetic ML candidate hidden-test decision evidence"
+    ),
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/independent_test_report.json": (
+        "synthetic ML candidate independent evaluation evidence"
+    ),
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model.approval.json": (
+        "non-production CONDITIONAL_PASS synthetic ML candidate decision"
+    ),
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model_manifest.json": (
+        "checksum-bound synthetic ML candidate model manifest"
+    ),
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/runtime_feature_contract.json": (
+        "synthetic ML candidate runtime feature parity evidence"
+    ),
+    "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/selection_trials.json": (
+        "synthetic ML candidate training selection evidence"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/feature_contract.json": (
+        "frozen synthetic HGBR optimization candidate feature contract"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/model_manifest.json": (
+        "checksum-bound non-production HGBR optimization candidate manifest"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/release_checksums.json": (
+        "validated non-production HGBR optimization candidate checksums"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/selection.json": (
+        "synthetic HGBR optimization candidate selection evidence"
+    ),
     "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json": (
         "sealed backend deployment retrieval Gate contract"
     ),

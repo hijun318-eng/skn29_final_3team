@@ -39,10 +39,8 @@ function durationLabel(startedAt: string, endedAt: string | null) {
 /** 서버 필터와 cursor를 적용해 최신 trail 목록과 선택한 상세를 독립적으로 조회한다. */
 export function AuditTrailPanel({
   client,
-  onApiStateChange,
 }: {
   client: AuditTrailClient;
-  onApiStateChange?: (state: "checking" | "connected" | "error") => void;
 }) {
   const [draftFilters, setDraftFilters] = useState<AuditTrailFilters>(EMPTY_FILTERS);
   const [filters, setFilters] = useState<AuditTrailFilters>(EMPTY_FILTERS);
@@ -67,7 +65,6 @@ export function AuditTrailPanel({
     const generation = ++listGeneration.current;
     setListLoading(true);
     setListError("");
-    onApiStateChange?.("checking");
     try {
       const nextPage = await client.listAuditTrails(filters, cursor);
       if (listGeneration.current !== generation) return;
@@ -78,18 +75,16 @@ export function AuditTrailPanel({
         setSelectedTrailId("");
         setDetail(null);
       }
-      onApiStateChange?.("connected");
     } catch {
       if (listGeneration.current !== generation) return;
       setPage(EMPTY_PAGE);
       setSelectedTrailId("");
       setDetail(null);
       setListError(auditErrorMessage());
-      onApiStateChange?.("error");
     } finally {
       if (listGeneration.current === generation) setListLoading(false);
     }
-  }, [client, cursor, filters, listRetry, onApiStateChange]);
+  }, [client, cursor, filters, listRetry]);
 
   useEffect(() => {
     void loadTrails();
@@ -108,25 +103,22 @@ export function AuditTrailPanel({
     setDetail(null);
     setDetailError("");
     setDetailLoading(true);
-    onApiStateChange?.("checking");
     client.getAuditTrail(selectedTrailId)
       .then((nextDetail) => {
         if (detailGeneration.current === generation && nextDetail.trail_id === selectedTrailId) {
           setDetail(nextDetail);
-          onApiStateChange?.("connected");
         }
       })
       .catch(() => {
         if (detailGeneration.current === generation) {
           setDetailError(auditErrorMessage());
-          onApiStateChange?.("error");
         }
       })
       .finally(() => {
         if (detailGeneration.current === generation) setDetailLoading(false);
       });
     return () => { detailGeneration.current += 1; };
-  }, [client, detailRetry, onApiStateChange, selectedTrailId]);
+  }, [client, detailRetry, selectedTrailId]);
 
   useEffect(() => {
     if (!selectedTrailId || typeof window === "undefined" || !window.matchMedia("(max-width: 760px)").matches) return;

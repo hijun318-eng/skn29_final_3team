@@ -13,6 +13,7 @@ import {
   type ReportOrientation,
   type ValidationResult,
 } from "./reportDocumentTypes.ts";
+import { REPORT_ARTIFACT_VIEW_IDS } from "../../contracts/reportContract.ts";
 
 const MAX_BLOCK_HEIGHT = A4_PAGE_LAYOUT.landscape.contentRows;
 
@@ -135,11 +136,9 @@ export function validateReportDocument(document: unknown): ValidationResult {
       if (block?.kind === "artifact") {
         validateArtifactReference(block.artifactRef, `${blockPath}.artifactRef`, errors);
         if (!isPresentationMode(block.presentationMode)) errors.push(`${blockPath}.presentationMode is invalid`);
-        if (!Array.isArray(block.visibleViews) || block.visibleViews.length === 0) {
-          errors.push(`${blockPath}.visibleViews must contain at least one view`);
-        } else if (block.visibleViews.some((view) => !isNonEmptyString(view))
-          || new Set(block.visibleViews).size !== block.visibleViews.length) {
-          errors.push(`${blockPath}.visibleViews must contain unique non-empty view IDs`);
+        if (!Array.isArray(block.visibleViews) || block.visibleViews.length !== 1
+          || !REPORT_ARTIFACT_VIEW_IDS.includes(block.visibleViews[0])) {
+          errors.push(`${blockPath}.visibleViews must contain exactly one supported atomic view ID`);
         }
       } else if (block?.kind === "markdown") {
         if (typeof block.markdown !== "string") errors.push(`${blockPath}.markdown must be a string`);

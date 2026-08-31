@@ -10,11 +10,12 @@ import {
 } from "./reportDocument.ts";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
-  WHOLE_ARTIFACT_SETTINGS_VERSION,
-  WHOLE_ARTIFACT_VIEWS,
+  ARTIFACT_BLOCK_SETTINGS_VERSION,
+  ATOMIC_ARTIFACT_VIEWS,
   estimateArtifactBlockLayout,
   wholeArtifactSettings,
 } from "./reportArtifactLayout.js";
+import { normalizeAtomicReportBlockContent } from "../../contracts/reportContract.ts";
 
 function orderedBlocks(blocks) {
   return [...blocks].sort((left, right) => (
@@ -34,12 +35,12 @@ export function frontendTextBlockLayout(block, orientation = "landscape") {
   const visualLines = String(block.content || "")
     .split("\n")
     .reduce((count, line) => count + Math.max(1, Math.ceil([...line].length / charactersPerLine)), 0);
-  const requiredHeight = Math.max(4, 3 + Math.ceil(visualLines * 0.72));
+  const requiredHeight = Math.max(3, 1 + Math.ceil(visualLines * 0.65));
   const maximumHeight = 14;
   const minimumHeight = Math.min(maximumHeight, requiredHeight);
   return {
     minimumHeight,
-    height: Math.max(minimumHeight, Math.min(maximumHeight, Math.round(block.h ?? 4))),
+    height: Math.max(minimumHeight, Math.min(maximumHeight, Math.round(block.h ?? 3))),
     overflow: requiredHeight > maximumHeight,
   };
 }
@@ -69,9 +70,18 @@ function modelBlock(block) {
     w: Math.min(12, Math.max(1, Math.round(block.w ?? block.columns ?? 12))),
     h: Math.min(18, Math.max(1, Math.round(block.h ?? 4))),
   };
+  if (block.type === "page_break") return { ...base, kind: "pageBreak", x: 0, w: 12, h: 1 };
   if (block.type === "text") return { ...base, kind: "markdown", markdown: block.content || "" };
   if (!block.artifactId) return null;
-  const settings = wholeArtifactSettings(block);
+  let settings = wholeArtifactSettings(block);
+  if (block.type !== "artifact") {
+    try {
+      settings = JSON.parse(normalizeAtomicReportBlockContent(block.type, block.content || ""));
+    } catch {
+      return null;
+    }
+  }
+  if (!settings) return null;
   return {
     ...base,
     kind: "artifact",
@@ -81,7 +91,7 @@ function modelBlock(block) {
       ...(block.artifactChecksum ? { checksum: block.artifactChecksum } : {}),
     },
     presentationMode: settings?.presentationMode || "standard",
-    visibleViews: settings?.visibleViews || [block.type === "chart" ? "chart" : "table"],
+    visibleViews: settings.visibleViews,
   };
 }
 
@@ -120,6 +130,12 @@ export function frontendBlocksToDocument({ definitionId, title, orientation, cur
     if (converted.some((block) => !block)) {
       return { ok: false, errors: ["\ub370\uc774\ud130 \ube14\ub85d\uc5d0 Artifact \ucc38\uc870\uac00 \uc5c6\uc2b5\ub2c8\ub2e4."] };
     }
+    if (converted.some((block) => block.kind === "pageBreak")) {
+      if (!page) startPage();
+      for (const block of converted) page.blocks.push({ ...block, x: 0, y: cursorY, w: 12, h: 1 });
+      startPage();
+      continue;
+    }
     const height = Math.max(...converted.map((block) => block.h));
     if (!page || (page.blocks.length && cursorY + height > pageRows)) startPage();
     let rowX = 0;
@@ -144,11 +160,17 @@ export function frontendBlocksFromDocument(document, sourceBlocks) {
   const pageRows = A4_PAGE_LAYOUT[document.orientation].contentRows;
   return document.pages.flatMap((page) => page.blocks.map((block) => {
     const source = sources.get(block.id);
-    const fallbackType = block.kind === "markdown"
-      ? "text"
-      : block.visibleViews.length > 1
+    const visibleViews = Array.isArray(block.visibleViews) ? block.visibleViews : [];
+    const onlyView = visibleViews.length === 1 ? visibleViews[0] : null;
+    if (block.kind === "artifact" && !["summary", "kpi", "chart", "table"].includes(onlyView)) {
+      throw new Error("복구 문서의 Artifact block은 원자 view 하나를 가져야 합니다.");
+    }
+    const fallbackType = block.kind === "pageBreak"
+      ? "page_break"
+      : block.kind === "markdown" ? "text"
+      : ["summary", "kpi"].includes(onlyView)
         ? "artifact"
-        : block.visibleViews[0] === "chart" ? "chart" : "table";
+        : onlyView === "chart" ? "chart" : "table";
     return {
       ...(source || {
         id: block.id,
@@ -179,14 +201,24 @@ function operationResult(result, sourceBlocks) {
 
 /** artifact 또는 template을 draft에 삽입하고 layout 오류를 호출자에게 반환한다. */
 export function insertFrontendArtifact(blocks, input, report) {
+  const visibleViews = Array.isArray(input.visibleViews)
+    && input.visibleViews.length === 1
+    && ATOMIC_ARTIFACT_VIEWS.includes(input.visibleViews[0])
+    ? [input.visibleViews[0]]
+    : null;
+  if (!visibleViews) {
+    return {
+      ok: false,
+      blocks,
+      errors: ["분석 요소는 summary·kpi·chart·table 중 하나의 view만 선택해야 합니다."],
+    };
+  }
   const current = frontendBlocksToDocument({ ...report, blocks });
   if (!current.ok) return { ...current, blocks };
   const settings = {
-    schemaVersion: WHOLE_ARTIFACT_SETTINGS_VERSION,
+    schemaVersion: ARTIFACT_BLOCK_SETTINGS_VERSION,
     presentationMode: input.presentationMode || "standard",
-    visibleViews: Array.isArray(input.visibleViews) && input.visibleViews.length
-      ? [...new Set(input.visibleViews.filter((view) => WHOLE_ARTIFACT_VIEWS.includes(view)))]
-      : [...WHOLE_ARTIFACT_VIEWS],
+    visibleViews,
     sizeMode: input.sizeMode === "manual" ? "manual" : "auto",
     ...(input.sourceKind === "analysisRun" && input.requestId ? {
       origin: {

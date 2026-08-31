@@ -40,4 +40,10 @@ const gapless = compactDraftLayout([
 assert.deepEqual(gapless.map(({ y }) => y), [0, 4]);
 assert.equal(isDraftLayoutValid(gapless), true);
 
+const intentionalHalfWidth = compactDraftLayout([
+  { id: "half", title: "절반 표", columns: 6, type: "table", content: "{}", x: 0, y: 0, w: 6, h: 5 },
+  { id: "full", title: "전체 표", columns: 12, type: "table", content: "{}", x: 0, y: 5, w: 12, h: 5 },
+]);
+assert.deepEqual(intentionalHalfWidth.map(({ x, y, w }) => [x, y, w]), [[0, 0, 6], [0, 5, 12]]);
+
 console.log("frontend report layout tests passed");

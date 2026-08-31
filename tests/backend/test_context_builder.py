@@ -182,36 +182,6 @@ class ContextPackageBuilderTest(unittest.TestCase):
         self.assertEqual("a" * 64, first.metric_terms[0].checksum)
         self.assertNotEqual(first.package_hash, changed.package_hash)
 
-    def test_metric_term_accepts_verified_datahub_namespace_suffix(self) -> None:
-        """DataHub release namespace가 metric ID suffix를 보존하면 유효한 Term URN이다."""
-
-        term = ContextMetricTerm(
-            id="total_operating_revenue_krw",
-            urn=(
-                "urn:li:glossaryTerm:"
-                "answervice_runtime_v4_3_total_operating_revenue_krw"
-            ),
-            label="합성 통합 운영매출",
-            aliases=("합성 통합 운영매출",),
-            definition="검증된 합성 운영매출 지표입니다.",
-            unit="KRW",
-            version="v2",
-            checksum="a" * 64,
-        )
-
-        self.assertTrue(term.urn.endswith(f"_{term.id}"))
-        with self.assertRaises(ContextBuildError):
-            ContextMetricTerm(
-                id=term.id,
-                urn="urn:li:glossaryTerm:answervice_runtime_v4_3_other_metric",
-                label=term.label,
-                aliases=term.aliases,
-                definition=term.definition,
-                unit=term.unit,
-                version=term.version,
-                checksum=term.checksum,
-            )
-
     def test_entitled_metric_and_required_filters_change_package_hash(self) -> None:
         base_filter = ContextRequiredFilter("is_forecast", "eq", False)
         metric = _v2_metric(

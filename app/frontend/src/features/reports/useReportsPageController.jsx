@@ -2,7 +2,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { compactDraftLayout, toReportBlockRequest } from "../../contracts/report";
-import { DEFAULT_FRONTEND_CURRENCY_POLICY, createFrontendDraftSnapshot, loadFrontendDraft, saveFrontendDraft } from "./reportDraftV2";
+import {
+  DEFAULT_FRONTEND_CURRENCY_POLICY,
+  createFrontendDraftSnapshot,
+  loadFrontendDraft,
+  reportAssistantRepresentativeBlock,
+  saveFrontendDraft,
+} from "./reportDraftV2";
 import { useReportArtifacts } from "./useReportArtifacts";
 import { useReportDraftState } from "./useReportDraftState";
 import { useReportDragAndDrop } from "./useReportDragAndDrop";
@@ -15,7 +21,6 @@ import {
   REPORT_TEMPLATE_MAP,
   REPORT_TEMPLATES,
   ReportEditorBlock,
-  WHOLE_ARTIFACT_TEMPLATE,
   draftLayoutSignature,
   paginateReportBlocks,
 } from "./components";
@@ -24,17 +29,22 @@ import {
   definitionDraftState,
   focusReportBlock,
   reportCurrencyState,
-  wholeArtifactTemplate,
 } from "./reportPageControllerSupport";
 import { reportStatusLabel } from "./reportPageLabels";
 import { normalizeReportEditorScale } from "./reportEditorViewport";
+import {
+  reportAssistantSessionMatchesDefinition,
+  reportAssistantSessionStorageKey,
+} from "./reportAssistantSessionRecovery";
+
+const ASSISTANT_SAVE_FIRST_MESSAGE = "AI로 보고서를 변경하기 전에 현재 편집 내용을 먼저 저장해 주세요.";
 
 /** 보고서 lifecycle·artifact·draft·DND를 화면 계약으로 합성하고 stale open generation을 폐기한다. */
 export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEditorMode }) {
-  const isAdmin = suppliedIsAdmin ?? role === "admin";
+  const isAdmin = suppliedIsAdmin ?? ["report_admin", "platform_admin"].includes(role);
   const lifecycle = useReportLifecycleState({ role, isAdmin });
   const [view, setView] = useState("list");
-  const [toolPanelOpen, setToolPanelOpen] = useState(true);
+  const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const [editorViewScale, setEditorViewScale] = useState("fit-width");
   const toolPanelRef = useRef(null);
   const toolToggleRef = useRef(null);
@@ -43,13 +53,13 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const dndBridgeRef = useRef(null);
   const openRequestRef = useRef(0);
   const assistantRecoveryRef = useRef("");
+  const assistantRevisionResumeRef = useRef("");
 
   const handleHydratedArtifacts = useCallback((artifactMap) => {
     draftBridgeRef.current?.fitHydratedArtifactViews(artifactMap);
   }, []);
   const artifacts = useReportArtifacts({
     analysisClient: lifecycle.analysisClient,
-    definitions: lifecycle.definitions,
     onHydrated: handleHydratedArtifacts,
     reportClient: lifecycle.reportClient,
     selectedDefinition: lifecycle.selectedDefinition,
@@ -107,10 +117,36 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const selectedArtifactSource = artifacts.artifactOptions.find(
     (source) => source.artifactId === artifacts.artifactSelection,
   );
+  const assistantRepresentativeBlock = useMemo(() => reportAssistantRepresentativeBlock(
+    draft.orderedBlocks,
+    editorTools.primaryBlock?.id || "",
+  ), [draft.orderedBlocks, editorTools.primaryBlock?.id]);
+  const assistantArtifact = assistantRepresentativeBlock?.artifactId
+    ? artifacts.artifacts[assistantRepresentativeBlock.artifactId]
+    : null;
+  const assistantArtifactSource = artifacts.artifactOptions.find(
+    (source) => source.artifactId === assistantRepresentativeBlock?.artifactId,
+  );
+  const assistantArtifactIds = useMemo(() => assistantArtifactSource?.artifactId
+    ? [
+        assistantArtifactSource.artifactId,
+        ...artifacts.assistantAdditionalArtifactIds.filter(
+          (artifactId) => artifactId !== assistantArtifactSource.artifactId,
+        ).slice(0, 4),
+      ]
+    : [], [artifacts.assistantAdditionalArtifactIds, assistantArtifactSource]);
+  const assistantArtifactOptions = useMemo(
+    () => artifacts.assistantArtifactOptionsFor(assistantArtifactSource?.artifactId || ""),
+    [artifacts.assistantArtifactOptionsFor, assistantArtifactSource?.artifactId],
+  );
+  const setAssistantArtifacts = useCallback(
+    (artifactIds) => artifacts.setAssistantArtifacts(
+      artifactIds,
+      assistantArtifactSource?.artifactId || "",
+    ),
+    [artifacts.setAssistantArtifacts, assistantArtifactSource?.artifactId],
+  );
 
-  const wholeArtifactTemplateFor = useCallback((source, width = null) => wholeArtifactTemplate(
-    source, artifacts.artifacts, draft.reportOrientation, WHOLE_ARTIFACT_TEMPLATE, width,
-  ), [artifacts.artifacts, draft.reportOrientation]);
   const viewArtifactTemplateFor = useCallback((template, width = template?.w) => artifactViewTemplate(
     template,
     selectedArtifactSource || artifacts.artifactOptions[0],
@@ -121,23 +157,22 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const frontendReportContext = useCallback((orientation = draft.reportOrientation) => ({
     definitionId: lifecycle.selectedDefinition?.definitionId || "report-draft",
     version: lifecycle.selectedDefinition?.version || 1,
-    title: lifecycle.selectedDefinition?.title || "보고서 초안",
+    title: draft.titleRef.current || "보고서 초안",
     orientation,
     currencyPolicy: draft.currencyPolicyRef.current,
-  }), [draft.currencyPolicyRef, draft.reportOrientation, lifecycle.selectedDefinition]);
+  }), [draft.currencyPolicyRef, draft.reportOrientation, draft.titleRef, lifecycle.selectedDefinition]);
   const dnd = useReportDragAndDrop({
     addTemplateBlock: draft.addTemplateBlock,
-    addWholeArtifact: draft.addWholeArtifact,
-    artifactOptions: artifacts.artifactOptions,
     blocksRef: draft.blocksRef,
     commitBlocks: draft.commitBlocks,
     frontendReportContext,
+    selectedBlockIds: editorTools.selectedBlockIds,
+    lockedBlockIds: editorTools.lockedBlockIds,
     reportPages,
     reportTemplateMap: REPORT_TEMPLATE_MAP,
     setEditorAnnouncement: draft.announce,
-    setSelectedBlockId: editorTools.selectBlock,
+    selectDraggedBlock: editorTools.selectDraggedBlock,
     viewArtifactTemplateFor,
-    wholeArtifactTemplateFor,
   });
   dndBridgeRef.current = dnd;
 
@@ -155,6 +190,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       draft.resetDraft({
         blocks: [{ id: result.blockId, title: "운영 요약", columns: 12, type: "text", content: "", x: 0, y: 0, w: 12, h: 4 }],
         savedBlocks: [],
+        title: result.definition.title,
+        savedTitle: result.definition.title,
         orientation: result.definition.orientation,
         currencyPolicy: DEFAULT_FRONTEND_CURRENCY_POLICY,
         selectedBlockId: result.blockId,
@@ -221,7 +258,9 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
         || JSON.stringify(localDraft.currencyPolicy) !== JSON.stringify(serverCurrencyPolicy)
       ),
     );
-    const editable = recoverLocalDraft ? { ...current, blocks: localDraft.blocks } : current;
+    const editable = recoverLocalDraft
+      ? { ...current, blocks: localDraft.blocks }
+      : current;
     lifecycle.clearAssistantTrace();
     applyDefinition(editable, recoverLocalDraft ? {
       serverBlocks: current.blocks,
@@ -239,6 +278,14 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const saveDraft = useCallback(async () => {
     const definition = lifecycle.selectedDefinition;
     if (!definition || !isDraft || lifecycle.pending) return;
+    const title = draft.titleRef.current.trim();
+    if (!title || title.length > 255 || /[\u0000-\u001f\u007f]/.test(title)) {
+      draft.markSaveFailed();
+      lifecycle.setError("보고서 제목을 줄바꿈·제어문자 없이 1~255자로 입력한 뒤 저장해 주세요.");
+      window.requestAnimationFrame(() => document.querySelector(".report-builder-title-input")?.focus());
+      return;
+    }
+    if (title !== draft.titleRef.current) draft.updateReportTitle(title);
     const invalid = draft.orderedBlocks.find((block) => (
       !block.title?.trim() || (block.type === "text" && !block.content?.trim())
     ));
@@ -256,7 +303,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     const snapshot = createFrontendDraftSnapshot({
       definitionId: definition.definitionId,
       version: definition.version,
-      title: definition.title,
+      title,
       orientation: draft.reportOrientation,
       currencyPolicy: draft.reportCurrencyPolicy,
       blocks: draft.orderedBlocks,
@@ -272,7 +319,12 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       definition.definitionId,
       definition.version,
       persistedBlocks.map(toReportBlockRequest),
-      { orientation: draft.reportOrientation, currencyDisplayUnit: draft.reportCurrencyPolicy.displayUnit },
+      {
+        title,
+        expectedDraftRevision: definition.draftRevision,
+        orientation: draft.reportOrientation,
+        currencyDisplayUnit: draft.reportCurrencyPolicy.displayUnit,
+      },
     ));
     if (!saved) {
       draft.markSaveFailed();
@@ -308,77 +360,143 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     await lifecycle.loadFinalDocument(approved);
   }, [applyDefinition, draft.blocksRef, draft.isDirty, draft.reportOrientation, isDraft, lifecycle]);
 
-  const createAssistantDraft = useCallback(async (instruction = lifecycle.assistantInstruction) => {
+  const requireSavedAssistantDraft = useCallback(() => {
+    if (!draft.isDirty) return true;
+    lifecycle.setError(ASSISTANT_SAVE_FIRST_MESSAGE);
+    return false;
+  }, [draft.isDirty, lifecycle]);
+
+  const createAssistantDraft = useCallback(async (
+    instruction = lifecycle.assistantInstruction,
+    operationScope = "full_report",
+  ) => {
+    if (!requireSavedAssistantDraft()) return null;
     const definition = lifecycle.selectedDefinition;
-    if (!definition || !selectedArtifactSource?.artifactId || !selectedArtifact || !instruction.trim()) return null;
+    if (!definition || !instruction.trim()) return null;
+    if (!assistantRepresentativeBlock?.artifactId) {
+      lifecycle.setError("보고서에 검증된 분석 결과 블록을 먼저 추가해 주세요.");
+      return null;
+    }
+    if (!assistantArtifactSource?.artifactId || !assistantArtifact) {
+      lifecycle.setError("선택한 보고서 블록의 분석 근거를 확인할 수 없습니다. 근거를 다시 불러온 뒤 시도해 주세요.");
+      return null;
+    }
     const result = await lifecycle.submitAssistantInstruction(
       definition,
-      selectedArtifactSource.artifactId,
+      assistantArtifactSource.artifactId,
       instruction,
+      assistantArtifactIds,
+      operationScope === "report_title" ? null : editorTools.primaryBlock?.id || null,
+      operationScope,
     );
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
     return result;
-  }, [applyDefinition, artifacts, lifecycle, selectedArtifact, selectedArtifactSource]);
+  }, [
+    applyDefinition, artifacts, assistantArtifact, assistantArtifactIds,
+    assistantArtifactSource, assistantRepresentativeBlock?.artifactId,
+    editorTools.primaryBlock?.id, lifecycle, requireSavedAssistantDraft,
+  ]);
+
+  const suggestAssistantTitle = useCallback(
+    (instruction) => createAssistantDraft(instruction, "report_title"),
+    [createAssistantDraft],
+  );
+
+  const reviewAssistantReport = useCallback(async () => {
+    if (!requireSavedAssistantDraft()) return null;
+    const definition = lifecycle.selectedDefinition;
+    if (!definition) return null;
+    if (!assistantRepresentativeBlock?.artifactId) {
+      lifecycle.setError("보고서에 검증된 분석 결과 블록을 먼저 추가해 주세요.");
+      return null;
+    }
+    if (!assistantArtifactSource?.artifactId || !assistantArtifact) {
+      lifecycle.setError("선택한 보고서 블록의 분석 근거를 확인할 수 없습니다. 근거를 다시 불러온 뒤 시도해 주세요.");
+      return null;
+    }
+    return lifecycle.reviewAssistantReport(
+      definition,
+      assistantArtifactSource.artifactId,
+      assistantArtifactIds,
+      editorTools.primaryBlock?.id || null,
+    );
+  }, [
+    assistantArtifact, assistantArtifactIds, assistantArtifactSource,
+    assistantRepresentativeBlock?.artifactId, editorTools.primaryBlock?.id,
+    lifecycle, requireSavedAssistantDraft,
+  ]);
 
   const approveAssistantDataRequest = useCallback(async () => {
+    if (!requireSavedAssistantDraft()) return null;
     const result = await lifecycle.approveAssistantRequest();
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
     return result;
-  }, [applyDefinition, artifacts, lifecycle]);
+  }, [applyDefinition, artifacts, lifecycle, requireSavedAssistantDraft]);
 
   const rejectAssistantDataRequest = useCallback(
     () => lifecycle.rejectAssistantRequest(),
     [lifecycle],
   );
 
-  const approveAssistantPatch = useCallback(async () => {
-    const result = await lifecycle.approveAssistantPatch();
+  const approveAssistantPatch = useCallback(async (operationIndexes) => {
+    if (!requireSavedAssistantDraft()) return null;
+    const result = await lifecycle.approveAssistantPatch(operationIndexes);
     if (!result?.definition) return result;
     applyDefinition(result.definition);
     await artifacts.loadArtifacts(result.definition, true);
     return result;
-  }, [applyDefinition, artifacts, lifecycle]);
+  }, [applyDefinition, artifacts, lifecycle, requireSavedAssistantDraft]);
 
   const rejectAssistantPatch = useCallback(
     () => lifecycle.rejectAssistantPatch(),
     [lifecycle],
   );
 
-  const assistantStorageKey = lifecycle.selectedDefinition && selectedArtifactSource?.artifactId
-    ? `answervice.report-assistant:${lifecycle.selectedDefinition.definitionId}:${lifecycle.selectedDefinition.version}:${selectedArtifactSource.artifactId}`
-    : "";
+  const resumeAssistantRevision = useCallback((session) => {
+    if (session?.phase !== "saving_revision") return null;
+    if (session.patch_request_id) {
+      return approveAssistantPatch(session.approved_operation_indexes);
+    }
+    if (session.analysis_plan?.request_id) return approveAssistantDataRequest();
+    return null;
+  }, [approveAssistantDataRequest, approveAssistantPatch]);
+
+  const assistantStorageKey = reportAssistantSessionStorageKey(lifecycle.selectedDefinition);
 
   useEffect(() => {
     if (!assistantStorageKey) return;
     const current = lifecycle.assistantSession;
-    if (
-      current?.definition_id === lifecycle.selectedDefinition?.definitionId
-      && current.definition_version === lifecycle.selectedDefinition?.version
-      && current.artifact_id === selectedArtifactSource?.artifactId
-    ) return;
+    const currentMatches = reportAssistantSessionMatchesDefinition(
+      current,
+      lifecycle.selectedDefinition,
+    );
+    if (currentMatches) return;
+    if (current) lifecycle.clearAssistantTrace();
     let stored = "";
     try { stored = window.sessionStorage.getItem(assistantStorageKey) || ""; } catch { return; }
     const recoveryToken = `${assistantStorageKey}:${stored}`;
     if (!stored || assistantRecoveryRef.current === recoveryToken) return;
     assistantRecoveryRef.current = recoveryToken;
-    void lifecycle.restoreAssistantSession(stored).then((session) => {
-      if (!session) assistantRecoveryRef.current = "";
-    });
-  }, [assistantStorageKey, lifecycle.assistantSession, lifecycle.restoreAssistantSession, lifecycle.selectedDefinition, selectedArtifactSource]);
+    void lifecycle.restoreAssistantSession(stored, lifecycle.selectedDefinition);
+  }, [assistantStorageKey, lifecycle.assistantSession, lifecycle.clearAssistantTrace, lifecycle.restoreAssistantSession, lifecycle.selectedDefinition]);
+  useEffect(() => {
+    const session = lifecycle.assistantSession;
+    if (session?.phase !== "saving_revision") return;
+    const resumeKey = `${session.assistant_request_id}:${session.patch_request_id || session.analysis_plan?.request_id || ""}`;
+    if (assistantRevisionResumeRef.current === resumeKey) return;
+    assistantRevisionResumeRef.current = resumeKey;
+    void resumeAssistantRevision(session);
+  }, [lifecycle.assistantSession, resumeAssistantRevision]);
   useEffect(() => {
     if (!assistantStorageKey || !lifecycle.assistantSession) return;
     const session = lifecycle.assistantSession;
-    if (
-      session.definition_id !== lifecycle.selectedDefinition?.definitionId
-      || session.definition_version !== lifecycle.selectedDefinition?.version
-      || session.artifact_id !== selectedArtifactSource?.artifactId
-    ) return;
+    if (!reportAssistantSessionMatchesDefinition(session, lifecycle.selectedDefinition)) return;
     try { window.sessionStorage.setItem(assistantStorageKey, session.assistant_request_id); } catch { /* 서버 상태는 유지한다. */ }
-  }, [assistantStorageKey, lifecycle.assistantSession, lifecycle.selectedDefinition, selectedArtifactSource]);
+  }, [assistantStorageKey, lifecycle.assistantSession, lifecycle.selectedDefinition]);
 
   const leaveEditor = useCallback(() => {
     if (draft.isDirty && !window.confirm("저장하지 않은 변경사항이 있습니다. 편집을 종료할까요?")) return;
@@ -481,8 +599,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const artifactStateFor = useCallback((artifactId) => artifactId
     ? artifacts.artifactStates[artifactId] || { status: "loading", message: "" }
     : null, [artifacts.artifactStates]);
-  const renderHeader = useCallback(({ pageNumber, pageCount }) => <><div className="answer-report-page-title"><small>ANSWERVICE · GOVERNED REPORT</small><h1>{lifecycle.selectedDefinition?.title || "보고서"}</h1><p>{lifecycle.assistantTrace ? "AI 초안 · 검토 필요" : reportStatusLabel(lifecycle.selectedDefinition?.status)} · v{lifecycle.selectedDefinition?.version} · {pageNumber}/{pageCount}페이지</p></div><span className="answer-report-draft-mark">{lifecycle.selectedDefinition?.status === "approved" ? "확정본" : "HTML 편집 초안"}</span></>, [lifecycle.assistantTrace, lifecycle.selectedDefinition]);
-  const renderFooter = useCallback(() => <span>분석 근거 연결 · HTML 편집본</span>, []);
+  const renderHeader = useCallback(({ pageNumber, pageCount }) => <><div className="answer-report-page-title"><small>ANSWERVICE · 분석 보고서</small><h1>{draft.reportTitle || "보고서"}</h1><p>{lifecycle.assistantTrace ? "AI 초안 · 검토 필요" : reportStatusLabel(lifecycle.selectedDefinition?.status)} · v{lifecycle.selectedDefinition?.version} · {pageNumber}/{pageCount}페이지</p></div>{lifecycle.selectedDefinition?.status === "approved" && <span className="answer-report-draft-mark">확정본</span>}</>, [draft.reportTitle, lifecycle.assistantTrace, lifecycle.selectedDefinition]);
+  const renderFooter = useCallback(() => null, []);
   const renderPreviewBlock = useCallback((layoutBlock) => {
     const block = layoutBlock.sourceBlock || layoutBlock;
     return <GeneratedReportBlock block={block} number={reportBlockNumbers.get(block.id)} rowOffset={0} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} orientation={draft.reportOrientation} onRetry={block.artifactId ? () => artifacts.retryArtifact(block.artifactId) : undefined} />;
@@ -496,23 +614,26 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   } = draft;
   const renderEditorBlock = useCallback((layoutBlock, context) => {
     const block = layoutBlock.sourceBlock || layoutBlock;
-    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} isDraft={canEdit} selected={editorTools.selectedBlockIds.has(block.id)} dragging={dnd.draggedBlockId === block.id} locked={editorTools.lockedBlockIds.has(block.id)} onSelect={editorTools.selectBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={editorTools.deleteBlock} onToggleLock={editorTools.toggleBlockLock} onRetryArtifact={artifacts.retryArtifact} />;
+    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} isDraft={canEdit} selected={editorTools.selectedBlockIds.has(block.id)} primary={draft.selectedBlockId === block.id} dragging={dnd.draggedBlockIds.has(block.id)} groupTransform={dnd.draggedBlockId !== block.id && dnd.draggedBlockIds.has(block.id) ? dnd.dragDelta : null} locked={editorTools.lockedBlockIds.has(block.id)} onSelect={editorTools.selectBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={editorTools.deleteBlock} onToggleLock={editorTools.toggleBlockLock} onRetryArtifact={artifacts.retryArtifact} />;
   }, [
     artifactStateFor, artifacts.artifacts, artifacts.retryArtifact, canEdit,
-    dnd.draggedBlockId, duplicateDraftBlock, editorTools, moveDraftBlock, reportCurrency,
+    dnd.dragDelta, dnd.draggedBlockId, dnd.draggedBlockIds, draft.selectedBlockId,
+    duplicateDraftBlock, editorTools, moveDraftBlock, reportCurrency,
     resizeDraftBlock, setDraftBlockSetting, updateDraftBlock,
   ]);
 
   const activeTemplate = dnd.draggedBlockId.startsWith("template:")
     ? viewArtifactTemplateFor(REPORT_TEMPLATE_MAP.get(dnd.draggedBlockId.slice("template:".length)))
     : null;
-  const activeArtifactSource = dnd.draggedBlockId.startsWith("artifact:")
-    ? artifacts.artifactOptions.find((source) => source.artifactId === dnd.draggedBlockId.slice("artifact:".length))
-    : null;
-  const activeInsert = activeTemplate || (activeArtifactSource ? wholeArtifactTemplateFor(activeArtifactSource) : null);
+  const activeArtifactSource = activeTemplate?.view ? selectedArtifactSource : null;
+  const activeInsert = activeTemplate;
 
   return {
     activeArtifactSource,
+    assistantArtifact,
+    assistantArtifactIds,
+    assistantArtifactOptions,
+    assistantArtifactSource,
     activeInsert,
     approveDefinition,
     approveAssistantDataRequest,
@@ -520,6 +641,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     artifacts,
     builderV2: REPORT_BUILDER_V2, canEdit,
     createAssistantDraft,
+    suggestAssistantTitle,
+    reviewAssistantReport,
     createSchedule,
     createDefinition,
     dnd,
@@ -549,6 +672,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     saveDraft,
     selectedArtifact,
     selectedArtifactSource,
+    setAssistantArtifacts,
     setToolPanelOpen,
     closeToolPanel, toggleToolPanel,
     changeEditorViewScale,

@@ -128,6 +128,22 @@ class KoreanQueryPlanTests(unittest.TestCase):
         # ASCII identifier는 부분문자열 fuzzy evidence로 승격하지 않는다.
         self.assertEqual((), index.match("address field"))
 
+    def test_more_specific_release_phrase_survives_base_phrase_substring(self) -> None:
+        """짧은 exact alias가 더 강한 승인 phrase 증거를 숨기지 않는다."""
+
+        index = GovernedPhraseIndex(
+            ("Helium yield", "Helium average yield", "Argon yield")
+        )
+
+        self.assertEqual(
+            ("helium yield", "helium average yield"),
+            index.match("What is the average helium yield per observation?"),
+        )
+        self.assertEqual(
+            ("helium yield",),
+            index.match("Show Helium yield"),
+        )
+
     def test_multiple_governed_metrics_keep_the_request_bound(self) -> None:
         variants = plan_search_queries(
             "객실 매출과 식음 매출을 비교해줘",

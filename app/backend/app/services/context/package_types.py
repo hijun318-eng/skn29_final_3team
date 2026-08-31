@@ -28,19 +28,6 @@ from src.data.metric_governance import (
     RUNTIME_GOVERNANCE_VERSION_V2,
 )
 
-
-def _is_namespaced_metric_term_urn(urn: str, metric_id: str) -> bool:
-    """DataHub Term key가 고유 지표 ID를 exact suffix로 보존하는 namespace인지 검사한다."""
-
-    prefix = "urn:li:glossaryTerm:"
-    if not urn.startswith(prefix):
-        return False
-    key = urn.removeprefix(prefix)
-    return _is_identifier(key) and (
-        key == metric_id or key.endswith(f"_{metric_id}")
-    )
-
-
 @dataclass(frozen=True)
 class ContextRequiredFilter:
     """거버넌스 지표 계산에 반드시 요구되는 필수 필터(스칼라 비교 조건) 데이터 클래스."""
@@ -186,7 +173,10 @@ class ContextMetricTerm:
     def __post_init__(self) -> None:
         if (
             not _is_identifier(self.id)
-            or not _is_namespaced_metric_term_urn(self.urn, self.id)
+            or not (
+                self.urn == f"urn:li:glossaryTerm:{self.id}"
+                or self.urn == f"urn:li:glossaryTerm:answervice_{self.id}"
+            )
             or not self.label.strip()
             or not self.aliases
             or self.label not in self.aliases

@@ -5,6 +5,7 @@ import {
   adaptAnalysisRunArtifact,
   analysisArtifactTitle,
   analysisRunArtifactSources,
+  reportAssistantArtifactOptions,
   reportArtifactLibrarySources,
 } from "./reportDraftV2";
 import { reportApiError, reportApiRequiredAction } from "./reportPageLabels";
@@ -14,7 +15,6 @@ type ArtifactState = { status: string; message: string; requiredAction?: string 
 
 type UseReportArtifactsOptions = {
   analysisClient: any;
-  definitions: any[];
   onHydrated: (artifacts: Record<string, any>, definition: any) => void;
   reportClient: any;
   selectedDefinition: any;
@@ -28,7 +28,6 @@ function isAnalysisSource(source: any): boolean {
 /** 선택 정의의 artifact와 분석 library를 generation별로 hydrate하며 근거 미완료 결과는 저장하지 않는다. */
 export function useReportArtifacts({
   analysisClient,
-  definitions,
   onHydrated,
   reportClient,
   selectedDefinition,
@@ -39,6 +38,8 @@ export function useReportArtifacts({
   const [artifactSources, setArtifactSources] = useState<any[]>([]);
   const [analysisLibraryState, setAnalysisLibraryState] = useState({ status: "idle", message: "" });
   const [artifactSelection, setArtifactSelection] = useState("");
+  const [assistantAdditionalArtifactIds, setAssistantAdditionalArtifactIds] = useState<readonly string[]>([]);
+  const [recentArtifactIds, setRecentArtifactIds] = useState<readonly string[]>([]);
   const loadGenerationRef = useRef(0);
 
   const invalidateLoads = useCallback(() => {
@@ -61,10 +62,11 @@ export function useReportArtifacts({
     if (!artifact || !reportEvidenceReady(artifact)) {
       throw new Error("검증 근거가 완전하지 않아 보고서 결과를 표시하지 않습니다.");
     }
+    const publicSource = { ...source };
+    delete publicSource.queryId;
+    delete publicSource.artifactChecksum;
     const hydratedSource = {
-      ...source,
-      queryId: artifact.query_id,
-      artifactChecksum: source.artifactChecksum || artifact.artifact_checksum,
+      ...publicSource,
       sourceUrns: artifact.evidence.sources.map((item: any) => item.urn),
       ...(analysisSource ? {
         sourceKind: "analysisRun",
@@ -81,14 +83,14 @@ export function useReportArtifacts({
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
     const isCurrentLoad = () => loadGenerationRef.current === generation;
-    const reportSources = reportArtifactLibrarySources(definition, includeLibrary ? definitions : [definition]);
+    const reportSources = reportArtifactLibrarySources(definition, [definition]);
     let discoveredAnalysisSources: any[] = [];
     let libraryState = { status: "idle", message: "" };
     if (includeLibrary) {
       setAnalysisLibraryState({ status: "loading", message: "저장된 분석 결과를 확인하는 중입니다." });
       const [definitionResult, runResult] = await Promise.allSettled([
         analysisClient.listDefinitions(),
-        analysisClient.listRuns(),
+        analysisClient.listRuns({ limit: 7, approvedOnly: true }),
       ]);
       if (runResult.status === "fulfilled") {
         discoveredAnalysisSources = analysisRunArtifactSources(
@@ -114,11 +116,33 @@ export function useReportArtifacts({
     }
     const sources: any[] = [...sourcesByArtifact.values()];
     const ids = sources.map((source) => source.artifactId);
+    setRecentArtifactIds(discoveredAnalysisSources.map((source) => source.artifactId));
     setArtifactSources(sources);
     setArtifacts({});
-    setArtifactStates(Object.fromEntries(ids.map((artifactId) => [artifactId, { status: "loading", message: "" }])));
+    const hydrationIds = new Set([
+      ...reportSources.map((source) => source.artifactId),
+      artifactSelection,
+      ...assistantAdditionalArtifactIds,
+    ].filter(Boolean));
+    // 보관함에 노출할 최근 결과는 실제 근거를 먼저 검증해야 한다. 기존 보고서가
+    // 유실된 옛 Artifact를 참조하더라도 새 승인 결과 7건이 함께 가려지지 않게 한다.
+    if (includeLibrary) {
+      discoveredAnalysisSources.forEach((source) => hydrationIds.add(source.artifactId));
+    }
+    for (const artifactId of hydrationIds) {
+      if (!ids.includes(artifactId)) hydrationIds.delete(artifactId);
+    }
+    if (!hydrationIds.size && discoveredAnalysisSources[0]?.artifactId) {
+      hydrationIds.add(discoveredAnalysisSources[0].artifactId);
+    }
+    setArtifactStates(Object.fromEntries(ids.map((artifactId) => [
+      artifactId,
+      { status: hydrationIds.has(artifactId) ? "loading" : "idle", message: "" },
+    ])));
 
-    const loaded = await Promise.all(sources.map(async (source) => {
+    const loaded = await Promise.all(sources.filter(
+      (source) => hydrationIds.has(source.artifactId),
+    ).map(async (source) => {
       try {
         const result = await hydrateSource(source, definition);
         const status = result.artifact.table?.rows?.length === 0 ? "empty" : "success";
@@ -137,7 +161,12 @@ export function useReportArtifacts({
     const artifactMap = Object.fromEntries(loaded.map(({ artifactId, artifact }) => [artifactId, artifact]));
     setArtifacts(artifactMap);
     onHydrated(artifactMap, definition);
-    setArtifactSources(loaded.map(({ hydratedSource }) => hydratedSource));
+    const hydratedSources = new Map(loaded.map(
+      ({ artifactId, hydratedSource }) => [artifactId, hydratedSource],
+    ));
+    setArtifactSources(sources.map(
+      (source) => hydratedSources.get(source.artifactId) || source,
+    ));
 
     const unavailableCount = loaded.filter(({ artifact, hydratedSource }) => !artifact && isAnalysisSource(hydratedSource)).length;
     if (includeLibrary) setAnalysisLibraryState(libraryState.status === "error"
@@ -147,8 +176,15 @@ export function useReportArtifacts({
         : libraryState);
     const availableIds = loaded.filter(({ artifact }) => artifact).map(({ artifactId }) => artifactId);
     setArtifactSelection((current) => availableIds.includes(current) ? current : availableIds[0] || "");
+    setAssistantAdditionalArtifactIds((current) => current.filter((artifactId) => availableIds.includes(artifactId)));
     return true;
-  }, [analysisClient, definitions, hydrateSource, onHydrated]);
+  }, [
+    analysisClient,
+    artifactSelection,
+    assistantAdditionalArtifactIds,
+    hydrateSource,
+    onHydrated,
+  ]);
 
   const retryArtifact = useCallback(async (artifactId: string) => {
     if (!selectedDefinition || !artifactId) return;
@@ -184,8 +220,118 @@ export function useReportArtifacts({
     });
   }, [artifactSources, artifacts]);
 
+  const assistantArtifactOptionsFor = useCallback((primaryArtifactId: string) => reportAssistantArtifactOptions(
+    artifactSources.filter(
+      (source) => isAnalysisSource(source) || Boolean(artifacts[source.artifactId]),
+    ),
+    primaryArtifactId,
+    assistantAdditionalArtifactIds,
+    recentArtifactIds,
+  ), [artifactSources, artifacts, assistantAdditionalArtifactIds, recentArtifactIds]);
+
+  const assistantArtifactOptions = useMemo(
+    () => assistantArtifactOptionsFor(artifactSelection),
+    [artifactSelection, assistantArtifactOptionsFor],
+  );
+
+  const setAssistantArtifacts = useCallback(async (
+    artifactIds: readonly string[],
+    representativeArtifactId = "",
+  ) => {
+    if (!selectedDefinition) return false;
+    const uniqueIds = [...new Set(artifactIds)].filter(Boolean).slice(0, 5);
+    const primaryArtifactId = representativeArtifactId || artifactSelection || uniqueIds[0] || "";
+    if (!primaryArtifactId) return false;
+    const requested = uniqueIds
+      .filter((artifactId) => artifactId !== primaryArtifactId)
+      .slice(0, 4);
+    const selectedIds = [primaryArtifactId, ...requested];
+    const requestedSources = selectedIds.map(
+      (artifactId) => artifactSources.find((source) => source.artifactId === artifactId),
+    );
+    if (requestedSources.some((source) => !source)) {
+      setNotice("선택한 분석 근거를 현재 보고서에서 확인할 수 없습니다.");
+      return false;
+    }
+    const missingSources = requestedSources.filter(
+      (source: any) => !artifacts[source.artifactId],
+    );
+    if (!missingSources.length) {
+      if (!representativeArtifactId) setArtifactSelection(primaryArtifactId);
+      setAssistantAdditionalArtifactIds(requested);
+      return true;
+    }
+
+    const generation = loadGenerationRef.current;
+    setArtifactStates((current) => ({
+      ...current,
+      ...Object.fromEntries(missingSources.map(
+        (source: any) => [source.artifactId, { status: "loading", message: "" }],
+      )),
+    }));
+    const loaded = await Promise.all(missingSources.map(async (source: any) => {
+      try {
+        return { result: await hydrateSource(source, selectedDefinition), source };
+      } catch (error) {
+        return { error, source };
+      }
+    }));
+    if (generation !== loadGenerationRef.current) return false;
+    const failed = loaded.filter((item) => "error" in item);
+    if (failed.length) {
+      setArtifactStates((current) => ({
+        ...current,
+        ...Object.fromEntries(loaded.map((item: any) => [item.source.artifactId,
+          "error" in item
+            ? {
+                status: "error",
+                message: reportApiError(item.error),
+                requiredAction: reportApiRequiredAction(item.error),
+              }
+            : { status: "idle", message: "" },
+        ])),
+      }));
+      setNotice("선택한 분석 근거를 검증하지 못해 변경하지 않았습니다.");
+      return false;
+    }
+
+    const results = loaded.map((item: any) => item.result);
+    const artifactMap = Object.fromEntries(results.map(
+      (result) => [result.artifactId, result.artifact],
+    ));
+    const hydratedSources = new Map(results.map(
+      (result) => [result.artifactId, result.hydratedSource],
+    ));
+    setArtifacts((current) => ({ ...current, ...artifactMap }));
+    setArtifactSources((current) => current.map(
+      (source) => hydratedSources.get(source.artifactId) || source,
+    ));
+    setArtifactStates((current) => ({
+      ...current,
+      ...Object.fromEntries(results.map((result) => [result.artifactId, {
+        status: result.artifact.table?.rows?.length === 0 ? "empty" : "success",
+        message: "",
+      }])),
+    }));
+    onHydrated(artifactMap, selectedDefinition);
+    if (!representativeArtifactId) setArtifactSelection(primaryArtifactId);
+    setAssistantAdditionalArtifactIds(requested);
+    return true;
+  }, [
+    artifactSelection,
+    artifactSources,
+    artifacts,
+    hydrateSource,
+    onHydrated,
+    selectedDefinition,
+    setNotice,
+  ]);
+
   return {
     analysisLibraryState,
+    assistantAdditionalArtifactIds,
+    assistantArtifactOptions,
+    assistantArtifactOptionsFor,
     artifactOptions,
     artifactSelection,
     artifactSources,
@@ -194,6 +340,7 @@ export function useReportArtifacts({
     invalidateLoads,
     loadArtifacts,
     retryArtifact,
+    setAssistantArtifacts,
     setArtifactSelection,
   };
 }

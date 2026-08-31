@@ -3,10 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compactDraftLayout, placeDraftBlock } from "../../contracts/report.ts";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
-  WHOLE_ARTIFACT_VIEWS,
+  ARTIFACT_VIEW_LABELS,
   artifactViewBlockSettings,
+  artifactViewTitle,
+  availableArtifactViews,
   deleteFrontendBlock,
   estimateArtifactBlockLayout,
+  estimateArtifactViewBlockLayout,
   fitFrontendArtifactBlock,
   fitFrontendArtifactViewBlock,
   frontendTextBlockLayout,
@@ -42,10 +45,12 @@ export function useReportDraftState(
   const initialOrientation = options.initialOrientation ?? "landscape";
   const initialPolicy = mergeDraftCurrencyPolicy(options.initialCurrencyPolicy);
   const initialBlocks = copyDraftBlocks(options.initialBlocks ?? []);
+  const initialTitle = options.identity?.title ?? "보고서 초안";
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   const [blocks, setBlocks] = useState<readonly DraftReportBlock[]>(initialBlocks);
+  const [reportTitle, setReportTitle] = useState(initialTitle);
   const [history, setHistory] = useState<ReportDraftHistory>(EMPTY_HISTORY);
   const [selectedBlockId, setSelectedBlockId] = useState("");
   const [isDirty, setIsDirty] = useState(false);
@@ -57,6 +62,8 @@ export function useReportDraftState(
 
   const blocksRef = useRef<readonly DraftReportBlock[]>(initialBlocks);
   const savedBlocksRef = useRef<readonly DraftReportBlock[]>(initialBlocks);
+  const titleRef = useRef(initialTitle);
+  const savedTitleRef = useRef(initialTitle);
   const orientationRef = useRef(initialOrientation);
   const savedOrientationRef = useRef(initialOrientation);
   const currencyPolicyRef = useRef(initialPolicy);
@@ -66,10 +73,12 @@ export function useReportDraftState(
     nextBlocks: readonly DraftReportBlock[],
     nextPolicy = currencyPolicyRef.current,
     nextOrientation = orientationRef.current,
+    nextTitle = titleRef.current,
   ) => (
     JSON.stringify(nextBlocks) !== JSON.stringify(savedBlocksRef.current)
     || JSON.stringify(nextPolicy) !== JSON.stringify(savedCurrencyPolicyRef.current)
     || nextOrientation !== savedOrientationRef.current
+    || nextTitle !== savedTitleRef.current
   ), []);
 
   const announce = useCallback((message: string) => setEditorAnnouncement(message), []);
@@ -78,17 +87,22 @@ export function useReportDraftState(
   const resetDraft = useCallback((input: ResetReportDraftInput) => {
     const nextBlocks = copyDraftBlocks(input.blocks);
     const nextSavedBlocks = copyDraftBlocks(input.savedBlocks ?? input.blocks);
+    const nextTitle = input.title ?? optionsRef.current.identity?.title ?? "보고서 초안";
+    const nextSavedTitle = input.savedTitle ?? nextTitle;
     const nextOrientation = input.orientation ?? "landscape";
     const nextSavedOrientation = input.savedOrientation ?? nextOrientation;
     const nextPolicy = mergeDraftCurrencyPolicy(input.currencyPolicy);
     const nextSavedPolicy = mergeDraftCurrencyPolicy(input.savedCurrencyPolicy ?? input.currencyPolicy);
     blocksRef.current = nextBlocks;
     savedBlocksRef.current = nextSavedBlocks;
+    titleRef.current = nextTitle;
+    savedTitleRef.current = nextSavedTitle;
     orientationRef.current = nextOrientation;
     savedOrientationRef.current = nextSavedOrientation;
     currencyPolicyRef.current = nextPolicy;
     savedCurrencyPolicyRef.current = nextSavedPolicy;
     setBlocks(nextBlocks);
+    setReportTitle(nextTitle);
     setHistory(EMPTY_HISTORY);
     setSelectedBlockId(input.selectedBlockId ?? nextBlocks[0]?.id ?? "");
     setReportOrientation(nextOrientation);
@@ -97,6 +111,7 @@ export function useReportDraftState(
       JSON.stringify(nextBlocks) !== JSON.stringify(nextSavedBlocks)
       || JSON.stringify(nextPolicy) !== JSON.stringify(nextSavedPolicy)
       || nextOrientation !== nextSavedOrientation
+      || nextTitle !== nextSavedTitle
     ));
     setSaveFailed(false);
     setSaving(false);
@@ -108,9 +123,28 @@ export function useReportDraftState(
     if (!dirty) savedBlocksRef.current = next;
     setBlocks(next);
     setHistory(EMPTY_HISTORY);
-    setIsDirty(dirty);
+    setIsDirty(dirty || draftChanged(next));
     setSaveFailed(false);
     setSaving(false);
+  }, [draftChanged]);
+
+  const updateReportTitle = useCallback((title: string) => {
+    if (!optionsRef.current.editable || title === titleRef.current) return;
+    titleRef.current = title;
+    setReportTitle(title);
+    setIsDirty(draftChanged(blocksRef.current, currencyPolicyRef.current, orientationRef.current, title));
+  }, [draftChanged]);
+
+  const commitReportTitle = useCallback((previousTitle: string): boolean => {
+    if (!optionsRef.current.editable || previousTitle === titleRef.current) return false;
+    setHistory((value) => ({
+      past: [...value.past.slice(-(HISTORY_LIMIT - 1)), {
+        title: previousTitle,
+        blocks: copyDraftBlocks(blocksRef.current),
+      }],
+      future: [],
+    }));
+    return true;
   }, []);
 
   const commitBlocks = useCallback((updater, record = true): boolean => {
@@ -121,7 +155,10 @@ export function useReportDraftState(
     const next = copyDraftBlocks(resolved);
     if (record) {
       setHistory((value) => ({
-        past: [...value.past.slice(-(HISTORY_LIMIT - 1)), current],
+        past: [...value.past.slice(-(HISTORY_LIMIT - 1)), {
+          title: titleRef.current,
+          blocks: copyDraftBlocks(current),
+        }],
         future: [],
       }));
     }
@@ -135,11 +172,18 @@ export function useReportDraftState(
     if (!optionsRef.current.editable) return;
     setHistory((value) => {
       if (!value.past.length) return value;
-      const current = blocksRef.current;
-      const previous = copyDraftBlocks(value.past.at(-1) ?? []);
-      blocksRef.current = previous;
-      setBlocks(previous);
-      setIsDirty(draftChanged(previous));
+      const current = {
+        title: titleRef.current,
+        blocks: copyDraftBlocks(blocksRef.current),
+      };
+      const previous = value.past.at(-1);
+      if (!previous) return value;
+      const previousBlocks = copyDraftBlocks(previous.blocks);
+      titleRef.current = previous.title;
+      blocksRef.current = previousBlocks;
+      setReportTitle(previous.title);
+      setBlocks(previousBlocks);
+      setIsDirty(draftChanged(previousBlocks, currencyPolicyRef.current, orientationRef.current, previous.title));
       return {
         past: value.past.slice(0, -1),
         future: [current, ...value.future].slice(0, HISTORY_LIMIT),
@@ -151,19 +195,31 @@ export function useReportDraftState(
     if (!optionsRef.current.editable) return;
     setHistory((value) => {
       if (!value.future.length) return value;
-      const current = blocksRef.current;
+      const current = {
+        title: titleRef.current,
+        blocks: copyDraftBlocks(blocksRef.current),
+      };
       const [nextSnapshot, ...future] = value.future;
-      const next = copyDraftBlocks(nextSnapshot);
+      const next = copyDraftBlocks(nextSnapshot.blocks);
+      titleRef.current = nextSnapshot.title;
       blocksRef.current = next;
+      setReportTitle(nextSnapshot.title);
       setBlocks(next);
-      setIsDirty(draftChanged(next));
+      setIsDirty(draftChanged(next, currencyPolicyRef.current, orientationRef.current, nextSnapshot.title));
       return { past: [...value.past, current].slice(-HISTORY_LIMIT), future };
     });
   }, [draftChanged]);
 
   const updateBlock = useCallback((blockId: string, change: Partial<DraftReportBlock>, record = true) => {
     commitBlocks((current) => {
-      const next = current.map((block) => block.id === blockId ? { ...block, ...change } : block);
+      const next = current.map((block) => block.id === blockId
+        ? {
+            ...block,
+            ...change,
+            ...(Object.hasOwn(change, "content") && change.content !== block.content
+              && !Object.hasOwn(change, "evidenceRefs") ? { evidenceRefs: [] } : {}),
+          }
+        : block);
       if (!Object.hasOwn(change, "content")) return next;
       return compactDraftLayout(next.map((block) => (
         block.id === blockId && block.type === "text"
@@ -236,59 +292,10 @@ export function useReportDraftState(
   const reportContext = useCallback((orientation = orientationRef.current) => ({
     definitionId: optionsRef.current.identity?.definitionId || "report-draft",
     version: optionsRef.current.identity?.version || 1,
-    title: optionsRef.current.identity?.title || "보고서 초안",
+    title: titleRef.current || "보고서 초안",
     orientation,
     currencyPolicy: currencyPolicyRef.current,
   }), []);
-
-  const insertArtifact = useCallback((artifactId: string, position: DraftInsertPosition | null = null): boolean => {
-    if (!optionsRef.current.editable) return false;
-    const source = optionsRef.current.artifactSources?.find((item) => item.artifactId === artifactId);
-    if (!source) {
-      optionsRef.current.onNotice?.("추가할 Artifact를 불러온 뒤 다시 시도해 주세요.");
-      return false;
-    }
-    const artifact = optionsRef.current.artifacts?.[artifactId];
-    const layout = estimateArtifactBlockLayout(artifact, {
-      orientation: orientationRef.current,
-      visibleViews: WHOLE_ARTIFACT_VIEWS,
-      ...(position?.w ? { width: position.w } : {}),
-    });
-    const analysisSource = source.sourceKind === "analysisRun" || source.artifactSourceKind === "analysisRun";
-    const blockId = createUuid();
-    const result = insertFrontendArtifact(blocksRef.current, {
-      blockId,
-      title: source.title || source.definitionTitle || "분석 결과",
-      artifactId,
-      artifactChecksum: source.artifactChecksum || artifact?.artifact_checksum,
-      ...(!analysisSource ? {
-        artifactDefinitionId: source.definitionId,
-        artifactDefinitionVersion: source.definitionVersion,
-      } : {
-        sourceKind: "analysisRun",
-        requestId: source.requestId || source.artifactRequestId,
-        analysisDefinitionId: source.analysisDefinitionId,
-        analysisDefinitionVersion: source.analysisDefinitionVersion,
-      }),
-      queryId: source.queryId || artifact?.query_id,
-      question: source.question,
-      sourceUrns: source.sourceUrns,
-      artifact,
-      visibleViews: WHOLE_ARTIFACT_VIEWS,
-      sizeMode: "auto",
-      width: position?.w ?? layout.width,
-      height: layout.height,
-      placement: position?.placement || { type: "end", pageId: position?.pageId },
-    }, reportContext());
-    if (!result.ok) {
-      optionsRef.current.onError?.(result.errors?.[0] || "Artifact 전체 블록을 추가하지 못했습니다.");
-      return false;
-    }
-    if (!commitBlocks(result.blocks)) return false;
-    selectBlock(blockId);
-    optionsRef.current.onNotice?.("Artifact 전체를 요약·KPI·차트·표가 포함된 하나의 블록으로 추가했습니다.");
-    return true;
-  }, [commitBlocks, reportContext, selectBlock]);
 
   const addTemplateBlock = useCallback((templateId: string, position: DraftInsertPosition | null = null, settings: { readonly chartType?: string } = {}): boolean => {
     if (!optionsRef.current.editable) return false;
@@ -299,29 +306,88 @@ export function useReportDraftState(
     if (!templateId.startsWith("artifact-")) {
       block = createTextTemplateBlock(template, position, current, orientationRef.current);
     } else {
-      const type = templateId === "artifact-chart" ? "chart" : "table";
+      const view = template.view;
+      if (!view || !["summary", "kpi", "chart", "table"].includes(view)) return false;
       const sources = optionsRef.current.artifactSources ?? [];
       const source = sources.find((item) => item.artifactId === optionsRef.current.selectedArtifactId) ?? sources[0];
       if (!source?.artifactId) {
-        optionsRef.current.onNotice?.("먼저 분석 결과를 보고서로 가져오면 표와 차트를 추가할 수 있습니다.");
+        optionsRef.current.onNotice?.("먼저 사용할 분석 원본을 선택해 주세요.");
         return false;
       }
       const artifact = optionsRef.current.artifacts?.[source.artifactId];
-      if (type === "chart" && !artifact?.chart) {
-        optionsRef.current.onNotice?.("선택한 분석 결과에는 차트 데이터가 없습니다.");
+      if (!availableArtifactViews(artifact).includes(view)) {
+        optionsRef.current.onNotice?.(`선택한 분석 결과에는 ${ARTIFACT_VIEW_LABELS[view]} 데이터가 없습니다.`);
         return false;
       }
+      const sourceTitle = source.title || source.definitionTitle || "분석 결과";
+      const title = artifactViewTitle(sourceTitle, view);
+      const analysisSource = source.sourceKind === "analysisRun" || source.artifactSourceKind === "analysisRun";
+      if (["summary", "kpi"].includes(view)) {
+        const blockId = createUuid();
+        const layout = estimateArtifactBlockLayout(artifact, {
+          orientation: orientationRef.current,
+          visibleViews: [view],
+          ...(position?.w ? { width: position.w } : {}),
+        });
+        const result = insertFrontendArtifact(current, {
+          blockId,
+          title,
+          artifactId: source.artifactId,
+          artifactChecksum: source.artifactChecksum,
+          queryId: source.queryId,
+          ...(!analysisSource ? {
+            artifactDefinitionId: source.definitionId,
+            artifactDefinitionVersion: source.definitionVersion,
+          } : {
+            sourceKind: "analysisRun",
+            requestId: source.requestId || source.artifactRequestId,
+            analysisDefinitionId: source.analysisDefinitionId,
+            analysisDefinitionVersion: source.analysisDefinitionVersion,
+          }),
+          question: source.question,
+          sourceUrns: source.sourceUrns,
+          artifact,
+          visibleViews: [view],
+          sizeMode: "auto",
+          width: position?.w ?? layout.width,
+          height: layout.height,
+          placement: position?.placement || { type: "end", pageId: position?.pageId },
+        }, reportContext());
+        if (!result.ok) {
+          optionsRef.current.onError?.(result.errors?.[0] || `${ARTIFACT_VIEW_LABELS[view]} 요소를 추가하지 못했습니다.`);
+          return false;
+        }
+        const inserted = result.blocks.find((item) => item.id === blockId);
+        const positioned = position && (position.x !== undefined || position.y !== undefined)
+          ? placeDraftBlock(
+              result.blocks,
+              blockId,
+              position.requestedX ?? position.x ?? inserted?.x ?? 0,
+              position.y ?? inserted?.y ?? 0,
+            ) as readonly DraftReportBlock[]
+          : result.blocks;
+        if (!commitBlocks(positioned)) return false;
+        selectBlock(blockId);
+        optionsRef.current.onNotice?.(`${ARTIFACT_VIEW_LABELS[view]} 요소를 독립 블록으로 추가했습니다.`);
+        return true;
+      }
+      const type = view === "chart" ? "chart" : "table";
       const defaultY = current.reduce((bottom, item) => Math.max(bottom, item.y + item.h), 0);
-      const width = position?.w ?? template.w;
+      const adaptiveLayout = estimateArtifactViewBlockLayout(
+        { type, ...(position?.w ? { w: position.w, columns: position.w } : {}) },
+        artifact,
+        { orientation: orientationRef.current, autoWidth: !position?.w },
+      );
+      const width = position?.w ?? adaptiveLayout.width;
       block = fitFrontendArtifactViewBlock({
         ...source,
         id: createUuid(),
         type,
-        title: `${source.title} ${type === "chart" ? "차트" : "표"}`,
+        title,
         content: type === "chart"
           ? JSON.stringify({ showLegend: true, sizeMode: "auto", ...(settings.chartType ? { chartType: settings.chartType } : {}) })
           : JSON.stringify({ density: "comfortable", sizeMode: "auto" }),
-        x: position?.x ?? 0,
+        x: Math.min(position?.x ?? 0, 12 - width),
         y: position?.y ?? defaultY,
         w: width,
         columns: width,
@@ -337,8 +403,9 @@ export function useReportDraftState(
     });
     if (!committed) return false;
     selectBlock(block.id);
+    if (template.view) optionsRef.current.onNotice?.(`${ARTIFACT_VIEW_LABELS[template.view]} 요소를 독립 블록으로 추가했습니다.`);
     return true;
-  }, [commitBlocks, selectBlock]);
+  }, [commitBlocks, reportContext, selectBlock]);
 
   const duplicateBlock = useCallback((blockId: string) => {
     const current = blocksRef.current;
@@ -347,7 +414,7 @@ export function useReportDraftState(
     const duplicate = {
       ...source,
       id: createUuid(),
-      title: `${source.title} 복사본`,
+      title: source.type === "text" ? `${source.title} 복사본` : source.title,
       y: source.y + source.h,
     };
     if (commitBlocks(placeDraftBlock([...current, duplicate], duplicate.id, duplicate.x, duplicate.y) as readonly DraftReportBlock[])) {
@@ -421,6 +488,7 @@ export function useReportDraftState(
   }, []);
   const markSaved = useCallback(() => {
     savedBlocksRef.current = copyDraftBlocks(blocksRef.current);
+    savedTitleRef.current = titleRef.current;
     savedOrientationRef.current = orientationRef.current;
     savedCurrencyPolicyRef.current = { ...currencyPolicyRef.current };
     setSaving(false);
@@ -465,6 +533,9 @@ export function useReportDraftState(
     orderedBlocks,
     blocksRef,
     savedBlocksRef,
+    reportTitle,
+    titleRef,
+    savedTitleRef,
     selectedBlockId,
     selectedBlock,
     history,
@@ -483,6 +554,8 @@ export function useReportDraftState(
     announce,
     resetDraft,
     resetBlocks,
+    updateReportTitle,
+    commitReportTitle,
     commitBlocks,
     beginSave,
     markSaved,
@@ -496,8 +569,6 @@ export function useReportDraftState(
     compactLayout,
     setBlockSetting,
     addTemplateBlock,
-    insertArtifact,
-    addWholeArtifact: insertArtifact,
     duplicateBlock,
     deleteBlock,
     fitHydratedArtifactViews,
@@ -505,10 +576,10 @@ export function useReportDraftState(
     changeCurrencyDisplayUnit,
   }), [
     addTemplateBlock, announce, beginSave, blocks, changeCurrencyDisplayUnit, changeOrientation,
-    clearSaveFailure, commitBlocks, deleteBlock, duplicateBlock, editorAnnouncement,
-    fitHydratedArtifactViews, history, insertArtifact, isDirty, markSaveFailed, markSaved,
-    compactLayout, moveBlock, orderedBlocks, redo, reportCurrencyPolicy, reportOrientation, resetBlocks,
+    clearSaveFailure, commitBlocks, commitReportTitle, deleteBlock, duplicateBlock, editorAnnouncement,
+    fitHydratedArtifactViews, history, isDirty, markSaveFailed, markSaved,
+    compactLayout, moveBlock, orderedBlocks, redo, reportCurrencyPolicy, reportOrientation, reportTitle, resetBlocks,
     resetDraft, resizeBlock, saveFailed, saveState, selectBlock, selectedBlock,
-    selectedBlockId, setBlockSetting, undo, updateBlock,
+    selectedBlockId, setBlockSetting, undo, updateBlock, updateReportTitle,
   ]);
 }

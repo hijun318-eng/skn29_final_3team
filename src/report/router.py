@@ -18,7 +18,7 @@ from .domain import (
     ReportRun,
     RunStatus,
 )
-from .repository import ReportRepository
+from .repository import ReportRepository, ReportRevisionConflict
 
 REPORT_ROUTES: Final = (
     ("POST", "/reports/definitions", "create_definition"),
@@ -36,8 +36,8 @@ REPORT_ROUTES: Final = (
 
 class ReportRouteError(ValueError):
     """보고서 요청의 검증·미존재·상태 충돌을 HTTP 상태 코드와 공개 상세 문구로 전달한다."""
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
+    def __init__(self, status_code: int, detail: Any) -> None:
+        super().__init__(str(detail))
         self.status_code = status_code
         self.detail = detail
 
@@ -57,16 +57,22 @@ class ReportRouter:
 
     @staticmethod
     def _response(version: ReportDefinitionVersion) -> dict[str, Any]:
+        blocks = []
+        for block in version.blocks:
+            public_block = asdict(block)
+            public_block.pop("query_id", None)
+            blocks.append(public_block)
         return {
             "contract_version": REPORT_CONTRACT_VERSION,
             "definition_id": version.definition_id,
             "version": version.version,
             "status": version.status.value,
             "title": version.title,
-            "blocks": [asdict(block) for block in version.blocks],
+            "blocks": blocks,
             "approved_at": version.approved_at.isoformat() if version.approved_at else None,
             "orientation": version.orientation,
             "currency_display_unit": version.currency_display_unit,
+            "draft_revision": version.draft_revision,
         }
 
     @staticmethod
@@ -89,6 +95,7 @@ class ReportRouter:
                 h=block.get("h", 1),
                 content=block.get("content", ""),
                 view_spec_id=block.get("view_spec_id"),
+                evidence_refs=tuple(block.get("evidence_refs", ())),
             ))
         return tuple(blocks)
 
@@ -129,6 +136,8 @@ class ReportRouter:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
             blocks = self._blocks(payload.get("blocks", []))
+            if any(block.evidence_refs for block in blocks):
+                raise ValueError("새 Report block에는 검증되지 않은 근거 별칭을 추가할 수 없습니다.")
             draft = ReportDefinitionVersion(
                 definition_id=payload["definition_id"],
                 version=1,
@@ -191,24 +200,61 @@ class ReportRouter:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         """초안 블록 전체와 선택적 표시 설정을 검증·교체하고 입력·미존재·충돌 오류를 구분한다."""
-        extra = set(payload) - {"blocks", "title", "orientation", "currency_display_unit"}
+        extra = set(payload) - {
+            "blocks",
+            "title",
+            "orientation",
+            "currency_display_unit",
+            "expected_draft_revision",
+        }
         if extra:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
+            current = await _repository_result(self.repository.get_version(definition_id, version))
+            current_blocks = {block.block_id: block for block in current.blocks}
+            blocks = self._blocks(payload["blocks"])
+            for block in blocks:
+                previous = current_blocks.get(block.block_id)
+                if (
+                    previous is not None
+                    and previous.type is not BlockType.TEXT
+                    and previous.title != block.title
+                ):
+                    raise ValueError(
+                        "분석 Artifact view block 제목은 변경할 수 없습니다."
+                    )
+                if not block.evidence_refs:
+                    continue
+                if previous is None or (
+                    previous.content != block.content
+                    or previous.evidence_refs != block.evidence_refs
+                ):
+                    raise ValueError(
+                        "수동 편집은 검증된 text 근거를 추가하거나 변경할 수 없습니다."
+                    )
             return self._response(
                 await _repository_result(self.repository.replace_draft_blocks(
                     definition_id,
                     version,
-                    self._blocks(payload["blocks"]),
+                    blocks,
                     title=payload.get("title"),
                     orientation=payload.get("orientation"),
                     currency_display_unit=payload.get("currency_display_unit"),
+                    expected_draft_revision=payload["expected_draft_revision"],
                 ))
             )
         except KeyError as error:
             if error.args and error.args[0] == "Report definition version을 찾을 수 없습니다.":
                 raise ReportRouteError(404, str(error)) from error
             raise ReportRouteError(422, f"필수 필드 누락: {error.args[0]}") from error
+        except ReportRevisionConflict as error:
+            raise ReportRouteError(
+                409,
+                {
+                    "code": "REPORT_REVISION_CONFLICT",
+                    "current_draft_revision": error.current_revision,
+                },
+            ) from error
         except (TypeError, ValueError) as error:
             raise ReportRouteError(409, str(error)) from error
 

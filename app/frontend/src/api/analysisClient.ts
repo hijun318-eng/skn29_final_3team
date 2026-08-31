@@ -15,11 +15,22 @@ export interface ConversationCommandPayload {
   user_message: string;
   expected_head_turn_id?: string | null;
   idempotency_key?: string;
-  requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  requested_route?:
+    | "ANALYSIS"
+    | "PRESENTATION"
+    | "REPORT_ACTION"
+    | "INTERNAL_GUIDELINE"
+    | "ML_PREDICTION";
+  ml_prediction?: {
+    property_id: string;
+    as_of: string;
+    horizon_days: number;
+  };
+  inherit_previous_context?: boolean;
   presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
 }
 
-/** command 요청의 추적·취소와 향후 typed progress 전달 지점을 제공하는 선택 옵션이다. */
+/** command 요청의 추적·취소와 서버 확인 progress 전달 지점을 제공하는 선택 옵션이다. */
 export interface SubmitTurnCommandOptions {
   traceId?: string;
   signal?: AbortSignal;
@@ -36,12 +47,14 @@ export interface AnalysisClient {
     parameters?: Record<string, AnalysisValue>,
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
+  listInternalManuals(): Promise<InternalManualSummary[]>;
+  manualPdfUrl(documentId: string): string;
   cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
   replayDefinition(definitionId: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisRun>;
   getRunArtifact(requestId: string): Promise<AnalysisRun>;
-  listRuns(): Promise<SavedAnalysisRun[]>;
+  listRuns(options?: AnalysisRunListOptions): Promise<SavedAnalysisRun[]>;
   createConversation(): Promise<{ conversation_id: string; created_at: string }>;
   getConversationTurns(conversationId: string): Promise<ConversationTurnWire[]>;
   executeTurnCommand(
@@ -56,6 +69,21 @@ export interface AnalysisClient {
   ): Promise<any>;
 }
 
+/** 저장 분석 목록의 서버 조회 범위를 명시해 무제한 이력 전송을 막는다. */
+export interface AnalysisRunListOptions {
+  limit?: number;
+  approvedOnly?: boolean;
+}
+
+/** 현재 세션 역할로 열람이 승인된 내부 문서의 공개 메타데이터다. */
+export interface InternalManualSummary {
+  manual_id: string;
+  title: string;
+  version: string;
+  document_type: string;
+  owner_team: string;
+}
+
 /**
  * 서버 데이터베이스에서 수화된 대화 턴의 불변 유선 계약이다.
  */
@@ -64,7 +92,13 @@ export interface ConversationTurnWire {
   conversation_id: string;
   turn_index: number;
   user_message: string;
-  route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  route:
+    | "OUT_OF_SCOPE"
+    | "ANALYSIS"
+    | "PRESENTATION"
+    | "REPORT_ACTION"
+    | "INTERNAL_GUIDELINE"
+    | "ML_PREDICTION";
   source_turn_ids: string[];
   reply_to_turn_id: string | null;
   clarifies_turn_id: string | null;
@@ -75,6 +109,12 @@ export interface ConversationTurnWire {
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {
+    scope_rejection?: {
+      message: string;
+      reason?: string;
+    };
+    rag?: Record<string, unknown>;
+    ml_prediction?: Record<string, unknown>;
     business_terms?: string[];
     metric_id?: string | null;
     metric_ids?: string[];
@@ -143,6 +183,7 @@ export interface SessionInfo {
   status: "authenticated";
   role: ServiceRole;
   capabilities: ServiceCapability[];
+  enabled_features?: ServiceFeature[];
 }
 
 /** 로그인 성공 응답은 검증된 세션 계약과 동일하다. */
@@ -150,20 +191,34 @@ export type LoginSession = SessionInfo;
 
 const SESSION_ROLES = new Set<ServiceRole>([
   "analyst",
-  "admin",
+  "report_admin",
+  "data_admin",
+  "platform_admin",
 ]);
 const SESSION_CAPABILITIES = new Set<ServiceCapability>(Object.values(CAPABILITY));
+/** 인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 이름이다. */
+export const SERVICE_FEATURE = {
+  internalGuideline: "internal_guideline",
+  mlPrediction: "ml_prediction",
+} as const;
+/** 서버가 활성화해 세션 응답으로 전달하는 선택 기능의 문자열 계약이다. */
+export type ServiceFeature = typeof SERVICE_FEATURE[keyof typeof SERVICE_FEATURE];
+const SESSION_FEATURES = new Set<ServiceFeature>(Object.values(SERVICE_FEATURE));
 
 /** 인증 응답이 지원 Role과 중복 없는 Capability만 포함하는지 런타임에서 검증한다. */
 function isSessionInfo(value: unknown): value is SessionInfo {
   if (!value || typeof value !== "object") return false;
   const session = value as Partial<SessionInfo>;
+  const enabledFeatures = session.enabled_features ?? [];
   return session.status === "authenticated"
     && typeof session.role === "string"
     && SESSION_ROLES.has(session.role as ServiceRole)
     && Array.isArray(session.capabilities)
     && session.capabilities.length === new Set(session.capabilities).size
-    && session.capabilities.every((item) => SESSION_CAPABILITIES.has(item));
+    && session.capabilities.every((item) => SESSION_CAPABILITIES.has(item))
+    && Array.isArray(enabledFeatures)
+    && enabledFeatures.length === new Set(enabledFeatures).size
+    && enabledFeatures.every((item) => SESSION_FEATURES.has(item));
 }
 
 /** 재실행 가능한 서버 저장 분석 정의의 wire 계약이다. */
@@ -209,6 +264,112 @@ export interface AnalysisProgress {
   elapsed_seconds: number;
   cancel_requested: boolean;
   trace: Array<{ stage: string; outcome: string; detail?: string | null }>;
+}
+
+const ANALYSIS_PROCESS_PHASES = [
+  {
+    id: "request",
+    label: "요청 분류와 권한 확인",
+    description: "질문 유형, 사용자 권한과 실행 가능 여부를 확인합니다.",
+    completionStage: "CONTROLLER",
+  },
+  {
+    id: "scope",
+    label: "지표·기간·필터 확정",
+    description: "승인된 카탈로그에서 사용할 지표와 데이터 범위를 확정합니다.",
+    completionStage: "G1",
+  },
+  {
+    id: "plan",
+    label: "분석 계획·SQL 안전성 검증",
+    description: "실행 계획을 구성하고 읽기 전용 SQL과 지표 규칙을 검증합니다.",
+    completionStage: "G2",
+  },
+  {
+    id: "query",
+    label: "승인 데이터 조회",
+    description: "검증을 통과한 쿼리를 데이터 엔진에서 실행합니다.",
+    completionStage: "QUERY",
+  },
+  {
+    id: "verify",
+    label: "결과·근거 검증",
+    description: "조회 결과가 요청 조건과 실행 근거에 일치하는지 확인합니다.",
+    completionStage: "G3",
+  },
+  {
+    id: "answer",
+    label: "답변과 Artifact 구성",
+    description: "검증된 결과를 답변과 재사용 가능한 Artifact로 구성합니다.",
+    completionStage: "ARTIFACT",
+  },
+] as const;
+
+function progressPhaseIndex(stage: string, passedStages: Set<string>) {
+  if (["ROUTER", "CONTROLLER"].includes(stage)) return 0;
+  if (["CONTEXT", "G1"].includes(stage)) return 1;
+  if (["G2", "REPAIR"].includes(stage)) return 2;
+  if (stage === "QUERY") return 3;
+  if (stage === "G3") return 4;
+  if (stage === "ARTIFACT") return 5;
+  if (stage === "MODEL") {
+    if (passedStages.has("G3")) return 5;
+    if (passedStages.has("G1")) return 2;
+    return 1;
+  }
+  return -1;
+}
+
+/** 서버의 기술 트레이스를 순서를 바꾸지 않고 사용자용 분석 단계로 묶는다. */
+export function normalizeConversationCommandProgress(progress: AnalysisProgress): ConversationCommandProgress {
+  const passedStages = new Set(
+    progress.trace.filter((step) => step.outcome === "PASSED").map((step) => step.stage),
+  );
+  const status: ConversationCommandProgress["status"] = {
+    RECEIVED: "running",
+    ROUTED: "running",
+    SUCCEEDED: "success",
+    PARTIAL: "success",
+    BLOCKED: "blocked",
+    FAILED: "failed",
+    CANCELLED: "cancelled",
+  }[progress.status];
+  const states: ConversationCommandProgress["steps"][number]["state"][] = ANALYSIS_PROCESS_PHASES.map(
+    (phase) => passedStages.has(phase.completionStage) ? "complete" : "pending",
+  );
+
+  for (const step of progress.trace) {
+    if (step.outcome === "PASSED") continue;
+    const phaseIndex = progressPhaseIndex(step.stage, passedStages);
+    if (phaseIndex < 0) continue;
+    states[phaseIndex] = progress.cancel_requested || progress.status === "CANCELLED"
+      ? "cancelled"
+      : step.outcome === "BLOCKED"
+        ? "blocked"
+        : "failed";
+  }
+
+  if (status === "running") {
+    const activeIndex = states.findIndex((state) => state === "pending");
+    if (activeIndex >= 0) states[activeIndex] = "active";
+  } else if (status !== "success" && states.every((state) => ["complete", "pending"].includes(state))) {
+    const terminalIndex = states.findIndex((state) => state === "pending");
+    if (terminalIndex >= 0) states[terminalIndex] = status;
+  }
+
+  return {
+    traceId: progress.trace_id,
+    kind: "ANALYSIS",
+    status,
+    elapsedSeconds: progress.elapsed_seconds,
+    cancelRequested: progress.cancel_requested,
+    steps: ANALYSIS_PROCESS_PHASES.map((phase, index) => ({
+      id: phase.id,
+      label: phase.label,
+      description: phase.description,
+      state: states[index],
+    })),
+  };
 }
 
 /** 분석 호출의 trace 및 진행 콜백 입력이며 콜백 부재 시 polling을 만들지 않는다. */
@@ -267,6 +428,28 @@ function authenticationHeaders(explicitToken = "") {
   return explicitToken ? { Authorization: `Bearer ${explicitToken}` } : {};
 }
 
+function normalizeInternalManuals(value: unknown): InternalManualSummary[] {
+  if (!Array.isArray(value)) throw new Error("내부 문서 API가 올바르지 않은 응답을 반환했습니다.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object") {
+      throw new Error("내부 문서 API가 올바르지 않은 응답을 반환했습니다.");
+    }
+    const document = item as Record<string, unknown>;
+    for (const field of ["manual_id", "title", "version", "document_type", "owner_team"] as const) {
+      if (typeof document[field] !== "string" || !document[field].trim()) {
+        throw new Error("내부 문서 API가 올바르지 않은 응답을 반환했습니다.");
+      }
+    }
+    return {
+      manual_id: document.manual_id as string,
+      title: document.title as string,
+      version: document.version as string,
+      document_type: document.document_type as string,
+      owner_team: document.owner_team as string,
+    };
+  });
+}
+
 /** 명시된 backend origin에만 cookie 인증 요청을 보내며 origin 누락 시 즉시 실패하는 분석 클라이언트다. */
 export function createHttpAnalysisClient(
   baseUrl = env.VITE_BACKEND_BASE_URL,
@@ -289,7 +472,7 @@ export function createHttpAnalysisClient(
       const error = new AnalysisApiError(
         response.status,
         payload?.error?.code || `HTTP_${response.status}`,
-        payload?.error?.message || "분석 API 요청에 실패했습니다.",
+        payload?.error?.message || (typeof payload?.detail === "string" ? payload.detail : "분석 API 요청에 실패했습니다."),
         {
           retryable: Boolean(payload?.error?.retryable),
           requiredAction: payload?.error?.required_action,
@@ -361,6 +544,16 @@ export function createHttpAnalysisClient(
         if (poll !== undefined) window.clearInterval(poll);
       }
     },
+    async listInternalManuals() {
+      const payload = await parse<{ data?: { documents?: unknown } }>(await request(
+        endpoint("/rag/documents"),
+        { credentials: "include", headers: headers() },
+      ));
+      return normalizeInternalManuals(payload?.data?.documents);
+    },
+    manualPdfUrl(documentId) {
+      return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source.pdf`);
+    },
     async cancelAnalysis(traceId) {
       const payload = await parse<{ data: AnalysisProgress }>(await request(
         endpoint(`/analysis/progress/${encodeURIComponent(traceId)}/cancel`),
@@ -415,9 +608,15 @@ export function createHttpAnalysisClient(
         },
       }, detail.question);
     },
-    async listRuns() {
+    async listRuns(options: AnalysisRunListOptions = {}) {
+      const search = new URLSearchParams();
+      if (options.limit !== undefined) search.set("limit", String(options.limit));
+      if (options.approvedOnly !== undefined) {
+        search.set("approved_only", String(options.approvedOnly));
+      }
+      const query = search.size ? `?${search.toString()}` : "";
       return (await parse<{ items: SavedAnalysisRun[] }>(
-        await request(endpoint("/analysis/runs"), { credentials: "include", headers: headers() }),
+        await request(endpoint(`/analysis/runs${query}`), { credentials: "include", headers: headers() }),
       )).items;
     },
     async createConversation() {
@@ -452,8 +651,40 @@ export function createHttpAnalysisClient(
       );
     },
     async submitTurnCommand(conversationId, cmdPayload, options = {}) {
-      // Backend command progress transport가 확정되기 전에는 onProgress를 호출하거나 polling하지 않는다.
-      return this.executeTurnCommand(conversationId, cmdPayload, options);
+      const traceId = options.traceId || createUuid();
+      const commandPromise = this.executeTurnCommand(conversationId, cmdPayload, { ...options, traceId });
+      const onProgress = options.onProgress;
+      if (!onProgress) return commandPromise;
+
+      let polling = true;
+      let requestInFlight = false;
+      const pollProgress = async () => {
+        if (!polling || requestInFlight) return;
+        requestInFlight = true;
+        try {
+          const response = await request(endpoint(`/analysis/progress/${encodeURIComponent(traceId)}/poll`), {
+            credentials: "include",
+            headers: headers(false, traceId),
+            signal: options.signal,
+          });
+          const payload = await parse<{ data: AnalysisProgress | null }>(response);
+          if (polling && payload.data?.trace?.length) {
+            onProgress(normalizeConversationCommandProgress(payload.data));
+          }
+        } catch {
+          // 진행 조회 실패는 최종 command 응답의 성공·오류 계약을 덮지 않는다.
+        } finally {
+          requestInFlight = false;
+        }
+      };
+      void pollProgress();
+      const poll = globalThis.setInterval(() => void pollProgress(), 500);
+      try {
+        return await commandPromise;
+      } finally {
+        polling = false;
+        globalThis.clearInterval(poll);
+      }
     },
   };
 }

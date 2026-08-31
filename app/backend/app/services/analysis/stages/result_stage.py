@@ -107,7 +107,12 @@ class AnalysisResultStage:
         decision = state.decision
 
         # 1. 템플릿 요약 또는 LLM Node 3 자연어 요약 생성
-        if decision.route_type is RouteType.TEMPLATE:
+        if state.approved_semantic_snapshot is not None:
+            explanation = {
+                "summary": grounded_summary(query, package),
+                "model_version": "GROUNDED-SEMANTIC-REPLAY-v1.0.0",
+            }
+        elif decision.route_type is RouteType.TEMPLATE:
             explanation = {
                 "summary": f"승인된 분석에서 {len(query['rows'])}건을 조회했습니다.",
                 "model_version": "TEMPLATE-RESULT-v1.0.0",

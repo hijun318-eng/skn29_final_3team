@@ -1,6 +1,6 @@
 """관리 계정·세션 폐기·append-only 감사 이벤트를 하나의 DB transaction에서 처리한다.
 
-권위 입력은 ``security.accounts``이며 비밀번호 verifier는 API 응답과 감사 payload에 넣지
+권위 입력은 ``security.auth_accounts``이며 비밀번호 verifier는 API 응답과 감사 payload에 넣지
 않는다. 호출자가 소유한 ``AsyncSession``만 사용해 commit·rollback 경계를 중복 소유하지 않는다.
 """
 
@@ -147,7 +147,7 @@ class AdminAccountRepository:
             text(
                 f"""
                 SELECT count(*)
-                FROM security.accounts
+                FROM security.auth_accounts
                 WHERE deleted_at IS NULL AND {predicate}
                 """
             ),
@@ -158,7 +158,7 @@ class AdminAccountRepository:
                 f"""
                 SELECT subject, username, role, active,
                        created_at, updated_at, deactivated_at, deleted_at
-                FROM security.accounts
+                FROM security.auth_accounts
                 WHERE deleted_at IS NULL AND {predicate}
                 ORDER BY username, subject
                 LIMIT :limit OFFSET :offset
@@ -185,7 +185,7 @@ class AdminAccountRepository:
                 result = await self._session.execute(
                     text(
                         """
-                        INSERT INTO security.accounts (
+                        INSERT INTO security.auth_accounts (
                             subject, username, password_salt, password_hash,
                             password_iterations, role, active
                         ) VALUES (
@@ -233,9 +233,9 @@ class AdminAccountRepository:
         next_role = role.value if isinstance(role, Role) else str(current["role"])
         next_active = bool(active) if active is not None else bool(current["active"])
         if (
-            str(current["role"]) == Role.ADMIN.value
+            str(current["role"]) == Role.PLATFORM_ADMIN.value
             and bool(current["active"])
-            and (next_role != Role.ADMIN.value or not next_active)
+            and (next_role != Role.PLATFORM_ADMIN.value or not next_active)
         ):
             await self._protect_last_admin(subject)
 
@@ -254,7 +254,7 @@ class AdminAccountRepository:
                 result = await self._session.execute(
                     text(
                         """
-                        UPDATE security.accounts
+                        UPDATE security.auth_accounts
                         SET username = COALESCE(:username, username),
                             role = COALESCE(:role, role),
                             active = COALESCE(:active, active),
@@ -304,7 +304,7 @@ class AdminAccountRepository:
         await self._session.execute(
             text(
                 """
-                UPDATE security.accounts
+                UPDATE security.auth_accounts
                 SET password_salt = :password_salt,
                     password_hash = :password_hash,
                     password_iterations = :password_iterations,
@@ -332,12 +332,12 @@ class AdminAccountRepository:
 
         await self._serialize_account_mutation()
         current = await self._locked_account(subject)
-        if current["role"] == Role.ADMIN.value and bool(current["active"]):
+        if current["role"] == Role.PLATFORM_ADMIN.value and bool(current["active"]):
             await self._protect_last_admin(subject)
         await self._session.execute(
             text(
                 """
-                UPDATE security.accounts
+                UPDATE security.auth_accounts
                 SET active = false,
                     deactivated_at = COALESCE(deactivated_at, now()),
                     deleted_at = now(),
@@ -465,7 +465,7 @@ class AdminAccountRepository:
                            END AS normalized_outcome,
                            a.username AS actor_display_name
                     FROM governance.audit_events e
-                    LEFT JOIN security.accounts a ON a.subject = e.actor_user_id
+                    LEFT JOIN security.auth_accounts a ON a.subject = e.actor_user_id
                 ), grouped AS (
                     SELECT correlation_type || ':' || correlation_id AS trail_id,
                            correlation_type,
@@ -577,7 +577,7 @@ class AdminAccountRepository:
                            a.username AS actor_display_name,
                            q.trino_query_id AS query_id
                     FROM governance.audit_events e
-                    LEFT JOIN security.accounts a ON a.subject = e.actor_user_id
+                    LEFT JOIN security.auth_accounts a ON a.subject = e.actor_user_id
                     LEFT JOIN query.query_executions q
                         ON q.query_execution_id = e.query_execution_id
                 )
@@ -687,7 +687,7 @@ class AdminAccountRepository:
         """계정 변경이 서로 다른 대상 row를 먼저 잠가 deadlock을 만들지 않게 직렬화한다.
 
         transaction-scoped advisory lock을 대상 ``FOR UPDATE``보다 먼저 얻어 마지막 활성
-        admin 집합의 잠금 순서를 하나로 고정하며 commit·rollback 때 자동 해제한다.
+        platform_admin 집합의 잠금 순서를 하나로 고정하며 commit·rollback 때 자동 해제한다.
         """
 
         await self._session.execute(
@@ -700,7 +700,7 @@ class AdminAccountRepository:
                 """
                 SELECT subject, username, role, active,
                        created_at, updated_at, deactivated_at, deleted_at
-                FROM security.accounts
+                FROM security.auth_accounts
                 WHERE subject = :subject AND deleted_at IS NULL
                 FOR UPDATE
                 """
@@ -717,8 +717,8 @@ class AdminAccountRepository:
             text(
                 """
                 SELECT subject
-                FROM security.accounts
-                WHERE role = 'admin' AND active AND deleted_at IS NULL
+                FROM security.auth_accounts
+                WHERE role = 'platform_admin' AND active AND deleted_at IS NULL
                 ORDER BY subject
                 FOR UPDATE
                 """

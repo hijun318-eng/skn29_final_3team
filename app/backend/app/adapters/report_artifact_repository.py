@@ -10,7 +10,29 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.adapters.report_repository_common import _uuid
+from app.adapters.view_spec_integrity import view_spec_sha256
 from src.report.domain import DefinitionStatus, ReportDefinitionVersion
+
+
+def _canonical_required_release_receipt(
+    values: tuple[object | None, object | None, object | None],
+) -> tuple[str, str, str]:
+    """DB UUID 객체와 domain 문자열을 동일 비교 형식으로 만들고 누락 receipt는 닫는다."""
+
+    if not all(values):
+        raise ValueError("Stored Report release receipt is incomplete")
+    return (str(values[0]), str(values[1]), str(values[2]))
+
+
+def _view_spec_type_matches_block(block_type: str, view_type: str) -> bool:
+    """report_actions의 ViewSpec→block renderer 매핑과 동일한 유형만 허용한다."""
+
+    allowed = {
+        "table": {"TABLE"},
+        # report_actions는 KPI presentation도 chart block renderer로 결속한다.
+        "chart": {"BAR", "LINE", "PIE", "AREA", "SCATTER", "KPI"},
+    }
+    return view_type in allowed.get(block_type, set())
 
 
 class ReportArtifactRepositoryMixin:
@@ -32,7 +54,8 @@ class ReportArtifactRepositoryMixin:
                 text(
                     """
                     SELECT a.artifact_id, a.title, a.narrative_markdown,
-                           a.evidence_json, a.chart_spec_json, a.artifact_checksum,
+                           a.data_snapshot_json, a.evidence_json,
+                           a.chart_spec_json, a.artifact_checksum,
                            q.trino_query_id
                     FROM artifact.analysis_artifacts a
                     JOIN query.query_executions q
@@ -194,24 +217,36 @@ class ReportArtifactRepositoryMixin:
         assistant_request_id: str,
         error_code: str,
         data_request_id: str | None = None,
-    ) -> None:
-        """현재 소유자의 running assistant request를 실패 code와 완료 시각으로 종결한다.
+        operation_scope: str | None = None,
+        expected_phase: str | None = None,
+        expected_message_revision: int | None = None,
+    ) -> bool:
+        """현재 소유자의 일치하는 running request만 실패 code와 완료 시각으로 종결한다.
 
-        이미 종결됐거나 소유 범위 밖인 식별자는 상태를 바꾸지 않는 no-op이다. 잘못된 request
-        UUID는 ``ValueError``로 전달되고 DB 오류가 나면 transaction이 rollback된다. 성공
-        반환값은 ``None``이다.
+        선택적 phase·message revision CAS가 바뀐 늦은 모델 응답은 no-op으로 만든다. 이미
+        종결됐거나 소유 범위 밖인 식별자도 상태를 바꾸지 않는다. 잘못된 request UUID는
+        ``ValueError``로 전달되고 DB 오류가 나면 transaction이 rollback된다. 이 호출이
+        실패 상태를 실제로 claim했을 때만 ``True``를 반환한다.
         """
         async with self._sessionmaker.begin() as session:
-            await session.execute(
+            claimed = (await session.execute(
                 text(
                     """
                     UPDATE report_v1.report_assistant_requests
                     SET status = 'failed', error_code = :error_code, completed_at = now(),
-                        phase = CASE WHEN phase IS NULL THEN NULL ELSE 'failed' END
+                        phase = CASE WHEN phase IS NULL THEN NULL ELSE 'failed' END,
+                        operation_scope = CASE
+                            WHEN :operation_scope = 'report_title' THEN 'report_title'
+                            ELSE operation_scope END
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND status = 'running'
                       AND (CAST(:data_request_id AS uuid) IS NULL
                            OR data_request_id = CAST(:data_request_id AS uuid))
+                      AND (CAST(:expected_phase AS varchar) IS NULL
+                           OR phase = CAST(:expected_phase AS varchar))
+                      AND (CAST(:expected_message_revision AS bigint) IS NULL
+                           OR message_revision = CAST(:expected_message_revision AS bigint))
+                    RETURNING assistant_request_id
                     """
                 ),
                 {
@@ -222,8 +257,43 @@ class ReportArtifactRepositoryMixin:
                         _uuid(data_request_id, "data_request_id")
                         if data_request_id is not None else None
                     ),
+                    "operation_scope": operation_scope,
+                    "expected_phase": expected_phase,
+                    "expected_message_revision": expected_message_revision,
                 },
-            )
+            )).scalar_one_or_none()
+        return claimed is not None
+
+    async def cancel_assistant_session(
+        self,
+        assistant_request_id: str,
+    ) -> tuple[dict[str, object], bool]:
+        """취소 가능한 대기 phase만 원자 종결하고 terminal 재호출은 현재 상태를 반환한다."""
+
+        request_id = _uuid(assistant_request_id, "assistant_request_id")
+        async with self._sessionmaker.begin() as session:
+            claimed = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET phase = 'cancelled', status = 'failed',
+                        operation_scope = 'full_report',
+                        message_revision = message_revision + 1,
+                        error_code = 'ASSISTANT_CANCELLED', completed_at = now()
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND phase IN ('ready', 'waiting_patch_approval', 'waiting_approval')
+                      AND status = 'running'
+                    RETURNING assistant_request_id
+                    """
+                ),
+                {"request_id": request_id, "owner_id": self._owner_id},
+            )).scalar_one_or_none()
+        current = await self.get_assistant_session(assistant_request_id)
+        if claimed is not None:
+            return current, True
+        if current.get("phase") in {"completed", "failed", "cancelled"}:
+            return current, False
+        raise ValueError("ASSISTANT_CANCEL_NOT_ALLOWED")
 
     async def start_assistant_session(
         self,
@@ -235,8 +305,9 @@ class ReportArtifactRepositoryMixin:
         prompt_id: str,
         prompt_version: str,
         prompt_hash: str,
+        additional_artifact_ids: tuple[str, ...] = (),
     ) -> dict[str, object]:
-        """접근 가능한 draft와 그 block의 승인 artifact를 ``ready`` 세션으로 저장한다."""
+        """접근 가능한 draft와 최대 다섯 승인 Artifact를 원자 결속한 ``ready`` 세션을 저장한다."""
 
         definition = await self.get_version(definition_id, definition_version)
         if definition.status != DefinitionStatus.DRAFT:
@@ -244,7 +315,16 @@ class ReportArtifactRepositoryMixin:
         artifact_uuid = _uuid(artifact_id, "artifact_id")
         if not any(block.artifact_id == str(artifact_uuid) for block in definition.blocks):
             raise KeyError("보고서에 연결된 Analysis Artifact를 찾을 수 없습니다.")
-        await self.get_assistant_artifact(artifact_id)
+        artifact_ids = (artifact_id, *additional_artifact_ids)
+        if len(artifact_ids) > 5 or len(set(artifact_ids)) != len(artifact_ids):
+            raise ValueError("Assistant Artifact 결속은 중복 없이 최대 다섯 개입니다.")
+        artifacts = [await self.get_assistant_artifact(item) for item in artifact_ids]
+        if any(
+            not re.fullmatch(r"[0-9a-f]{64}", str(artifact.get("artifact_checksum") or ""))
+            or not artifact.get("trino_query_id")
+            for artifact in artifacts
+        ):
+            raise ValueError("Assistant Artifact lineage가 완전하지 않습니다.")
         async with self._sessionmaker.begin() as session:
             base_revision = (await session.execute(
                 text(
@@ -301,7 +381,26 @@ class ReportArtifactRepositoryMixin:
                     "base_revision": int(base_revision),
                 },
             )).mappings().one()
-        return dict(row)
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_assistant_artifact_bindings
+                        (assistant_request_id, artifact_id, artifact_alias, ordinal, artifact_checksum)
+                    VALUES (:request_id, :artifact_id, :artifact_alias, :ordinal, :artifact_checksum)
+                    """
+                ),
+                [
+                    {
+                        "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                        "artifact_id": _uuid(str(artifact["artifact_id"]), "artifact_id"),
+                        "artifact_alias": "source_artifact" if index == 1 else f"source_artifact_{index}",
+                        "ordinal": index,
+                        "artifact_checksum": str(artifact["artifact_checksum"]),
+                    }
+                    for index, artifact in enumerate(artifacts, start=1)
+                ],
+            )
+        return await self.get_assistant_session(assistant_request_id)
 
     async def retry_assistant_session(
         self,
@@ -327,12 +426,12 @@ class ReportArtifactRepositoryMixin:
                     """
                     INSERT INTO report_v1.report_assistant_requests
                         (assistant_request_id, owner_id, artifact_id, instruction_hash,
-                         status, prompt_id, prompt_version, prompt_hash, phase,
+                         status, prompt_id, prompt_version, prompt_hash, phase, operation_scope,
                          session_definition_id, session_definition_version, base_revision,
                          retry_of_assistant_request_id, retry_created_at)
                     SELECT :retry_request_id, source.owner_id, source.artifact_id,
                            :instruction_hash, 'running', :prompt_id, :prompt_version,
-                           :prompt_hash, 'ready', source.session_definition_id,
+                           :prompt_hash, 'ready', source.operation_scope, source.session_definition_id,
                            source.session_definition_version, source.base_revision,
                            source.assistant_request_id, now()
                     FROM report_v1.report_assistant_requests source
@@ -360,6 +459,30 @@ class ReportArtifactRepositoryMixin:
                             AND b.definition_version = v.version
                             AND b.artifact_id = source.artifact_id
                       )
+                      AND EXISTS (
+                          SELECT 1 FROM report_v1.report_assistant_artifact_bindings binding
+                          WHERE binding.assistant_request_id = source.assistant_request_id
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM report_v1.report_assistant_artifact_bindings binding
+                          LEFT JOIN artifact.analysis_artifacts bound_artifact
+                            ON bound_artifact.artifact_id = binding.artifact_id
+                          LEFT JOIN query.query_executions bound_query
+                            ON bound_query.query_execution_id = bound_artifact.query_execution_id
+                          LEFT JOIN chat.analysis_requests bound_request
+                            ON bound_request.request_id = bound_artifact.request_id
+                          WHERE binding.assistant_request_id = source.assistant_request_id
+                            AND (
+                                bound_artifact.artifact_id IS NULL
+                                OR bound_artifact.status <> 'APPROVED'
+                                OR bound_artifact.artifact_checksum <> binding.artifact_checksum
+                                OR bound_query.trino_query_id IS NULL
+                                OR bound_request.user_id IS DISTINCT FROM source.owner_id
+                                OR bound_request.status IS NULL
+                                OR bound_request.status NOT IN ('SUCCEEDED', 'PARTIAL')
+                            )
+                      )
                     ON CONFLICT (retry_of_assistant_request_id)
                         WHERE retry_of_assistant_request_id IS NOT NULL DO NOTHING
                     """
@@ -374,17 +497,36 @@ class ReportArtifactRepositoryMixin:
                     "prompt_hash": prompt_hash,
                 },
             )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_assistant_artifact_bindings
+                        (assistant_request_id, artifact_id, artifact_alias, ordinal, artifact_checksum)
+                    SELECT child.assistant_request_id, binding.artifact_id,
+                           binding.artifact_alias, binding.ordinal, binding.artifact_checksum
+                    FROM report_v1.report_assistant_requests child
+                    JOIN report_v1.report_assistant_artifact_bindings binding
+                      ON binding.assistant_request_id = child.retry_of_assistant_request_id
+                    WHERE child.retry_of_assistant_request_id = :source_request_id
+                      AND child.owner_id = :owner_id
+                    ON CONFLICT DO NOTHING
+                    """
+                ),
+                {"source_request_id": source_uuid, "owner_id": self._owner_id},
+            )
             row = (await session.execute(
                 text(
                     """
                     SELECT assistant_request_id, phase, session_definition_id,
                            session_definition_version, base_revision, artifact_id,
                            analysis_plan_json, result_artifact_id, result_revision,
-                           error_code, data_request_id, patch_request_id,
+                           error_code, data_request_id, patch_request_id, operation_scope,
+                           message_revision,
                            report_patch_json, status, instruction_hash,
                            decision_hash, model_version, prompt_id,
                            prompt_version, prompt_hash, approved_at, rejected_at,
-                           retry_of_assistant_request_id, retry_created_at
+                           retry_of_assistant_request_id, retry_created_at,
+                           patch_preview_json, approved_operation_indexes
                     FROM report_v1.report_assistant_requests
                     WHERE retry_of_assistant_request_id = :source_request_id
                       AND owner_id = :owner_id
@@ -394,10 +536,19 @@ class ReportArtifactRepositoryMixin:
             )).mappings().one_or_none()
         if row is None:
             raise ValueError("ASSISTANT_RETRY_VALIDATION_FAILED")
-        return dict(row)
+        return await self.get_assistant_session(str(row["assistant_request_id"]))
 
-    async def get_assistant_session(self, assistant_request_id: str) -> dict[str, object]:
-        """현재 소유자의 대화형 Assistant 세션을 조회하고 타인·미존재 대상은 숨긴다."""
+    async def get_assistant_session(
+        self,
+        assistant_request_id: str,
+        *,
+        expected_message_revision: int | None = None,
+    ) -> dict[str, object]:
+        """현재 소유자의 일관된 Assistant 세션을 읽고 타인·미존재 대상은 숨긴다.
+
+        request row의 share lock을 bindings·turn 조회까지 유지한다. 선택적 message revision이
+        일치하지 않으면 stale 저장 결과를 현재 세션과 섞지 않고 조회 실패로 처리한다.
+        """
 
         async with self._sessionmaker() as session:
             row = (await session.execute(
@@ -406,25 +557,157 @@ class ReportArtifactRepositoryMixin:
                     SELECT assistant_request_id, phase, session_definition_id,
                            session_definition_version, base_revision, artifact_id,
                            analysis_plan_json, result_artifact_id, result_revision,
-                           error_code, data_request_id, patch_request_id,
+                           error_code, data_request_id, patch_request_id, operation_scope,
+                           message_revision,
                            report_patch_json, status, instruction_hash,
                            decision_hash, model_version, prompt_id,
                            prompt_version, prompt_hash,
+                           output_hash,
                            approved_at, rejected_at,
-                           retry_of_assistant_request_id, retry_created_at
+                           retry_of_assistant_request_id, retry_created_at,
+                           patch_preview_json, approved_operation_indexes
                     FROM report_v1.report_assistant_requests
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase IS NOT NULL
+                      AND (CAST(:expected_message_revision AS bigint) IS NULL
+                           OR message_revision = CAST(:expected_message_revision AS bigint))
+                    FOR SHARE
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "expected_message_revision": expected_message_revision,
+                },
+            )).mappings().one_or_none()
+            bindings = (await session.execute(
+                text(
+                    """
+                    SELECT b.artifact_id, b.artifact_alias, b.artifact_checksum
+                    FROM report_v1.report_assistant_artifact_bindings b
+                    JOIN report_v1.report_assistant_requests r
+                      ON r.assistant_request_id = b.assistant_request_id
+                    WHERE b.assistant_request_id = :request_id AND r.owner_id = :owner_id
+                    ORDER BY b.ordinal
                     """
                 ),
                 {
                     "request_id": _uuid(assistant_request_id, "assistant_request_id"),
                     "owner_id": self._owner_id,
                 },
-            )).mappings().one_or_none()
+            )).mappings().all() if row is not None else ()
+            turn_rows = (await session.execute(
+                text(
+                    """
+                    SELECT t.user_instruction, t.assistant_message
+                    FROM report_v1.report_assistant_turns t
+                    JOIN report_v1.report_assistant_requests r
+                      ON r.assistant_request_id = t.assistant_request_id
+                    WHERE t.assistant_request_id = :request_id AND r.owner_id = :owner_id
+                    ORDER BY t.turn_number DESC
+                    LIMIT 6
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )).mappings().all() if row is not None else ()
         if row is None:
             raise KeyError("Report Assistant 세션을 찾을 수 없습니다.")
-        return dict(row)
+        result = dict(row)
+        result["artifact_bindings"] = tuple(dict(binding) for binding in bindings)
+        turn_history: list[dict[str, str]] = []
+        for turn in reversed(turn_rows):
+            turn_history.extend((
+                {"role": "user", "content": str(turn["user_instruction"])},
+                {"role": "assistant", "content": str(turn["assistant_message"])},
+            ))
+        result["turn_history"] = tuple(turn_history)
+        return result
+
+    async def _completed_assistant_revision(
+        self,
+        assistant_request_id: str,
+        output_hash: str,
+        *,
+        decision_hash: str | None = None,
+        data_request_id: str | None = None,
+    ) -> dict[str, object] | None:
+        """동일 저장 경쟁에서 먼저 완료된 session만 멱등 성공으로 다시 읽는다."""
+
+        current = await self.get_assistant_session(assistant_request_id)
+        if (
+            current.get("phase") != "completed"
+            or current.get("status") != "success"
+            or current.get("result_revision") is None
+            or str(current.get("output_hash")) != output_hash
+            or (
+                decision_hash is not None
+                and str(current.get("decision_hash")) != decision_hash
+            )
+            or (
+                data_request_id is not None
+                and str(current.get("data_request_id")) != data_request_id
+            )
+        ):
+            return None
+        return current
+
+    async def get_assistant_artifacts(
+        self,
+        assistant_request_id: str,
+    ) -> tuple[dict[str, object], ...]:
+        """owner session의 고정 checksum과 여전히 승인된 Artifact lineage를 순서대로 재검증한다."""
+
+        async with self._sessionmaker() as session:
+            rows = (await session.execute(
+                text(
+                    """
+                    SELECT a.artifact_id, a.title, a.narrative_markdown,
+                           a.data_snapshot_json, a.evidence_json,
+                           a.chart_spec_json, a.artifact_checksum,
+                           q.trino_query_id, b.artifact_alias
+                    FROM report_v1.report_assistant_artifact_bindings b
+                    JOIN report_v1.report_assistant_requests s
+                      ON s.assistant_request_id = b.assistant_request_id
+                     AND s.owner_id = :owner_id
+                    JOIN artifact.analysis_artifacts a
+                      ON a.artifact_id = b.artifact_id AND a.status = 'APPROVED'
+                     AND a.artifact_checksum = b.artifact_checksum
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                     AND q.trino_query_id IS NOT NULL
+                    JOIN chat.analysis_requests r
+                      ON r.request_id = a.request_id AND r.user_id = s.owner_id
+                     AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                    WHERE b.assistant_request_id = :request_id
+                    ORDER BY b.ordinal
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )).mappings().all()
+            expected = (await session.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM report_v1.report_assistant_artifact_bindings b
+                    JOIN report_v1.report_assistant_requests s
+                      ON s.assistant_request_id = b.assistant_request_id
+                    WHERE b.assistant_request_id = :request_id AND s.owner_id = :owner_id
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )).scalar_one()
+        if not rows or len(rows) != int(expected):
+            raise KeyError("승인된 Assistant Artifact 결속을 찾을 수 없습니다.")
+        return tuple(dict(row) for row in rows)
 
     async def record_existing_assistant_patch_proposal(
         self,
@@ -437,8 +720,12 @@ class ReportArtifactRepositoryMixin:
         prompt_version: str,
         prompt_hash: str,
         patch: dict[str, object],
+        patch_preview: tuple[dict[str, object], ...],
         instruction_text: str,
         assistant_message: str,
+        operation_scope: str = "full_report",
+        *,
+        expected_message_revision: int,
     ) -> dict[str, object]:
         """검증·dry-run된 기존 근거 patch를 적용하지 않고 사용자 승인 대기로 저장한다."""
 
@@ -450,12 +737,16 @@ class ReportArtifactRepositoryMixin:
                     SET phase = 'waiting_patch_approval',
                         patch_request_id = :patch_request_id,
                         report_patch_json = CAST(:patch AS jsonb),
+                        patch_preview_json = CAST(:patch_preview AS jsonb),
+                        approved_operation_indexes = NULL,
                         instruction_hash = :instruction_hash,
                         decision_hash = :decision_hash,
                         model_version = :model_version,
                         prompt_id = :prompt_id,
                         prompt_version = :prompt_version,
                         prompt_hash = :prompt_hash,
+                        operation_scope = :operation_scope,
+                        message_revision = message_revision + 1,
                         analysis_plan_json = NULL,
                         data_request_id = NULL,
                         approved_at = NULL,
@@ -467,21 +758,29 @@ class ReportArtifactRepositoryMixin:
                         error_code = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase = 'ready' AND status = 'running'
+                      AND (operation_scope <> 'report_title'
+                           OR :operation_scope = 'report_title')
+                      AND message_revision = :expected_message_revision
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, patch_request_id, report_patch_json,
-                              result_artifact_id, result_revision, error_code
+                              patch_preview_json, approved_operation_indexes,
+                              result_artifact_id, result_revision, error_code,
+                              operation_scope, message_revision
                     """
                 ),
                 {
                     "patch_request_id": _uuid(patch_request_id, "patch_request_id"),
                     "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
+                    "patch_preview": json.dumps(patch_preview, ensure_ascii=False),
                     "instruction_hash": instruction_hash,
                     "decision_hash": decision_hash,
                     "model_version": model_version,
                     "prompt_id": prompt_id,
                     "prompt_version": prompt_version,
                     "prompt_hash": prompt_hash,
+                    "operation_scope": operation_scope,
+                    "expected_message_revision": expected_message_revision,
                     "request_id": _uuid(assistant_request_id, "assistant_request_id"),
                     "owner_id": self._owner_id,
                 },
@@ -495,7 +794,94 @@ class ReportArtifactRepositoryMixin:
                     change_kind="existing_artifact",
                 )
         if row is None:
-            raise ValueError("ready Report Assistant 세션만 patch 제안을 저장할 수 있습니다.")
+            raise ValueError("ASSISTANT_STATE_CONFLICT")
+        return dict(row)
+
+    async def replace_existing_assistant_patch_proposal(
+        self,
+        assistant_request_id: str,
+        expected_patch_request_id: str,
+        patch_request_id: str,
+        instruction_hash: str,
+        decision_hash: str,
+        model_version: str,
+        prompt_id: str,
+        prompt_version: str,
+        prompt_hash: str,
+        patch: dict[str, object],
+        patch_preview: tuple[dict[str, object], ...],
+        instruction_text: str,
+        assistant_message: str,
+        operation_scope: str = "full_report",
+        *,
+        expected_message_revision: int,
+    ) -> dict[str, object]:
+        """승인 대기 patch를 owner·기존 request ID CAS로 검증된 대체안과 교환한다."""
+
+        request_uuid = _uuid(assistant_request_id, "assistant_request_id")
+        async with self._sessionmaker.begin() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET patch_request_id = :patch_request_id,
+                        report_patch_json = CAST(:patch AS jsonb),
+                        patch_preview_json = CAST(:patch_preview AS jsonb),
+                        approved_operation_indexes = NULL,
+                        instruction_hash = :instruction_hash,
+                        decision_hash = :decision_hash,
+                        model_version = :model_version,
+                        prompt_id = :prompt_id,
+                        prompt_version = :prompt_version,
+                        prompt_hash = :prompt_hash,
+                        operation_scope = :operation_scope,
+                        message_revision = message_revision + 1,
+                        approved_at = NULL,
+                        rejected_at = NULL,
+                        error_code = NULL
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND patch_request_id = :expected_patch_request_id
+                      AND phase = 'waiting_patch_approval' AND status = 'running'
+                      AND (operation_scope <> 'report_title'
+                           OR :operation_scope = 'report_title')
+                      AND message_revision = :expected_message_revision
+                    RETURNING assistant_request_id, phase, session_definition_id,
+                              session_definition_version, base_revision, artifact_id,
+                              analysis_plan_json, patch_request_id, report_patch_json,
+                              patch_preview_json, approved_operation_indexes,
+                              result_artifact_id, result_revision, error_code,
+                              operation_scope, message_revision
+                    """
+                ),
+                {
+                    "patch_request_id": _uuid(patch_request_id, "patch_request_id"),
+                    "expected_patch_request_id": _uuid(
+                        expected_patch_request_id, "expected_patch_request_id"
+                    ),
+                    "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
+                    "patch_preview": json.dumps(patch_preview, ensure_ascii=False),
+                    "instruction_hash": instruction_hash,
+                    "decision_hash": decision_hash,
+                    "model_version": model_version,
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_hash": prompt_hash,
+                    "operation_scope": operation_scope,
+                    "expected_message_revision": expected_message_revision,
+                    "request_id": request_uuid,
+                    "owner_id": self._owner_id,
+                },
+            )).mappings().one_or_none()
+            if row is not None:
+                await self._append_assistant_turn(
+                    session,
+                    request_uuid=request_uuid,
+                    instruction_text=instruction_text,
+                    assistant_message=assistant_message,
+                    change_kind="existing_artifact",
+                )
+        if row is None:
+            raise ValueError("ASSISTANT_STATE_CONFLICT")
         return dict(row)
 
     async def decide_existing_assistant_patch(
@@ -503,6 +889,7 @@ class ReportArtifactRepositoryMixin:
         assistant_request_id: str,
         patch_request_id: str,
         approved: bool,
+        operation_indexes: tuple[int, ...] | None = None,
     ) -> tuple[dict[str, object], bool]:
         """owner·session·patch 요청·phase를 한 CAS로 확인해 최초 결정만 claim한다."""
 
@@ -516,7 +903,14 @@ class ReportArtifactRepositoryMixin:
                     UPDATE report_v1.report_assistant_requests
                     SET phase = :target_phase,
                         approved_at = CASE WHEN :approved THEN now() ELSE approved_at END,
-                        rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END
+                        rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END,
+                        message_revision = message_revision + 1,
+                        operation_scope = CASE
+                            WHEN :approved THEN operation_scope ELSE 'full_report' END,
+                        approved_operation_indexes = CASE
+                            WHEN :approved THEN CAST(:operation_indexes AS smallint[])
+                            ELSE approved_operation_indexes
+                        END
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND patch_request_id = :patch_request_id
                       AND phase = 'waiting_patch_approval' AND status = 'running'
@@ -529,6 +923,7 @@ class ReportArtifactRepositoryMixin:
                     "request_id": request_uuid,
                     "owner_id": self._owner_id,
                     "patch_request_id": patch_uuid,
+                    "operation_indexes": list(operation_indexes) if operation_indexes is not None else None,
                 },
             )).scalar_one_or_none()
         current = await self.get_assistant_session(assistant_request_id)
@@ -537,7 +932,17 @@ class ReportArtifactRepositoryMixin:
             current.get("approved_at") is not None
             if approved else current.get("rejected_at") is not None
         )
-        if claimed is None and (not same_request or not already_decided):
+        stored_selection = tuple(current.get("approved_operation_indexes") or ())
+        if (
+            approved
+            and not stored_selection
+            and current.get("approved_at") is not None
+            and current.get("patch_request_id") is not None
+        ):
+            patch = current.get("report_patch_json") or {}
+            stored_selection = tuple(range(len(patch.get("operations") or ())))
+        same_selection = not approved or stored_selection == tuple(operation_indexes or ())
+        if claimed is None and (not same_request or not already_decided or not same_selection):
             raise ValueError("현재 승인 대기 중인 patch 요청과 일치하지 않습니다.")
         return current, claimed is not None
 
@@ -588,6 +993,9 @@ class ReportArtifactRepositoryMixin:
         instruction_text: str,
         assistant_message: str,
         change_kind: str,
+        operation_scope: str = "full_report",
+        *,
+        expected_message_revision: int,
     ) -> dict[str, object]:
         """ready 세션에 검증된 모델 제안을 기록하고 새 데이터 계획만 승인 대기로 전이한다."""
 
@@ -605,10 +1013,14 @@ class ReportArtifactRepositoryMixin:
                         prompt_id = :prompt_id,
                         prompt_version = :prompt_version,
                         prompt_hash = :prompt_hash,
+                        operation_scope = :operation_scope,
+                        message_revision = message_revision + 1,
                         analysis_plan_json = CAST(:analysis_plan AS jsonb),
                         data_request_id = :data_request_id,
                         patch_request_id = NULL,
                         report_patch_json = NULL,
+                        patch_preview_json = NULL,
+                        approved_operation_indexes = NULL,
                         approved_at = NULL,
                         rejected_at = NULL,
                         result_artifact_id = NULL,
@@ -618,10 +1030,13 @@ class ReportArtifactRepositoryMixin:
                         error_code = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase = 'ready' AND status = 'running'
+                      AND (operation_scope <> 'report_title'
+                           OR :operation_scope = 'report_title')
+                      AND message_revision = :expected_message_revision
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, result_artifact_id, result_revision,
-                              error_code
+                              error_code, operation_scope, message_revision
                     """
                 ),
                 {
@@ -632,6 +1047,8 @@ class ReportArtifactRepositoryMixin:
                     "prompt_id": prompt_id,
                     "prompt_version": prompt_version,
                     "prompt_hash": prompt_hash,
+                    "operation_scope": operation_scope,
+                    "expected_message_revision": expected_message_revision,
                     "analysis_plan": (
                         json.dumps(analysis_plan, ensure_ascii=False, sort_keys=True)
                         if analysis_plan is not None else None
@@ -653,7 +1070,7 @@ class ReportArtifactRepositoryMixin:
                     change_kind=change_kind,
                 )
         if row is None:
-            raise ValueError("ready Report Assistant 세션만 변경안을 저장할 수 있습니다.")
+            raise ValueError("ASSISTANT_STATE_CONFLICT")
         return dict(row)
 
     async def finalize_existing_assistant_patch(
@@ -726,7 +1143,8 @@ class ReportArtifactRepositoryMixin:
                 source = (await session.execute(
                     text(
                         """
-                        SELECT v.revision
+                        SELECT v.revision, v.product_release_id,
+                               v.permission_snapshot_id, v.semantic_release_id
                         FROM report_v1.report_definition_versions v
                         JOIN report_v1.report_definitions d USING (definition_id)
                         WHERE v.definition_id = :definition_id AND v.version = :source_version
@@ -746,18 +1164,42 @@ class ReportArtifactRepositoryMixin:
                         "base_revision": assistant["base_revision"],
                         "owner_id": self._owner_id,
                     },
-                )).scalar_one_or_none()
+                )).mappings().one_or_none()
                 if source is None:
                     raise ValueError("REPORT_REVISION_CONFLICT")
+                raw_source_receipt = (
+                    source["product_release_id"],
+                    source["permission_snapshot_id"],
+                    source["semantic_release_id"],
+                )
+                source_receipt_values = _canonical_required_release_receipt(
+                    raw_source_receipt
+                )
+                patched_receipt = _canonical_required_release_receipt(
+                    (
+                        patched.product_release_id,
+                        patched.permission_snapshot_id,
+                        patched.semantic_release_id,
+                    )
+                )
+                if patched_receipt != source_receipt_values:
+                    raise ValueError("REPORT_REVISION_CONFLICT")
+                receipt = await self._resolve_report_receipt(session, source_receipt_values)
+                if receipt is None:
+                    raise ValueError("Stored Report release receipt is incomplete")
                 target_version = source_version + 1
                 await session.execute(
                     text(
                         """
                         INSERT INTO report_v1.report_definition_versions
                             (definition_id, version, status, title,
-                             orientation, currency_display_unit)
+                             orientation, currency_display_unit,
+                             product_release_id, permission_snapshot_id,
+                             semantic_release_id)
                         VALUES (:definition_id, :version, 'draft', :title,
-                                :orientation, :currency_display_unit)
+                                :orientation, :currency_display_unit,
+                                :product_release_id, :permission_snapshot_id,
+                                :semantic_release_id)
                         """
                     ),
                     {
@@ -766,6 +1208,9 @@ class ReportArtifactRepositoryMixin:
                         "title": patched.title,
                         "orientation": patched.orientation,
                         "currency_display_unit": patched.currency_display_unit,
+                        "product_release_id": receipt[0],
+                        "permission_snapshot_id": receipt[1],
+                        "semantic_release_id": receipt[2],
                     },
                 )
                 for block in patched.blocks:
@@ -777,16 +1222,82 @@ class ReportArtifactRepositoryMixin:
                         lineage = await self._require_owned_artifact(
                             session, block_artifact_id, block.query_id
                         )
+                        if lineage[3:] != receipt:
+                            raise ValueError(
+                                "Report block Artifact release receipt does not match"
+                            )
+                    view_spec_id = (
+                        _uuid(block.view_spec_id, "view_spec_id")
+                        if block.view_spec_id
+                        else None
+                    )
+                    if view_spec_id is not None:
+                        await self._require_artifact_view_spec(
+                            session, view_spec_id, block_artifact_id
+                        )
+                        verified_view = (await session.execute(
+                            text(
+                                """
+                                SELECT view_type, spec_json, spec_sha256,
+                                       product_release_id, permission_snapshot_id,
+                                       semantic_release_id
+                                FROM artifact.view_specs
+                                WHERE view_spec_id = :view_spec_id
+                                  AND artifact_id = :artifact_id
+                                """
+                            ),
+                            {
+                                "view_spec_id": view_spec_id,
+                                "artifact_id": block_artifact_id,
+                            },
+                        )).mappings().one_or_none()
+                        verified_receipt = (
+                            tuple(str(verified_view[key]) for key in (
+                                "product_release_id",
+                                "permission_snapshot_id",
+                                "semantic_release_id",
+                            ))
+                            if verified_view is not None
+                            and all(verified_view[key] for key in (
+                                "product_release_id",
+                                "permission_snapshot_id",
+                                "semantic_release_id",
+                            ))
+                            else None
+                        )
+                        verified_spec = (
+                            dict(verified_view["spec_json"])
+                            if verified_view is not None
+                            and isinstance(verified_view["spec_json"], dict)
+                            else None
+                        )
+                        if (
+                            verified_view is None
+                            or not _view_spec_type_matches_block(
+                                block.type.value, str(verified_view["view_type"])
+                            )
+                            or verified_receipt != receipt
+                            or verified_spec is None
+                            or not re.fullmatch(
+                                r"[0-9a-f]{64}", str(verified_view["spec_sha256"])
+                            )
+                            or view_spec_sha256(verified_spec)
+                            != str(verified_view["spec_sha256"])
+                        ):
+                            raise ValueError(
+                                "Report ViewSpec integrity or release receipt does not match"
+                            )
                     await session.execute(
                         text(
                             """
                             INSERT INTO report_v1.report_blocks
                                 (definition_id, definition_version, block_id, title,
                                  artifact_id, query_id, columns, block_type, x, y, w, h,
-                                 content, analysis_definition_id, analysis_definition_version)
+                                 view_spec_id, content, evidence_refs, analysis_definition_id,
+                                 analysis_definition_version)
                             VALUES (:definition_id, :version, :block_id, :title,
                                     :artifact_id, :query_id, :columns, :block_type,
-                                    :x, :y, :w, :h, :content,
+                                    :x, :y, :w, :h, :view_spec_id, :content, :evidence_refs,
                                     :analysis_definition_id, :analysis_definition_version)
                             """
                         ),
@@ -796,18 +1307,25 @@ class ReportArtifactRepositoryMixin:
                             "block_id": _uuid(block.block_id, "block_id"),
                             "title": block.title,
                             "artifact_id": block_artifact_id,
-                            "query_id": block.query_id,
+                            "query_id": lineage[2] if lineage else None,
                             "columns": block.columns,
                             "block_type": block.type.value,
                             "x": block.x,
                             "y": block.y,
                             "w": block.w,
                             "h": block.h,
+                            "view_spec_id": view_spec_id,
                             "content": block.content,
+                            "evidence_refs": list(block.evidence_refs),
                             "analysis_definition_id": lineage[0] if lineage else None,
                             "analysis_definition_version": lineage[1] if lineage else None,
                         },
                     )
+                await self._bind_report_receipt(
+                    session,
+                    object_id=f"definition:{definition_id}:v{target_version}",
+                    receipt=receipt,
+                )
                 completed = (await session.execute(
                     text(
                         """
@@ -861,8 +1379,18 @@ class ReportArtifactRepositoryMixin:
                         assistant_message=assistant_message,
                         change_kind=change_kind,
                     )
-        except IntegrityError as error:
-            raise ValueError("REPORT_REVISION_CONFLICT") from error
+        except (IntegrityError, ValueError) as error:
+            completed = await self._completed_assistant_revision(
+                assistant_request_id,
+                output_hash,
+                decision_hash=decision_hash,
+                data_request_id=data_request_id,
+            )
+            if completed is not None:
+                return completed
+            if isinstance(error, IntegrityError):
+                raise ValueError("REPORT_REVISION_CONFLICT") from error
+            raise
         return await self.get_assistant_session(assistant_request_id)
 
     async def get_assistant_turn_history(
@@ -941,6 +1469,19 @@ class ReportArtifactRepositoryMixin:
         )).scalar_one_or_none()
         if inserted is None:
             raise ValueError("Report Assistant turn을 저장할 수 없습니다.")
+        await session.execute(
+            text(
+                """
+                DELETE FROM report_v1.report_assistant_turns
+                WHERE assistant_request_id = :request_id
+                  AND turn_number <= :last_turn_number - 6
+                """
+            ),
+            {
+                "request_id": request_uuid,
+                "last_turn_number": inserted,
+            },
+        )
 
     async def decide_assistant_plan(
         self,
@@ -960,7 +1501,9 @@ class ReportArtifactRepositoryMixin:
                     UPDATE report_v1.report_assistant_requests
                     SET phase = :target_phase,
                         approved_at = CASE WHEN :approved THEN now() ELSE approved_at END,
-                        rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END
+                        rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END,
+                        operation_scope = CASE
+                            WHEN :approved THEN operation_scope ELSE 'full_report' END
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND data_request_id = :data_request_id
                       AND phase = 'waiting_approval' AND status = 'running'
@@ -1044,8 +1587,16 @@ class ReportArtifactRepositoryMixin:
         assistant_request_id: str,
         data_request_id: str,
         artifact: dict[str, object],
+        *,
+        decision_hash: str,
+        model_version: str,
+        prompt_id: str,
+        prompt_version: str,
+        prompt_hash: str,
+        patch: dict[str, object],
+        patch_preview: tuple[dict[str, object], ...],
     ) -> dict[str, object]:
-        """검증된 Artifact lineage를 저장하고 Revision 저장 대기 phase로 원자 전이한다."""
+        """검증된 Artifact lineage와 합성 patch를 고정하고 Revision 저장 대기로 원자 전이한다."""
 
         async with self._sessionmaker.begin() as session:
             row = (await session.execute(
@@ -1054,7 +1605,14 @@ class ReportArtifactRepositoryMixin:
                     UPDATE report_v1.report_assistant_requests
                     SET phase = 'saving_revision', result_artifact_id = :artifact_id,
                         result_query_id = :query_id,
-                        result_artifact_checksum = :artifact_checksum
+                        result_artifact_checksum = :artifact_checksum,
+                        decision_hash = :decision_hash,
+                        model_version = :model_version,
+                        prompt_id = :prompt_id,
+                        prompt_version = :prompt_version,
+                        prompt_hash = :prompt_hash,
+                        report_patch_json = CAST(:patch AS jsonb),
+                        patch_preview_json = CAST(:patch_preview AS jsonb)
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND data_request_id = :data_request_id
                       AND phase = 'waiting_artifact' AND status = 'running'
@@ -1065,6 +1623,13 @@ class ReportArtifactRepositoryMixin:
                     "artifact_id": _uuid(str(artifact["artifact_id"]), "artifact_id"),
                     "query_id": str(artifact["trino_query_id"]),
                     "artifact_checksum": str(artifact["artifact_checksum"]),
+                    "decision_hash": decision_hash,
+                    "model_version": model_version,
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_hash": prompt_hash,
+                    "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
+                    "patch_preview": json.dumps(patch_preview, ensure_ascii=False),
                     "request_id": _uuid(assistant_request_id, "assistant_request_id"),
                     "owner_id": self._owner_id,
                     "data_request_id": _uuid(data_request_id, "data_request_id"),
@@ -1271,8 +1836,17 @@ class ReportArtifactRepositoryMixin:
                 )).scalar_one_or_none()
                 if completed is None:
                     raise ValueError("REPORT_REVISION_CONFLICT")
-        except IntegrityError as error:
-            raise ValueError("REPORT_REVISION_CONFLICT") from error
+        except (IntegrityError, ValueError) as error:
+            completed = await self._completed_assistant_revision(
+                assistant_request_id,
+                output_hash,
+                data_request_id=data_request_id,
+            )
+            if completed is not None:
+                return completed
+            if isinstance(error, IntegrityError):
+                raise ValueError("REPORT_REVISION_CONFLICT") from error
+            raise
         return await self.get_assistant_session(assistant_request_id)
 
     async def _transition_assistant_phase(

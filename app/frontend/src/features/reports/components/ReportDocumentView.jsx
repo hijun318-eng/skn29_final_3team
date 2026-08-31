@@ -1,10 +1,11 @@
 /** 승인 미리보기와 최종 asset 준비 상태를 분리해 표시하는 문서 화면 모듈이다. */
-import { memo } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
   Check,
   Download,
+  Expand,
   ExternalLink,
   Eye,
   LoaderCircle,
@@ -13,6 +14,7 @@ import {
   Minimize2,
   RotateCcw,
   Send,
+  Shrink,
 } from "lucide-react";
 
 import { ReportPageCanvas } from "../ReportPageCanvas";
@@ -38,6 +40,7 @@ export const ReportDocumentView = memo(function ReportDocumentView({
   orientation,
   pages,
   pending,
+  presentation,
   renderBlock,
   renderFooter,
   renderHeader,
@@ -45,11 +48,31 @@ export const ReportDocumentView = memo(function ReportDocumentView({
   selectedDefinition,
 }) {
   const approved = selectedDefinition.status === "approved";
+  const rootRef = useRef(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const fullscreenSupported = typeof document !== "undefined" && Boolean(document.fullscreenEnabled);
+
+  useEffect(() => {
+    const syncFullscreen = () => setFullscreen(document.fullscreenElement === rootRef.current);
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!fullscreenSupported || !rootRef.current) return;
+    try {
+      if (document.fullscreenElement === rootRef.current) await document.exitFullscreen();
+      else await rootRef.current.requestFullscreen();
+    } catch {
+      setFullscreen(false);
+    }
+  }, [fullscreenSupported]);
+
   return (
-    <div className="page-content legacy-report-document generated-preview" data-report-render-root="screen-preview">
+    <div ref={rootRef} className="page-content legacy-report-document generated-preview" data-report-render-root="screen-preview">
       <div className="legacy-document-actions">
         <button className="secondary" onClick={onLeave} disabled={Boolean(pending)}><ArrowLeft size={14} />보고서 목록</button>
-        <div>{currencyControl}<div className="report-orientation-switch" role="group" aria-label={approved ? "확정된 A4 용지 방향" : "PDF A4 용지 방향"}><button type="button" aria-pressed={orientation === "landscape"} disabled={approved || Boolean(pending)} onClick={() => onChangeOrientation("landscape")}><Maximize2 size={14} />가로</button><button type="button" aria-pressed={orientation === "portrait"} disabled={approved || Boolean(pending)} onClick={() => onChangeOrientation("portrait")}><Minimize2 size={14} />세로</button></div><button onClick={onReturnToEditor} disabled={Boolean(pending)}><ArrowLeft size={14} />{approved ? "새 버전으로 편집" : "편집으로 돌아가기"}</button>{isAdmin && approved && <button onClick={onRun} disabled={Boolean(pending)}><Send size={14} />보고서 실행</button>}</div>
+        <div>{currencyControl}<div className="report-orientation-switch" role="group" aria-label={approved ? "확정된 A4 용지 방향" : "PDF A4 용지 방향"}><button type="button" aria-pressed={orientation === "landscape"} disabled={approved || Boolean(pending)} onClick={() => onChangeOrientation("landscape")}><Maximize2 size={14} />가로</button><button type="button" aria-pressed={orientation === "portrait"} disabled={approved || Boolean(pending)} onClick={() => onChangeOrientation("portrait")}><Minimize2 size={14} />세로</button></div>{presentation}{fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}<button onClick={onReturnToEditor} disabled={Boolean(pending)}><ArrowLeft size={14} />{approved ? "새 버전으로 편집" : "편집으로 돌아가기"}</button>{isAdmin && approved && <button onClick={onRun} disabled={Boolean(pending)}><Send size={14} />보고서 실행</button>}</div>
       </div>
       {error && <p ref={errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{error}</p>}
       {notice && <p className="report-api-state" role="status"><Check size={17} />{notice}</p>}

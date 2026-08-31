@@ -8,6 +8,9 @@ services:
       args:
         # 브라우저에는 same-origin 경로만 노출하고 Compose 서비스명은 Nginx가 소유한다.
         VITE_BACKEND_BASE_URL: "${VITE_BACKEND_BASE_URL:-/api}"
+        ANSWERVICE_SOURCE_REVISION: ${ANSWERVICE_SOURCE_REVISION:-}
+        ANSWERVICE_SOURCE_DIRTY: ${ANSWERVICE_SOURCE_DIRTY:-}
+        ANSWERVICE_SOURCE_FINGERPRINT: ${ANSWERVICE_SOURCE_FINGERPRINT:-}
     depends_on:
       backend:
         condition: service_healthy

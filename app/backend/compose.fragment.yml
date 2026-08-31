@@ -1,4 +1,5 @@
-# 책임: migration과 runtime DB identity를 분리하고 DB 계정 schema 전환 뒤 backend를 시작한다.
+# 책임: migration과 runtime DB identity를 분리하고 migration 성공 및 외부 인증
+# secret mount가 확인된 뒤에만 backend를 시작한다.
 services:
   app-migrations:
     profiles: [dev, full, split-host]
@@ -46,6 +47,9 @@ services:
       TRINO_RUNTIME_USER: ${TRINO_RUNTIME_USER:?TRINO_RUNTIME_USER is required}
       TRINO_RUNTIME_PASSWORD: ${TRINO_RUNTIME_PASSWORD:?TRINO_RUNTIME_PASSWORD is required}
       TRINO_TLS_CA_FILE: /run/secrets/trino-ca.pem
+      ML_RUNTIME_URL: ${ML_RUNTIME_URL:-http://ml-runtime:8000}
+      ML_RUNTIME_TIMEOUT_SECONDS: ${ML_RUNTIME_TIMEOUT_SECONDS:-90}
+      ML_FEATURE_ENABLED: ${ML_FEATURE_ENABLED:-0}
       DATAHUB_GMS_URL: https://datahub-gms:8443
       DATAHUB_READ_API_TOKEN: ${DATAHUB_READ_API_TOKEN:?DATAHUB_READ_API_TOKEN is required}
       DATAHUB_READ_ACTOR_URN: ${DATAHUB_READ_ACTOR_URN:?DATAHUB_READ_ACTOR_URN is required}
@@ -70,6 +74,13 @@ services:
       READINESS_PROBE_TIMEOUT_SECONDS: ${READINESS_PROBE_TIMEOUT_SECONDS:-2}
       NODE2_MODEL_PROVIDER: ${NODE2_MODEL_PROVIDER:-}
       MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-60}
+      ANALYSIS_SQL_GENERATION_MODE: ${ANALYSIS_SQL_GENERATION_MODE:-hybrid}
+      RAG_API_URL: ${RAG_API_URL:-http://rag-api:8000}
+      RAG_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:-}
+      RAG_TOOL_TIMEOUT_SECONDS: ${RAG_TOOL_TIMEOUT_SECONDS:-30}
+      # 전달 문서의 최신 판정이 PARTIAL이므로 명시적 승인 전에는 호출하지 않는다.
+      RAG_FEATURE_ENABLED: ${RAG_FEATURE_ENABLED:-0}
+      RAG_MANUALS_DIR: /workspace/data/rag/manuals
       REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS: ${REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS:-2}
       REPORT_ASSISTANT_MAX_INPUT_TOKENS: ${REPORT_ASSISTANT_MAX_INPUT_TOKENS:-16000}
       REPORT_ASSISTANT_MAX_OUTPUT_TOKENS: ${REPORT_ASSISTANT_MAX_OUTPUT_TOKENS:-4096}
@@ -77,14 +88,22 @@ services:
       REPORT_ASSISTANT_REQUESTS_PER_HOUR: ${REPORT_ASSISTANT_REQUESTS_PER_HOUR:-30}
       REPORT_ASSISTANT_INPUT_USD_PER_MILLION: ${REPORT_ASSISTANT_INPUT_USD_PER_MILLION:-}
       REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION: ${REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION:-}
+      MCP_TOOL_RATE_LIMIT_QUOTA: ${MCP_TOOL_RATE_LIMIT_QUOTA:?MCP_TOOL_RATE_LIMIT_QUOTA is required}
+      MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS: ${MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS:?MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS is required}
+      AUTH_PRINCIPALS_FILE: /run/secrets/answervice_auth_principals.json
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?AUTH_SESSION_SECRET is required}
       AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-86400}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://127.0.0.1:13000,http://localhost:13000,http://localhost:5173}
       TZ: Asia/Seoul
       SKIP_MIGRATIONS: "1"
     volumes:
+      # Authentication material is an external deployment secret. There is no
+      # repository-local principal fallback because stale hashes and subjects
+      # must never become valid merely by checking out the project.
+      - ${AUTH_PRINCIPALS_HOST_FILE:?AUTH_PRINCIPALS_HOST_FILE is required}:/run/secrets/answervice_auth_principals.json:ro
       - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
       - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+      - ${RAG_MANUALS_HOST_DIR:-../../data/rag/manuals}:/workspace/data/rag/manuals:ro
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"
     networks:

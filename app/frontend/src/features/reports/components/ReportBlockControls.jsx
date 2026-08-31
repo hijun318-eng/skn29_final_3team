@@ -1,9 +1,9 @@
 /** 보고서 block의 통화·표현·크기·복제·삭제 제어기를 제공하는 모듈이다. */
-import { memo, useRef } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, GripVertical, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
+import { memo, useId, useRef } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
-import { artifactViewBlockSettings } from "../reportDraftV2";
+import { ARTIFACT_VIEW_LABELS, artifactViewBlockSettings } from "../reportDraftV2";
 import { REPORT_CURRENCY_OPTIONS } from "../reportCurrency";
 import { blockSettings, REPORT_CHART_OPTIONS } from "./reportPresentation";
 
@@ -45,6 +45,10 @@ export const ReportBlockSettings = memo(function ReportBlockSettings({
 }) {
   const settings = blockSettings(block);
   const viewSizing = artifactViewBlockSettings(block);
+  const artifactViewDescription = (viewSizing?.visibleViews || [])
+    .map((view) => ARTIFACT_VIEW_LABELS[view])
+    .filter(Boolean)
+    .join(" · ");
   const widths = block.type === "text"
     ? [[4, "좁게"], [6, "절반"], [12, "전체"]]
     : [[6, "절반"], [12, "전체"]];
@@ -88,8 +92,8 @@ export const ReportBlockSettings = memo(function ReportBlockSettings({
       <button type="button" className={viewSizing?.sizeMode === "auto" ? "active" : ""} onClick={() => onSetting("sizeMode", "auto")} disabled={disabled}>내용에 맞춤</button>
     </section>}
     {block.type === "artifact" && <section>
-      <span>Artifact 전체</span>
-      <small>요약·KPI·차트·표를 같은 Artifact lineage로 유지합니다.</small>
+      <span>분석 결과</span>
+      <small>{artifactViewDescription || "선택한 분석"} 요소를 원본 분석 근거와 함께 유지합니다.</small>
       <button type="button" className={settings.sizeMode === "auto" ? "active" : ""} onClick={() => onSetting("sizeMode", "auto")} disabled={disabled}>내용에 맞춤</button>
     </section>}
     <div className="report-block-menu-actions">
@@ -163,8 +167,11 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
 export const ReportTemplateTile = memo(function ReportTemplateTile({
   template,
   disabled = false,
+  disabledReason = "",
   onAdd,
 }) {
+  const reasonId = useId();
+  const hasVisibleReason = disabled && Boolean(disabledReason);
   const {
     attributes,
     listeners,
@@ -180,31 +187,28 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
   return (
     <div
       ref={setNodeRef}
-      className={`report-template-tile ${isDragging ? "is-dragging" : ""}`}
+      className={`report-template-tile ${isDragging ? "is-dragging" : ""} ${hasVisibleReason ? "has-disabled-reason" : ""}`.trim()}
+      role={hasVisibleReason ? "group" : undefined}
       aria-disabled={disabled || undefined}
+      aria-describedby={hasVisibleReason ? reasonId : undefined}
+      aria-label={hasVisibleReason ? `${template.title}: ${disabledReason}` : undefined}
+      tabIndex={hasVisibleReason ? 0 : undefined}
     >
       <button
+        ref={setActivatorNodeRef}
         type="button"
         className="report-template-add"
         disabled={disabled}
         onClick={() => onAdd(template.id)}
-        title={`${template.title} 블록 바로 추가`}
-      >
-        <Icon size={15} />
-        <span><b>{template.title}</b><small>{template.description}</small></span>
-      </button>
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        className="report-template-drag"
-        disabled={disabled}
-        aria-label={`${template.title} 블록 끌어서 추가`}
-        title="Space 또는 Enter로 들어 캔버스 위치를 선택하세요"
+        aria-describedby={hasVisibleReason ? reasonId : undefined}
+        title={disabled ? undefined : `${template.title} 블록 바로 추가 또는 끌어서 배치`}
         {...listeners}
         {...attributes}
       >
-        <GripVertical className="report-template-grip" size={14} aria-hidden="true" />
+        <Icon size={15} aria-hidden="true" />
+        <span className="report-template-copy"><b>{template.title}</b><small>{template.description}</small></span>
       </button>
+      {hasVisibleReason && <small id={reasonId} className="report-template-disabled-reason" role="note">{disabledReason}</small>}
     </div>
   );
 });

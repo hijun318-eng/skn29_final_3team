@@ -20,6 +20,7 @@ from app.services.analysis.logical_plan import (
     AnalysisOperation,
     AnalysisPlanError,
     AnalysisTimeMode,
+    active_analysis_capabilities,
     build_analysis_plan,
     validate_analysis_plan_payload,
 )
@@ -1627,8 +1628,9 @@ def test_exists_metric_rejects_a_non_zero_threshold() -> None:
     assert rejected.violation == "METRIC_RULE_MISMATCH"
 
 
-def _comparison_package():
-    package = _package()
+def _with_comparison_window(package):
+    """기존 단일 자산 package에 충돌하지 않는 두 번째 기간 계약만 추가한다."""
+
     contracts = deepcopy(package.runtime_contracts)
     contracts["time_rules"]["comparison_window"] = {
         "start_parameter": "comparison_begin",
@@ -1651,6 +1653,76 @@ def _comparison_package():
     )
 
 
+def _comparison_package():
+    return _with_comparison_window(_package())
+
+
+def _ratio_runtime_package(*, comparison: bool = False):
+    """동일 자산·시간·필터 계약의 SUPPORT operands와 BUSINESS ratio를 만든다."""
+
+    package = _multi_metric_view_reuse_package()
+    if comparison:
+        package = _with_comparison_window(package)
+    numerator, denominator = (
+        replace(metric, visibility="SUPPORT") for metric in package.metrics
+    )
+    ratio = ContextMetric(
+        id="governed_ratio",
+        asset_fqn="",
+        field="",
+        aggregation="ratio",
+        time_field="",
+        required_filters=(),
+        result_field="governed_ratio",
+        unit="ratio",
+        numerator_metric_id=numerator.id,
+        denominator_metric_id=denominator.id,
+        zero_policy="null_on_zero_denominator",
+        governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+        allowed_roles=("analyst",),
+        contains_pii=False,
+        allowed_join_ids=(),
+        join_required=False,
+        query_strategies=(VIEW_REUSE,),
+    )
+    contracts = deepcopy(package.runtime_contracts)
+    contracts["metric_rules"].append(
+        {
+            "id": ratio.id,
+            "source": {
+                "kind": "ratio",
+                "numerator_metric_id": numerator.id,
+                "denominator_metric_id": denominator.id,
+                "zero_policy": ratio.zero_policy,
+            },
+            "aggregation": "ratio",
+            "result_field": ratio.result_field,
+            "unit": ratio.unit,
+            "time_field": None,
+            "dimensions": [],
+            "required_filters": [],
+        }
+    )
+    contracts["query_policy"]["allowed_functions"].append("NULLIF")
+    return replace(
+        package,
+        metrics=(numerator, denominator, ratio),
+        runtime_contracts=contracts,
+    )
+
+
+def _ratio_leaf_filters(alias: exp.Alias) -> tuple[exp.Filter, exp.Filter]:
+    body = alias.this
+    assert isinstance(body, exp.Div)
+    numerator = body.this
+    denominator = body.expression
+    assert isinstance(numerator, exp.Cast)
+    assert isinstance(denominator, exp.Nullif)
+    assert isinstance(numerator.this, exp.Filter)
+    assert isinstance(denominator.this, exp.Filter)
+    return numerator.this, denominator.this
+
+
 _COMPARISON_SQL = """
     SELECT
       SUM(e.amount) FILTER (
@@ -1663,6 +1735,240 @@ _COMPARISON_SQL = """
     WHERE e.active = :active_flag
     LIMIT 100
 """
+
+
+def _compiled_ratio_comparison():
+    package = _ratio_runtime_package(comparison=True)
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_ratio",
+            "analysis_operation": "period_comparison",
+            "period_relationship": "comparison",
+        },
+        package,
+    )
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    return package, plan, candidate
+
+
+def test_ratio_period_comparison_compiles_leaf_windows_and_preserves_g3_results() -> None:
+    """각 ratio operand를 같은 기간으로 집계하고 두 기간 결과를 G3까지 보존한다."""
+
+    package, plan, candidate = _compiled_ratio_comparison()
+    query = parse_one(str(candidate["sql"]), read="trino")
+    aliases = {
+        projection.alias: projection
+        for projection in query.expressions
+        if isinstance(projection, exp.Alias)
+    }
+    expected_aliases = {
+        "governed_ratio",
+        "governed_ratio__comparison",
+        "governed_total",
+        "governed_total__comparison",
+        "governed_count",
+        "governed_count__comparison",
+    }
+    assert set(aliases) == expected_aliases
+
+    primary_filters = _ratio_leaf_filters(aliases["governed_ratio"])
+    comparison_filters = _ratio_leaf_filters(aliases["governed_ratio__comparison"])
+    assert [
+        {placeholder.name for placeholder in item.find_all(exp.Placeholder)}
+        for item in primary_filters
+    ] == [{"window_begin", "window_stop"}] * 2
+    assert [
+        {placeholder.name for placeholder in item.find_all(exp.Placeholder)}
+        for item in comparison_filters
+    ] == [{"comparison_begin", "comparison_stop"}] * 2
+
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+    apply_guard_decision(candidate, accepted)
+    columns = tuple(candidate["ast_evidence"]["projection_aliases"])
+    values = {
+        "governed_ratio": 2.0,
+        "governed_ratio__comparison": 3.0,
+        "governed_total": 10.0,
+        "governed_total__comparison": 9.0,
+        "governed_count": 5,
+        "governed_count__comparison": 3,
+    }
+    rows = [{column: values[column] for column in columns}]
+    result = {
+        "evidence_complete": True,
+        "query_id": "ratio-comparison-evidence-query",
+        "rows": rows,
+        "result_metadata": PipelineResultValidator.result_metadata(rows, columns),
+        "filters": {},
+        "sampling": {"applied": False, "returned_rows": 1, "total_rows": 1},
+        "masking": {"applied": False, "fields": []},
+    }
+    assert PipelineResultValidator.g3_violation(result, candidate, package) is None
+
+    inconsistent = deepcopy(result)
+    inconsistent["rows"][0]["governed_ratio__comparison"] = 4.0
+    inconsistent["result_metadata"] = PipelineResultValidator.result_metadata(
+        inconsistent["rows"], columns
+    )
+    assert (
+        PipelineResultValidator.g3_violation(inconsistent, candidate, package)
+        == "EVIDENCE_MISMATCH"
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_violation"),
+    [
+        ("mixed_operand_windows", "METRIC_RULE_MISMATCH"),
+        ("mixed_window_parameters", "TIME_RULE_MISMATCH"),
+        ("swapped_windows", "TIME_RULE_MISMATCH"),
+        ("missing_nullif", "METRIC_RULE_MISMATCH"),
+        ("missing_double_cast", "METRIC_RULE_MISMATCH"),
+        ("swapped_operands", "METRIC_RULE_MISMATCH"),
+        ("outer_ratio_filter", "METRIC_RULE_MISMATCH"),
+    ],
+)
+def test_ratio_period_comparison_guard_rejects_ast_mutations(
+    mutation: str,
+    expected_violation: str,
+) -> None:
+    package, plan, candidate = _compiled_ratio_comparison()
+    query = parse_one(str(candidate["sql"]), read="trino")
+    aliases = {
+        projection.alias: projection
+        for projection in query.expressions
+        if isinstance(projection, exp.Alias)
+    }
+    primary = aliases["governed_ratio"]
+    comparison = aliases["governed_ratio__comparison"]
+    numerator_filter, denominator_filter = _ratio_leaf_filters(primary)
+
+    if mutation == "mixed_operand_windows":
+        comparison_numerator, _comparison_denominator = _ratio_leaf_filters(comparison)
+        denominator_filter.set(
+            "expression", comparison_numerator.expression.copy()
+        )
+    elif mutation == "mixed_window_parameters":
+        for leaf_filter in (numerator_filter, denominator_filter):
+            end_parameter = next(
+                item
+                for item in leaf_filter.find_all(exp.Placeholder)
+                if item.name == "window_stop"
+            )
+            end_parameter.set("this", "comparison_stop")
+    elif mutation == "swapped_windows":
+        primary_body = primary.this.copy()
+        comparison_body = comparison.this.copy()
+        primary.set("this", comparison_body)
+        comparison.set("this", primary_body)
+    elif mutation == "missing_nullif":
+        primary.this.set("expression", denominator_filter.copy())
+    elif mutation == "missing_double_cast":
+        primary.this.set("this", numerator_filter.copy())
+    elif mutation == "swapped_operands":
+        target_type = primary.this.this.args["to"].copy()
+        primary.this.set(
+            "this",
+            exp.Cast(this=denominator_filter.copy(), to=target_type),
+        )
+        primary.this.set(
+            "expression",
+            exp.Nullif(
+                this=numerator_filter.copy(),
+                expression=exp.Literal.number(0),
+            ),
+        )
+    else:
+        target_type = primary.this.this.args["to"].copy()
+        primary.set(
+            "this",
+            exp.Filter(
+                this=exp.Div(
+                    this=exp.Cast(this=numerator_filter.this.copy(), to=target_type),
+                    expression=exp.Nullif(
+                        this=denominator_filter.this.copy(),
+                        expression=exp.Literal.number(0),
+                    ),
+                ),
+                expression=numerator_filter.expression.copy(),
+            ),
+        )
+
+    rejected = validate_plan(
+        {
+            "sql": query.sql(dialect="trino"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+    assert rejected.violation == expected_violation
+
+
+def test_ratio_time_trend_keeps_the_existing_compiler_and_guard_path() -> None:
+    package = _ratio_runtime_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_ratio",
+            "analysis_operation": "time_trend",
+            "analysis_time_bucket": "day",
+            "period_relationship": "single",
+        },
+        package,
+    )
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+
+def test_ratio_period_comparison_supports_same_asset_multi_output() -> None:
+    package = _ratio_runtime_package(comparison=True)
+    numerator = package.metrics[0]
+    ordinary = replace(
+        numerator,
+        id="governed_maximum",
+        aggregation="max",
+        result_field="governed_maximum",
+        reduction="max",
+        visibility="BUSINESS",
+    )
+    contracts = deepcopy(package.runtime_contracts)
+    ordinary_rule = deepcopy(contracts["metric_rules"][0])
+    ordinary_rule.update(
+        id=ordinary.id,
+        aggregation=ordinary.aggregation,
+        result_field=ordinary.result_field,
+        unit=ordinary.unit,
+    )
+    contracts["metric_rules"].append(ordinary_rule)
+    package = replace(
+        package,
+        metrics=(*package.metrics, ordinary),
+        runtime_contracts=contracts,
+    )
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_ratio", ordinary.id],
+            "analysis_operation": "period_comparison",
+            "period_relationship": "comparison",
+        },
+        package,
+    )
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+
+def test_period_comparison_capability_keeps_only_exists_unsupported() -> None:
+    assert active_analysis_capabilities()[
+        "period_comparison_unsupported_aggregations"
+    ] == ["exists"]
 
 
 def test_comparison_window_projects_metric_twice_with_filter_predicates() -> None:

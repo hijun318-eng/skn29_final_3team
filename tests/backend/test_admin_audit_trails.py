@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from datetime import date, datetime, timezone
+from functools import wraps
 from pathlib import Path
 from unittest.mock import patch
 from uuid import UUID
@@ -29,6 +31,16 @@ from app.database import get_database_session  # noqa: E402
 from app.main import app  # noqa: E402
 
 
+def _run_async(test):
+    """추가 pytest plugin 없이 coroutine 테스트를 격리 event loop에서 실행한다."""
+
+    @wraps(test)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(test(*args, **kwargs))
+
+    return wrapper
+
+
 class _Session:
     """HTTP route 테스트에서 실제 DB transaction을 열지 않는 명시적 test double이다."""
 
@@ -38,7 +50,7 @@ def _context() -> RequestContext:
 
     return RequestContext(
         user_id=UUID(int=1),
-        role=Role.ADMIN,
+        role=Role.PLATFORM_ADMIN,
         as_of=date(2026, 8, 27),
         contract_version=CONTRACT_VERSION,
     )
@@ -80,7 +92,7 @@ def test_audit_cursor_round_trip_and_rejects_tampering() -> None:
         _decode_audit_cursor("not-a-valid-cursor")
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_list_audit_trails_returns_frontend_contract(admin_dependencies) -> None:
     """목록 route가 서버 grouping 결과와 next cursor를 data envelope로 반환하는지 확인한다."""
 
@@ -95,7 +107,7 @@ async def test_list_audit_trails_returns_frontend_contract(admin_dependencies) -
         "actor": {
             "subject": UUID(int=1),
             "display_name": "admin",
-            "role": "admin",
+            "role": "platform_admin",
         },
         "primary_object": {"type": "ANALYSIS_REQUEST", "id": "request-1"},
         "correlation": {
@@ -123,7 +135,7 @@ async def test_list_audit_trails_returns_frontend_contract(admin_dependencies) -
     repository_call.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@_run_async
 async def test_missing_audit_trail_returns_404(admin_dependencies) -> None:
     """존재하지 않는 trail 상세가 빈 성공값이 아니라 명시적 404로 닫히는지 확인한다."""
 

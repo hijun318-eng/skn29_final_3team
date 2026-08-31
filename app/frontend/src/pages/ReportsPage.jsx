@@ -86,6 +86,15 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       orientation={draft.reportOrientation}
       pages={page.reportPages}
       pending={lifecycle.pending}
+      presentation={<ReportPresentation
+        orientation={draft.reportOrientation}
+        pages={page.reportPages}
+        renderBlock={page.renderPreviewBlock}
+        renderFooter={page.renderFooter}
+        renderHeader={page.renderHeader}
+        reportTitle={lifecycle.selectedDefinition?.title}
+        theme={theme}
+      />}
       renderBlock={page.renderPreviewBlock}
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
@@ -108,6 +117,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onLeave={page.leaveEditor}
     onPreview={page.previewEditor}
     onRedo={draft.redo}
+    onReportTitleChange={draft.updateReportTitle}
+    onReportTitleCommit={draft.commitReportTitle}
     onRun={page.runDefinition}
     onSave={page.saveDraft}
     onToggleTools={page.toggleToolPanel}
@@ -115,7 +126,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onUndo={draft.undo}
     orientation={draft.reportOrientation}
     pending={lifecycle.pending}
-    reportTitle={lifecycle.selectedDefinition?.title}
+    reportTitle={draft.reportTitle}
     saveStatus={draft.saveState}
     selectedDefinition={lifecycle.selectedDefinition}
     toolPanelOpen={page.toolPanelOpen}
@@ -136,7 +147,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     isDraft={page.isDraft}
     onAddChart={addChartBlock}
     onAddTemplate={draft.addTemplateBlock}
-    onAddWholeArtifact={draft.addWholeArtifact}
     onClose={page.closeToolPanel}
     onCreateAssistantDraft={page.createAssistantDraft}
     onSelectArtifact={artifacts.setArtifactSelection}
@@ -158,7 +168,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     {lifecycle.error && <p ref={page.errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{lifecycle.error}</p>}
     {lifecycle.notice && <p className="report-api-state notion-editor-notice" role="status"><Check size={17} />{lifecycle.notice}</p>}
     <ReportEditorCanvas
-      activeArtifactTitle={page.activeArtifactSource?.title}
+      activeArtifactTitle={page.activeArtifactSource ? `${page.activeArtifactSource.title} · ${page.activeInsert?.title}` : undefined}
       activeInsert={page.activeInsert}
       alignmentGuides={dnd.alignmentGuides}
       canEdit={page.canEdit}
@@ -166,6 +176,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       dropPosition={dnd.dropPosition}
       onAddText={page.addTextBlock}
       onRegisterCanvas={dnd.registerPageCanvas}
+      onSelectBlocks={page.editorTools.selectBlocks}
       orientation={draft.reportOrientation}
       orderedBlocks={draft.orderedBlocks}
       pages={page.reportPages}
@@ -173,7 +184,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       renderBlock={page.renderEditorBlock}
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
-      reportTitle={lifecycle.selectedDefinition?.title}
+      reportTitle={draft.reportTitle}
       viewScale={page.editorViewScale}
     />
     {page.isAdmin && lifecycle.selectedDefinition?.status === "approved" && <ReportOperationsPanel
@@ -211,6 +222,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     pageCount={page.reportPages.length}
   />;
   const assistant = <ReportAssistantPanel
+    key={`${lifecycle.selectedDefinition?.definitionId || ""}:${lifecycle.selectedDefinition?.version || ""}:${page.assistantArtifactIds.join(":")}:${lifecycle.assistantSession?.assistant_request_id || ""}`}
     approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(lifecycle.assistantSession?.phase)
       ? lifecycle.assistantSession?.analysis_plan && {
           ...lifecycle.assistantSession.analysis_plan,
@@ -221,26 +233,44 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
           ].join(" · "),
         }
       : null}
-    artifact={page.selectedArtifact}
-    artifactTitle={page.selectedArtifactSource?.title}
+    artifact={page.assistantArtifact}
+    artifactOptions={page.assistantArtifactOptions}
+    assistantArtifactIds={page.assistantArtifactIds}
+    artifactTitle={page.assistantArtifactSource?.title}
     canEdit={page.canEdit}
+    hasUnsavedChanges={draft.isDirty}
     instruction={lifecycle.assistantInstruction}
     onInstructionChange={lifecycle.setAssistantInstruction}
     onApproveDataRequest={page.approveAssistantDataRequest}
     onApprovePatch={page.approveAssistantPatch}
+    onCancel={lifecycle.cancelAssistantSession}
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
+    onReview={page.reviewAssistantReport}
+    onSelectArtifacts={page.setAssistantArtifacts}
+    onSuggestTitle={page.suggestAssistantTitle}
     onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}
     patchPreview={lifecycle.assistantSession?.patch_request_id
       && ["waiting_patch_approval", "saving_revision"].includes(lifecycle.assistantSession.phase)
       ? {
+          requestId: lifecycle.assistantSession.patch_request_id,
           summary: lifecycle.assistantSession.patch_summary,
           operations: lifecycle.assistantSession.patch_operations,
+          evidenceRefs: lifecycle.assistantSession.patch_evidence_refs,
+          items: lifecycle.assistantSession.patch_preview,
+          approvedIndexes: lifecycle.assistantSession.approved_operation_indexes,
         }
       : null}
+    review={lifecycle.assistantReview}
     pending={lifecycle.pending}
+    sessionId={lifecycle.assistantSession?.assistant_request_id || ""}
+    sessionOperationScope={lifecycle.assistantSession?.operation_scope || "full_report"}
+    sessionTurnHistory={lifecycle.assistantSession?.turn_history || []}
     selectedBlock={page.editorTools.primaryBlock}
+    suggestions={lifecycle.assistantSuggestionSet?.selectedBlockId === (page.editorTools.primaryBlock?.id || null)
+      ? lifecycle.assistantSuggestionSet.suggestions
+      : []}
     trace={lifecycle.assistantTrace}
     workflowStatus={lifecycle.assistantSession?.phase || ""}
     workflowError={lifecycle.assistantSession?.error_code || ""}
@@ -252,21 +282,13 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     canvas={workspace}
     library={library}
     libraryOpen={page.toolPanelOpen}
+    libraryTriggerRef={page.toolToggleRef}
+    onCloseLibrary={page.closeToolPanel}
     onKeyDown={page.handleEditorKeyDown}
     onPointerMove={dnd.handlePointerMove}
     orientation={draft.reportOrientation}
     pages={page.reportPages}
-    presentation={<ReportPresentation
-      orientation={draft.reportOrientation}
-      pages={page.reportPages}
-      renderBlock={page.renderPreviewBlock}
-      renderFooter={page.renderFooter}
-      renderHeader={page.renderHeader}
-      reportTitle={lifecycle.selectedDefinition?.title}
-      theme={theme}
-    />}
     properties={properties}
-    reportTitle={lifecycle.selectedDefinition?.title}
     toolbar={toolbar}
   /> : <div
     className={`enterprise-report-editor notion-report-editor ${page.toolPanelOpen ? "" : "tools-collapsed"}`}
@@ -288,7 +310,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   >
     {editor}
     <DragOverlay dropAnimation={{ duration: 160, easing: "ease-out" }}>
-      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeArtifactSource?.title || page.activeInsert.title}</b><small>{page.activeArtifactSource ? "Artifact 전체로 추가" : "캔버스에 놓아 추가"}</small></span></div>}
+      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeInsert.title}</b><small>{page.activeArtifactSource ? `${page.activeArtifactSource.title}에서 독립 요소로 추가` : "캔버스에 놓아 추가"}</small></span></div>}
     </DragOverlay>
   </DndContext>;
 }

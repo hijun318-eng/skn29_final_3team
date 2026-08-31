@@ -43,7 +43,7 @@ export interface AnalysisProcessViewModel {
   steps: AnalysisProcessStep[];
 }
 
-/** 향후 command progress 어댑터가 ViewModel로 정규화해 전달할 최소 프런트 계약이다. */
+/** command progress 어댑터가 서버 실행 트레이스를 정규화해 전달하는 프런트 계약이다. */
 export interface ConversationCommandProgress extends AnalysisProcessViewModel {
   traceId: string;
 }
@@ -73,6 +73,7 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
   | "QUERY_TIMEOUT"
   | "QUERY_SOURCE_FAILED"
   | "EMPTY_RESULT"
+  | "PRESENTATION_NOT_SUPPORTED"
   | "RESULT_VALIDATION_FAILED"
   | "RESULT_EVIDENCE_MISSING"
   | "ARTIFACT_PERSIST_FAILED"
@@ -123,17 +124,21 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
   metricId: string;
   resultField: string;
   label: string;
+  displayLabel?: string | null;
   definition: string;
   value: AnalysisValue;
   unit: string | null;
+  displayUnit?: string | null;
 }
 
 /** 결과 field를 거버넌스 지표 메타데이터에 연결하는 근거다. */ export interface AnalysisMetricReference {
   metricId: string;
   resultField: string;
   label: string;
+  displayLabel?: string | null;
   definition: string;
   unit: string | null;
+  displayUnit?: string | null;
 }
 
 /** 모델 node·release·prompt 추적 정보다. */ export interface AnalysisModelEvidence {
@@ -232,16 +237,20 @@ interface WireAnalysisEvidence {
     metric_id: string;
     result_field: string;
     label: string;
+    display_label?: string | null;
     definition: string;
     unit?: string | null;
+    display_unit?: string | null;
   }>;
   metric_values?: Array<{
     metric_id: string;
     result_field: string;
     label: string;
+    display_label?: string | null;
     definition: string;
     value: AnalysisValue;
     unit?: string | null;
+    display_unit?: string | null;
   }>;
   models?: Array<{
     node: string;
@@ -295,9 +304,11 @@ interface WireAnalysisEvidence {
         metric_id: string;
         result_field: string;
         label: string;
+        display_label?: string | null;
         definition: string;
         value: AnalysisValue;
         unit?: string | null;
+        display_unit?: string | null;
       }>;
       table?: {
         columns: string[];
@@ -367,6 +378,7 @@ interface WireAnalysisEvidence {
     disambiguation_options?: DisambiguationOption[];
     clarification_type?: "metric" | "period" | null;
     trace_id?: string;
+    service_context?: "ANALYSIS" | "INTERNAL_GUIDELINE";
   };
   sources: AnalysisSource[];
   trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
@@ -435,9 +447,11 @@ export function normalizeAnalysisMetrics(
     metricId: metric.metric_id,
     resultField: metric.result_field,
     label: metric.label,
+    displayLabel: metric.display_label ?? null,
     definition: metric.definition,
     value: metric.value,
     unit: metric.unit ?? null,
+    displayUnit: metric.display_unit ?? null,
   }));
 }
 
@@ -485,8 +499,10 @@ export function normalizeAnalysisEvidence(
       metricId: metric.metric_id,
       resultField: metric.result_field,
       label: metric.label,
+      displayLabel: metric.display_label ?? null,
       definition: metric.definition,
       unit: metric.unit ?? null,
+      displayUnit: metric.display_unit ?? null,
     })),
     models: (evidence.models ?? []).map((model) => ({
       node: model.node,

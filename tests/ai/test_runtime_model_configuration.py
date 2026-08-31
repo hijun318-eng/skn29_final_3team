@@ -34,6 +34,7 @@ def test_unconfigured_optional_route_covers_every_active_node_with_primary() -> 
     assert len(routes) == 1
     assert set(routes[0].nodes) == set(model_release_manifest()["nodes"])
     assert routes[0].model == "gpt-5.4-mini"
+    assert routes[0].capacity.runtime_max_output_tokens == 4096
 
 
 def test_dedicated_sql_route_resolves_served_alias_and_exact_capacity() -> None:

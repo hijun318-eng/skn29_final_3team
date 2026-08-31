@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from functools import wraps
 import os
 from pathlib import Path
@@ -30,6 +30,9 @@ from app.services.report.execution import (  # noqa: E402
 from app.services.report.document import approve_report_document  # noqa: E402
 from app.adapters.report_repository import PostgresReportRepository  # noqa: E402
 from app.database import dispose_database  # noqa: E402
+from tests.support.semantic_snapshot_fixture import (  # noqa: E402
+    approved_semantic_snapshot_fixture,
+)
 from src.report.domain import (  # noqa: E402
     BlockFailureCode,
     BlockRunStatus,
@@ -86,6 +89,14 @@ class _AnalysisRepository:
         self.context_receipts = []
 
     async def get_definition_for_report(self, definition_id, version):
+        snapshot = approved_semantic_snapshot_fixture(
+            execution_as_of=date(2026, 8, 15),
+            period_start="2026-06-01",
+            period_end="2026-07-01",
+            product_release_id="product-report-v1",
+            semantic_release_id="semantic-report-v1",
+            permission_snapshot_id=permission_snapshot_id(OWNER, Role.ANALYST),
+        )
         return {
             "definition_id": definition_id,
             "version": version,
@@ -95,6 +106,23 @@ class _AnalysisRepository:
                 "period_end_exclusive": "2026-07-01",
                 "property": "walkerhill",
             },
+            "semantic_request": {
+                "resolved_slots": {
+                    "metric_id": "reviewed_measure",
+                    "metric_ids": ["reviewed_measure"],
+                    "dimension_fields": [],
+                    "user_filters": [],
+                    "time_range": {
+                        "start": "2026-06-01",
+                        "end_exclusive": "2026-07-01",
+                    },
+                    "comparison_time_range": None,
+                    "analysis_operation": "aggregate",
+                    "analysis_time_bucket": None,
+                    "result_limit": None,
+                }
+            },
+            "approved_semantic_snapshot": snapshot.model_dump(mode="json"),
         }
 
     async def begin_run(self, definition, context, as_of, idempotency_key, parameters):
@@ -123,7 +151,18 @@ class _AnalysisRepository:
         }
 
 
+class _ActiveReleasePlatform:
+    async def get_active_context_release(self):
+        return "semantic-report-v1"
+
+    async def get_catalog_readiness(self):
+        return {"runtime_catalog": "ready"}, "product-report-v1"
+
+
 class _Controller:
+    def __init__(self):
+        self.data_platform = _ActiveReleasePlatform()
+
     async def submit(self, payload, context, execution_sink, *, context_receipt_sink):
         self.payload = payload
         self.context = context
@@ -166,11 +205,16 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
     assert outcome.query_id == "query-new"
     assert outcome.snapshot_checksum == "a" * 64
     assert outcome.policy_version == "policy-current"
-    assert repository.parameters == {"property": "walkerhill"}
-    assert controller.payload.parameters == {"property": "walkerhill"}
+    assert repository.parameters == {
+        "window_start": "2026-06-01",
+        "window_end": "2026-07-01",
+    }
+    assert controller.payload.parameters == repository.parameters
+    assert controller.payload.resolved_slots is None
     assert repository.as_of.isoformat() == "2026-08-15"
     assert repository.context.product_release_id == "product-report-v1"
     assert repository.context.semantic_release_id == "semantic-report-v1"
+    assert repository.context.require_fresh_query is True
     assert repository.finished[0] == repository.request_id
     assert gate.releases == 1
 
@@ -205,6 +249,42 @@ async def test_analysis_definition_replay_stores_rate_limit_as_recovery_failure(
     assert outcome.status is BlockRunStatus.FAILED
     assert outcome.failure_code is BlockFailureCode.RATE_LIMITED
     assert repository.finished == (repository.request_id, "RECOVERY")
+
+
+@async_test
+async def test_analysis_definition_replay_snapshot_persistence_failure_is_terminal():
+    repository = _AnalysisRepository()
+    controller = _Controller()
+    replay = AnalysisDefinitionReplay(
+        "postgresql://test",
+        controller,
+        _Gate(),
+    )
+
+    with patch(
+        "app.services.report.execution.PostgresAnalysisRepository",
+        return_value=repository,
+    ), patch(
+        "app.services.report.execution.require_active_subject_with_capability",
+        return_value=Principal(OWNER, Role.ANALYST),
+    ), patch.object(
+        repository,
+        "finish_run",
+        side_effect=ValueError("snapshot validation failed"),
+    ):
+        outcome = await replay.execute(
+            owner_id=OWNER,
+            definition_id=str(uuid4()),
+            definition_version=3,
+            as_of=AS_OF,
+            idempotency_key="report:snapshot-persistence-failed",
+            product_release_id="product-report-v1",
+            permission_snapshot_id=permission_snapshot_id(OWNER, Role.ANALYST),
+            semantic_release_id="semantic-report-v1",
+        )
+
+    assert outcome.failure_code is BlockFailureCode.ARTIFACT_PERSIST_FAILED
+    assert repository.finished == (repository.request_id, "PERSISTENCE")
 
 
 class _ReportRepository:
@@ -565,7 +645,7 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
         str(report_id),
         1,
         DefinitionStatus.DRAFT,
-        "Aggregate Artifact Report",
+        "Atomic Artifact Report",
         (
             ReportBlock(
                 str(block_id),
@@ -578,7 +658,7 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
                 0,
                 12,
                 12,
-                '{"presentationMode":"standard","visibleViews":["summary","kpi","chart","table"]}',
+                '{"presentationMode":"standard","visibleViews":["summary"]}',
             ),
         ),
         orientation="landscape",
@@ -594,7 +674,7 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
             self.html = kwargs["string"]
 
         def write_pdf(self, **kwargs):
-            return b"%PDF-1.7\naggregate-artifact"
+            return b"%PDF-1.7\natomic-artifact"
 
     with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=FakeHTML)}):
         approved = await approve_report_document(
@@ -614,9 +694,9 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
         "query_id": "source-query",
     }]
     assert "Replay result narrative" in document["html_snapshot"]
-    assert "주요 KPI" in document["html_snapshot"]
-    assert "<svg" in document["html_snapshot"]
-    assert "<table>" in document["html_snapshot"]
+    assert "주요 KPI" not in document["html_snapshot"]
+    assert "<svg" not in document["html_snapshot"]
+    assert "<table>" not in document["html_snapshot"]
 
     command = await repository.queue_manual_run(
         str(report_id), 1, AS_OF, "aggregate-artifact-replay"

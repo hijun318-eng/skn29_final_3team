@@ -13,7 +13,7 @@ function blockMinimumHeight(type) {
   if (type === "artifact") return 5;
   if (type === "chart") return 7;
   if (type === "table") return 5;
-  return 4;
+  return 3;
 }
 
 function shallowBlockEqual(previous, next) {
@@ -38,10 +38,7 @@ function editorBlockPropsEqual(previous, next) {
     && previous.locked === next.locked;
 }
 
-const RESIZE_DIRECTIONS = [
-  ["nw", "왼쪽 위"], ["n", "위"], ["ne", "오른쪽 위"], ["e", "오른쪽"],
-  ["se", "오른쪽 아래"], ["s", "아래"], ["sw", "왼쪽 아래"], ["w", "왼쪽"],
-];
+const RESIZE_DIRECTIONS = [["se", "오른쪽 아래"]];
 
 /** 단일 편집 블록과 제어기를 렌더링하며 custom comparator가 변경된 block field만 다시 그린다. */
 export const ReportEditorBlock = memo(function ReportEditorBlock({
@@ -270,6 +267,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
         artifact={artifact}
         artifactState={artifactState}
         currency={currency}
+        onRetry={block.artifactId ? retryArtifact : undefined}
         renderView={(type, options = {}) => (
           <ReportArtifactContent
             block={{ ...block, type, h: options.height ?? block.h }}
@@ -291,7 +289,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           <div>
             <small>{dataProvenanceLabel(artifact?.evidence?.sources ?? []) ?? "분석 데이터"}</small>
             <b>{block.type === "chart" ? "분석 차트 보기" : "분석 데이터 표 보기"}</b>
-            <span>Artifact에서 선택한 하나의 보기입니다.</span>
+            <span>분석 결과에서 선택한 하나의 보기입니다.</span>
           </div>
         </div>
         <ReportArtifactContent
@@ -320,7 +318,13 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     >
       <header className="report-block-chrome">
         <div className="report-block-title">
-          {isDraft && !locked && (
+          {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
+          <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "분석 결과" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
+          {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
+        </div>
+        {isDraft && (
+          <div className="report-block-actions" role="toolbar" aria-label={`${block.title} 블록 조작`}>
+            {!locked && (
             <button
               ref={setActivatorNodeRef}
               type="button"
@@ -332,26 +336,22 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
             >
               <GripVertical size={17} />
             </button>
-          )}
-          {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
-          <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "Artifact 전체" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
-          {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
-        </div>
-        {isDraft && (
-          <ReportBlockMenu
-            block={block}
-            artifact={artifact}
-            locked={locked}
-            onMove={moveBlock}
-            onResize={resizeBlock}
-            onSetting={setBlockSetting}
-            onDuplicate={duplicateBlock}
-            onDelete={deleteBlock}
-            onToggleLock={toggleLock}
-          />
+            )}
+            <ReportBlockMenu
+              block={block}
+              artifact={artifact}
+              locked={locked}
+              onMove={moveBlock}
+              onResize={resizeBlock}
+              onSetting={setBlockSetting}
+              onDuplicate={duplicateBlock}
+              onDelete={deleteBlock}
+              onToggleLock={toggleLock}
+            />
+          </div>
         )}
       </header>
-      {isDraft ? (
+      {isDraft && block.type === "text" ? (
         <input
           className="notion-block-title"
           aria-label={`${block.title || "제목 없음"} 제목`}
@@ -368,7 +368,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           }}
           placeholder="블록 제목을 입력하세요"
         />
-      ) : <h2>{block.title}</h2>}
+      ) : <h2 className="notion-block-title notion-block-title--readonly">{block.title}</h2>}
       {body}
       {isDraft && !locked && primary && RESIZE_DIRECTIONS.map(([direction, label]) => (
         <button

@@ -7,6 +7,7 @@ import {
   frontendTextBlockLayout,
 } from "../reportDraftV2";
 import { isCurrencyMetricUnit } from "../reportCurrency";
+import { metricDisplayLabel } from "../../../utils/presentation";
 
 /** 보고서 컴포넌트가 공유하는 표시·pagination·키보드 순수 계약이다. */
 export { reportEvidenceReady } from "../reportArtifactEvidence";
@@ -21,8 +22,8 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: Type,
     blockTitle: "새 텍스트",
     content: "새 문단을 작성하세요.",
-    w: 12,
-    h: 4,
+    w: 8,
+    h: 3,
   },
   {
     id: "section",
@@ -31,8 +32,8 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: Heading2,
     blockTitle: "새 섹션",
     content: "## 새 섹션\n섹션 내용을 입력하세요.",
-    w: 12,
-    h: 4,
+    w: 8,
+    h: 3,
   },
   {
     id: "executive",
@@ -41,7 +42,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: Sparkles,
     blockTitle: "경영진 요약",
     content: "## 핵심 결론\n가장 중요한 결과를 한 문장으로 정리하세요.\n\n## 비즈니스 영향\n의사결정에 미치는 영향을 작성하세요.",
-    w: 12,
+    w: 8,
     h: 5,
   },
   {
@@ -51,8 +52,8 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: FileBarChart,
     blockTitle: "월간 경영 보고서",
     content: "## 월간 경영 보고서\n\n핵심 성과와 전월 대비 변동 요인을 정리하세요.",
-    w: 12,
-    h: 4,
+    w: 8,
+    h: 3,
   },
   {
     id: "hotel-sales-report",
@@ -61,8 +62,8 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     icon: FileBarChart,
     blockTitle: "호텔 매출 보고서",
     content: "## 호텔 매출 보고서\n\n객실·F&B·연회 부문의 주요 실적을 정리하세요.",
-    w: 12,
-    h: 4,
+    w: 8,
+    h: 3,
   },
   {
     id: "kpi",
@@ -82,7 +83,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     blockTitle: "핵심 인사이트",
     content: "> 데이터가 말하는 핵심 변화와 그 의미를 간결하게 작성하세요.",
     w: 6,
-    h: 4,
+    h: 3,
   },
   {
     id: "actions",
@@ -92,35 +93,48 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     blockTitle: "권고 사항",
     content: "- [ ] 우선 실행할 조치\n- [ ] 담당자와 기한 확인\n- [ ] 후속 지표 모니터링",
     w: 6,
-    h: 4,
+    h: 3,
   },
 ];
 
-/** governed artifact의 table/chart view를 삽입하는 일반 template 집합이다. */ export const ARTIFACT_TEMPLATES = [
+/** governed artifact를 요약·KPI·차트·표 원자 단위로 삽입하는 template 집합이다. */ export const ARTIFACT_TEMPLATES = [
+  {
+    id: "artifact-summary",
+    view: "summary",
+    title: "요약",
+    description: "분석의 핵심 결론",
+    icon: Quote,
+    w: 6,
+    h: 5,
+  },
+  {
+    id: "artifact-kpi",
+    view: "kpi",
+    title: "핵심 지표",
+    description: "대표 수치와 단위",
+    icon: Columns2,
+    w: 6,
+    h: 6,
+  },
   {
     id: "artifact-table",
-    title: "표 보기만",
-    description: "Artifact의 상세 행만 삽입",
+    view: "table",
+    title: "표",
+    description: "상세 행과 열",
     icon: Table2,
-    w: 12,
+    w: 6,
     h: 5,
   },
   {
     id: "artifact-chart",
-    title: "차트 보기만",
-    description: "Artifact의 차트만 삽입",
+    view: "chart",
+    title: "차트",
+    description: "변화와 비교 시각화",
     icon: FileBarChart,
-    w: 12,
+    w: 8,
     h: 7,
   },
 ];
-
-/** governed artifact 전체 view를 삽입하는 일반 template이다. */ export const WHOLE_ARTIFACT_TEMPLATE = {
-  id: "artifact-whole",
-  title: "Artifact 전체",
-  description: "요약·KPI·차트·표를 한 블록으로",
-  icon: FileBarChart,
-};
 
 /** renderer가 지원하는 차트 타입과 표시 라벨 계약이다. */ export const REPORT_CHART_OPTIONS = [
   ["bar", "세로 막대"],
@@ -144,6 +158,7 @@ export function artifactMetric(artifact, resultField) {
 }
 
 function humanizeColumnIdentifier(column) {
+  if (String(column ?? "").trim().toLowerCase() === "period") return "기간";
   const words = String(column ?? "")
     .trim()
     .split("_")
@@ -155,7 +170,8 @@ function humanizeColumnIdentifier(column) {
 
 /** governed metric label을 우선하고 없으면 canonical column을 일반 표시형으로만 바꾼다. */
 export function reportColumnLabel(artifact, column) {
-  const governedLabel = artifactMetric(artifact, column)?.label;
+  const governedMetric = artifactMetric(artifact, column);
+  const governedLabel = governedMetric ? metricDisplayLabel(governedMetric) : "";
   return typeof governedLabel === "string" && governedLabel.trim()
     ? governedLabel.trim()
     : humanizeColumnIdentifier(column);
@@ -217,6 +233,11 @@ export function paginateReportBlocks(blocks, orientation, documentId = "report")
     cursorY = 0;
   };
   for (const row of rows) {
+    if (row.blocks.some((block) => block.type === "page_break")) {
+      if (!page) startPage(row.sourceY);
+      startPage(row.sourceY + 1);
+      continue;
+    }
     const height = Math.min(
       rowLimit,
       Math.max(...row.blocks.map((block) => block.h ?? 1)),

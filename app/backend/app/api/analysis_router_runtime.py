@@ -11,6 +11,10 @@ from fastapi import HTTPException
 
 from app.contracts import RequestContext
 from app.services.routing_service import RoutingService
+from app.services.analysis.sql_generation_mode import (
+    SqlGenerationMode,
+    configured_sql_generation_mode,
+)
 from src.modelops.runtime_config import (
     active_route_for_node,
     resolve_active_model_routes,
@@ -87,6 +91,13 @@ def model():
 
     routes = resolve_active_model_routes()
     primary = active_route_for_node(routes, "node1")
+    if configured_sql_generation_mode() is SqlGenerationMode.COMPILER_ONLY:
+        return ContractModelAdapter.from_openai(
+            endpoint=primary.endpoint,
+            token=primary.token,
+            model=primary.model,
+            timeout_seconds=float(os.getenv("MODEL_TIMEOUT_SECONDS", "60")),
+        )
     node2 = active_route_for_node(routes, "node2")
     if node2.route_id != primary.route_id:
         return ContractModelAdapter.from_endpoints(

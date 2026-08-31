@@ -4,6 +4,7 @@ import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VE
 import { compactDraftLayout, placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks, seoulWallClockToIso } from "../../app/frontend/src/contracts/report.ts";
 import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient, normalizeConversationCommandProgress } from "../../app/frontend/src/api/analysisClient.ts";
 import { AdminApiError, createAdminClient } from "../../app/frontend/src/api/adminClient.ts";
+import { AUTH_ACCOUNT_ROLE_OPTIONS } from "../../app/frontend/src/authorization.ts";
 import { normalizeAuditTrailDetail, normalizeAuditTrailPage } from "../../app/frontend/src/features/admin/audit/auditTrailTypes.ts";
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
@@ -183,6 +184,10 @@ assert.match(source("components/layout/AppHeader.jsx"), /<nav className="top-nav
 assert.match(source("components/layout/AppHeader.jsx"), /aria-current=\{page === id \? "page" : undefined\}/);
 assert.match(source("App.jsx"), /<AgentPage canDraftReport=\{canDraftReport\}/);
 assert.match(source("authorization.ts"), /ServiceRole = "analyst" \| "report_admin" \| "data_admin" \| "platform_admin"/);
+assert.deepEqual(AUTH_ACCOUNT_ROLE_OPTIONS, [
+  { value: "analyst", label: "분석 사용자" },
+  { value: "platform_admin", label: "관리자" },
+]);
 assert.match(source("pages/AdminPage.jsx"), /연결 상태/);
 assert.match(source("pages/AdminPage.jsx"), /계정 관리/);
 assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
@@ -195,6 +200,9 @@ assert.doesNotMatch(source("pages/AdminPage.jsx"), /createAdminClient|VITE_BACKE
 assert.doesNotMatch(source("api/adminClient.ts"), /https?:\/\/|localhost|127\.0\.0\.1|:[0-9]{2,5}/);
 assert.match(source("pages/AdminPage.jsx"), /client\.resetPassword/);
 assert.match(source("pages/AdminPage.jsx"), /client\.deleteAccount/);
+assert.match(source("pages/AdminPage.jsx"), /AUTH_ACCOUNT_ROLE_OPTIONS\.map/);
+assert.doesNotMatch(source("pages/AdminPage.jsx"), /<option value="(?:report_admin|data_admin)"/);
+assert.match(source("pages/AdminPage.jsx"), /accountForm\.role === modal\.account\.role \? \{\} : \{ role: accountForm\.role \}/);
 assert.match(globalStyles, /\.admin-console\{display:grid;gap:18px;padding-top:22px\}/);
 assert.match(globalStyles, /\.admin-connection-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
 assert.match(globalStyles, /\.admin-data-table__head,\.admin-data-table__row\{[^}]*display:grid/);
@@ -966,8 +974,24 @@ assert.equal(adminRequest.init.credentials, "include");
 assert.equal(adminRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
 assert.deepEqual(await adminClient.createAccount({ username: "analyst", password: "temporary-pass", role: "analyst" }), account);
 assert.deepEqual(JSON.parse(adminRequest.init.body), { username: "analyst", password: "temporary-pass", role: "analyst" });
-assert.deepEqual(await adminClient.updateAccount(account.subject, { role: "report_admin", active: true }), account);
+assert.deepEqual(await adminClient.updateAccount(account.subject, { role: "platform_admin", active: true }), account);
 assert.equal(adminRequest.init.method, "PATCH");
+let rejectedRoleRequests = 0;
+const rejectedRoleClient = createAdminClient("http://backend.test", async () => {
+  rejectedRoleRequests += 1;
+  return new Response(JSON.stringify({ data: account }), { status: 200 });
+});
+for (const role of ["report_admin", "data_admin"]) {
+  await assert.rejects(
+    () => rejectedRoleClient.createAccount({ username: "legacy", password: "temporary-pass", role }),
+    /analyst 또는 platform_admin/,
+  );
+  await assert.rejects(
+    () => rejectedRoleClient.updateAccount(account.subject, { role }),
+    /analyst 또는 platform_admin/,
+  );
+}
+assert.equal(rejectedRoleRequests, 0);
 await adminClient.resetPassword(account.subject, "rotated-password");
 assert.equal(adminRequest.url, `http://backend.test/admin/accounts/${account.subject}/password`);
 assert.deepEqual(JSON.parse(adminRequest.init.body), { password: "rotated-password" });

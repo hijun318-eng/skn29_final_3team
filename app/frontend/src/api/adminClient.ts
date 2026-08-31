@@ -1,5 +1,9 @@
 /** 관리자 계정·연결 상태와 서버 grouping 감사 trail을 cookie 인증 HTTP 요청으로 제공한다. */
-import type { ServiceRole } from "../authorization.ts";
+import {
+  isAssignableAuthAccountRole,
+  type AssignableAuthAccountRole,
+  type ServiceRole,
+} from "../authorization.ts";
 import { OPENAPI_VERSION } from "../contracts/analysis.ts";
 import {
   normalizeAuditTrailDetail,
@@ -137,6 +141,12 @@ function normalizeConnection(value: unknown): AdminConnection {
   return value as AdminConnection;
 }
 
+function requireAssignableAccountRole(role: unknown): asserts role is AssignableAuthAccountRole {
+  if (!isAssignableAuthAccountRole(role)) {
+    throw new Error("계정 역할은 analyst 또는 platform_admin이어야 합니다.");
+  }
+}
+
 /** 단일 Backend origin에만 관리자 요청을 보내고 모든 변경 요청에 현재 cookie 세션을 포함한다. */
 export function createAdminClient(baseUrl = env.VITE_BACKEND_BASE_URL, request: Fetch = fetch) {
   if (!baseUrl) throw new Error("VITE_BACKEND_BASE_URL is required");
@@ -152,10 +162,12 @@ export function createAdminClient(baseUrl = env.VITE_BACKEND_BASE_URL, request: 
     async listAccounts(page = 1, search = ""): Promise<AdminPage<AdminAccount>> {
       return normalizePage(await parseData(await send(`/admin/accounts?${queryString({ page, page_size: 50, search })}`)), normalizeAccount);
     },
-    async createAccount(input: { username: string; password: string; role: ServiceRole }): Promise<AdminAccount> {
+    async createAccount(input: { username: string; password: string; role: AssignableAuthAccountRole }): Promise<AdminAccount> {
+      requireAssignableAccountRole(input.role);
       return normalizeAccount(await parseData(await send("/admin/accounts", "POST", input)));
     },
-    async updateAccount(subject: string, input: { username?: string; role?: ServiceRole; active?: boolean }): Promise<AdminAccount> {
+    async updateAccount(subject: string, input: { username?: string; role?: AssignableAuthAccountRole; active?: boolean }): Promise<AdminAccount> {
+      if (input.role !== undefined) requireAssignableAccountRole(input.role);
       return normalizeAccount(await parseData(await send(`/admin/accounts/${encodeURIComponent(subject)}`, "PATCH", input)));
     },
     async resetPassword(subject: string, password: string): Promise<void> {

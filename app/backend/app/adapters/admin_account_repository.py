@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.admin_contracts import require_assignable_account_role
 from app.auth import create_password_verifier
 from app.contracts import RequestContext, Role
 
@@ -178,6 +179,7 @@ class AdminAccountRepository:
     ) -> dict[str, Any]:
         """새 UUID subject와 PBKDF2 verifier를 저장하고 같은 transaction에 감사를 추가한다."""
 
+        require_assignable_account_role(role)
         salt, digest, iterations = await create_password_verifier(password)
         subject = uuid4()
         try:
@@ -225,10 +227,12 @@ class AdminAccountRepository:
     ) -> dict[str, Any]:
         """계정 row를 잠그고 Role·활성 변경 시 session을 폐기한 뒤 감사를 기록한다."""
 
+        role = changes.get("role")
+        if role is not None:
+            require_assignable_account_role(role)
         await self._serialize_account_mutation()
         current = await self._locked_account(subject)
         username = changes.get("username")
-        role = changes.get("role")
         active = changes.get("active")
         next_role = role.value if isinstance(role, Role) else str(current["role"])
         next_active = bool(active) if active is not None else bool(current["active"])

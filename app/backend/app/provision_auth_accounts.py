@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
+from app.admin_contracts import require_assignable_account_role
 from app.contracts import Role
 
 
@@ -38,6 +39,7 @@ def _parse_account(raw: str) -> AccountDefinition:
         raise argparse.ArgumentTypeError("username is invalid")
     try:
         role = Role(parts[1].strip())
+        require_assignable_account_role(role)
         subject = UUID(parts[2]) if len(parts) == 3 else None
     except ValueError as exc:
         raise argparse.ArgumentTypeError("role or subject is invalid") from exc
@@ -80,6 +82,8 @@ def _provision(
     *,
     replace: bool,
 ) -> dict[str, object]:
+    for definition in definitions:
+        require_assignable_account_role(definition.role)
     engine = create_engine(_database_url())
     try:
         with engine.begin() as connection:

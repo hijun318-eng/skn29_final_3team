@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 from uuid import UUID
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -12,12 +12,30 @@ from app.contracts import ResponseContractModel, ResponseMeta, Role
 from app.contract_core import ContractModel
 
 
+AssignableAccountRole: TypeAlias = Literal[
+    Role.ANALYST,
+    Role.PLATFORM_ADMIN,
+]
+ASSIGNABLE_ACCOUNT_ROLES: tuple[Role, ...] = (
+    Role.ANALYST,
+    Role.PLATFORM_ADMIN,
+)
+
+
+def require_assignable_account_role(role: Role) -> Role:
+    """계정 writer가 분석 사용자·관리자 외 인증 Role을 새로 저장하지 못하게 한다."""
+
+    if role not in ASSIGNABLE_ACCOUNT_ROLES:
+        raise ValueError("계정 역할은 analyst 또는 platform_admin이어야 합니다.")
+    return role
+
+
 class CreateAccountRequest(ContractModel):
-    """정규화된 login ID, 초기 비밀번호와 현재 서비스 Role만 계정 생성에 허용한다."""
+    """login ID, 초기 비밀번호와 분석 사용자·관리자 Role만 계정 생성에 허용한다."""
 
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9._-]+$")
     password: SecretStr = Field(min_length=12, max_length=128)
-    role: Role = Role.ANALYST
+    role: AssignableAccountRole = Role.ANALYST
 
     @field_validator("username", mode="before")
     @classmethod
@@ -36,7 +54,7 @@ class UpdateAccountRequest(ContractModel):
         max_length=64,
         pattern=r"^[a-z0-9._-]+$",
     )
-    role: Role | None = None
+    role: AssignableAccountRole | None = None
     active: bool | None = None
 
     @field_validator("username", mode="before")

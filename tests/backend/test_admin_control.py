@@ -6,12 +6,13 @@ import asyncio
 import hashlib
 import os
 import sys
+from argparse import ArgumentTypeError
 from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from functools import wraps
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
@@ -27,12 +28,22 @@ from app.adapters.admin_account_repository import (  # noqa: E402
     AdminAccountRepository,
     LastActiveAdminConflict,
 )
-from app.admin_contracts import CreateAccountRequest, UpdateAccountRequest  # noqa: E402
+from app.admin_contracts import (  # noqa: E402
+    ASSIGNABLE_ACCOUNT_ROLES,
+    AccountData,
+    CreateAccountRequest,
+    UpdateAccountRequest,
+)
 from app.api.admin_router import system_manage_context  # noqa: E402
 from app.auth import create_authenticated_session  # noqa: E402
 from app.contracts import CONTRACT_VERSION, RequestContext, Role  # noqa: E402
 from app.database import get_database_session  # noqa: E402
 from app.main import app  # noqa: E402
+from app.provision_auth_accounts import (  # noqa: E402
+    AccountDefinition,
+    _parse_account,
+    _provision,
+)
 
 
 def _run_async(test):
@@ -112,15 +123,23 @@ def test_system_manage_dependency_rejects_analyst_and_accepts_platform_admin() -
     )
 
 
-def test_admin_contract_accepts_current_roles_and_masks_password_repr() -> None:
+def test_admin_contract_accepts_only_assignable_roles_and_masks_password_repr() -> None:
     request = CreateAccountRequest(
         username="new-user", password="new-password", role="platform_admin"
     )
     assert "new-password" not in repr(request)
-    for role in Role:
+    for role in (Role.ANALYST, Role.PLATFORM_ADMIN):
         assert CreateAccountRequest(
             username="new-user", password="new-password", role=role.value
         ).role is role
+        assert UpdateAccountRequest(role=role.value).role is role
+    for role in (Role.REPORT_ADMIN, Role.DATA_ADMIN):
+        with pytest.raises(ValidationError):
+            CreateAccountRequest(
+                username="new-user", password="new-password", role=role.value
+            )
+        with pytest.raises(ValidationError):
+            UpdateAccountRequest(role=role.value)
     with pytest.raises(ValidationError):
         CreateAccountRequest(
             username="new-user", password="new-password", role="admin"
@@ -131,6 +150,122 @@ def test_admin_contract_accepts_current_roles_and_masks_password_repr() -> None:
         CreateAccountRequest(
             username="new-user", password="short-pass", role="analyst"
         )
+
+
+def test_admin_response_preserves_legacy_roles_without_making_them_assignable() -> None:
+    account = AccountData.model_validate(_account(UUID(int=9), "report_admin"))
+
+    assert account.role is Role.REPORT_ADMIN
+    assert set(
+        CreateAccountRequest.model_json_schema()["properties"]["role"]["enum"]
+    ) == {role.value for role in ASSIGNABLE_ACCOUNT_ROLES}
+    assert set(
+        UpdateAccountRequest.model_json_schema()["properties"]["role"]["anyOf"][0][
+            "enum"
+        ]
+    ) == {role.value for role in ASSIGNABLE_ACCOUNT_ROLES}
+
+
+def test_provisioning_writers_accept_only_assignable_roles() -> None:
+    assert _parse_account("analyst:analyst").role is Role.ANALYST
+    assert _parse_account("admin:platform_admin").role is Role.PLATFORM_ADMIN
+    for role in (Role.REPORT_ADMIN, Role.DATA_ADMIN):
+        with pytest.raises(ArgumentTypeError, match="role or subject is invalid"):
+            _parse_account(f"legacy:{role.value}")
+        with patch("app.provision_auth_accounts.create_engine") as create_engine:
+            with pytest.raises(ValueError, match="analyst 또는 platform_admin"):
+                _provision(
+                    (AccountDefinition("legacy", role, UUID(int=8)),),
+                    {},
+                    replace=False,
+                )
+        create_engine.assert_not_called()
+
+    release_script = (
+        ROOT
+        / "infrastructure"
+        / "database"
+        / "security"
+        / "provision-release-principals.ps1"
+    ).read_text(encoding="utf-8")
+    assert "[ValidateSet('analyst', 'platform_admin')]" in release_script
+    assert "default_role = 'platform_admin'" in release_script
+    assert "$allowedRoles = @('analyst', 'platform_admin')" in release_script
+    assert "$legacyRoles = @('report_admin', 'data_admin')" in release_script
+    assert "[string]$matching.role -in $legacyRoles" in release_script
+
+
+@_run_async
+async def test_repository_rejects_legacy_roles_before_any_write() -> None:
+    session = _Session()
+    repository = AdminAccountRepository(session)
+    with patch(
+        "app.adapters.admin_account_repository.create_password_verifier",
+        new_callable=AsyncMock,
+    ) as create_verifier:
+        with pytest.raises(ValueError, match="analyst 또는 platform_admin"):
+            await repository.create_account(
+                username="legacy",
+                password="temporary-password",
+                role=Role.REPORT_ADMIN,
+                actor=_context(Role.PLATFORM_ADMIN),
+            )
+    with pytest.raises(ValueError, match="analyst 또는 platform_admin"):
+        await repository.update_account(
+            UUID(int=8),
+            changes={"role": Role.DATA_ADMIN},
+            actor=_context(Role.PLATFORM_ADMIN),
+        )
+
+    create_verifier.assert_not_awaited()
+    assert session.calls == []
+
+
+@_run_async
+async def test_admin_http_rejects_legacy_roles_before_repository_write() -> None:
+    async def admin_context_override() -> RequestContext:
+        return _context(Role.PLATFORM_ADMIN)
+
+    async def session_override():
+        yield _Session()
+
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[system_manage_context] = admin_context_override
+    app.dependency_overrides[get_database_session] = session_override
+    try:
+        with patch.object(
+            AdminAccountRepository,
+            "create_account",
+            new_callable=AsyncMock,
+        ) as create_account, patch.object(
+            AdminAccountRepository,
+            "update_account",
+            new_callable=AsyncMock,
+        ) as update_account:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://backend.test",
+            ) as client:
+                create_response = await client.post(
+                    "/admin/accounts",
+                    json={
+                        "username": "legacy-user",
+                        "password": "temporary-password",
+                        "role": "report_admin",
+                    },
+                )
+                update_response = await client.patch(
+                    f"/admin/accounts/{UUID(int=2)}",
+                    json={"role": "data_admin"},
+                )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+
+    assert create_response.status_code == 422
+    assert update_response.status_code == 422
+    create_account.assert_not_awaited()
+    update_account.assert_not_awaited()
 
 
 @_run_async

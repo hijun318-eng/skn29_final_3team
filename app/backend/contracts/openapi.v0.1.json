@@ -1810,7 +1810,7 @@
       },
       "CreateAccountRequest": {
         "additionalProperties": false,
-        "description": "정규화된 login ID, 초기 비밀번호와 현재 서비스 Role만 계정 생성에 허용한다.",
+        "description": "login ID, 초기 비밀번호와 분석 사용자·관리자 Role만 계정 생성에 허용한다.",
         "properties": {
           "password": {
             "format": "password",
@@ -1821,8 +1821,13 @@
             "writeOnly": true
           },
           "role": {
-            "$ref": "#/components/schemas/Role",
-            "default": "analyst"
+            "default": "analyst",
+            "enum": [
+              "analyst",
+              "platform_admin"
+            ],
+            "title": "Role",
+            "type": "string"
           },
           "username": {
             "maxLength": 64,
@@ -5914,12 +5919,17 @@
           "role": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Role"
+                "enum": [
+                  "analyst",
+                  "platform_admin"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Role"
           },
           "username": {
             "anyOf": [

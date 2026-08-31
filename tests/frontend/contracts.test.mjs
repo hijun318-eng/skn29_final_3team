@@ -24,7 +24,7 @@ const productSources = [
   "features/admin/audit/AuditTrailPanel.tsx", "features/admin/audit/AuditTrailDetail.tsx",
   "features/admin/audit/auditTrailTypes.ts",
   "components/analysis/AnalysisStatePanel.tsx", "components/analysis/AnalysisStatePanelParts.tsx",
-  "components/analysis/AnalysisFailureState.tsx",
+  "components/analysis/AnalysisFailureState.tsx", "components/analysis/AnalysisArtifactCollection.jsx",
   "components/layout/AppHeader.jsx",
 ].map(source).concat(reportFeatureSource).join("\n");
 const reportA4Styles = [
@@ -852,9 +852,60 @@ assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /showC
 assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
 assert.match(source("pages/AgentPage.jsx"), /requested_route: "INTERNAL_GUIDELINE",[\s\S]*?inherit_previous_context: true/);
 
+const artifactCollectionSource = source("components/analysis/AnalysisArtifactCollection.jsx");
+assert.match(artifactCollectionSource, /approvedOnly: true,[\s\S]*?archived: nextCollection === "archived"/);
+assert.match(artifactCollectionSource, /run\.artifact_id && <details className="analysis-artifact-row-menu"/);
+assert.match(artifactCollectionSource, /showModal\(\)/);
+assert.match(artifactCollectionSource, /dialogCancelRef\.current\?\.focus\(\)/);
+assert.match(artifactCollectionSource, /lifecycleDialog\.trigger\?\.focus\?\.\(\)/);
+assert.match(artifactCollectionSource, /if \(pendingDialog\) event\.preventDefault\(\)/);
+assert.match(artifactCollectionSource, /if \(lifecycleRequestRef\.current !== request\) return;/);
+assert.match(artifactCollectionSource, /if \(loadRequestRef\.current !== request\) return false;/);
+assert.match(artifactCollectionSource, /if \(lifecycleRequestRef\.current !== request \|\| !refreshed\) return;/);
+assert.match(artifactCollectionSource, /setLifecycleDialog\(null\);/);
+assert.match(artifactCollectionSource, /기존 보고서는 계속 열람할 수 있지만/);
+assert.match(source("features/reports/components/ReportListView.jsx"), /className="app-lifecycle-dialog"/);
+assert.match(globalStyles, /\.app-lifecycle-dialog\{/);
+
+const activeSavedRun = {
+  request_id: "run-active",
+  definition_id: "definition-active",
+  definition_version: 2,
+  status: "SUCCEEDED",
+  as_of: "2030-01-03",
+  timezone: "Asia/Seoul",
+  trace_id: "trace-active",
+  query_id: "query-active",
+  artifact_id: "artifact-active",
+  artifact_archived: false,
+  artifact_archived_at: null,
+  artifact_archived_by: null,
+  error_type: null,
+  started_at: "2030-01-03T00:00:00Z",
+  completed_at: "2030-01-03T00:01:00Z",
+  question: "활성 분석 결과",
+  period_start: "2030-01-01",
+  period_end_exclusive: "2030-01-03",
+  snapshot_cutoff: null,
+  snapshot_selection: null,
+};
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
   analysisRequest = { url, init };
+  if (url.includes("/analysis/runs")) {
+    return new Response(JSON.stringify({ items: [activeSavedRun] }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (url.endsWith("/archive")) {
+    return new Response(JSON.stringify({
+      artifact_id: "artifact-active", archived: true,
+      archived_at: "2030-01-03T00:02:00Z", archived_by: "actor-1",
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (url.endsWith("/restore")) {
+    return new Response(JSON.stringify({
+      artifact_id: "artifact-active", archived: false, archived_at: null, archived_by: null,
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
   return new Response(JSON.stringify(apiResponse), { status: 200, headers: { "Content-Type": "application/json" } });
 }, "runtime-token");
 await analysisClient.analyze("question", { period_start: "2030-01-01", period_end_exclusive: "2030-01-03" }, { traceId: "client-trace" });
@@ -864,8 +915,32 @@ assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION
 assert.equal(analysisRequest.init.headers["X-Trace-Id"], "client-trace");
 assert.equal(analysisRequest.init.headers["X-As-Of"], undefined);
 assert.deepEqual(JSON.parse(analysisRequest.init.body).parameters, { period_start: "2030-01-01", period_end_exclusive: "2030-01-03" });
-await analysisClient.listRuns({ limit: 7, approvedOnly: true });
+assert.equal((await analysisClient.listRuns({ limit: 7, approvedOnly: true }))[0].artifact_archived, false);
 assert.equal(analysisRequest.url, "http://backend.test/analysis/runs?limit=7&approved_only=true");
+await analysisClient.listRuns({ limit: 20, archived: true });
+assert.equal(analysisRequest.url, "http://backend.test/analysis/runs?limit=20&archived=true");
+assert.equal((await analysisClient.archiveArtifact("artifact-active")).archived, true);
+assert.equal(analysisRequest.url, "http://backend.test/analysis/artifacts/artifact-active/archive");
+assert.equal(analysisRequest.init.method, "POST");
+assert.equal((await analysisClient.restoreArtifact("artifact-active")).archived, false);
+assert.equal(analysisRequest.url, "http://backend.test/analysis/artifacts/artifact-active/restore");
+
+const invalidArchiveProjectionClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
+  items: [{ ...activeSavedRun, artifact_archived: true, artifact_archived_at: null, artifact_archived_by: null }],
+}), { status: 200 }));
+await assert.rejects(invalidArchiveProjectionClient.listRuns({ archived: true }), /분석 실행 목록 API가 올바르지 않은 응답/);
+const invalidArchiveTimestampClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
+  items: [{ ...activeSavedRun, artifact_archived: true, artifact_archived_at: "not-a-timestamp", artifact_archived_by: "actor-1" }],
+}), { status: 200 }));
+await assert.rejects(invalidArchiveTimestampClient.listRuns({ archived: true }), /분석 실행 목록 API가 올바르지 않은 응답/);
+const invalidDefinitionVersionClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
+  items: [{ ...activeSavedRun, definition_version: 0 }],
+}), { status: 200 }));
+await assert.rejects(invalidDefinitionVersionClient.listRuns(), /분석 실행 목록 API가 올바르지 않은 응답/);
+const invalidLifecycleTimestampClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
+  artifact_id: "artifact-active", archived: true, archived_at: "not-a-timestamp", archived_by: "actor-1",
+}), { status: 200 }));
+await assert.rejects(invalidLifecycleTimestampClient.archiveArtifact("artifact-active"), /분석 Artifact 보관 상태 API가 올바르지 않은 응답/);
 
 let ragCatalogRequest;
 const ragCatalogClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {

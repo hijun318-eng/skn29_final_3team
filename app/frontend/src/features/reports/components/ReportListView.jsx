@@ -131,7 +131,7 @@ export const ReportListView = memo(function ReportListView({
       {definitionState === "ready" && <p className="legacy-report-guide">{archived ? "보관한 보고서는 확정 문서만 읽을 수 있습니다. 다시 편집하려면 3점 메뉴에서 복원해 주세요." : "초안은 자유롭게 배치하고 서버에 저장할 수 있습니다. 확정본 편집 시 새 버전 초안이 생성됩니다."}</p>}
       {lifecycleDialog && <dialog
         ref={dialogRef}
-        className="report-lifecycle-dialog"
+        className="app-lifecycle-dialog"
         aria-labelledby="report-lifecycle-dialog-title"
         onCancel={(event) => {
           if (pending) event.preventDefault();
@@ -139,9 +139,9 @@ export const ReportListView = memo(function ReportListView({
         }}
       >
         <form onSubmit={confirmLifecycleChange}>
-          <span className="report-lifecycle-dialog-icon">{lifecycleDialog.action === "archive" ? <Archive size={19} /> : <ArchiveRestore size={19} />}</span>
+          <span className="app-lifecycle-dialog-icon">{lifecycleDialog.action === "archive" ? <Archive size={19} /> : <ArchiveRestore size={19} />}</span>
           <div><small>{lifecycleDialog.action === "archive" ? "보고서 보관" : "보고서 복원"}</small><h2 id="report-lifecycle-dialog-title">{lifecycleDialog.action === "archive" ? "이 보고서를 보관할까요?" : "이 보고서를 복원할까요?"}</h2><p><b>“{lifecycleDialog.definition.title}”</b>{lifecycleDialog.action === "archive" ? "의 모든 버전이 보관함으로 이동합니다. 예약은 중지되며 복원 전에는 편집하거나 실행할 수 없습니다." : "가 활성 목록으로 돌아갑니다. 보관할 때 중지된 예약은 자동으로 다시 켜지지 않습니다."}</p></div>
-          {error && <p className="report-lifecycle-dialog-error" role="alert"><AlertTriangle size={15} />{error}</p>}
+          {error && <p className="app-lifecycle-dialog-error" role="alert"><AlertTriangle size={15} />{error}</p>}
           <footer><button ref={dialogCancelRef} type="button" onClick={() => setLifecycleDialog(null)} disabled={Boolean(pending)}>취소</button><button type="submit" className="primary" disabled={Boolean(pending)}>{pending ? <LoaderCircle className="spin" size={14} /> : lifecycleDialog.action === "archive" ? <Archive size={14} /> : <ArchiveRestore size={14} />}{pending ? lifecycleDialog.action === "archive" ? "보관 중" : "복원 중" : lifecycleDialog.action === "archive" ? "보관" : "복원"}</button></footer>
         </form>
       </dialog>}

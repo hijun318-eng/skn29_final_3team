@@ -4,6 +4,7 @@ import { Eye, FilePlus2, MessageSquareText, Plus, Save, Send, Sparkles, TablePro
 import { AnalysisApiError, createAnalysisClient, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
+import { AnalysisArtifactCollection } from "../components/analysis/AnalysisArtifactCollection";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
 import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
@@ -40,6 +41,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [definitions, setDefinitions] = useState([]);
   const [definitionQuery, setDefinitionQuery] = useState("");
   const [visibleDefinitionCount, setVisibleDefinitionCount] = useState(10);
+  const [compactViewport, setCompactViewport] = useState(() => window.matchMedia?.("(max-width: 650px)").matches ?? false);
   const requestInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const activeTraceId = useRef("");
@@ -163,6 +165,14 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   }, [question]);
 
   useEffect(() => () => activeCommandAbortController.current?.abort(), []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 650px)");
+    const updateViewport = () => setCompactViewport(media.matches);
+    updateViewport();
+    media.addEventListener("change", updateViewport);
+    return () => media.removeEventListener("change", updateViewport);
+  }, []);
 
   const initConversation = async (generation) => {
     const conv = await analysisClient.createConversation();
@@ -558,11 +568,13 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         {filteredDefinitions.length > visibleDefinitionCount && (
           <button type="button" className="saved-analysis-more" onClick={() => setVisibleDefinitionCount((c) => c + 10)}>더 보기</button>
         )}
+        {!compactViewport && <AnalysisArtifactCollection analysisClient={analysisClient} />}
       </aside>
 
       {/* 중앙: 대화 스레드 메인 */}
       <main className="chat-main" inert={Boolean(reportModal)}>
         <div className="chat-scroll-region">
+        {compactViewport && <div className="analysis-artifact-mobile"><AnalysisArtifactCollection analysisClient={analysisClient} /></div>}
         {turns.length === 0 && !submitting && (
           emptyMode === "rag-documents" ? (
             <RagEmptyState

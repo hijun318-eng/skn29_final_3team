@@ -9,11 +9,11 @@
 |---|---:|
 | archive | 149 |
 | documentation | 134 |
-| production | 391 |
-| project-config | 202 |
-| runtime-config | 107 |
+| production | 393 |
+| project-config | 204 |
+| runtime-config | 108 |
 | runtime-contract | 45 |
-| test | 228 |
+| test | 230 |
 
 운영 무결성 위반: **0건**
 
@@ -43,6 +43,7 @@
 | `app/backend/alembic.ini` | project-config | REVIEWED |
 | `app/backend/app/__init__.py` | production | REVIEWED |
 | `app/backend/app/adapters/admin_account_repository.py` | production | REVIEWED |
+| `app/backend/app/adapters/analysis_artifact_lifecycle_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_definition_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_evidence_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/analysis_repository.py` | production | REVIEWED |
@@ -289,6 +290,7 @@
 | `app/backend/migrations/versions/20260831_63_mcp_tool_rate_limits.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260831_64_mcp_candidate_descriptors.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260831_65_report_definition_archive.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260831_66_analysis_artifact_archive.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.lock.txt` | project-config | REVIEWED |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
@@ -309,6 +311,7 @@
 | `app/frontend/src/authenticatedBrowserState.js` | production | REVIEWED |
 | `app/frontend/src/authorization.ts` | production | REVIEWED |
 | `app/frontend/src/components/analysis/analysis-failure-state.css` | production | REVIEWED |
+| `app/frontend/src/components/analysis/AnalysisArtifactCollection.jsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisDashboardViews.tsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisFailureState.tsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisStatePanel.tsx` | production | REVIEWED |
@@ -913,6 +916,8 @@
 | `src/ai/training/requirements.txt` | production | REVIEWED |
 | `src/ai/training/train_lora.py` | production | REVIEWED |
 | `src/ai/training/verify_case_specs.py` | production | REVIEWED |
+| `src/analysis/__init__.py` | project-config | REVIEWED |
+| `src/analysis/domain.py` | project-config | REVIEWED |
 | `src/data/analysis_capability_contract.py` | production | REVIEWED |
 | `src/data/datahub_connection.py` | production | REVIEWED |
 | `src/data/entitlement_roles.py` | production | REVIEWED |
@@ -1079,6 +1084,7 @@
 | `tests/ai/test_training_verification.py` | test | TEST_ONLY |
 | `tests/ai/test_validation_v2.py` | test | TEST_ONLY |
 | `tests/ai/test_wave3.py` | test | TEST_ONLY |
+| `tests/analysis/test_artifact_lifecycle.py` | test | TEST_ONLY |
 | `tests/architecture/test_architectural_invariants.py` | test | TEST_ONLY |
 | `tests/architecture/test_code_documentation.py` | test | TEST_ONLY |
 | `tests/architecture/test_repository_integrity_audit.py` | test | TEST_ONLY |
@@ -1099,6 +1105,7 @@
 | `tests/backend/test_agent_capability_probes.py` | test | TEST_ONLY |
 | `tests/backend/test_agent_state.py` | test | TEST_ONLY |
 | `tests/backend/test_agent_supervisor.py` | test | TEST_ONLY |
+| `tests/backend/test_analysis_artifact_archive_integration.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_persistence.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_pipeline.py` | test | TEST_ONLY |
 | `tests/backend/test_analysis_progress.py` | test | TEST_ONLY |

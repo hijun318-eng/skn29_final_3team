@@ -767,6 +767,35 @@ assert.equal(mismatchedPresentation[1].run.error.code, "INSUFFICIENT_EVIDENCE");
 assert.equal(mismatchedPresentation[1].run.artifact, undefined);
 assert.equal(mismatchedPresentation[1].isArtifactReuse, false);
 
+const hydratedMlPrediction = hydrateTurnsFromServer([{
+  turn_id: "turn-ml",
+  user_message: "객실 수요를 예측해줘",
+  route: "ML_PREDICTION",
+  terminal_status: "SUCCEEDED",
+  resolved_slots: {
+    ml_prediction: {
+      schema_version: "MLRoomDemandPrediction.v1",
+      status: "SUCCEEDED",
+      execution_id: "f91aaf15-fdf6-4c3a-84a2-f80fb515ad64",
+      property_id: "PROPERTY-A",
+      as_of: "2026-09-01",
+      feature_as_of: "2026-08-31",
+      daily_forecasts: [{
+        target_date: "2026-09-02",
+        total_available_rooms: 100,
+        predicted_occupied_rooms: 70,
+        predicted_available_rooms: 30,
+        predicted_occupancy_rate: 0.7,
+      }],
+    },
+  },
+}]);
+assert.equal(hydratedMlPrediction[0].run.status, "success");
+assert.equal(hydratedMlPrediction[0].run.mlPrediction.property_id, "PROPERTY-A");
+assert.equal(hydratedMlPrediction[0].viewType, "ML_PREDICTION");
+assert.match(source("pages/AgentPage.jsx"), /serverTurn\?\.route === "ML_PREDICTION"/);
+assert.match(source("pages/AgentPage.jsx"), /<MLPredictionResult result=\{turnItem\.run\.mlPrediction\}/);
+
 let presentationRequest;
 const presentationClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   presentationRequest = { url, init };

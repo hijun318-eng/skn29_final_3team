@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -758,32 +759,51 @@ class InternalManualAgent:
                 "RAG 검색 권한이 없습니다.",
                 403,
             )
-        await self._assert_enabled(app_role)
         trace_id = str(uuid4())
         actor_hash = hashlib.sha256(b"RAG_CAPABILITY_PROBE").hexdigest()
-        try:
-            search = await self._signed_post(
-                "/v1/tools/internal-manual-search",
-                {
-                    "query": normalized,
-                    "resolved_question": normalized,
-                    "domains": [],
-                    "intent": "REGULATION_CHECK",
-                    "top_k": 3,
-                    "recent_utterances": [],
-                    "selected_document_ids": [],
-                    "trace_id": trace_id,
-                    "actor_hash": actor_hash,
-                },
-                rag_role,
-            )
-        except RagToolError:
-            raise
-        except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+        payload = {
+            "query": normalized,
+            "resolved_question": normalized,
+            "domains": [],
+            "intent": "REGULATION_CHECK",
+            "top_k": 3,
+            "recent_utterances": [],
+            "selected_document_ids": [],
+            "trace_id": trace_id,
+            "actor_hash": actor_hash,
+        }
+        search: dict[str, Any] | None = None
+        for attempt in range(2):
+            try:
+                await self._assert_enabled(app_role)
+                search = await self._signed_post(
+                    "/v1/tools/internal-manual-search",
+                    payload,
+                    rag_role,
+                )
+                break
+            except RagToolError as error:
+                if error.code != "RAG_REGISTRY_UNAVAILABLE" or attempt > 0:
+                    raise
+            except httpx.HTTPError as error:
+                response = getattr(error, "response", None)
+                retryable = response is None or response.status_code >= 500
+                if not retryable or attempt > 0:
+                    raise RagToolError(
+                        "RAG_CAPABILITY_UNAVAILABLE",
+                        "RAG capability를 확인하지 못했습니다.",
+                    ) from error
+            except (ValueError, KeyError, TypeError) as error:
+                raise RagToolError(
+                    "RAG_CAPABILITY_UNAVAILABLE",
+                    "RAG capability를 확인하지 못했습니다.",
+                ) from error
+            await asyncio.sleep(0.05)
+        if search is None:
             raise RagToolError(
                 "RAG_CAPABILITY_UNAVAILABLE",
                 "RAG capability를 확인하지 못했습니다.",
-            ) from error
+            )
         return self._capability_candidate(
             search,
             expected_query_hash=self._capability_query_hash(normalized),

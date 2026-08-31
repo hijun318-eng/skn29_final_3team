@@ -38,3 +38,32 @@ export function ragRun(question, result) {
     },
   };
 }
+
+
+/** MCP ML 예측 결과를 대화 화면의 성공 실행 상태로 변환한다. */
+export function mlPredictionRun(question, result) {
+  const forecasts = Array.isArray(result?.daily_forecasts)
+    ? result.daily_forecasts
+    : [];
+  const propertyId = typeof result?.property_id === "string"
+    ? result.property_id.trim()
+    : "";
+  const dayCount = forecasts.length;
+  return {
+    requestId: result?.execution_id || "",
+    traceId: result?.mcp_tool_run_id || "",
+    status: "success",
+    question,
+    summary: `${propertyId ? `${propertyId} ` : ""}객실 수요 ${dayCount}일 예측을 완료했습니다.`,
+    metrics: [],
+    sources: [],
+    meta: {
+      asOf: result?.as_of || "",
+      timezone: "Asia/Seoul",
+      seed: "",
+      schemaVersion: result?.schema_version || "",
+      contractVersion: OPENAPI_VERSION,
+    },
+    mlPrediction: result,
+  };
+}

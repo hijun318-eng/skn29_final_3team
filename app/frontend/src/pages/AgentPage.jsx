@@ -6,13 +6,13 @@ import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
-import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
+import MLPredictionWorkspace, { MLPredictionResult } from "../components/ml/MLPredictionWorkspace";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { ragRun } from "./agentResponseMappers";
+import { mlPredictionRun, ragRun } from "./agentResponseMappers";
 import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
 const MAX_QUESTION_LENGTH = 1000;
@@ -310,6 +310,8 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       const serverTurn = data?.turn;
       const analysisRaw = data?.analysis_response;
       const responseType = data?.type || "ANALYSIS";
+      const ragResponse = data?.rag_response || serverTurn?.resolved_slots?.rag;
+      const mlPrediction = data?.ml_prediction || serverTurn?.resolved_slots?.ml_prediction;
       const isPresentation = serverTurn?.route === "PRESENTATION";
       const isReportAction = serverTurn?.route === "REPORT_ACTION";
 
@@ -319,8 +321,10 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           normalized,
           data?.message || serverTurn?.resolved_slots?.scope_rejection?.message,
         );
-      } else if (responseType === "INTERNAL_GUIDELINE" && data?.rag_response) {
-        finalRun = ragRun(normalized, data.rag_response);
+      } else if ((responseType === "INTERNAL_GUIDELINE" || serverTurn?.route === "INTERNAL_GUIDELINE") && ragResponse) {
+        finalRun = ragRun(normalized, ragResponse);
+      } else if ((responseType === "ML_PREDICTION" || serverTurn?.route === "ML_PREDICTION") && mlPrediction) {
+        finalRun = mlPredictionRun(normalized, mlPrediction);
       } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
         const clarType = commandClarificationType(data, serverTurn);
@@ -629,6 +633,13 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                               })
                             : undefined}
                         />
+                      </>
+                    ) : turnItem.run.mlPrediction ? (
+                      <>
+                        <small className="agent-result-type">객실 수요 예측</small>
+                        <div className="ml-conversation-result">
+                          <MLPredictionResult result={turnItem.run.mlPrediction} />
+                        </div>
                       </>
                     ) : turnItem.run.chatPending && !turnItem.processViewModel ? (
                       <div className="chat-pending-response" role="status" aria-live="polite">

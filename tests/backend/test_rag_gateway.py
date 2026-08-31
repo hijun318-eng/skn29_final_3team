@@ -433,6 +433,88 @@ def test_search_capability_calls_search_only_and_drops_document_body() -> None:
     assert "내부 문서 본문" not in repr(candidate)
 
 
+def test_search_capability_retries_one_transient_registry_read() -> None:
+    agent = object.__new__(InternalManualAgent)
+    registry_attempts = 0
+    search_attempts = 0
+
+    async def transient_registry(_role: str) -> None:
+        nonlocal registry_attempts
+        registry_attempts += 1
+        if registry_attempts == 1:
+            raise RagToolError(
+                "RAG_REGISTRY_UNAVAILABLE",
+                "RAG Tool Registry를 확인하지 못했습니다.",
+            )
+
+    async def signed_post(
+        _path: str,
+        payload: dict[str, object],
+        _role: str,
+    ) -> dict[str, object]:
+        nonlocal search_attempts
+        search_attempts += 1
+        return _capability_search_response(str(payload["query"]))
+
+    agent._assert_enabled = transient_registry  # type: ignore[method-assign]
+    agent._signed_post = signed_post  # type: ignore[method-assign]
+
+    candidate = asyncio.run(
+        agent.search_capability("개인정보 유출 보고 절차", "analyst")
+    )
+
+    assert candidate["matched"] is True
+    assert registry_attempts == 2
+    assert search_attempts == 1
+
+
+def test_search_capability_retries_one_transient_transport_failure() -> None:
+    agent = object.__new__(InternalManualAgent)
+    search_attempts = 0
+
+    async def allow(_role: str) -> None:
+        return None
+
+    async def transient_post(
+        _path: str,
+        payload: dict[str, object],
+        _role: str,
+    ) -> dict[str, object]:
+        nonlocal search_attempts
+        search_attempts += 1
+        if search_attempts == 1:
+            raise httpx.ConnectError("temporary RAG connection failure")
+        return _capability_search_response(str(payload["query"]))
+
+    agent._assert_enabled = allow  # type: ignore[method-assign]
+    agent._signed_post = transient_post  # type: ignore[method-assign]
+
+    candidate = asyncio.run(
+        agent.search_capability("개인정보 유출 보고 절차", "analyst")
+    )
+
+    assert candidate["matched"] is True
+    assert search_attempts == 2
+
+
+def test_search_capability_does_not_retry_non_transient_registry_rejection() -> None:
+    agent = object.__new__(InternalManualAgent)
+    registry_attempts = 0
+
+    async def disabled_registry(_role: str) -> None:
+        nonlocal registry_attempts
+        registry_attempts += 1
+        raise RagToolError("RAG_TOOL_DISABLED", "RAG Tool이 승인되지 않았습니다.")
+
+    agent._assert_enabled = disabled_registry  # type: ignore[method-assign]
+
+    with pytest.raises(RagToolError) as captured:
+        asyncio.run(agent.search_capability("개인정보 유출 보고 절차", "analyst"))
+
+    assert captured.value.code == "RAG_TOOL_DISABLED"
+    assert registry_attempts == 1
+
+
 def test_search_capability_rejects_unapproved_document_evidence() -> None:
     query = "개인정보 유출 보고 절차"
     response = _capability_search_response(query)

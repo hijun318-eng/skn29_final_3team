@@ -42,6 +42,74 @@ class ReportArtifactRepositoryMixin:
     조회는 해당 version block 참조까지 확인한다. assistant 완료·실패 갱신도 같은
     ``_owner_id``와 ``running`` 상태를 조건으로 제한한다.
     """
+
+    async def _lock_active_assistant_artifacts(
+        self,
+        session,
+        artifacts: list[dict[str, object]],
+    ) -> None:
+        """Assistant 결속 대상의 owner·checksum·active 상태를 source row lock 아래 재검증한다."""
+
+        for artifact in artifacts:
+            locked = (await session.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM artifact.analysis_artifacts a
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND a.artifact_checksum = :artifact_checksum
+                      AND a.status = 'APPROVED'
+                      AND q.trino_query_id IS NOT NULL
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND r.user_id = :owner_id
+                    FOR KEY SHARE OF a
+                    """
+                ),
+                {
+                    "artifact_id": _uuid(str(artifact["artifact_id"]), "artifact_id"),
+                    "artifact_checksum": str(artifact["artifact_checksum"]),
+                    "owner_id": self._owner_id,
+                },
+            )).one_or_none()
+            if locked is None:
+                raise KeyError("활성 상태의 승인된 Assistant Artifact를 찾을 수 없습니다.")
+
+            # source key-share lock을 잡은 뒤 새 statement를 사용해야 archive가
+            # 먼저 commit된 경우의 이전 lifecycle snapshot으로 결속하지 않는다.
+            matched = (await session.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM artifact.analysis_artifacts a
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND a.artifact_checksum = :artifact_checksum
+                      AND a.status = 'APPROVED'
+                      AND q.trino_query_id IS NOT NULL
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND r.user_id = :owner_id
+                      AND NOT EXISTS (
+                          SELECT 1 FROM artifact.user_artifact_lifecycle lifecycle
+                          WHERE lifecycle.owner_id = r.user_id
+                            AND lifecycle.artifact_id = a.artifact_id
+                            AND lifecycle.archived_at IS NOT NULL
+                      )
+                    """
+                ),
+                {
+                    "artifact_id": _uuid(str(artifact["artifact_id"]), "artifact_id"),
+                    "artifact_checksum": str(artifact["artifact_checksum"]),
+                    "owner_id": self._owner_id,
+                },
+            )).one_or_none()
+            if matched is None:
+                raise KeyError("활성 상태의 승인된 Assistant Artifact를 찾을 수 없습니다.")
+
     async def get_assistant_artifact(self, artifact_id: str) -> dict[str, object]:
         """assistant 입력용 승인 artifact의 narrative·chart·evidence·checksum을 반환한다.
 
@@ -65,6 +133,12 @@ class ReportArtifactRepositoryMixin:
                       AND a.status = 'APPROVED'
                       AND r.status IN ('SUCCEEDED', 'PARTIAL')
                       AND r.user_id = :owner_id
+                      AND NOT EXISTS (
+                          SELECT 1 FROM artifact.user_artifact_lifecycle lifecycle
+                          WHERE lifecycle.owner_id = r.user_id
+                            AND lifecycle.artifact_id = a.artifact_id
+                            AND lifecycle.archived_at IS NOT NULL
+                      )
                     """
                 ),
                 {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
@@ -96,6 +170,12 @@ class ReportArtifactRepositoryMixin:
                       AND a.status = 'APPROVED'
                       AND r.status IN ('SUCCEEDED', 'PARTIAL')
                       AND r.user_id = :owner_id
+                      AND NOT EXISTS (
+                          SELECT 1 FROM artifact.user_artifact_lifecycle lifecycle
+                          WHERE lifecycle.owner_id = r.user_id
+                            AND lifecycle.artifact_id = a.artifact_id
+                            AND lifecycle.archived_at IS NOT NULL
+                      )
                     """
                 ),
                 {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
@@ -154,7 +234,47 @@ class ReportArtifactRepositoryMixin:
         prompt_hash: str,
     ) -> None:
         """어시스턴트 요청 처리를 중복 실행 방지 조건과 함께 시작한다."""
+        artifact_uuid = _uuid(artifact_id, "artifact_id")
         async with self._sessionmaker.begin() as session:
+            locked = (await session.execute(
+                text(
+                    """
+                    SELECT a.artifact_checksum
+                    FROM artifact.analysis_artifacts a
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND a.status = 'APPROVED'
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND r.user_id = :owner_id
+                    FOR KEY SHARE OF a
+                    """
+                ),
+                {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
+            )).mappings().one_or_none()
+            if locked is None:
+                raise KeyError("활성 상태의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+            active = (await session.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM artifact.analysis_artifacts a
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND a.status = 'APPROVED'
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND r.user_id = :owner_id
+                      AND NOT EXISTS (
+                          SELECT 1 FROM artifact.user_artifact_lifecycle lifecycle
+                          WHERE lifecycle.owner_id = r.user_id
+                            AND lifecycle.artifact_id = a.artifact_id
+                            AND lifecycle.archived_at IS NOT NULL
+                      )
+                    """
+                ),
+                {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
+            )).one_or_none()
+            if active is None:
+                raise KeyError("활성 상태의 승인된 Analysis Artifact를 찾을 수 없습니다.")
             await session.execute(
                 text(
                     """
@@ -168,7 +288,7 @@ class ReportArtifactRepositoryMixin:
                 {
                     "request_id": _uuid(assistant_request_id, "assistant_request_id"),
                     "owner_id": self._owner_id,
-                    "artifact_id": _uuid(artifact_id, "artifact_id"),
+                    "artifact_id": artifact_uuid,
                     "instruction_hash": instruction_hash,
                     "prompt_id": prompt_id,
                     "prompt_version": prompt_version,
@@ -326,6 +446,7 @@ class ReportArtifactRepositoryMixin:
         ):
             raise ValueError("Assistant Artifact lineage가 완전하지 않습니다.")
         async with self._sessionmaker.begin() as session:
+            await self._lock_active_assistant_artifacts(session, artifacts)
             base_revision = (await session.execute(
                 text(
                     """
@@ -422,6 +543,26 @@ class ReportArtifactRepositoryMixin:
         source_uuid = _uuid(assistant_request_id, "assistant_request_id")
         retry_uuid = _uuid(retry_request_id, "retry_request_id")
         async with self._sessionmaker.begin() as session:
+            retry_artifacts = (await session.execute(
+                text(
+                    """
+                    SELECT binding.artifact_id, binding.artifact_checksum
+                    FROM report_v1.report_assistant_artifact_bindings binding
+                    JOIN report_v1.report_assistant_requests source
+                      ON source.assistant_request_id = binding.assistant_request_id
+                    WHERE source.assistant_request_id = :source_request_id
+                      AND source.owner_id = :owner_id
+                      AND source.phase = 'failed' AND source.status = 'failed'
+                    ORDER BY binding.ordinal
+                    """
+                ),
+                {"source_request_id": source_uuid, "owner_id": self._owner_id},
+            )).mappings().all()
+            if not retry_artifacts:
+                raise ValueError("ASSISTANT_RETRY_VALIDATION_FAILED")
+            await self._lock_active_assistant_artifacts(
+                session, [dict(artifact) for artifact in retry_artifacts]
+            )
             await session.execute(
                 text(
                     """

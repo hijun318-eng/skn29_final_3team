@@ -49,6 +49,9 @@ class AnalysisRunReadRepositoryMixin:
             "trace_id": row["trace_id"],
             "query_id": row["query_id"],
             "artifact_id": row["artifact_id"],
+            "artifact_archived": row.get("artifact_archived_at") is not None,
+            "artifact_archived_at": row.get("artifact_archived_at"),
+            "artifact_archived_by": row.get("artifact_archived_by"),
             "error_type": row["error_type"],
             "started_at": row["started_at"],
             "completed_at": row["completed_at"],
@@ -78,7 +81,9 @@ class AnalysisRunReadRepositoryMixin:
                                q.trino_query_id AS query_id,
                                q.source_cutoff_json AS query_cutoff, a.artifact_id,
                                a.evidence_json->'period' AS artifact_period,
-                               a.evidence_json->'snapshot' AS artifact_snapshot
+                               a.evidence_json->'snapshot' AS artifact_snapshot,
+                               a.archived_at AS artifact_archived_at,
+                               a.archived_by AS artifact_archived_by
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id
@@ -91,8 +96,14 @@ class AnalysisRunReadRepositoryMixin:
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
                         LEFT JOIN LATERAL (
-                            SELECT artifact_id, evidence_json FROM artifact.analysis_artifacts
-                            WHERE request_id = r.request_id LIMIT 1
+                            -- request_id UNIQUE가 한 run당 Artifact 하나를 보장한다.
+                            SELECT artifact.artifact_id, artifact.evidence_json,
+                                   lifecycle.archived_at, lifecycle.archived_by
+                            FROM artifact.analysis_artifacts artifact
+                            LEFT JOIN artifact.user_artifact_lifecycle lifecycle
+                              ON lifecycle.owner_id = d.owner_id
+                             AND lifecycle.artifact_id = artifact.artifact_id
+                            WHERE artifact.request_id = r.request_id LIMIT 1
                         ) a ON true
                         WHERE l.request_id = :request_id AND d.owner_id = :owner_id
                         """
@@ -113,8 +124,9 @@ class AnalysisRunReadRepositoryMixin:
         *,
         limit: int = 100,
         approved_only: bool = False,
+        archived: bool = False,
     ) -> list[dict[str, Any]]:
-        """현재 owner의 run을 승인 여부와 개수 상한을 적용해 시작 시각 역순으로 반환한다."""
+        """현재 owner의 active 또는 명시한 archived run을 시작 시각 역순으로 반환한다."""
         if not 1 <= limit <= 100:
             raise ValueError("limit은 1 이상 100 이하여야 합니다.")
         try:
@@ -129,7 +141,9 @@ class AnalysisRunReadRepositoryMixin:
                                q.trino_query_id AS query_id,
                                q.source_cutoff_json AS query_cutoff, a.artifact_id,
                                a.evidence_json->'period' AS artifact_period,
-                               a.evidence_json->'snapshot' AS artifact_snapshot
+                               a.evidence_json->'snapshot' AS artifact_snapshot,
+                               a.archived_at AS artifact_archived_at,
+                               a.archived_by AS artifact_archived_by
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id
@@ -142,18 +156,35 @@ class AnalysisRunReadRepositoryMixin:
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
                         LEFT JOIN LATERAL (
-                            SELECT artifact_id, evidence_json, status
-                            FROM artifact.analysis_artifacts
-                            WHERE request_id = r.request_id
-                              AND (NOT :approved_only OR status = 'APPROVED')
-                            ORDER BY CASE status
+                            -- request_id UNIQUE가 active/archived 소속을 결정적으로 만든다.
+                            SELECT artifact.artifact_id, artifact.evidence_json,
+                                   artifact.status, lifecycle.archived_at,
+                                   lifecycle.archived_by
+                            FROM artifact.analysis_artifacts artifact
+                            LEFT JOIN artifact.user_artifact_lifecycle lifecycle
+                              ON lifecycle.owner_id = d.owner_id
+                             AND lifecycle.artifact_id = artifact.artifact_id
+                            WHERE artifact.request_id = r.request_id
+                              AND (NOT :approved_only OR artifact.status = 'APPROVED')
+                            ORDER BY CASE artifact.status
                               WHEN 'APPROVED' THEN 0
                               WHEN 'DRAFT' THEN 1
                               ELSE 2
-                            END, artifact_id
+                            END, artifact.artifact_id
                             LIMIT 1
                         ) a ON true
                         WHERE d.owner_id = :owner_id
+                          AND (
+                            (
+                              :archived
+                              AND a.artifact_id IS NOT NULL
+                              AND a.archived_at IS NOT NULL
+                            )
+                            OR (
+                              NOT :archived
+                              AND (a.artifact_id IS NULL OR a.archived_at IS NULL)
+                            )
+                          )
                           AND (
                             NOT :approved_only
                             OR (
@@ -168,6 +199,7 @@ class AnalysisRunReadRepositoryMixin:
                     {
                         "owner_id": self._owner_id,
                         "approved_only": approved_only,
+                        "archived": archived,
                         "limit": limit,
                     },
                 )).mappings()

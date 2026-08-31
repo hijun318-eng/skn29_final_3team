@@ -93,6 +93,34 @@ class ReportDefinitionRepositoryMixin:
         artifact_id: UUID,
         query_id: str | None,
     ) -> tuple[UUID, int, str, str | None, str | None, str | None]:
+        locked = (await session.execute(
+            text(
+                """
+                SELECT 1
+                FROM artifact.analysis_artifacts a
+                JOIN query.query_executions q
+                  ON q.query_execution_id = a.query_execution_id
+                JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                WHERE a.artifact_id = :artifact_id
+                  AND a.status = 'APPROVED'
+                  AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                  AND r.user_id = :owner_id
+                  AND (CAST(:query_id AS text) IS NULL
+                       OR q.trino_query_id = CAST(:query_id AS text))
+                FOR KEY SHARE OF a
+                """
+            ),
+            {
+                "artifact_id": artifact_id,
+                "owner_id": self._owner_id,
+                "query_id": query_id,
+            },
+        )).one_or_none()
+        if locked is None:
+            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+
+        # 위 lock 이후 별도 statement로 lifecycle을 읽어 archive가 먼저 commit된
+        # 경우의 이전 snapshot으로 새 Report 결속이 통과하지 않게 한다.
         owned = (await session.execute(
             text(
                 """
@@ -108,6 +136,12 @@ class ReportDefinitionRepositoryMixin:
                   AND a.status = 'APPROVED'
                   AND r.status IN ('SUCCEEDED', 'PARTIAL')
                   AND r.user_id = :owner_id
+                  AND NOT EXISTS (
+                      SELECT 1 FROM artifact.user_artifact_lifecycle lifecycle
+                      WHERE lifecycle.owner_id = r.user_id
+                        AND lifecycle.artifact_id = a.artifact_id
+                        AND lifecycle.archived_at IS NOT NULL
+                  )
                   AND (CAST(:query_id AS text) IS NULL
                        OR q.trino_query_id = CAST(:query_id AS text))
                 """

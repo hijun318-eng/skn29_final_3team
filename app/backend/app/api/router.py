@@ -63,6 +63,7 @@ from app.api.analysis_router_runtime import (
 from app.api.rag_router_runtime import internal_manual_query_service
 from app.api.analysis_router_support import (
     analysis_support_router,
+    archive_analysis_artifact,
     cancel_analysis_progress,
     cancel_analysis_progress_by_request,
     create_analysis_definition,
@@ -73,6 +74,7 @@ from app.api.analysis_router_support import (
     get_analysis_run_artifact,
     list_analysis_definitions,
     list_analysis_runs,
+    restore_analysis_artifact,
 )
 from app.controllers.analysis_controller import AnalysisController
 from app.ports.agent import (

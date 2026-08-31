@@ -148,6 +148,51 @@
         "title": "AccountResponse",
         "type": "object"
       },
+      "AnalysisArtifactLifecycleResponse": {
+        "additionalProperties": false,
+        "description": "비파괴 보관·복원 후 Artifact ID와 현재 owner-scoped 상태를 반환한다.",
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "archived"
+        ],
+        "title": "AnalysisArtifactLifecycleResponse",
+        "type": "object"
+      },
       "AnalysisData": {
         "additionalProperties": false,
         "description": "현재 상태, 전이 이력, 선택 경로, 게이트, 결과와 산출물 참조를 분석 응답 본문에 담는다.",
@@ -717,6 +762,35 @@
         "additionalProperties": false,
         "description": "정의 버전별 재실행 상태, 시간 근거, 추적·쿼리·산출물 ID와 완료 시각을 반환한다.",
         "properties": {
+          "artifact_archived": {
+            "default": false,
+            "title": "Artifact Archived",
+            "type": "boolean"
+          },
+          "artifact_archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Archived At"
+          },
+          "artifact_archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Archived By"
+          },
           "artifact_id": {
             "anyOf": [
               {
@@ -7850,6 +7924,152 @@
         "summary": "Analysis"
       }
     },
+    "/analysis/artifacts/{artifact_id}/archive": {
+      "post": {
+        "description": "소유한 승인 Artifact를 비파괴 보관하며 진행 중 Assistant 충돌은 409로 닫는다.",
+        "operationId": "analysisArchiveArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisArtifactLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Archive Analysis Artifact"
+      }
+    },
+    "/analysis/artifacts/{artifact_id}/restore": {
+      "post": {
+        "description": "소유한 보관 Artifact를 active 목록과 신규 보고서 결속에 다시 노출한다.",
+        "operationId": "analysisRestoreArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisArtifactLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Restore Analysis Artifact"
+      }
+    },
     "/analysis/definitions": {
       "get": {
         "description": "현재 분석 주체가 저장한 definition만 생성 시각 역순으로 반환한다.",
@@ -8418,7 +8638,7 @@
     },
     "/analysis/runs": {
       "get": {
-        "description": "현재 분석 주체의 run을 승인 여부와 서버 상한을 적용해 시작 시각 역순으로 반환한다.",
+        "description": "현재 분석 주체의 active 또는 명시한 archived run을 시작 시각 역순으로 반환한다.",
         "operationId": "analysisListRuns",
         "parameters": [
           {
@@ -8440,6 +8660,16 @@
             "schema": {
               "default": false,
               "title": "Approved Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archived",
               "type": "boolean"
             }
           },

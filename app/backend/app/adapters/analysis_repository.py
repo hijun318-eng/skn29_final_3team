@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.adapters.analysis_definition_repository import (
     AnalysisDefinitionRepositoryMixin,
 )
+from app.adapters.analysis_artifact_lifecycle_repository import (
+    AnalysisArtifactLifecycleRepositoryMixin,
+)
 from app.adapters.analysis_evidence_repository import AnalysisEvidenceRepositoryMixin
 from app.adapters.analysis_repository_common import AnalysisRepositoryUnavailable
 from app.adapters.analysis_run_read_repository import AnalysisRunReadRepositoryMixin
@@ -21,6 +24,7 @@ class PostgresAnalysisRepository(
     AnalysisRunStartRepositoryMixin,
     AnalysisEvidenceRepositoryMixin,
     AnalysisRunReadRepositoryMixin,
+    AnalysisArtifactLifecycleRepositoryMixin,
 ):
     """PostgresAnalysisRepository는 소유자 범위의 PostgreSQL 분석 저장소 레코드를 비동기 트랜잭션 안에서 저장하고 조회한다.
 

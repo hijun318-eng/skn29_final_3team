@@ -1,3 +1,5 @@
+"""RAG 답변의 evidence 용량·관련성·문서 버전 충돌 Gate를 구현한다."""
+
 from __future__ import annotations
 
 import json
@@ -15,6 +17,8 @@ from .manual_article_formatter import ManualArticleFormatter
 
 @dataclass(frozen=True)
 class AnswerSafetySettings:
+    """답변에 허용할 검색 점수·evidence·claim·문자 상한을 보존한다."""
+
     minimum_relevance_score: float = 0.18
     maximum_evidence_chars: int = 30000
     maximum_chunks: int = 10
@@ -23,6 +27,8 @@ class AnswerSafetySettings:
 
     @classmethod
     def load(cls, path: Path | None = None) -> "AnswerSafetySettings":
+        """JSON과 환경 override를 읽고 모든 답변 안전 한도의 범위를 검증한다."""
+
         config_path = path or Path(os.getenv("RAG_ANSWER_CONFIG", "config/rag/answer.json"))
         payload = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
         settings = cls(
@@ -60,6 +66,8 @@ class AnswerSafetySettings:
 
 
 class EvidenceSafetyGate:
+    """질문 관련성이 있는 활성 evidence를 문서별 정렬하고 version 충돌을 찾는다."""
+
     _STOP_WORDS = {
         "내부", "지침", "문서", "알려줘", "어떻게", "기준", "관련", "내용", "자세히",
         "무엇", "해야", "처리", "순서", "절차", "비교", "차이", "공통점", "각각",
@@ -76,6 +84,8 @@ class EvidenceSafetyGate:
         query: str,
         target_numbers: tuple[int, ...],
     ) -> list[list[dict[str, Any]]]:
+        """문서·version별 evidence를 관련성으로 필터링해 결정론적 순서로 반환한다."""
+
         grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for item in evidence:
             document = str(item.get("manual_id") or item.get("document_id") or item.get("title") or "").strip()
@@ -95,6 +105,8 @@ class EvidenceSafetyGate:
         answer_type: str,
         formatter: ManualArticleFormatter,
     ) -> list[Conflict]:
+        """같은 문서의 활성 version이 반대 의미 claim을 갖는 경우 충돌로 반환한다."""
+
         by_manual: dict[str, list[list[dict[str, Any]]]] = {}
         for group in groups:
             if not group or not self._active(group[0]):
@@ -143,8 +155,15 @@ class EvidenceSafetyGate:
         if scores and max(scores) < self._settings.minimum_relevance_score:
             return False
         query_terms = self._query_terms(query)
+        if query_terms and any(term in text for term in query_terms):
+            return True
+        if any(
+            str(item.get("document_type") or "").upper() == "INTERNAL_REPORT"
+            for item in group
+        ):
+            return bool(scores) and max(scores) >= self._settings.minimum_relevance_score
         if query_terms:
-            return any(term in text for term in query_terms)
+            return False
         return any(
             re.search(rf"제\s*{number}\s*조", text)
             for number in target_numbers

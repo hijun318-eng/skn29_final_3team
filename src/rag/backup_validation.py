@@ -1,3 +1,5 @@
+"""활성 pgvector corpus를 dump·복원해 release 무결성과 임시 자원 정리를 검증한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,6 +18,12 @@ from .vector_settings import VectorSettings
 
 
 class PgBackupRestoreValidator:
+    """격리된 임시 DB에 RAG 백업을 복원하고 원본 release receipt와 정확히 비교한다.
+
+    DB·사용자·컨테이너 식별자와 임시 경로를 제한하며, 생성한 복원 DB와 컨테이너
+    파일만 정리 대상으로 삼는다. 설정 불일치나 안전하지 않은 대상은 실행 전에 거부한다.
+    """
+
     _DATABASE_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,62}")
     _CONTAINER_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
@@ -82,6 +90,12 @@ class PgBackupRestoreValidator:
         )
 
     def validate(self) -> dict[str, object]:
+        """백업 생성·호스트 복사·임시 DB 복원·release 비교·정리를 순서대로 실행한다.
+
+        결과와 checksum을 evidence JSON에 남기며, 작업 예외는 정리를 시도한 뒤 다시
+        발생시킨다. 비교 또는 정리가 실패하면 보고서 상태를 ``FAILED``로 반환한다.
+        """
+
         backup_path = self._settings.backup_dir / self._backup_filename
         backup_path.parent.mkdir(parents=True, exist_ok=True)
         original: dict[str, object] | None = None

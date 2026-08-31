@@ -1,3 +1,5 @@
+"""한글·영문 혼합 문서 후보에 결정론적 Okapi BM25 lexical 점수를 부여한다."""
+
 from __future__ import annotations
 
 from collections import Counter

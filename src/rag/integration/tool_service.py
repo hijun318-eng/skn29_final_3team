@@ -1,3 +1,5 @@
+"""Registry 승인·역할·rate limit·JSON Schema를 적용해 transport 중립 도구 목록과 호출을 제공한다."""
+
 from __future__ import annotations
 
 import re
@@ -10,17 +12,30 @@ from .rate_limit import ProcessToolRateLimiter
 
 
 class ToolRegistryPort(Protocol):
-    def load(self, tool_codes: tuple[str, ...]) -> dict[str, ToolRegistration]: ...
+    """도구 코드 조회와 역할별 호출 가능 목록을 제공하는 Registry 저장소 규약이다."""
 
-    def list_callable(self, role: str) -> tuple[ToolRegistration, ...]: ...
+    def load(self, tool_codes: tuple[str, ...]) -> dict[str, ToolRegistration]:
+        """지정 코드들의 등록 레코드를 코드 키 사전으로 반환한다."""
+
+        ...
+
+    def list_callable(self, role: str) -> tuple[ToolRegistration, ...]:
+        """해당 역할이 현재 호출할 수 있는 승인·정상 도구 등록 목록을 반환한다."""
+
+        ...
 
 
 class ToolHandler(Protocol):
-    def call(self, arguments: dict[str, Any], context: IntegrationContext) -> Any: ...
+    """스키마 검증을 마친 도구 인자와 호출 문맥을 실행하는 handler 규약이다."""
+
+    def call(self, arguments: dict[str, Any], context: IntegrationContext) -> Any:
+        """도구별 인자를 실행해 등록된 출력 스키마로 검증할 결과를 반환한다."""
+
+        ...
 
 
 class RegistryToolService:
-    """Transport-neutral basis for MCP tools/list and tools/call."""
+    """MCP와 무관하게 도구 alias·Registry 정책·rate limit·입출력 스키마를 일관되게 집행한다."""
 
     # Canonical tool names used by v3.4 boundary contracts.
     # Kept aliasable for legacy deployments that still store legacy names.
@@ -62,6 +77,8 @@ class RegistryToolService:
         self._rate_limiter = rate_limiter or ProcessToolRateLimiter()
 
     def list_tools(self, role: str) -> tuple[dict[str, Any], ...]:
+        """역할에 허용된 도구를 canonical 코드로 중복 제거해 직렬화 가능한 등록 목록으로 반환한다."""
+
         expanded: list[dict[str, Any]] = []
         seen: set[str] = set()
         for tool in self._registry.list_callable(role):
@@ -78,6 +95,8 @@ class RegistryToolService:
         arguments: dict[str, Any],
         context: IntegrationContext,
     ) -> Any:
+        """문맥·등록·권한·호출량·입출력 스키마를 검증해 canonical 또는 legacy handler를 실행한다."""
+
         self._validate_context(context)
         registry_codes = self._all_known_codes(tool_code)
         loaded = self._registry.load(registry_codes)
@@ -202,12 +221,16 @@ class RegistryToolService:
 
 
 class DocumentSearchToolHandler:
+    """MCP 문서 검색 인자를 제한하고 대화·선택 문서를 문맥에 결합해 RAG 근거를 반환한다."""
+
     def __init__(self, port: DocumentEvidencePort) -> None:
         self._port = port
 
     def call(
         self, arguments: dict[str, Any], context: IntegrationContext
     ) -> dict[str, Any]:
+        """2~500자 query와 제한된 문맥 목록만 허용해 문서 근거·추적 ID 응답을 만든다."""
+
         allowed = {"query", "recent_utterances", "selected_document_ids"}
         if not set(arguments).issubset(allowed) or "query" not in arguments:
             raise ToolCallError("TOOL_INPUT_SCHEMA_INVALID")
@@ -255,12 +278,16 @@ class DocumentSearchToolHandler:
 
 
 class SqlEvidenceToolHandler:
+    """단일 query 인자만 받아 승인 SQL 포트 결과를 MCP SQL 근거 payload로 감싼다."""
+
     def __init__(self, port: SqlEvidencePort) -> None:
         self._port = port
 
     def call(
         self, arguments: dict[str, Any], context: IntegrationContext
     ) -> dict[str, Any]:
+        """정확한 query 문자열 스키마를 검증하고 SQL 근거와 request·trace ID를 반환한다."""
+
         if set(arguments) != {"query"} or not isinstance(arguments["query"], str):
             raise ToolCallError("TOOL_INPUT_SCHEMA_INVALID")
         item = self._port.query(arguments["query"], context)

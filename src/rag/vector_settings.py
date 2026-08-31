@@ -1,3 +1,5 @@
+"""RAG 경로·DB·embedding·chunking 환경 설정을 검증해 불변 객체로 로드한다."""
+
 from __future__ import annotations
 
 import json
@@ -5,11 +7,17 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from .embedding_provider import OPENAI_EMBEDDING_MODELS
+from .embedding_provider import (
+    OPENAI_EMBEDDING_MODELS,
+    validate_embedding_maximum_attempts,
+    validate_embedding_timeout,
+)
 
 
 @dataclass(frozen=True)
 class VectorSettings:
+    """runtime 시작 시 봉인되는 corpus·provider·token·storage 설정 모음이다."""
+
     project_root: Path
     config_dir: Path
     migrations_dir: Path
@@ -37,6 +45,8 @@ class VectorSettings:
 
     @classmethod
     def load(cls, project_root: Path) -> "VectorSettings":
+        """환경과 JSON 설정을 병합하고 경로 탈출·모델·차원·retry 범위를 검증한다."""
+
         root = project_root.resolve()
         database_url = os.getenv("RAG_DATABASE_URL", "").strip()
         if not database_url:
@@ -83,6 +93,17 @@ class VectorSettings:
             raise ValueError(
                 "RAG reranker is not available in the candidate runtime"
             )
+        try:
+            embedding_timeout_seconds = validate_embedding_timeout(
+                float(os.getenv("OPENAI_EMBEDDING_TIMEOUT_SECONDS", "30"))
+            )
+            embedding_maximum_attempts = validate_embedding_maximum_attempts(
+                int(os.getenv("OPENAI_EMBEDDING_MAX_ATTEMPTS", "3"))
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                "OpenAI embedding transport settings are invalid"
+            ) from error
         return cls(
             project_root=root,
             config_dir=config_dir,
@@ -97,8 +118,8 @@ class VectorSettings:
             embedding_provider=provider,
             embedding_endpoint=os.getenv("OPENAI_EMBEDDING_ENDPOINT", "https://api.openai.com/v1/embeddings").strip(),
             embedding_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
-            embedding_timeout_seconds=float(os.getenv("OPENAI_EMBEDDING_TIMEOUT_SECONDS", "30")),
-            embedding_maximum_attempts=int(os.getenv("OPENAI_EMBEDDING_MAX_ATTEMPTS", "3")),
+            embedding_timeout_seconds=embedding_timeout_seconds,
+            embedding_maximum_attempts=embedding_maximum_attempts,
             model_id=model_id,
             model_revision=(f"{model_id}:d{dimension}" if provider == "openai" else embedding["revision"]),
             dimension=dimension,

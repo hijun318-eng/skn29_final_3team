@@ -1,3 +1,5 @@
+"""CrossEncoder로 vector 후보를 query 관련도 순으로 재정렬한다."""
+
 import os
 from pathlib import Path
 from typing import List, Dict, Any
@@ -7,6 +9,8 @@ from .vector_models import VectorSearchResult
 from .runtime_device import RuntimeDeviceSelector
 
 class RerankerProvider:
+    """로컬 model path와 장치를 검증해 후보별 sigmoid score를 부여한다."""
+
     def __init__(self, model_path: str, device: str = "auto", cache_dir: str = None):
         self.model_path = model_path
         self.device = RuntimeDeviceSelector.resolve(device)
@@ -18,6 +22,8 @@ class RerankerProvider:
         self._cache = {}  # Optional: Simple in-memory cache
 
     def score_candidates(self, query: str, candidates: List[VectorSearchResult]) -> List[VectorSearchResult]:
+        """질문·후보 쌍을 batch 추론하고 원본 불변 객체를 복사해 점수순 반환한다."""
+
         if not candidates:
             return []
 

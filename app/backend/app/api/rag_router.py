@@ -90,6 +90,48 @@ async def list_internal_manuals(
     return {"status": "SUCCESS", "data": {"documents": documents}}
 
 
+@rag_router.get(
+    "/rag/documents/{manual_id}/source",
+    operation_id="getInternalManualSource",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/pdf": {},
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {},
+            }
+        }
+    },
+)
+async def get_internal_manual_source(
+    manual_id: str,
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> Response:
+    """요청 주체가 열람할 수 있는 PDF 또는 DOCX 원문을 형식 그대로 중계한다."""
+
+    if not has_capability(context.role, Capability.RUN_ANALYSIS):
+        raise HTTPException(status_code=403, detail="RAG 문서 열람 권한이 없습니다.")
+    _require_internal_guideline_enabled()
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="RAG Tool Registry를 사용할 수 없습니다.")
+    try:
+        content, disposition, media_type = await RagGatewayTool(
+            database_url
+        ).fetch_document(manual_id, context.role.value)
+    except RagToolError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": disposition,
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @rag_router.get("/rag/documents/{manual_id}/source.pdf", operation_id="getInternalManualPdf")
 async def get_internal_manual_pdf(
     manual_id: str,

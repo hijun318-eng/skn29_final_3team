@@ -1,3 +1,5 @@
+"""환경 기반 실런타임 E2E 검증을 시작하고 결과 보고서 경로와 종료 상태를 출력한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,6 +11,8 @@ from .orchestrator import DynamicE2EOrchestrator
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """보고서 본문 출력 여부만 허용하는 E2E 명령행 인자 파서를 구성한다."""
+
     parser = argparse.ArgumentParser(
         description="Run a real HTTP RAG, ML and Analysis Core E2E validation without mocks.",
     )
@@ -21,6 +25,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """환경 설정을 검증해 E2E를 실행하고 성공·실패·설정 차단을 0·1·2로 구분한다."""
+
     arguments = build_parser().parse_args(argv)
     try:
         config = DynamicE2EConfig.from_environment()

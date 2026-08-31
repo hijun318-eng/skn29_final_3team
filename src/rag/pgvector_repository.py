@@ -1,3 +1,5 @@
+"""pgvector corpus release의 staging·검색·evidence receipt를 transaction으로 관리한다."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -18,6 +20,8 @@ from .pgvector_observability import PgVectorObservabilityMixin
 
 
 class PgVectorRepository(PgVectorObservabilityMixin):
+    """PostgreSQL에서 immutable release와 역할 필터 검색을 원자적으로 수행한다."""
+
     def __init__(
         self,
         database_url: str,
@@ -133,6 +137,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         return validated
 
     def migrate(self, migration_path: Path) -> None:
+        """UTF-8 SQL migration 하나를 읽어 PostgreSQL autocommit 경계로 적용한다."""
+
         sql = migration_path.read_text(encoding="utf-8")
         with psycopg.connect(self._database_url, autocommit=True) as connection:
             connection.execute(sql)
@@ -144,6 +150,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         corpus_manifest_sha256: str,
         processing_profile_sha256: str,
     ) -> None:
+        """embedding·manifest·processing profile이 봉인된 staging run을 시작한다."""
+
         metadata = self._assert_runtime_contract(
             metadata,
             corpus_manifest_sha256,
@@ -181,6 +189,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
     def finish_run(
         self, run_id: UUID, status: str, document_count: int, chunk_count: int, error: str | None = None
     ) -> None:
+        """실패 ingestion run과 staging release의 수량·오류 상태를 함께 종결한다."""
+
         if status != "FAILED":
             raise ValueError("Only failed corpus releases may finish without publish")
         with psycopg.connect(self._database_url) as connection:
@@ -209,7 +219,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         metadata: dict[str, object],
         processing_profile_sha256: str,
     ) -> bool:
-        """Detect a reusable document only under the exact processing contract."""
+        """활성 문서 bytes·metadata·embedding·처리 profile이 모두 같은지 판정한다."""
 
         metadata = self._validated_embedding_metadata(metadata)
         if self._expected_embedding is not None and metadata != self._expected_embedding:
@@ -220,7 +230,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             row = connection.execute(
                 """
                 SELECT d.content_checksum, d.title, d.version, d.source_path,
-                       COUNT(c.chunk_id)
+                       d.role_scope, d.document_type, d.owner_team,
+                       d.effective_from, d.expires_at, COUNT(c.chunk_id)
                 FROM corpus_active_release active
                 JOIN corpus_releases release ON release.release_id=active.release_id
                 JOIN corpus_release_documents d ON d.release_id=release.release_id
@@ -241,7 +252,9 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                   AND c.embedding_dimensions=release.embedding_dimensions
                   AND c.embedding_version=release.embedding_version
                   AND c.source_document_hash=d.content_checksum
-                GROUP BY d.content_checksum, d.title, d.version, d.source_path
+                GROUP BY d.content_checksum, d.title, d.version, d.source_path,
+                         d.role_scope, d.document_type, d.owner_team,
+                         d.effective_from, d.expires_at
                 """,
                 (
                     metadata["provider"],
@@ -258,23 +271,39 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             and row[1] == document.title
             and row[2] == document.version
             and row[3] == document.source_path
-            and int(row[4]) > 0
+            and tuple(row[4]) == document.role_scope
+            and row[5] == document.document_type
+            and row[6] == document.owner_team
+            and row[7] == document.effective_from
+            and row[8] == document.expires_at
+            and int(row[9]) > 0
         )
 
     def copy_active_document(
         self,
         release_id: UUID,
         document: PdfDocument,
+        chunks: list[PdfChunk],
         metadata: dict[str, object],
         processing_profile_sha256: str,
     ) -> int:
-        """Copy one byte-identical active document into the target staging release."""
+        """동일성이 잠금 안에서 재확인된 활성 문서·vector를 새 staging run에 복사한다."""
 
         metadata = self._validated_embedding_metadata(metadata)
         if self._expected_embedding is not None and metadata != self._expected_embedding:
             raise ValueError("RAG embedding metadata differs from runtime startup")
         if processing_profile_sha256 != self._required_processing_profile():
             raise ValueError("RAG processing profile differs from runtime startup")
+        if (
+            not chunks
+            or any(chunk.manual_id != document.manual_id for chunk in chunks)
+            or any(
+                chunk.checksum
+                != hashlib.sha256(chunk.content.encode("utf-8")).hexdigest()
+                for chunk in chunks
+            )
+        ):
+            raise ValueError("RAG reparsed chunks are incomplete or drifted")
         with psycopg.connect(self._database_url) as connection:
             source = connection.execute(
                 """
@@ -326,7 +355,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             source_document = connection.execute(
                 """
                 SELECT d.title, d.version, d.source_path, d.content_checksum,
-                       d.deleted_at
+                       d.role_scope, d.document_type, d.owner_team,
+                       d.effective_from, d.expires_at, d.deleted_at
                 FROM corpus_release_documents d
                 WHERE d.release_id=%s AND d.manual_id=%s
                 FOR UPDATE
@@ -338,29 +368,55 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                 document.version,
                 document.source_path,
                 document.checksum,
+                list(document.role_scope),
+                document.document_type,
+                document.owner_team,
+                document.effective_from,
+                document.expires_at,
                 None,
             ):
                 raise RuntimeError("Active RAG document changed during corpus staging")
             source_chunks = connection.execute(
                 """
-                SELECT c.chunk_id, c.deleted_at, c.embedding_provider,
+                SELECT c.chunk_id, c.chunk_index, c.page_start, c.page_end,
+                       c.section_title, c.content, c.content_checksum,
+                       c.token_count, c.deleted_at, c.embedding_provider,
                        c.embedding_model, c.embedding_dimensions,
                        c.embedding_version, c.source_document_hash
                 FROM corpus_release_chunks c
                 WHERE c.release_id=%s AND c.manual_id=%s
-                ORDER BY c.chunk_id
+                ORDER BY c.chunk_index, c.chunk_id
                 FOR SHARE
                 """,
                 (source_release_id, document.manual_id),
             ).fetchall()
-            if not source_chunks or any(
-                chunk[1] is not None
-                or chunk[2] != metadata["provider"]
-                or chunk[3] != metadata["model"]
-                or chunk[4] != metadata["dimensions"]
-                or chunk[5] != metadata["version"]
-                or chunk[6] != document.checksum
-                for chunk in source_chunks
+            expected_chunks = [
+                (
+                    chunk.chunk_id,
+                    chunk.chunk_index,
+                    chunk.page_start,
+                    chunk.page_end,
+                    chunk.section_title,
+                    chunk.content,
+                    chunk.checksum,
+                    chunk.token_count,
+                )
+                for chunk in chunks
+            ]
+            stored_chunks = [tuple(chunk[:8]) for chunk in source_chunks]
+            if (
+                stored_chunks != expected_chunks
+                or any(
+                    stored[6]
+                    != hashlib.sha256(str(stored[5]).encode("utf-8")).hexdigest()
+                    or stored[8] is not None
+                    or stored[9] != metadata["provider"]
+                    or stored[10] != metadata["model"]
+                    or stored[11] != metadata["dimensions"]
+                    or stored[12] != metadata["version"]
+                    or stored[13] != document.checksum
+                    for stored in source_chunks
+                )
             ):
                 raise RuntimeError(
                     "Active RAG document chunks are incomplete or drifted"
@@ -431,7 +487,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         embeddings: np.ndarray,
         metadata: dict[str, object],
     ) -> int:
-        """Write one document only inside the requested staging release."""
+        """문서·chunk·vector shape과 provenance를 검증해 staging release에 기록한다."""
 
         metadata = self._validated_embedding_metadata(metadata)
         if (
@@ -448,6 +504,11 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             raise ValueError("Chunk and embedding counts differ or are empty")
         if self._required_documents().get(document.manual_id) != document.checksum:
             raise ValueError("RAG staged document differs from corpus manifest")
+        if (
+            document.approval_status != "APPROVED"
+            or document.validity_status != "VALID"
+        ):
+            raise ValueError("RAG staged document lacks a curated manifest approval receipt")
         with psycopg.connect(self._database_url) as connection:
             release = connection.execute(
                 """
@@ -476,8 +537,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                 INSERT INTO corpus_release_documents(
                     release_id, manual_id, title, version, source_path,
                     content_checksum, role_scope, document_type, owner_team,
-                    effective_from, expires_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    effective_from, expires_at, approval_status, validity_status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     release_id,
@@ -491,6 +552,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                     document.owner_team,
                     document.effective_from,
                     document.expires_at,
+                    document.approval_status,
+                    document.validity_status,
                 ),
             )
             with connection.cursor() as cursor:
@@ -541,7 +604,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         corpus_manifest_sha256: str,
         processing_profile_sha256: str,
     ) -> dict[str, object]:
-        """Validate a complete staging release and atomically move the active pointer."""
+        """문서·chunk·embedding receipt가 완전한 staging run만 active로 원자 전환한다."""
 
         metadata = self._assert_runtime_contract(
             metadata,
@@ -772,7 +835,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         corpus_manifest_sha256: str,
         processing_profile_sha256: str,
     ) -> dict[str, object] | None:
-        """Return an active release only when pointer, counts and all metadata match."""
+        """pointer·수량·embedding·manifest·profile이 일치하는 active release만 반환한다."""
 
         metadata = self._assert_runtime_contract(
             metadata,
@@ -926,6 +989,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         retrieval_mode: str = "HYBRID",
         maximum_chunks_per_document: int = 1,
     ) -> list[VectorSearchResult]:
+        """역할·유효성·선택 문서 Gate 아래 vector·lexical 후보를 융합해 반환한다."""
+
         query_vector = self._vector_literal(vector)
 
         # 현재 승인된 corpus는 363개 chunk로 작다. 역할·승인·유효기간 필터를
@@ -1010,16 +1075,29 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             manual_id, title, version = str(row[0]), str(row[1]), str(row[2])
             if document_counts.get(manual_id, 0) >= maximum_chunks_per_document:
                 continue
-            page_start, page_end, section_title, content = row[3:7]
+            stored_location_start, stored_location_end, section_title, content = row[3:7]
             chunk_id = row[8]
-            evidence_id = f"{manual_id}:{version}:{page_start}:{chunk_id}"
+            evidence_id = f"{manual_id}:{version}:{stored_location_start}:{chunk_id}"
             snippet_limit_raw = os.getenv("RAG_SNIPPET_MAX_CHARS", "1800").strip()
             try:
                 snippet_limit = max(200, int(snippet_limit_raw))
             except ValueError:
                 snippet_limit = 1800
             snippet = content[:snippet_limit] + "..." if len(content) > snippet_limit else content
-            citation = f"[{title} v{version} p.{page_start} {section_title}]"
+            document_type = str(row[14])
+            if document_type == "INTERNAL_REPORT":
+                page_start = None
+                page_end = None
+                locator_kind = "EXPLICIT_BREAK_SEGMENT"
+                citation = (
+                    f"[{title} v{version} explicit-segment."
+                    f"{stored_location_start} {section_title}]"
+                )
+            else:
+                page_start = int(stored_location_start)
+                page_end = int(stored_location_end)
+                locator_kind = "PAGE"
+                citation = f"[{title} v{version} p.{page_start} {section_title}]"
 
             results.append(
                 VectorSearchResult(
@@ -1042,12 +1120,15 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                     authority_level=str(row[11]),
                     validity_status=str(row[12]),
                     warning=None,
-                    document_type=str(row[14]),
+                    document_type=document_type,
                     owner_team=str(row[15]),
                     effective_from=str(row[16]) if row[16] else None,
                     expires_at=str(row[17]) if row[17] else None,
                     chunk_index=int(row[9]),
                     approval_status=str(row[13]),
+                    locator_kind=locator_kind,
+                    locator_start=int(stored_location_start),
+                    locator_end=int(stored_location_end),
                 )
             )
             document_counts[manual_id] = document_counts.get(manual_id, 0) + 1
@@ -1063,6 +1144,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         allow_unresolved: bool,
         maximum_chunks_per_document: int = 8,
     ) -> list[VectorSearchResult]:
+        """검색된 PDF 매뉴얼의 조항 주변 chunk를 같은 접근 계약으로 hydration한다."""
+
         if not manual_ids or not article_numbers:
             return []
         with psycopg.connect(self._database_url) as connection:
@@ -1092,6 +1175,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                   AND c.embedding_version=release.embedding_version
                   AND c.deleted_at IS NULL AND d.deleted_at IS NULL
                   AND d.manual_id=ANY(%s::text[])
+                  AND d.document_type='MANUAL'
                   AND %s=ANY(d.role_scope)
                   AND d.document_status='WORKING_KNOWLEDGE'
                   AND d.approval_status='APPROVED'
@@ -1199,6 +1283,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         return results
 
     def catalog(self, role: str, allow_unresolved: bool) -> list[dict[str, object]]:
+        """활성 release에서 역할과 유효성 조건을 통과한 문서 metadata를 나열한다."""
+
         with psycopg.connect(self._database_url) as connection:
             rows = connection.execute(
                 """
@@ -1234,6 +1320,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         role: str,
         allow_unresolved: bool,
     ) -> tuple[Path, str]:
+        """원본 조회 권한을 검증하고 저장 경로와 발행 시점 checksum을 반환한다."""
+
         with psycopg.connect(self._database_url) as connection:
             row = connection.execute(
                 """
@@ -1281,7 +1369,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         actor_hash: str,
         caller_evidence: list[dict[str, str]],
     ) -> list[dict[str, str]]:
-        """Atomically consume evidence bound to the current authorized release."""
+        """현재 권한·질문·trace에 봉인된 retrieval evidence를 검증해 원자 소비한다."""
 
         try:
             receipt_id = UUID(retrieval_request_id)
@@ -1372,6 +1460,9 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             "text",
             "title",
             "manual_id",
+            "version",
+            "document_type",
+            "owner_team",
             "section_title",
             "citation",
         }
@@ -1446,11 +1537,21 @@ class PgVectorRepository(PgVectorObservabilityMixin):
               AND chunk.source_document_hash=document.content_checksum
               AND evidence.item->>'text'=chunk.content
               AND evidence.item->>'title'=document.title
+              AND evidence.item->>'version'=document.version
+              AND evidence.item->>'document_type'=document.document_type
+              AND evidence.item->>'owner_team'=document.owner_team
               AND evidence.item->>'section_title'=chunk.section_title
               AND evidence.item->>'citation'=(
-                  '[' || document.title || ' v' || document.version ||
-                  ' p.' || chunk.page_start::text || ' ' ||
-                  chunk.section_title || ']'
+                  CASE
+                    WHEN document.document_type='INTERNAL_REPORT' THEN
+                      '[' || document.title || ' v' || document.version ||
+                      ' explicit-segment.' || chunk.page_start::text || ' ' ||
+                      chunk.section_title || ']'
+                    ELSE
+                      '[' || document.title || ' v' || document.version ||
+                      ' p.' || chunk.page_start::text || ' ' ||
+                      chunk.section_title || ']'
+                  END
               )
             ORDER BY evidence.ordinality
             FOR SHARE OF active, release, document, chunk
@@ -1493,6 +1594,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         answer_type: str | None,
         citation_evidence_ids: list[str],
     ) -> None:
+        """답변 상태·인용·제한 사항을 retrieval request와 연결해 감사 trace로 남긴다."""
+
         with psycopg.connect(self._database_url) as connection:
             connection.execute(
                 """

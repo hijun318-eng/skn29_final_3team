@@ -1,3 +1,5 @@
+"""pgvector RAG migration·release·평가·검색·증적 명령을 제공한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,6 +13,8 @@ from .question_report import EvaluationQuestionReportWriter
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """운영 후보 RAG의 허용 subcommand와 입력 옵션을 정의한다."""
+
     parser = argparse.ArgumentParser(description="OpenAI Text Embedding + pgvector 내부업무매뉴얼 RAG CLI")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     commands = parser.add_subparsers(dest="command", required=True)
@@ -32,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """선택 작업을 application 경계로 실행하고 JSON receipt를 출력한다."""
+
     arguments = build_parser().parse_args()
     if arguments.command == "validate-backup-restore":
         payload = PgBackupRestoreValidator(arguments.root).validate()

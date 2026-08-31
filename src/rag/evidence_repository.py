@@ -1,3 +1,5 @@
+"""활성 corpus release의 source·평가·ingestion 증적을 read-only 조회한다."""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +9,8 @@ import psycopg
 
 
 class RagEvidenceRepository:
+    """embedding·manifest·처리 profile이 일치하는 활성 release만 증적으로 노출한다."""
+
     def __init__(
         self,
         database_url: str,
@@ -139,12 +143,14 @@ class RagEvidenceRepository:
         return row[0]
 
     def source_inventory(self) -> list[dict[str, object]]:
+        """활성 문서별 checksum·형식·chunk·locator 수를 inventory로 반환한다."""
+
         with psycopg.connect(self._database_url) as connection:
             release_id = self._active_release_id(connection)
             rows = connection.execute(
                 """
                 SELECT d.manual_id, d.title, d.version, d.source_path, d.content_checksum,
-                       COUNT(c.chunk_id), MAX(c.page_end)
+                       d.document_type, COUNT(c.chunk_id), MAX(c.page_end)
                 FROM corpus_release_documents d
                 JOIN corpus_release_chunks c
                   ON c.release_id=d.release_id AND c.manual_id=d.manual_id
@@ -156,7 +162,8 @@ class RagEvidenceRepository:
                   AND 'STAFF'=ANY(d.role_scope)
                   AND (d.effective_from IS NULL OR d.effective_from<=CURRENT_DATE)
                   AND (d.expires_at IS NULL OR d.expires_at>=CURRENT_DATE)
-                GROUP BY d.manual_id, d.title, d.version, d.source_path, d.content_checksum
+                GROUP BY d.manual_id, d.title, d.version, d.source_path,
+                         d.content_checksum, d.document_type
                 ORDER BY d.manual_id
                 """,
                 (release_id,),
@@ -165,12 +172,19 @@ class RagEvidenceRepository:
             {
                 "manual_id": row[0], "title": row[1], "version": row[2],
                 "source_path": row[3], "sha256": row[4],
-                "chunk_count": row[5], "page_count": row[6],
+                "document_type": row[5], "chunk_count": row[6],
+                "locator_kind": (
+                    "PAGE" if row[5] == "MANUAL" else "EXPLICIT_BREAK_SEGMENT"
+                ),
+                "location_count": row[7],
+                "page_count": row[7] if row[5] == "MANUAL" else None,
             }
             for row in rows
         ]
 
     def evaluation_sources(self) -> list[dict[str, str]]:
+        """승인·유효·STAFF 접근 문서의 chunk를 평가용 원문으로 순서 결합한다."""
+
         with psycopg.connect(self._database_url) as connection:
             release_id = self._active_release_id(connection)
             rows = connection.execute(
@@ -197,6 +211,8 @@ class RagEvidenceRepository:
         ]
 
     def ingestion_history(self) -> list[dict[str, object]]:
+        """활성 release를 생성한 성공 ingestion run의 수량·시간 receipt를 반환한다."""
+
         with psycopg.connect(self._database_url) as connection:
             release_id = self._active_release_id(connection)
             rows = connection.execute(

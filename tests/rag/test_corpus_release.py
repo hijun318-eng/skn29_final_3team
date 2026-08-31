@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -17,10 +18,12 @@ from src.rag.corpus_manifest import (
     CorpusManifestDocument,
 )
 from src.rag.evidence_repository import RagEvidenceRepository
+from src.rag.embedding_input import EmbeddingInputBuilder
 from src.rag.backup_validation import PgBackupRestoreValidator
 from src.rag.pdf_ingestion import PdfManualParser
 from src.rag.processing_profile import processing_profile_sha256
 from src.rag.pgvector_repository import PgVectorRepository
+from src.rag.source_bytes import SOURCE_MAX_BYTES_BY_SUFFIX
 from src.rag.vector_application import VectorRagApplication
 from src.rag.vector_models import PdfChunk, PdfDocument
 
@@ -73,6 +76,33 @@ class _Connection:
         return self._responses.pop(0)
 
 
+class _StageCursor:
+    def __init__(self) -> None:
+        self.executemany_calls: list[tuple[str, list[tuple[object, ...]]]] = []
+
+    def __enter__(self) -> "_StageCursor":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def executemany(
+        self,
+        sql: str,
+        params: list[tuple[object, ...]],
+    ) -> None:
+        self.executemany_calls.append((sql, params))
+
+
+class _StageConnection(_Connection):
+    def __init__(self, responses: list[_Result]) -> None:
+        super().__init__(responses)
+        self.stage_cursor = _StageCursor()
+
+    def cursor(self) -> _StageCursor:
+        return self.stage_cursor
+
+
 class _MigrationConnection:
     def __init__(self) -> None:
         self.statements: list[str] = []
@@ -99,18 +129,21 @@ def _document(
         source_path=f"/manuals/{manual_id}.pdf",
         checksum=checksum,
         role_scope=("STAFF",),
+        approval_status="APPROVED",
+        validity_status="VALID",
     )
 
 
 def _chunk(manual_id: str = "MANUAL-ONE") -> PdfChunk:
+    content = "Approved manual content"
     return PdfChunk(
         chunk_id=f"{manual_id}-chunk-1",
         manual_id=manual_id,
         page_start=1,
         page_end=1,
         section_title="Section",
-        content="Approved manual content",
-        checksum="c" * 64,
+        content=content,
+        checksum=hashlib.sha256(content.encode("utf-8")).hexdigest(),
         token_count=3,
     )
 
@@ -256,9 +289,12 @@ def test_pdf_parser_extracts_pages_from_the_initial_immutable_bytes(
 
     class Page:
         @staticmethod
-        def get_text(_mode: str, *, sort: bool):
+        def get_text(mode: str, *, sort: bool):
             assert sort is True
-            return [(0, 0, 1, 1, "approved text", 0, 0)]
+            if mode == "blocks":
+                return [(0, 0, 1, 1, "approved text", 0, 0)]
+            assert mode == "dict"
+            return {"blocks": []}
 
     class Document:
         def __enter__(self) -> "Document":
@@ -280,9 +316,10 @@ def test_pdf_parser_extracts_pages_from_the_initial_immutable_bytes(
     monkeypatch.setitem(sys.modules, "fitz", Fitz)
     parser = object.__new__(PdfManualParser)
 
-    assert parser._extract_pages(b"immutable-pdf-bytes") == [
-        (1, ["approved text"])
-    ]
+    assert parser._extract_pages(b"immutable-pdf-bytes") == (
+        [(1, ["approved text"])],
+        [],
+    )
     assert opened == [
         {"stream": b"immutable-pdf-bytes", "filetype": "pdf"}
     ]
@@ -290,21 +327,9 @@ def test_pdf_parser_extracts_pages_from_the_initial_immutable_bytes(
 
 def test_pdf_parser_reads_source_once_and_checksums_the_parsed_bytes(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     source_bytes = b"single immutable source"
-
-    class Source:
-        name = "POL-TEST-001_v1.0.pdf"
-        stem = "POL-TEST-001_v1.0"
-        reads = 0
-
-        def read_bytes(self) -> bytes:
-            self.reads += 1
-            return source_bytes
-
-        @staticmethod
-        def resolve() -> Path:
-            return Path("/manuals/POL-TEST-001_v1.0.pdf")
 
     class Chunker:
         schema_version = "test-profile"
@@ -316,21 +341,90 @@ def test_pdf_parser_reads_source_once_and_checksums_the_parsed_bytes(
         ) -> list[PdfChunk]:
             return [_chunk(manual_id)]
 
-    source = Source()
+    source = tmp_path / "POL-TEST-001_v1.0.pdf"
+    source.write_bytes(source_bytes)
     parser = PdfManualParser(Chunker())  # type: ignore[arg-type]
     captured: list[bytes] = []
 
-    def extract(initial_bytes: bytes) -> list[tuple[int, list[str]]]:
+    def extract(
+        initial_bytes: bytes,
+    ) -> tuple[list[tuple[int, list[str]]], list[dict[str, object]]]:
         captured.append(initial_bytes)
-        return [(1, ["POL-TEST-001 v1.0 approved text"])]
+        return [(1, ["POL-TEST-001 v1.0 approved text"])], []
 
     monkeypatch.setattr(parser, "_extract_pages", extract)
 
-    document, _chunks, _warnings, _inspection = parser.parse(source)  # type: ignore[arg-type]
+    document, _chunks, _warnings, _inspection = parser.parse(source)
 
-    assert source.reads == 1
     assert captured == [source_bytes]
     assert document.checksum == hashlib.sha256(source_bytes).hexdigest()
+
+
+def test_pdf_parser_receipts_image_bytes_without_treating_them_as_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    image_bytes = b"immutable-pdf-image"
+
+    class Page:
+        @staticmethod
+        def get_text(mode: str, *, sort: bool):
+            assert sort is True
+            if mode == "blocks":
+                return [(0, 0, 1, 1, "POL-TEST-001 v1.0 approved text", 0, 0)]
+            assert mode == "dict"
+            return {
+                "blocks": [
+                    {"type": 1, "image": image_bytes},
+                    {"type": 0, "lines": []},
+                ]
+            }
+
+    class Document:
+        def __enter__(self) -> "Document":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def __iter__(self):
+            return iter([Page()])
+
+    class Fitz:
+        @staticmethod
+        def open(*_args: object, **_kwargs: object) -> Document:
+            return Document()
+
+    class Chunker:
+        schema_version = "test-profile"
+        provider = SimpleNamespace(model_id="test-model")
+
+        @staticmethod
+        def chunk_blocks(
+            manual_id: str,
+            _page: int,
+            _blocks: list[str],
+        ) -> list[PdfChunk]:
+            return [_chunk(manual_id)]
+
+    monkeypatch.setitem(sys.modules, "fitz", Fitz)
+    source = tmp_path / "POL-TEST-001_v1.0.pdf"
+    source.write_bytes(b"immutable-pdf-bytes")
+
+    _document, _chunks, warnings, receipt = PdfManualParser(
+        Chunker()  # type: ignore[arg-type]
+    ).parse(source)
+
+    assert warnings == ["IMAGE_BINARY_NOT_OCR_EXTRACTED"]
+    assert receipt["image_count"] == 1
+    assert receipt["image_receipts"] == [
+        {
+            "page": 1,
+            "image_index": 1,
+            "sha256": hashlib.sha256(image_bytes).hexdigest(),
+            "size_bytes": len(image_bytes),
+        }
+    ]
 
 
 def test_partial_ingest_is_rejected_before_any_runtime_dependency() -> None:
@@ -346,6 +440,11 @@ def test_processing_profile_binds_chunk_limits_and_is_deterministic() -> None:
     assert baseline == processing_profile_sha256(384, 64)
     assert baseline != processing_profile_sha256(385, 64)
     assert baseline != processing_profile_sha256(384, 63)
+    with patch(
+        "src.rag.processing_profile.EMBEDDING_INPUT_CONTRACT_VERSION",
+        "test-transform-version",
+    ):
+        assert baseline != processing_profile_sha256(384, 64)
     with pytest.raises(ValueError, match="limits are invalid"):
         processing_profile_sha256(64, 64)
 
@@ -394,7 +493,7 @@ def test_mid_ingest_content_replacement_never_publishes_active_pointer() -> None
         def __init__(self, **_kwargs: object) -> None:
             return None
 
-        def parse(self, path: Path):
+        def parse(self, path: Path, _entry: CorpusManifestDocument):
             if path.name == "two.pdf":
                 return (
                     _document("MANUAL-TWO", "d" * 64),
@@ -410,6 +509,7 @@ def test_mid_ingest_content_replacement_never_publishes_active_pointer() -> None
         manuals_dir=Path("manuals"),
         chunk_max_tokens=10,
         chunk_overlap_tokens=1,
+        max_sequence_length=2048,
         batch_size=1,
         embedding_provider=EMBEDDING["provider"],
         model_id=EMBEDDING["model"],
@@ -432,7 +532,7 @@ def test_mid_ingest_content_replacement_never_publishes_active_pointer() -> None
             ],
         ),
         patch("src.rag.token_chunker.TokenChunker", Chunker),
-        patch("src.rag.vector_application.PdfManualParser", Parser),
+        patch("src.rag.vector_application.CorpusDocumentParser", Parser),
         pytest.raises(ValueError, match="source checksum"),
     ):
         application.ingest()
@@ -496,7 +596,7 @@ def test_one_changed_source_copies_unchanged_document_and_stages_changed_one() -
         def __init__(self, **_kwargs: object) -> None:
             return None
 
-        def parse(self, path: Path):
+        def parse(self, path: Path, _entry: CorpusManifestDocument):
             if path.name == "one.pdf":
                 return _document("MANUAL-ONE"), [_chunk("MANUAL-ONE")], [], {}
             return (
@@ -512,6 +612,7 @@ def test_one_changed_source_copies_unchanged_document_and_stages_changed_one() -
         manuals_dir=Path("manuals"),
         chunk_max_tokens=10,
         chunk_overlap_tokens=1,
+        max_sequence_length=2048,
         batch_size=1,
         embedding_provider=EMBEDDING["provider"],
         model_id=EMBEDDING["model"],
@@ -529,13 +630,20 @@ def test_one_changed_source_copies_unchanged_document_and_stages_changed_one() -
     with (
         patch("src.rag.vector_application.CorpusManifest.load", return_value=manifest),
         patch("src.rag.token_chunker.TokenChunker", Chunker),
-        patch("src.rag.vector_application.PdfManualParser", Parser),
+        patch("src.rag.vector_application.CorpusDocumentParser", Parser),
     ):
         report = application.ingest()
 
     assert repository.copied == ["MANUAL-ONE"]
     assert repository.staged == ["MANUAL-TWO"]
-    assert embedding.calls == [["Approved manual content"]]
+    assert embedding.calls == [
+        [
+            EmbeddingInputBuilder(2048).build(
+                _document("MANUAL-TWO", "d" * 64),
+                _chunk("MANUAL-TWO"),
+            )
+        ]
+    ]
     assert repository.published is not None
     assert repository.published["expected_document_count"] == 2
     assert repository.published["expected_chunk_count"] == 3
@@ -584,13 +692,25 @@ def test_copy_reuses_only_same_content_and_profile_into_new_manifest_release() -
                     "1.0",
                     "/manuals/MANUAL-ONE.pdf",
                     "b" * 64,
+                    ["STAFF"],
+                    "MANUAL",
+                    "UNASSIGNED",
+                    None,
+                    None,
                     None,
                 )
             ),
             _Result(
                 rows=[
                     (
-                        "chunk-1",
+                        _chunk().chunk_id,
+                        _chunk().chunk_index,
+                        _chunk().page_start,
+                        _chunk().page_end,
+                        _chunk().section_title,
+                        _chunk().content,
+                        _chunk().checksum,
+                        _chunk().token_count,
                         None,
                         EMBEDDING["provider"],
                         EMBEDDING["model"],
@@ -601,7 +721,7 @@ def test_copy_reuses_only_same_content_and_profile_into_new_manifest_release() -
                 ]
             ),
             _Result(("MANUAL-ONE",)),
-            _Result(rows=[("chunk-1",)]),
+            _Result(rows=[(_chunk().chunk_id,)]),
         ]
     )
     repository = PgVectorRepository(
@@ -618,6 +738,7 @@ def test_copy_reuses_only_same_content_and_profile_into_new_manifest_release() -
         copied = repository.copy_active_document(
             target_release,
             _document(),
+            [_chunk()],
             EMBEDDING,
             PROCESSING_SHA256,
         )
@@ -644,44 +765,63 @@ def test_copy_reuses_only_same_content_and_profile_into_new_manifest_release() -
     assert "c.deleted_at IS NULL" not in copied_chunks_sql
 
 
+def test_copy_rejects_reparsed_chunk_with_invalid_content_checksum() -> None:
+    repository = PgVectorRepository(
+        "postgresql://test",
+        EMBEDDING,
+        MANIFEST_SHA256,
+        EXPECTED_DOCUMENTS,
+        PROCESSING_SHA256,
+    )
+
+    with pytest.raises(ValueError, match="reparsed chunks are incomplete or drifted"):
+        repository.copy_active_document(
+            uuid4(),
+            _document(),
+            [replace(_chunk(), checksum="0" * 64)],
+            EMBEDDING,
+            PROCESSING_SHA256,
+        )
+
+
 @pytest.mark.parametrize(
-    "source_chunk",
+    "source_chunk_override",
     [
-        (
-            "chunk-1",
-            "deleted",
-            EMBEDDING["provider"],
-            EMBEDDING["model"],
-            EMBEDDING["dimensions"],
-            EMBEDDING["version"],
-            "b" * 64,
-        ),
-        (
-            "chunk-1",
-            None,
-            "drifted-provider",
-            EMBEDDING["model"],
-            EMBEDDING["dimensions"],
-            EMBEDDING["version"],
-            "b" * 64,
-        ),
-        (
-            "chunk-1",
-            None,
-            EMBEDDING["provider"],
-            EMBEDDING["model"],
-            EMBEDDING["dimensions"],
-            EMBEDDING["version"],
-            "d" * 64,
-        ),
+        {"deleted_at": "deleted"},
+        {"embedding_provider": "drifted-provider"},
+        {"source_document_hash": "d" * 64},
+        {"content": "drifted stored content"},
     ],
-    ids=["deleted", "embedding-metadata-drift", "source-hash-drift"],
+    ids=[
+        "deleted",
+        "embedding-metadata-drift",
+        "source-hash-drift",
+        "stored-content-drift",
+    ],
 )
 def test_copy_rejects_any_deleted_or_drifted_source_chunk(
-    source_chunk: tuple[object, ...],
+    source_chunk_override: dict[str, object],
 ) -> None:
     source_release = uuid4()
     target_release = uuid4()
+    parsed_chunk = _chunk()
+    source_chunk = {
+        "chunk_id": parsed_chunk.chunk_id,
+        "chunk_index": parsed_chunk.chunk_index,
+        "page_start": parsed_chunk.page_start,
+        "page_end": parsed_chunk.page_end,
+        "section_title": parsed_chunk.section_title,
+        "content": parsed_chunk.content,
+        "content_checksum": parsed_chunk.checksum,
+        "token_count": parsed_chunk.token_count,
+        "deleted_at": None,
+        "embedding_provider": EMBEDDING["provider"],
+        "embedding_model": EMBEDDING["model"],
+        "embedding_dimensions": EMBEDDING["dimensions"],
+        "embedding_version": EMBEDDING["version"],
+        "source_document_hash": "b" * 64,
+    }
+    source_chunk.update(source_chunk_override)
     connection = _Connection(
         [
             _Result((source_release,)),
@@ -692,10 +832,15 @@ def test_copy_rejects_any_deleted_or_drifted_source_chunk(
                     "1.0",
                     "/manuals/MANUAL-ONE.pdf",
                     "b" * 64,
+                    ["STAFF"],
+                    "MANUAL",
+                    "UNASSIGNED",
+                    None,
+                    None,
                     None,
                 )
             ),
-            _Result(rows=[source_chunk]),
+            _Result(rows=[tuple(source_chunk.values())]),
         ]
     )
     repository = PgVectorRepository(
@@ -716,6 +861,7 @@ def test_copy_rejects_any_deleted_or_drifted_source_chunk(
         repository.copy_active_document(
             target_release,
             _document(),
+            [parsed_chunk],
             EMBEDDING,
             PROCESSING_SHA256,
         )
@@ -739,6 +885,11 @@ def test_copy_rejects_deleted_source_document_before_approval_inheritance() -> N
                     "1.0",
                     "/manuals/MANUAL-ONE.pdf",
                     "b" * 64,
+                    ["STAFF"],
+                    "MANUAL",
+                    "UNASSIGNED",
+                    None,
+                    None,
                     "deleted",
                 )
             ),
@@ -762,6 +913,7 @@ def test_copy_rejects_deleted_source_document_before_approval_inheritance() -> N
         repository.copy_active_document(
             target_release,
             _document(),
+            [_chunk()],
             EMBEDDING,
             PROCESSING_SHA256,
         )
@@ -788,6 +940,62 @@ def test_stage_rejects_document_content_outside_manifest_receipt() -> None:
             np.asarray([[0.1, 0.2]], dtype=np.float32),
             EMBEDDING,
         )
+
+
+def test_stage_rejects_document_without_curated_manifest_approval() -> None:
+    repository = PgVectorRepository(
+        "postgresql://test",
+        EMBEDDING,
+        MANIFEST_SHA256,
+        EXPECTED_DOCUMENTS,
+        PROCESSING_SHA256,
+    )
+    unapproved = PdfDocument(
+        manual_id="MANUAL-ONE",
+        title="Manual one",
+        version="1.0",
+        source_path="/manuals/MANUAL-ONE.pdf",
+        checksum="b" * 64,
+        role_scope=("STAFF",),
+    )
+
+    with pytest.raises(ValueError, match="approval receipt"):
+        repository.stage_document(
+            uuid4(),
+            unapproved,
+            [_chunk()],
+            np.asarray([[0.1, 0.2]], dtype=np.float32),
+            EMBEDDING,
+        )
+
+
+def test_stage_persists_curated_manifest_approval_receipt() -> None:
+    repository = PgVectorRepository(
+        "postgresql://test",
+        EMBEDDING,
+        MANIFEST_SHA256,
+        EXPECTED_DOCUMENTS,
+        PROCESSING_SHA256,
+    )
+    connection = _StageConnection([_Result((1,)), _Result(rowcount=1)])
+
+    with patch(
+        "src.rag.pgvector_repository.psycopg.connect",
+        return_value=connection,
+    ):
+        written = repository.stage_document(
+            uuid4(),
+            _document(),
+            [_chunk()],
+            np.asarray([[0.1, 0.2]], dtype=np.float32),
+            EMBEDDING,
+        )
+
+    assert written == 1
+    document_sql, document_params = connection.statements[1]
+    assert "approval_status, validity_status" in document_sql
+    assert document_params[-2:] == ("APPROVED", "VALID")
+    assert len(connection.stage_cursor.executemany_calls) == 1
 
 
 def test_publish_validates_both_receipts_and_checks_every_mutation_rowcount() -> None:
@@ -998,9 +1206,20 @@ def test_evidence_inventory_locks_and_reads_only_the_active_release() -> None:
                         "1.0",
                         "/manuals/one.pdf",
                         "b" * 64,
+                        "MANUAL",
                         2,
                         1,
-                    )
+                    ),
+                    (
+                        "REPORT-ONE",
+                        "Report one",
+                        "2026-08",
+                        "/manuals/monthly_reports/one.docx",
+                        "c" * 64,
+                        "INTERNAL_REPORT",
+                        3,
+                        2,
+                    ),
                 ]
             ),
         ]
@@ -1017,10 +1236,19 @@ def test_evidence_inventory_locks_and_reads_only_the_active_release() -> None:
         inventory = repository.source_inventory()
 
     assert inventory[0]["manual_id"] == "MANUAL-ONE"
+    assert inventory[0]["document_type"] == "MANUAL"
+    assert inventory[0]["locator_kind"] == "PAGE"
+    assert inventory[0]["location_count"] == 1
+    assert inventory[0]["page_count"] == 1
+    assert inventory[1]["document_type"] == "INTERNAL_REPORT"
+    assert inventory[1]["locator_kind"] == "EXPLICIT_BREAK_SEGMENT"
+    assert inventory[1]["location_count"] == 2
+    assert inventory[1]["page_count"] is None
     assert "FOR SHARE OF active, release" in connection.statements[0][0]
     inventory_sql, inventory_params = connection.statements[1]
     assert "FROM corpus_release_documents" in inventory_sql
     assert "corpus_release_chunks" in inventory_sql
+    assert "d.document_type" in inventory_sql
     assert "FROM documents" not in inventory_sql
     assert inventory_params == (release_id,)
 
@@ -1060,6 +1288,49 @@ def test_source_pdf_rejects_bytes_that_drifted_after_release_publish(
             allow_unresolved_validity=False
         )
     )
+
+    with pytest.raises(FileNotFoundError):
+        application.source_pdf("MANUAL-ONE", "STAFF")
+
+
+def test_source_pdf_rejects_oversized_bytes_before_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manuals = tmp_path / "manuals"
+    manuals.mkdir()
+    source = manuals / "manual.pdf"
+    content = b"oversized"
+    source.write_bytes(content)
+
+    class Repository:
+        @staticmethod
+        def active_release_receipt(*_args: object) -> dict[str, object]:
+            return {"release_id": str(uuid4())}
+
+        @staticmethod
+        def source_receipt(*_args: object) -> tuple[Path, str]:
+            return source, hashlib.sha256(content).hexdigest()
+
+    application = object.__new__(VectorRagApplication)
+    application._settings = SimpleNamespace(  # type: ignore[attr-defined]
+        embedding_provider=EMBEDDING["provider"],
+        model_id=EMBEDDING["model"],
+        dimension=EMBEDDING["dimensions"],
+        model_revision=EMBEDDING["version"],
+        manuals_dir=manuals,
+    )
+    application._corpus_manifest = SimpleNamespace(  # type: ignore[attr-defined]
+        manifest_sha256=MANIFEST_SHA256
+    )
+    application._processing_profile_sha256 = PROCESSING_SHA256  # type: ignore[attr-defined]
+    application._repository = Repository()  # type: ignore[attr-defined]
+    application._policy = SimpleNamespace(  # type: ignore[attr-defined]
+        decide=lambda _role, _top_k: SimpleNamespace(
+            allow_unresolved_validity=False
+        )
+    )
+    monkeypatch.setitem(SOURCE_MAX_BYTES_BY_SUFFIX, ".pdf", 8)
 
     with pytest.raises(FileNotFoundError):
         application.source_pdf("MANUAL-ONE", "STAFF")
@@ -1382,6 +1653,9 @@ def test_search_audit_commits_release_bound_evidence_receipt_atomically() -> Non
             "text": "Approved manual content",
             "title": "Manual one",
             "manual_id": "MANUAL-ONE",
+            "version": "1.0",
+            "document_type": "MANUAL",
+            "owner_team": "UNASSIGNED",
             "section_title": "Section",
             "citation": "[Manual one v1.0 p.1 Section]",
         }
@@ -1446,6 +1720,9 @@ def test_answer_uses_only_exact_current_release_receipt_evidence() -> None:
             "text": "Approved manual content",
             "title": "Manual one",
             "manual_id": "MANUAL-ONE",
+            "version": "1.0",
+            "document_type": "MANUAL",
+            "owner_team": "UNASSIGNED",
             "section_title": "Section",
             "citation": "[Manual one v1.0 p.1 Section]",
         }
@@ -1509,6 +1786,8 @@ def test_answer_uses_only_exact_current_release_receipt_evidence() -> None:
     assert "JOIN corpus_release_chunks" in evidence_sql
     assert "document.approval_status='APPROVED'" in evidence_sql
     assert "document.validity_status!='UNRESOLVED'" in evidence_sql
+    assert "document.document_type='INTERNAL_REPORT'" in evidence_sql
+    assert "explicit-segment." in evidence_sql
     assert "FOR SHARE OF active, release, document, chunk" in evidence_sql
     assert "SET consumed_at=CURRENT_TIMESTAMP" in connection.statements[2][0]
 
@@ -1559,6 +1838,9 @@ def test_answer_rejects_evidence_that_no_longer_joins_to_authorized_rows() -> No
             "text": "Approved manual content",
             "title": "Manual one",
             "manual_id": "MANUAL-ONE",
+            "version": "1.0",
+            "document_type": "MANUAL",
+            "owner_team": "UNASSIGNED",
             "section_title": "Section",
             "citation": "[Manual one v1.0 p.1 Section]",
         }
@@ -1619,6 +1901,9 @@ def test_answer_receipt_is_consumed_once_with_compare_and_set() -> None:
             "text": "Approved manual content",
             "title": "Manual one",
             "manual_id": "MANUAL-ONE",
+            "version": "1.0",
+            "document_type": "MANUAL",
+            "owner_team": "UNASSIGNED",
             "section_title": "Section",
             "citation": "[Manual one v1.0 p.1 Section]",
         }

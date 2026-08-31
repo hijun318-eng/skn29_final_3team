@@ -1,3 +1,5 @@
+"""immutable corpus 적재·검색·답변·증적 생명주기를 조정하는 RAG application이다."""
+
 from __future__ import annotations
 
 import json
@@ -13,20 +15,24 @@ from .embedding_provider import OpenAIEmbeddingProvider
 from .access_policy import SearchAccessPolicy
 from .evidence_repository import RagEvidenceRepository
 from .evaluation_service import QualityEvaluator
-from .pdf_ingestion import PdfManualParser
+from .document_ingestion import CorpusDocumentParser
+from .embedding_input import EmbeddingInputBuilder
 from .pgvector_repository import PgVectorRepository
 from .quality_evaluation import SyntheticQualitySuite
+from .source_bytes import read_bounded_source_bytes
 from .retrieval_service import VectorRetrievalService
 from .vector_settings import VectorSettings
 from .p2_contracts import P2GateStatus, RagToolContract
 from .contextual_query import ContextualQueryBuilder
-from .corpus_manifest import CorpusManifest
+from .corpus_manifest import CORPUS_MANIFEST_VERSION_V2, CorpusManifest
 from .processing_profile import processing_profile_sha256
 from .vector_search_payload import build_search_payload, hash_search_input
 from .manual_article_formatter import ManualArticleFormatter
 
 
 class VectorRagApplication:
+    """설정·접근 정책·embedding·pgvector를 release 단위 실행 경계로 결합한다."""
+
     @staticmethod
     def answer_document_limit(
         intent: str,
@@ -46,13 +52,16 @@ class VectorRagApplication:
 
     @staticmethod
     def _answer_evidence_from_result(result: object) -> dict[str, str]:
-        """Project one server-owned search result into the signed answer contract."""
+        """서버 소유 검색 결과 하나를 서명 대상 답변 evidence 계약으로 투영한다."""
 
         return {
             "evidence_id": str(getattr(result, "evidence_id")),
             "text": str(getattr(result, "content")),
             "title": str(getattr(result, "title")),
             "manual_id": str(getattr(result, "manual_id")),
+            "version": str(getattr(result, "version")),
+            "document_type": str(getattr(result, "document_type")),
+            "owner_team": str(getattr(result, "owner_team")),
             "section_title": str(getattr(result, "section_title")),
             "citation": str(getattr(result, "citation")),
         }
@@ -66,6 +75,9 @@ class VectorRagApplication:
             "text",
             "title",
             "manual_id",
+            "version",
+            "document_type",
+            "owner_team",
             "section_title",
             "citation",
         }
@@ -90,10 +102,14 @@ class VectorRagApplication:
 
     def __init__(self, project_root: Path) -> None:
         self._settings = VectorSettings.load(project_root)
+        self._policy = SearchAccessPolicy.load(
+            self._settings.config_dir / "access_policy.json"
+        )
         self._corpus_manifest = CorpusManifest.load(
             self._settings.corpus_manifest_path,
             self._settings.manuals_dir,
         )
+        self._validate_manifest_access_policy(self._corpus_manifest)
         self._processing_profile_sha256 = processing_profile_sha256(
             self._settings.chunk_max_tokens,
             self._settings.chunk_overlap_tokens,
@@ -114,17 +130,19 @@ class VectorRagApplication:
             self._corpus_manifest.included_document_checksums,
             self._processing_profile_sha256,
         )
-        self._policy = SearchAccessPolicy.load(
-            self._settings.config_dir / "access_policy.json"
-        )
         self._embedding: QwenEmbeddingProvider | OpenAIEmbeddingProvider | None = None
         self._embedding_init_lock = threading.Lock()
         self._evidence_lock = threading.Lock()
 
     @property
     def database_url(self) -> str:
+        """migration과 운영 점검이 사용할 검증 완료 PostgreSQL 연결 문자열을 반환한다."""
+
         return self._settings.database_url
+
     def migrate(self) -> dict[str, object]:
+        """정렬된 RAG migration을 적용하고 실행 파일과 DB 상태를 receipt로 반환한다."""
+
         migrations = sorted(self._settings.migrations_dir.glob("*.sql"))
         for migration in migrations:
             self._repository.migrate(migration)
@@ -133,13 +151,17 @@ class VectorRagApplication:
             "migrations": [str(path) for path in migrations],
             **self._repository.status(),
         }
+
     def ingest(self, limit: int | None = None) -> dict[str, object]:
+        """manifest 전체를 파싱·embedding·staging해 atomic corpus release로 발행한다."""
+
         if limit is not None:
             raise ValueError("Partial RAG ingestion cannot publish a corpus release")
         corpus_manifest = CorpusManifest.load(
             self._settings.corpus_manifest_path,
             self._settings.manuals_dir,
         )
+        self._validate_manifest_access_policy(corpus_manifest)
         if corpus_manifest.manifest_sha256 != self._corpus_manifest.manifest_sha256:
             raise ValueError("RAG corpus manifest changed after runtime startup")
         embedding_provider = self._get_embedding()
@@ -165,14 +187,21 @@ class VectorRagApplication:
                 max_tokens=self._settings.chunk_max_tokens,
                 overlap_tokens=self._settings.chunk_overlap_tokens,
             )
-            parser = PdfManualParser(chunker=chunker)
+            parser = CorpusDocumentParser(chunker=chunker)
+            provider_token_counter = getattr(
+                embedding_provider,
+                "count_tokens",
+                None,
+            )
+            embedding_input = EmbeddingInputBuilder(
+                self._settings.max_sequence_length,
+                provider_token_counter if callable(provider_token_counter) else None,
+            )
             for entry in entries:
-                path = self._settings.manuals_dir / entry.source_file
-                document, chunks, parser_warnings, inspection_manifest = parser.parse(path)
-                CorpusManifest.validate_parsed_document(
+                path = CorpusManifest.source_path(self._settings.manuals_dir, entry)
+                document, chunks, parser_warnings, inspection_manifest = parser.parse(
+                    path,
                     entry,
-                    document.manual_id,
-                    document.checksum,
                 )
                 warnings.extend(parser_warnings)
                 if self._repository.unchanged(
@@ -183,16 +212,23 @@ class VectorRagApplication:
                     staged_chunks += self._repository.copy_active_document(
                         run_id,
                         document,
+                        chunks,
                         embedding_metadata,
                         self._processing_profile_sha256,
                     )
                     skipped_documents += 1
                     inspections.append(
-                        {"manual_id": document.manual_id, "status": "UNCHANGED"}
+                        {
+                            "manual_id": document.manual_id,
+                            "status": "UNCHANGED",
+                            "chunks": len(chunks),
+                            "manifest": inspection_manifest,
+                        }
                     )
                     continue
                 vectors = self._get_embedding().embed_documents(
-                    [chunk.content for chunk in chunks], self._settings.batch_size
+                    [embedding_input.build(document, chunk) for chunk in chunks],
+                    self._settings.batch_size,
                 )
                 written = self._repository.stage_document(
                     run_id,
@@ -205,12 +241,18 @@ class VectorRagApplication:
                 staged_chunks += written
                 processed_documents += 1
                 inspections.append(
-                    {"manual_id": document.manual_id, "status": "SUCCESS", "chunks": len(chunks), "manifest": inspection_manifest}
+                    {
+                        "manual_id": document.manual_id,
+                        "status": "SUCCESS",
+                        "chunks": len(chunks),
+                        "manifest": inspection_manifest,
+                    }
                 )
             publish_manifest = CorpusManifest.load(
                 self._settings.corpus_manifest_path,
                 self._settings.manuals_dir,
             )
+            self._validate_manifest_access_policy(publish_manifest)
             if publish_manifest != self._corpus_manifest:
                 raise ValueError("RAG corpus manifest changed during corpus staging")
             active_release = self._repository.publish_release(
@@ -233,8 +275,10 @@ class VectorRagApplication:
         report = {
             "run_id": str(run_id),
             "status": "SUCCESS",
-            "source_pdf_count": len(entries),
-            "excluded_reference_pdf_count": len(corpus_manifest.documents) - len(entries),
+            "source_document_count": len(entries),
+            "source_pdf_count": sum(entry.source_format == "pdf" for entry in entries),
+            "source_docx_count": sum(entry.source_format == "docx" for entry in entries),
+            "excluded_reference_document_count": len(corpus_manifest.documents) - len(entries),
             "processed_documents": processed_documents,
             "skipped_unchanged_documents": skipped_documents,
             "created_chunks": created_chunks,
@@ -251,6 +295,13 @@ class VectorRagApplication:
         }
         self._write_evidence("vector_ingestion_manifest.json", report)
         return report
+
+    def _validate_manifest_access_policy(self, manifest: CorpusManifest) -> None:
+        """v2 문서 역할을 활성 접근 정책에 결합하되 v1 재실행 호환은 유지한다."""
+
+        if manifest.schema_version == CORPUS_MANIFEST_VERSION_V2:
+            manifest.validate_access_policy(self._policy.known_roles)
+
     def search(
         self,
         query: str,
@@ -272,6 +323,8 @@ class VectorRagApplication:
         domains: tuple[str, ...] = (),
         intent: str = "REGULATION_CHECK",
     ) -> dict[str, object]:
+        """서명 문맥·역할·release를 검증하고 hybrid 검색 evidence와 receipt를 반환한다."""
+
         active_release = self._require_active_release()
         decision = self._policy.decide(role, top_k)
         if (
@@ -391,6 +444,8 @@ class VectorRagApplication:
         self._write_evidence("vector_search_latest.json", payload)
         return payload
     def status(self) -> dict[str, object]:
+        """활성 release·embedding 계약·DB·tool Gate 상태를 side effect 없이 조회한다."""
+
         active_release = self._repository.active_release_receipt(
             self._embedding_metadata(),
             self._corpus_manifest.manifest_sha256,
@@ -413,6 +468,8 @@ class VectorRagApplication:
         }
 
     def evaluate_smoke(self) -> dict[str, object]:
+        """legacy smoke 질문을 활성 release에 실행해 재현 가능한 평가 report를 만든다."""
+
         self._require_active_release()
         path = self._settings.smoke_queries_path
         suite = json.loads(path.read_text(encoding="utf-8"))
@@ -432,6 +489,8 @@ class VectorRagApplication:
         )
 
     def evaluate_quality(self) -> dict[str, object]:
+        """활성 문서에서 합성 suite를 구성하고 retrieval 품질 report를 생성한다."""
+
         self._require_active_release()
         suite = SyntheticQualitySuite()
         queries = [asdict(item) for item in suite.build(self._evidence_repository.evaluation_sources())]
@@ -444,18 +503,40 @@ class VectorRagApplication:
         )
 
     def validate_lifecycle(self) -> dict[str, object]:
+        """immutable release에서 지원하지 않는 mutation 검증 요청을 명시적으로 거부한다."""
+
         raise RuntimeError(
             "RAG lifecycle validation is unsupported for immutable corpus releases"
         )
 
     def write_runtime_evidence(self) -> dict[str, object]:
+        """혼합 source inventory와 DB ingestion 상태를 checksum 가능한 증적 파일로 쓴다."""
+
         active_release = self._require_active_release()
         inventory = self._evidence_repository.source_inventory()
         source_report = {
             "status": "SUCCESS",
-            "source_type": "INDIVIDUAL_MANUAL_PDF",
+            "source_type": "MIXED_IMMUTABLE_CORPUS",
             "document_count": len(inventory),
-            "total_pages": sum(int(item["page_count"] or 0) for item in inventory),
+            "document_type_counts": {
+                document_type: sum(
+                    1 for item in inventory
+                    if item["document_type"] == document_type
+                )
+                for document_type in sorted(
+                    {str(item["document_type"]) for item in inventory}
+                )
+            },
+            "total_pages": sum(
+                int(item["location_count"] or 0)
+                for item in inventory
+                if item["locator_kind"] == "PAGE"
+            ),
+            "total_explicit_segments": sum(
+                int(item["location_count"] or 0)
+                for item in inventory
+                if item["locator_kind"] == "EXPLICIT_BREAK_SEGMENT"
+            ),
             "documents": inventory,
         }
         database_report = {
@@ -523,11 +604,15 @@ class VectorRagApplication:
         return receipt
 
     def catalog(self, role: str) -> list[dict[str, object]]:
+        """활성 release와 역할 Gate를 통과한 문서 catalog만 반환한다."""
+
         self._require_active_release()
         decision = self._policy.decide(role, 1)
         return self._repository.catalog(role, decision.allow_unresolved_validity)
 
-    def source_pdf(self, manual_id: str, role: str) -> tuple[bytes, str]:
+    def source_document(self, manual_id: str, role: str) -> tuple[bytes, str, str]:
+        """권한과 checksum을 재검증한 PDF 또는 DOCX 원본 bytes·이름·media type을 반환한다."""
+
         self._require_active_release()
         decision = self._policy.decide(role, 1)
         source, expected_sha256 = self._repository.source_receipt(
@@ -537,12 +622,31 @@ class VectorRagApplication:
         )
         source = source.resolve()
         manuals_root = self._settings.manuals_dir.resolve()
-        if source.suffix.lower() != ".pdf" or manuals_root not in source.parents or not source.is_file():
+        media_types = {
+            ".pdf": "application/pdf",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        media_type = media_types.get(source.suffix.lower())
+        if media_type is None or manuals_root not in source.parents or not source.is_file():
             raise FileNotFoundError(manual_id)
-        content = source.read_bytes()
+        try:
+            content = read_bounded_source_bytes(
+                source,
+                expected_suffix=source.suffix.lower(),
+            )
+        except (OSError, ValueError) as error:
+            raise FileNotFoundError(manual_id) from error
         if hashlib.sha256(content).hexdigest() != expected_sha256:
             raise FileNotFoundError(manual_id)
-        return content, source.name
+        return content, source.name, media_type
+
+    def source_pdf(self, manual_id: str, role: str) -> tuple[bytes, str]:
+        """legacy PDF 전용 계약을 유지하고 DOCX를 PDF로 오표시하지 않도록 거부한다."""
+
+        content, filename, media_type = self.source_document(manual_id, role)
+        if media_type != "application/pdf":
+            raise FileNotFoundError(manual_id)
+        return content, filename
 
     def answer(
         self,
@@ -555,6 +659,8 @@ class VectorRagApplication:
         retrieval_request_id: str | None = None,
         actor_hash: str | None = None,
     ) -> dict:
+        """소비 전 retrieval receipt와 evidence identity를 검증해 근거 제한 답변을 생성한다."""
+
         import os
         from .answer_contracts import AnswerRequest
         from .answer_service import AnswerService

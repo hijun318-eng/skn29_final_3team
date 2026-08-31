@@ -1,3 +1,5 @@
+"""검색 근거에서 제1조~제9조 항목을 추출하고 인용 가능한 답변 절로 구성한다."""
+
 from __future__ import annotations
 
 import re
@@ -7,6 +9,8 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ManualArticle:
+    """한 근거 청크에서 파싱한 조 번호·표준 제목·중복 제거된 문장들을 보존한다."""
+
     number: int
     title: str
     points: tuple[str, ...]
@@ -14,19 +18,23 @@ class ManualArticle:
 
 @dataclass(frozen=True)
 class ManualClaim:
+    """답변에 표시할 한 문장과 그 문장을 뒷받침하는 evidence 식별자를 묶는다."""
+
     text: str
     evidence_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class ManualSection:
+    """같은 조 번호에 속한 근거 문장들을 출력 순서대로 담는 답변 절이다."""
+
     number: int
     title: str
     claims: tuple[ManualClaim, ...]
 
 
 class ManualArticleFormatter:
-    """Parse each chunk first, then merge article claims in source order."""
+    """청크별 조문을 먼저 파싱한 뒤 원문 순서와 evidence 연결을 유지해 병합한다."""
 
     _ARTICLE_PATTERN = re.compile(
         r"제\s*(\d+)\s*조\s*[.:·]?\s*(.*?)"
@@ -59,6 +67,12 @@ class ManualArticleFormatter:
     )
 
     def format(self, body: str, question: str, answer_type: str) -> str | None:
+        """경계 표시가 포함된 본문을 질문 유형에 맞는 조문 답변 문자열로 변환한다.
+
+        파싱 가능한 제1조~제9조 근거가 하나도 없으면 내용을 추정하지 않고 ``None``을
+        반환한다.
+        """
+
         chunks = [part.strip() for part in body.split("[[CHUNK_BOUNDARY]]") if part.strip()]
         evidence = [
             {
@@ -82,6 +96,8 @@ class ManualArticleFormatter:
         question: str,
         answer_type: str,
     ) -> tuple[ManualSection, ...]:
+        """근거 목록을 출처 순으로 합치고 질문이 요구한 조문만 evidence와 함께 반환한다."""
+
         merged: dict[int, dict[str, list[str]]] = {}
         for item in sorted(evidence, key=self.evidence_order):
             evidence_id = str(item.get("evidence_id") or "").strip()
@@ -112,6 +128,8 @@ class ManualArticleFormatter:
         )
 
     def available_numbers(self, evidence: list[dict[str, Any]]) -> set[int]:
+        """제공된 근거에서 실제로 파싱된 제1조~제9조 번호 집합을 반환한다."""
+
         return {
             article.number
             for item in evidence
@@ -121,7 +139,20 @@ class ManualArticleFormatter:
             )
         }
 
+    def claim_segments(self, body: str, section_title: str = "") -> tuple[str, ...]:
+        """조문 parser가 분리한 전체 불릿·문장을 외부 답변 claim 검증 단위로 반환한다."""
+
+        return tuple(
+            dict.fromkeys(
+                point
+                for article in self._parse_articles(body, section_title)
+                for point in article.points
+            )
+        )
+
     def target_numbers(self, question: str, answer_type: str) -> tuple[int, ...]:
+        """질문에 명시된 조 번호를 우선하고 없으면 답변 유형의 기본 조 번호를 선택한다."""
+
         return self.specific_numbers(question) or self._default_numbers(answer_type)
 
     def _parse_articles(self, body: str, section_title: str = "") -> tuple[ManualArticle, ...]:
@@ -166,6 +197,8 @@ class ManualArticleFormatter:
 
     @staticmethod
     def specific_numbers(question: str) -> tuple[int, ...]:
+        """질문에 등장한 유효 조 번호를 최초 등장 순서대로 중복 없이 추출한다."""
+
         return tuple(
             dict.fromkeys(
                 number
@@ -187,6 +220,8 @@ class ManualArticleFormatter:
 
     @staticmethod
     def evidence_order(item: dict[str, Any]) -> tuple[int, int, str]:
+        """근거를 페이지·청크·evidence 식별자 순으로 안정 정렬할 키를 만든다."""
+
         def number(value: Any, fallback: int) -> int:
             try:
                 return int(value)
@@ -201,6 +236,8 @@ class ManualArticleFormatter:
 
     @staticmethod
     def render_section(section: ManualSection) -> str:
+        """절차 조문은 번호 목록으로, 다른 조문은 글머리표 목록으로 렌더링한다."""
+
         numbered = section.number == 4
         lines = [
             f"{index}. {claim.text}" if numbered else f"- {claim.text}"

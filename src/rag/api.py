@@ -1,3 +1,5 @@
+"""서명된 내부 RAG 검색·답변·원문 조회를 FastAPI endpoint로 노출한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -24,6 +26,8 @@ from .p2_contracts import RagToolContract
 
 
 class ManualSearchRequest(BaseModel):
+    """검색 질문·typed intent·문맥·trace·actor hash의 HTTP 입력 계약이다."""
+
     query: str = Field(min_length=2, max_length=500)
     top_k: int = Field(default=5, ge=1, le=10)
     recent_utterances: list[str] = Field(default_factory=list, max_length=3)
@@ -37,6 +41,8 @@ class ManualSearchRequest(BaseModel):
 
 
 class ManualAnswerRequest(BaseModel):
+    """retrieval receipt와 caller evidence를 포함하는 답변 HTTP 입력 계약이다."""
+
     query: str = Field(min_length=2, max_length=500)
     evidence_blocks: list[dict] = Field(min_length=1, max_length=50)
     intent: Literal["PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA", "REGULATION_CHECK", "COMPARISON", "SUMMARY"] = "REGULATION_CHECK"
@@ -45,6 +51,8 @@ class ManualAnswerRequest(BaseModel):
     actor_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 def create_app(project_root: Path | None = None) -> FastAPI:
+    """HMAC 인증·nonce 감사·RAG application을 결합한 내부 API를 구성한다."""
+
     root = (project_root or Path.cwd()).resolve()
     service = VectorRagApplication(root)
     audit = SecurityAuditRepository(service.database_url)
@@ -211,5 +219,54 @@ def create_app(project_root: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=error.status_code, detail=str(error)) from error
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Manual PDF not found") from error
+
+    @app.get("/v1/documents/{manual_id}/source")
+    def source_document(
+        manual_id: str,
+        verified_role: Annotated[str | None, Header(alias="X-Verified-Role")] = None,
+        timestamp: Annotated[str | None, Header(alias="X-Request-Timestamp")] = None,
+        request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
+        signature: Annotated[str | None, Header(alias="X-Request-Signature")] = None,
+    ) -> Response:
+        canonical = json.dumps(
+            {"manual_id": manual_id},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        try:
+            role = authenticator.verify(
+                verified_role,
+                timestamp,
+                request_id,
+                signature,
+                canonical,
+            )
+            if not audit.reserve_request_id(str(request_id)):
+                raise GatewayAuthenticationError("Replayed gateway request")
+            content, filename, media_type = service.source_document(manual_id, role)
+            audit.record(
+                request_id,
+                role,
+                hashlib.sha256(canonical.encode()).hexdigest(),
+                "AUTHORIZED",
+                "SIGNED_GATEWAY_REQUEST",
+            )
+            disposition = "inline" if media_type == "application/pdf" else "attachment"
+            return Response(
+                content=content,
+                media_type=media_type,
+                headers={
+                    "Content-Disposition": (
+                        f"{disposition}; filename*=UTF-8''{quote(filename)}"
+                    ),
+                    "Cache-Control": "private, no-store",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
+        except GatewayAuthenticationError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Document source not found") from error
 
     return app

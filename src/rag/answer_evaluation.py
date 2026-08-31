@@ -1,9 +1,13 @@
+"""생성 답변의 상태와 citation을 JSONL gold dataset에 대조해 평가한다."""
+
 import json
 from pathlib import Path
 from typing import List, Dict, Any
 
 
 class AnswerEvaluator:
+    """gold 질문별 기대 상태·evidence ID와 실제 답변을 request ID로 연결한다."""
+
     def __init__(self, gold_dataset_path: Path):
         self.gold_dataset_path = gold_dataset_path
         self._load_gold_dataset()
@@ -19,10 +23,7 @@ class AnswerEvaluator:
             print(f"Warning: Gold dataset not found at {self.gold_dataset_path}")
 
     def evaluate(self, generated_responses: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Evaluates the generated responses against the gold dataset.
-        Metrics: status accuracy, citation validity, etc.
-        """
+        """상태 일치율·citation 유효율·생성 실패 수를 계산해 metrics로 반환한다."""
         if not self.gold_data or not generated_responses:
             return {"status": "NO_DATA", "metrics": {}}
 

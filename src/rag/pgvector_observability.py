@@ -1,3 +1,5 @@
+"""검색 receipt·tool audit와 pgvector 운영 상태 조회를 repository에 제공한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -8,6 +10,8 @@ import psycopg
 
 
 class PgVectorObservabilityMixin:
+    """활성 release 검증 뒤 retrieval evidence를 봉인하고 DB 수량을 관측한다."""
+
     _database_url: str
 
     def audit_search(
@@ -31,6 +35,8 @@ class PgVectorObservabilityMixin:
         answer_intent: str | None = None,
         answer_evidence: list[dict[str, str]] | None = None,
     ) -> None:
+        """서명 주체·질문·evidence payload를 검증해 nonce성 retrieval receipt로 기록한다."""
+
         if request_id is None or tool_code is None:
             raise ValueError("RAG search audit requires a request and tool identity")
         try:
@@ -159,6 +165,8 @@ class PgVectorObservabilityMixin:
             )
 
     def status(self) -> dict[str, object]:
+        """vector extension·활성 문서·chunk·embedding 계약 수량을 read-only 반환한다."""
+
         with psycopg.connect(self._database_url) as connection:
             extension = connection.execute(
                 "SELECT extversion FROM pg_extension WHERE extname='vector'"

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import hashlib
 from pathlib import Path
 import sys
+from unittest.mock import patch
 from uuid import uuid4
 
+import httpx
 import pytest
 from jsonschema import Draft202012Validator
 
@@ -15,10 +18,14 @@ BACKEND = ROOT / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
+from app.api.rag_router import get_internal_manual_source
+from app.contracts import RequestContext
 from app.services.rag_gateway import (
     InternalManualAgent,
     RagToolError,
+    RAG_SOURCE_MAX_BODY_BYTES,
     RAG_TOOL_CODE,
+    RAG_TOOL_DESCRIPTOR,
     RAG_TOOL_DESCRIPTION,
     RAG_TOOL_ID,
     RAG_TOOL_INPUT_SCHEMA,
@@ -36,13 +43,25 @@ def _registry_receipt() -> dict[str, object]:
         "tool_id": RAG_TOOL_ID,
         "tool_code": RAG_TOOL_CODE,
         "semantic_version": RAG_TOOL_SEMANTIC_VERSION,
+        "title": RAG_TOOL_DESCRIPTOR["title"],
         "description": RAG_TOOL_DESCRIPTION,
         "input_schema_json": RAG_TOOL_INPUT_SCHEMA,
         "output_schema_json": RAG_TOOL_OUTPUT_SCHEMA,
+        "annotations_json": RAG_TOOL_DESCRIPTOR["annotations"],
         "transport": RAG_TOOL_TRANSPORT,
         "timeout_seconds": RAG_TOOL_TIMEOUT_SECONDS,
         "required_roles_json": list(RAG_TOOL_ROLES),
         "is_enabled": True,
+    }
+
+
+def test_rag_descriptor_includes_current_mcp_public_metadata() -> None:
+    assert RAG_TOOL_DESCRIPTOR["title"] == "Answer from Internal Documents"
+    assert RAG_TOOL_DESCRIPTOR["annotations"] == {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
     }
 
 
@@ -53,6 +72,9 @@ def test_gateway_answer_evidence_matches_runtime_closed_contract() -> None:
             "content": "승인된 근거 본문",
             "title": "업무 매뉴얼",
             "manual_id": "MANUAL-ONE",
+            "version": "1.0",
+            "document_type": "MANUAL",
+            "owner_team": "OPERATIONS",
             "section_title": "1. 승인 절차",
             "page_start": 1,
             "citation": "MANUAL-ONE p.1",
@@ -64,6 +86,9 @@ def test_gateway_answer_evidence_matches_runtime_closed_contract() -> None:
         "text",
         "title",
         "manual_id",
+        "version",
+        "document_type",
+        "owner_team",
         "section_title",
         "citation",
     }
@@ -111,6 +136,8 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
                         "manual_id": "MANUAL-ONE",
                         "title": "업무 매뉴얼",
                         "version": "1.0",
+                        "document_type": "MANUAL",
+                        "owner_team": "OPERATIONS",
                         "page_start": 1,
                         "page_end": 1,
                         "section_title": "승인 절차",
@@ -549,9 +576,11 @@ def test_runtime_receipt_rejects_empty_policy_filtered_catalog() -> None:
         ("tool_id", uuid4()),
         ("tool_code", "rag.other"),
         ("semantic_version", "1.2.1-candidate"),
+        ("title", "Drifted RAG title"),
         ("description", "drifted"),
         ("input_schema_json", {"type": "object"}),
         ("output_schema_json", {"type": "object"}),
+        ("annotations_json", {"readOnlyHint": False}),
         ("transport", "HTTP"),
         ("timeout_seconds", 31),
         ("required_roles_json", ["analyst", "platform_admin"]),
@@ -568,3 +597,265 @@ def test_registry_activation_requires_the_exact_candidate_descriptor(
     receipt[field] = drift
 
     assert InternalManualAgent._registry_contract_matches(receipt) is False
+
+
+def _source_agent() -> InternalManualAgent:
+    """네트워크와 Registry를 test double로 교체할 원문 Gateway를 만든다."""
+
+    agent = object.__new__(InternalManualAgent)
+    agent._base_url = "http://rag-api:8000"  # type: ignore[attr-defined]
+    agent._secret = "s" * 32  # type: ignore[attr-defined]
+    agent._timeout = 3.0  # type: ignore[attr-defined]
+    agent._source_max_body_bytes = RAG_SOURCE_MAX_BODY_BYTES  # type: ignore[attr-defined]
+
+    async def allow(_role: str) -> None:
+        return None
+
+    agent._assert_enabled = allow  # type: ignore[method-assign]
+    return agent
+
+
+def _mock_source_client(
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> Callable[..., httpx.AsyncClient]:
+    """실제 AsyncClient 옵션을 검증하면서 MockTransport만 주입한다."""
+
+    original_client = httpx.AsyncClient
+
+    def factory(**kwargs: object) -> httpx.AsyncClient:
+        assert kwargs["follow_redirects"] is False
+        assert kwargs["trust_env"] is False
+        return original_client(
+            **kwargs,
+            transport=httpx.MockTransport(handler),
+        )
+
+    return factory
+
+
+def test_fetch_document_preserves_docx_media_and_normalizes_filename() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            content=b"docx-source",
+            headers={
+                "Content-Type": (
+                    "application/vnd.openxmlformats-officedocument."
+                    "wordprocessingml.document"
+                ),
+                "Content-Disposition": (
+                    "attachment; filename*=UTF-8''2026%EB%85%84%208%EC%9B%94.docx"
+                ),
+            },
+        )
+
+    with patch(
+        "app.services.rag_gateway.httpx.AsyncClient",
+        side_effect=_mock_source_client(handler),
+    ):
+        content, disposition, media_type = asyncio.run(
+            _source_agent().fetch_document("REPORT-AUGUST", "analyst")
+        )
+
+    assert content == b"docx-source"
+    assert media_type.endswith("wordprocessingml.document")
+    assert disposition == (
+        "attachment; filename*=UTF-8''2026%EB%85%84%208%EC%9B%94.docx"
+    )
+    assert requests[0].url.path == "/v1/documents/REPORT-AUGUST/source"
+    assert requests[0].headers["X-Verified-Role"] == "STAFF"
+    assert requests[0].headers["X-Request-Signature"]
+
+
+def test_fetch_pdf_keeps_legacy_path_and_pdf_only_contract() -> None:
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(
+            200,
+            content=b"%PDF-source",
+            headers={
+                "Content-Type": "application/pdf",
+                "Content-Disposition": "inline; filename=manual.pdf",
+            },
+        )
+
+    with patch(
+        "app.services.rag_gateway.httpx.AsyncClient",
+        side_effect=_mock_source_client(handler),
+    ):
+        content, disposition = asyncio.run(
+            _source_agent().fetch_pdf("MANUAL-SAFETY", "analyst")
+        )
+
+    assert paths == ["/v1/documents/MANUAL-SAFETY/source.pdf"]
+    assert content == b"%PDF-source"
+    assert disposition == "inline; filename*=UTF-8''manual.pdf"
+
+
+def test_fetch_pdf_rejects_docx_without_mislabelling_or_conversion() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"docx-source",
+            headers={
+                "Content-Type": (
+                    "application/vnd.openxmlformats-officedocument."
+                    "wordprocessingml.document"
+                ),
+                "Content-Disposition": "attachment; filename=report.docx",
+            },
+        )
+
+    with patch(
+        "app.services.rag_gateway.httpx.AsyncClient",
+        side_effect=_mock_source_client(handler),
+    ), pytest.raises(RagToolError) as captured:
+        asyncio.run(_source_agent().fetch_pdf("REPORT-AUGUST", "analyst"))
+
+    assert captured.value.code == "RAG_DOCUMENT_MEDIA_TYPE_INVALID"
+
+
+@pytest.mark.parametrize(
+    ("media_type", "disposition"),
+    [
+        (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "attachment; filename=report.pdf",
+        ),
+        ("text/html", "inline; filename=manual.pdf"),
+        ("application/pdf", "inline; filename=../manual.pdf"),
+        ("application/pdf", "inline; filename=manual.pdf\r\nX-Evil: yes"),
+    ],
+)
+def test_source_metadata_rejects_mislabelling_and_unsafe_filename(
+    media_type: str,
+    disposition: str,
+) -> None:
+    with pytest.raises(RagToolError) as captured:
+        InternalManualAgent._source_metadata(
+            "MANUAL-SAFETY",
+            media_type,
+            disposition,
+            frozenset(
+                {
+                    "application/pdf",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                }
+            ),
+        )
+
+    assert captured.value.code in {
+        "RAG_DOCUMENT_MEDIA_TYPE_INVALID",
+        "RAG_DOCUMENT_RESPONSE_INVALID",
+    }
+
+
+def test_source_fetch_rejects_redirect_without_following_location() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(302, headers={"Location": "https://attacker.example/file"})
+
+    with patch(
+        "app.services.rag_gateway.httpx.AsyncClient",
+        side_effect=_mock_source_client(handler),
+    ), pytest.raises(RagToolError) as captured:
+        asyncio.run(_source_agent().fetch_document("REPORT-AUGUST", "analyst"))
+
+    assert captured.value.code == "RAG_DOCUMENT_REDIRECT_REJECTED"
+    assert len(requests) == 1
+
+
+def test_source_fetch_rejects_declared_body_over_bound() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"x",
+            headers={
+                "Content-Type": "application/pdf",
+                "Content-Disposition": "inline; filename=manual.pdf",
+                "Content-Length": str(RAG_SOURCE_MAX_BODY_BYTES + 1),
+            },
+        )
+
+    with patch(
+        "app.services.rag_gateway.httpx.AsyncClient",
+        side_effect=_mock_source_client(handler),
+    ), pytest.raises(RagToolError) as captured:
+        asyncio.run(_source_agent().fetch_document("MANUAL-SAFETY", "analyst"))
+
+    assert captured.value.code == "RAG_DOCUMENT_TOO_LARGE"
+
+
+class _AsyncChunks(httpx.AsyncByteStream):
+    """Content-Length가 없는 응답을 작은 chunk들로 재현한다."""
+
+    async def __aiter__(self):
+        yield b"123"
+        yield b"45"
+
+
+def test_source_fetch_bounds_stream_when_content_length_is_missing() -> None:
+    agent = _source_agent()
+    agent._source_max_body_bytes = 4  # type: ignore[attr-defined]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            stream=_AsyncChunks(),
+            headers={
+                "Content-Type": "application/pdf",
+                "Content-Disposition": "inline; filename=manual.pdf",
+            },
+        )
+
+    with patch(
+        "app.services.rag_gateway.httpx.AsyncClient",
+        side_effect=_mock_source_client(handler),
+    ), pytest.raises(RagToolError) as captured:
+        asyncio.run(agent.fetch_document("MANUAL-SAFETY", "analyst"))
+
+    assert captured.value.code == "RAG_DOCUMENT_TOO_LARGE"
+
+
+def test_app_generic_source_endpoint_keeps_runtime_media_type_and_security_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Gateway:
+        """Router가 호출할 성공 원문 응답을 고정한다."""
+
+        def __init__(self, database_url: str) -> None:
+            assert database_url == "postgresql://app"
+
+        async def fetch_document(
+            self,
+            manual_id: str,
+            app_role: str,
+        ) -> tuple[bytes, str, str]:
+            assert manual_id == "REPORT-AUGUST"
+            assert app_role == "analyst"
+            return (
+                b"docx-source",
+                "attachment; filename*=UTF-8''report.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+
+    monkeypatch.setenv("APP_RUNTIME_DATABASE_URL", "postgresql://app")
+    with patch("app.api.rag_router._require_internal_guideline_enabled"), patch(
+        "app.api.rag_router.RagGatewayTool", Gateway
+    ):
+        response = asyncio.run(
+            get_internal_manual_source("REPORT-AUGUST", RequestContext())
+        )
+
+    assert response.body == b"docx-source"
+    assert response.media_type.endswith("wordprocessingml.document")
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["content-disposition"].startswith("attachment;")

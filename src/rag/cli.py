@@ -1,3 +1,5 @@
+"""SQLite 기반 로컬 RAG ingest·status·search 검증 명령을 제공한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,6 +11,8 @@ from .application import LocalRagApplication
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """로컬 project root와 ingest·status·search 인자를 정의한 parser를 반환한다."""
+
     parser = argparse.ArgumentParser(description="Answervice 로컬 RAG 검증 CLI")
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="로컬 RAG 프로젝트 루트")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -23,6 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """선택 명령을 실행해 JSON을 출력하고 성공 종료 코드를 반환한다."""
+
     arguments = build_parser().parse_args()
     application = LocalRagApplication(arguments.root)
     if arguments.command == "ingest":

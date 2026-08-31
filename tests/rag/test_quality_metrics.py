@@ -34,7 +34,42 @@ def result(manual_id: str):
     )
 
 
+def report_result(manual_id: str):
+    return SimpleNamespace(
+        manual_id=manual_id,
+        version="2026-08",
+        page_start=None,
+        page_end=None,
+        locator_kind="EXPLICIT_BREAK_SEGMENT",
+        locator_start=2,
+        locator_end=2,
+        citation=f"[{manual_id} v2026-08 explicit-segment.2 본문]",
+    )
+
+
 class QualityMetricsTest(unittest.TestCase):
+    def test_explicit_report_segment_is_a_complete_non_page_citation(self) -> None:
+        evaluator = QualityEvaluator(
+            FakePolicy(),
+            FakeRetrieval({"월간 보고서": [report_result("REPORT-ONE")]}),
+            FakeEmbedding(),
+        )
+
+        report = evaluator.evaluate(
+            [
+                {
+                    "query_id": "R1",
+                    "query": "월간 보고서",
+                    "expected_manual_id": "REPORT-ONE",
+                    "query_type": "REPORT",
+                }
+            ],
+            "SYNTHETIC_TEST",
+            "1.0",
+        )
+
+        self.assertEqual(report["citation_metadata_completeness"], 1.0)
+
     def test_recall5_ndcg10_and_citation_completeness_are_reported(self) -> None:
         evaluator = QualityEvaluator(
             FakePolicy(),

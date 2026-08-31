@@ -55,6 +55,76 @@ class RuntimeSettingsTest(unittest.TestCase):
                         endpoint="https://api.openai.com/v1/embeddings",
                     )
 
+    def test_openai_provider_rejects_unbounded_transport_settings(self) -> None:
+        invalid_settings = (
+            (True, 1),
+            (0, 1),
+            (float("nan"), 1),
+            (float("inf"), 1),
+            (301, 1),
+            (30, True),
+            (30, 0),
+            (30, 5),
+            (30, 1.0),
+        )
+        for timeout_seconds, maximum_attempts in invalid_settings:
+            with self.subTest(
+                timeout_seconds=timeout_seconds,
+                maximum_attempts=maximum_attempts,
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "embedding (timeout|maximum attempts)",
+                ):
+                    OpenAIEmbeddingProvider(
+                        api_key="test-key",
+                        model_id="text-embedding-3-large",
+                        dimension=1024,
+                        endpoint="https://api.openai.com/v1/embeddings",
+                        timeout_seconds=timeout_seconds,  # type: ignore[arg-type]
+                        maximum_attempts=maximum_attempts,  # type: ignore[arg-type]
+                    )
+
+    def test_runtime_settings_reject_unbounded_embedding_transport_env(self) -> None:
+        invalid_environment = (
+            ("OPENAI_EMBEDDING_TIMEOUT_SECONDS", "nan"),
+            ("OPENAI_EMBEDDING_TIMEOUT_SECONDS", "0"),
+            ("OPENAI_EMBEDDING_TIMEOUT_SECONDS", "301"),
+            ("OPENAI_EMBEDDING_MAX_ATTEMPTS", "0"),
+            ("OPENAI_EMBEDDING_MAX_ATTEMPTS", "5"),
+            ("OPENAI_EMBEDDING_MAX_ATTEMPTS", "1.5"),
+        )
+        for variable, value in invalid_environment:
+            with self.subTest(variable=variable, value=value):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "RAG_DATABASE_URL": "postgresql://rag_test@localhost/rag_test",
+                        variable: value,
+                    },
+                    clear=True,
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "embedding transport settings",
+                    ):
+                        VectorSettings.load(PROJECT_ROOT)
+
+    @patch.dict(
+        os.environ,
+        {
+            "RAG_DATABASE_URL": "postgresql://rag_test@localhost/rag_test",
+            "OPENAI_EMBEDDING_TIMEOUT_SECONDS": "0.1",
+            "OPENAI_EMBEDDING_MAX_ATTEMPTS": "4",
+        },
+        clear=True,
+    )
+    def test_runtime_settings_accept_transport_boundaries(self) -> None:
+        settings = VectorSettings.load(PROJECT_ROOT)
+
+        self.assertEqual(settings.embedding_timeout_seconds, 0.1)
+        self.assertEqual(settings.embedding_maximum_attempts, 4)
+
     @patch.dict(
         os.environ,
         {
@@ -94,25 +164,22 @@ class RuntimeSettingsTest(unittest.TestCase):
                 retrieval_mode="HYBRID_RERANK",
             )
 
-    @patch("src.rag.embedding_provider.urlopen")
+    @patch("src.rag.embedding_provider.httpx.Client")
     def test_openai_provider_sends_the_pinned_model_and_vector_dimension(
         self,
-        open_url: Mock,
+        client_factory: Mock,
     ) -> None:
-        class Response:
-            def __enter__(self) -> "Response":
-                return self
-
-            def __exit__(self, *_args: object) -> None:
-                return None
-
-            @staticmethod
-            def read() -> bytes:
-                return json.dumps(
-                    {"data": [{"index": 0, "embedding": [0.5] * 1024}]}
-                ).encode("utf-8")
-
-        open_url.return_value = Response()
+        response = SimpleNamespace(
+            is_redirect=False,
+            status_code=200,
+            json=Mock(
+                return_value={
+                    "data": [{"index": 0, "embedding": [0.5] * 1024}]
+                }
+            ),
+        )
+        client = client_factory.return_value.__enter__.return_value
+        client.post.return_value = response
         provider = OpenAIEmbeddingProvider(
             api_key="test-key",
             model_id="text-embedding-3-large",
@@ -123,12 +190,41 @@ class RuntimeSettingsTest(unittest.TestCase):
 
         vector = provider.embed_query("객실 운영 지침")
 
-        request = open_url.call_args.args[0]
-        payload = json.loads(request.data.decode("utf-8"))
+        payload = json.loads(client.post.call_args.kwargs["content"].decode("utf-8"))
         self.assertEqual(payload["model"], "text-embedding-3-large")
         self.assertEqual(payload["dimensions"], 1024)
         self.assertEqual(vector.shape, (1024,))
         self.assertEqual(provider.revision, "text-embedding-3-large:d1024")
+
+    @patch("src.rag.embedding_provider.httpx.Client")
+    def test_openai_provider_rejects_duplicate_or_noncontiguous_response_indices(
+        self,
+        client_factory: Mock,
+    ) -> None:
+        response = SimpleNamespace(
+            is_redirect=False,
+            status_code=200,
+            json=Mock(
+                return_value={
+                    "data": [
+                        {"index": 0, "embedding": [0.5] * 1024},
+                        {"index": 0, "embedding": [0.6] * 1024},
+                    ]
+                }
+            ),
+        )
+        client = client_factory.return_value.__enter__.return_value
+        client.post.return_value = response
+        provider = OpenAIEmbeddingProvider(
+            api_key="test-key",
+            model_id="text-embedding-3-large",
+            dimension=1024,
+            endpoint="https://api.openai.com/v1/embeddings",
+            maximum_attempts=1,
+        )
+
+        with self.assertRaisesRegex(ValueError, "response index mismatch"):
+            provider.embed_queries(["첫 번째", "두 번째"])
 
     def test_auto_prefers_cuda_when_available(self) -> None:
         torch_runtime = SimpleNamespace(

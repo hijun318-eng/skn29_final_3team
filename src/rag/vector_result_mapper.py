@@ -1,3 +1,5 @@
+"""legacy SQL row를 점수·citation·유효성 metadata가 있는 검색 결과로 변환한다."""
+
 from __future__ import annotations
 
 import os
@@ -14,6 +16,8 @@ def _snippet_limit() -> int:
 
 
 def to_vector_search_result(row: Iterable[object]) -> VectorSearchResult:
+    """고정 column 순서의 row를 검증 가능한 VectorSearchResult field로 mapping한다."""
+
     (
         manual_id, title, version, page_start, page_end, section_title, content,
         score, vector_score, lexical_score, document_status, authority_level,

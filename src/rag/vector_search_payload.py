@@ -1,3 +1,5 @@
+"""검색 입력 감사 hash와 release·정책·evidence 응답 payload를 구성한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,6 +18,8 @@ def hash_search_input(
     domains: tuple[str, ...] = (),
     intent: str = "REGULATION_CHECK",
 ) -> str:
+    """질문·typed context·선택 문서를 canonical JSON으로 직렬화해 SHA를 반환한다."""
+
     audited_input = json.dumps(
         {
             "query": query,
@@ -53,6 +57,8 @@ def build_search_payload(
     processing_profile_sha256: str | None = None,
     answer_query: str | None = None,
 ) -> dict[str, object]:
+    """검색 결과를 tool Gate·release·정책·trace가 포함된 공개 payload로 감싼다."""
+
     return {
         "request_id": request_id,
         "trace_id": trace_id or request_id,

@@ -1,3 +1,5 @@
+"""Backend Gateway의 HMAC 주체·timestamp·nonce와 canonical payload를 검증한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -10,12 +12,16 @@ from uuid import UUID
 
 
 class GatewayAuthenticationError(ValueError):
+    """서명·역할·timestamp·request ID 계약이 틀린 Gateway 요청을 나타낸다."""
+
     def __init__(self, message: str, status_code: int = 401) -> None:
         super().__init__(message)
         self.status_code = status_code
 
 
 class GatewayRequestAuthenticator:
+    """서버 secret으로 Gateway request의 HMAC과 시간 허용 범위를 확인한다."""
+
     def __init__(
         self,
         secret: str | None,
@@ -30,6 +36,8 @@ class GatewayRequestAuthenticator:
 
     @property
     def configured(self) -> bool:
+        """최소 길이를 충족하는 Gateway HMAC secret이 주입됐는지 반환한다."""
+
         return self._secret is not None
 
     def verify(
@@ -40,6 +48,8 @@ class GatewayRequestAuthenticator:
         signature: str | None,
         query: str,
     ) -> str:
+        """필수 header·timestamp·role·signature를 검증하고 정규화된 역할을 반환한다."""
+
         if self._secret is None:
             raise GatewayAuthenticationError("Gateway authentication is not configured", 503)
         if not all((role, timestamp, request_id, signature)):
@@ -66,6 +76,8 @@ class GatewayRequestAuthenticator:
         role: str,
         query: str,
     ) -> str:
+        """timestamp·nonce·역할·canonical body로 SHA-256 HMAC 서명을 만든다."""
+
         secret_bytes = secret.encode("utf-8") if isinstance(secret, str) else secret
         query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
         message = f"{timestamp}\n{request_id}\n{role.strip().upper()}\n{query_hash}".encode("utf-8")
@@ -107,6 +119,8 @@ def canonical_search_request(
     trace_id: str,
     actor_hash: str,
 ) -> str:
+    """검색 질문·문맥·선택 문서·trace를 정렬 JSON 서명 문자열로 만든다."""
+
     return json.dumps(
         {
             "query": query,
@@ -134,6 +148,8 @@ def canonical_answer_request(
     trace_id: str,
     actor_hash: str,
 ) -> str:
+    """답변 질문·evidence·intent·retrieval receipt를 canonical 서명 문자열로 만든다."""
+
     normalized = tuple(
         {key: block[key] for key in sorted(block.keys())} if isinstance(block, dict) else {}
         for block in evidence_blocks

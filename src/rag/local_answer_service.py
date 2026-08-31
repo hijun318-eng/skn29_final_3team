@@ -1,3 +1,5 @@
+"""검색 evidence 밖의 사실을 쓰지 않는 결정론적 OpenAI-compatible 답변 service다."""
+
 from __future__ import annotations
 
 import json
@@ -9,19 +11,20 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from .answer_safety import AnswerSafetySettings, EvidenceSafetyGate
-from .manual_article_formatter import ManualArticleFormatter, ManualSection
+from .answer_prompt import parse_answer_input
+from .manual_article_formatter import ManualArticleFormatter, ManualClaim, ManualSection
+from .report_evidence_formatter import ReportEvidenceFormatter, ReportSection
 
 
 class ChatCompletionRequest(BaseModel):
+    """로컬 answer endpoint가 받을 role/content message 배열을 검증한다."""
+
     messages: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class EvidenceBoundAnswerComposer:
     """검색 근거의 관련성·조항·충돌을 검증해 결정론적 답변만 구성한다."""
 
-    _EVIDENCE_PATTERN = re.compile(r"ID:\s*(?P<evidence_id>[^\n]+)\n(?P<text>.*?)(?=\n\nID:|\n\nEND_EVIDENCE|\Z)", re.DOTALL)
-    _QUERY_PATTERN = re.compile(r"질문:\s*(?P<query>.*?)(?:\n요청 의도:\s*[A-Z_]+)?\n\n제공된 근거", re.DOTALL)
-    _INTENT_PATTERN = re.compile(r"요청 의도:\s*(?P<intent>[A-Z_]+)")
     _ANSWER_TYPE_BY_INTENT = {
         "PROCESS": "PROCEDURE",
         "IMMEDIATE_ACTION": "IMMEDIATE",
@@ -44,6 +47,7 @@ class EvidenceBoundAnswerComposer:
         self._settings = settings or AnswerSafetySettings()
         self._safety = EvidenceSafetyGate(self._settings)
         self._formatter = ManualArticleFormatter()
+        self._report_formatter = ReportEvidenceFormatter()
 
     @staticmethod
     def _snippet_limit() -> int:
@@ -55,11 +59,18 @@ class EvidenceBoundAnswerComposer:
     def compose(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """최신 사용자 prompt의 근거만 사용해 공통 RAG 답변 계약을 반환한다."""
         user_content = self._latest_user_content(messages)
-        query = self._extract_query(user_content)
-        intent_match = self._INTENT_PATTERN.search(user_content)
-        intent = intent_match.group("intent") if intent_match else "SUMMARY"
+        answer_input = parse_answer_input(user_content)
+        if answer_input is None:
+            return self._no_evidence("SUMMARY")
+        query = answer_input["query"].strip()
+        intent = answer_input["intent"]
         requested_answer_type = self._ANSWER_TYPE_BY_INTENT.get(intent, "SUMMARY")
-        evidence = self._bounded_evidence(self._extract_evidence(user_content))
+        evidence = self._bounded_evidence(answer_input["evidence"])
+        if evidence is None:
+            return self._no_evidence(
+                requested_answer_type,
+                limitation="입력 근거가 로컬 답변 한도를 넘어 일부를 생략하지 않고 거부했습니다.",
+            )
         if not evidence:
             return self._no_evidence(requested_answer_type)
         target_numbers = self._formatter.target_numbers(query, requested_answer_type)
@@ -92,6 +103,12 @@ class EvidenceBoundAnswerComposer:
             selected = comparison_items[:2]
         else:
             document_evidence = groups[0]
+            if self._document_type(document_evidence) == "INTERNAL_REPORT":
+                return self._report_answer(
+                    document_evidence,
+                    query,
+                    requested_answer_type,
+                )
             structured_sections = self._formatter.build_sections(
                 document_evidence,
                 query,
@@ -154,29 +171,143 @@ class EvidenceBoundAnswerComposer:
             area="비교",
         )
         answer_type = "COMPARE"
+        sections = self._comparison_sections(selected, query)
         return self._result(
             status="ANSWER",
             answer=answer,
             answer_type=answer_type,
-            summary=self._answer_summary(selected, query, True),
+            summary=[
+                claim["text"]
+                for section in sections
+                for claim in section["claims"]
+            ],
+            sections=sections,
             citations=citations,
             limitations=["로컬 근거 기반 응답 모드: 제공된 검색 근거만 사용"],
         )
 
+    @staticmethod
+    def _document_type(evidence: list[dict[str, Any]]) -> str:
+        values = {
+            str(item.get("document_type") or "").strip().upper()
+            for item in evidence
+        }
+        return values.pop() if len(values) == 1 else ""
+
+    def _report_answer(
+        self,
+        evidence: list[dict[str, Any]],
+        query: str,
+        answer_type: str,
+    ) -> dict[str, Any]:
+        """내부 보고서 heading·표·문장을 그대로 인용한 typed 답변을 구성한다."""
+
+        sections = self._report_formatter.build_sections(
+            evidence,
+            EvidenceSafetyGate.query_terms(query),
+        )
+        limited_sections, truncated = self._limit_report_sections(sections)
+        if not limited_sections:
+            return self._no_evidence(answer_type)
+        used_evidence_ids = list(
+            dict.fromkeys(
+                evidence_id
+                for section in limited_sections
+                for claim in section.claims
+                for evidence_id in claim.evidence_ids
+            )
+        )
+        citations = self._citations(evidence, used_evidence_ids)
+        if not citations:
+            return self._no_evidence(answer_type)
+        primary = self._best_item(evidence, query)
+        rendered = "\n\n".join(
+            self._report_formatter.render_section(section)
+            for section in limited_sections
+        )
+        answer = (
+            f"문서명: {primary['title'] or '확인 불가'}\n"
+            f"문서ID: {primary['manual_id'] or '확인 불가'}\n"
+            f"담당조직: {primary.get('owner_team') or '확인 불가'}\n"
+            "영역: "
+            + " / ".join(section.title for section in limited_sections)
+            + f"\n본문내용:\n[보고서 근거 요약]\n\n{rendered}\n"
+            + "근거: "
+            + " / ".join(item["citation"] for item in citations)
+        )
+        limitations = ["로컬 근거 기반 응답 모드: 제공된 보고서 근거만 사용"]
+        if truncated:
+            limitations.append("답변 길이 제한에 따라 영역별 근거 수를 제한했습니다.")
+        return self._result(
+            status="ANSWER",
+            answer=answer,
+            answer_type=answer_type,
+            summary=[
+                claim.text
+                for section in limited_sections
+                for claim in section.claims
+            ],
+            sections=[
+                self._report_section_payload(section, primary)
+                for section in limited_sections
+            ],
+            citations=citations,
+            limitations=limitations,
+        )
+
+    def _limit_report_sections(
+        self,
+        sections: tuple[ReportSection, ...],
+    ) -> tuple[tuple[ReportSection, ...], bool]:
+        limited: list[ReportSection] = []
+        truncated = False
+        remaining_chars = self._settings.maximum_answer_chars
+        for section in sections:
+            claims: list[ManualClaim] = []
+            for claim in section.claims[: self._settings.maximum_points_per_article]:
+                if len(claim.text) > remaining_chars:
+                    truncated = True
+                    break
+                claims.append(claim)
+                remaining_chars -= len(claim.text)
+            truncated = truncated or len(claims) < len(section.claims)
+            if claims:
+                limited.append(ReportSection(section.title, tuple(claims)))
+            if remaining_chars <= 0:
+                break
+        truncated = truncated or len(limited) < len(sections)
+        return tuple(limited), truncated
+
+    @staticmethod
+    def _report_section_payload(
+        section: ReportSection,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "title": section.title,
+            "article_number": None,
+            "document_id": str(document.get("manual_id") or ""),
+            "document_title": str(document.get("title") or ""),
+            "document_version": str(document.get("version") or ""),
+            "claims": [
+                {"text": claim.text, "evidence_ids": list(claim.evidence_ids)}
+                for claim in section.claims
+            ],
+        }
+
     def _bounded_evidence(
         self,
         evidence: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        bounded: list[dict[str, Any]] = []
-        consumed = 0
-        for item in evidence[: self._settings.maximum_chunks]:
-            body = str(item.get("body") or "")
-            remaining = self._settings.maximum_evidence_chars - consumed
-            if remaining <= 0:
-                break
-            bounded.append({**item, "body": body[:remaining]})
-            consumed += min(len(body), remaining)
-        return bounded
+    ) -> list[dict[str, Any]] | None:
+        """로컬 한도를 넘는 입력은 본문을 자르지 않고 전체 요청을 fail-closed 처리한다."""
+
+        if (
+            len(evidence) > self._settings.maximum_chunks
+            or sum(len(str(item.get("body") or "")) for item in evidence)
+            > self._settings.maximum_evidence_chars
+        ):
+            return None
+        return [dict(item) for item in evidence]
 
     def _limit_sections(
         self,
@@ -222,12 +353,19 @@ class EvidenceBoundAnswerComposer:
             if evidence_id in by_id
         ]
 
-    def _no_evidence(self, answer_type: str) -> dict[str, Any]:
+    def _no_evidence(
+        self,
+        answer_type: str,
+        limitation: str | None = None,
+    ) -> dict[str, Any]:
         return self._result(
             status="NO_EVIDENCE",
             answer="검색된 근거가 없습니다.",
             answer_type=answer_type,
-            limitations=["관련성·검색점수·요청 조항 Gate를 통과한 근거가 없습니다."],
+            limitations=[
+                limitation
+                or "관련성·검색점수·요청 조항 Gate를 통과한 근거가 없습니다."
+            ],
         )
 
     @staticmethod
@@ -275,6 +413,55 @@ class EvidenceBoundAnswerComposer:
             "본문내용:\n[문서 비교]\n\n" + "\n\n".join(sections) + "\n"
             "근거: " + " / ".join(item["citation"] for item in citations)
         )
+
+    def _comparison_sections(
+        self,
+        items: list[dict[str, str]],
+        query: str,
+    ) -> list[dict[str, Any]]:
+        """비교 문서별 발췌를 해당 evidence ID와 연결한 공통 section 계약으로 만든다."""
+
+        return [
+            {
+                "title": item.get("section_title") or "비교 근거",
+                "article_number": None,
+                "document_id": item.get("manual_id") or "",
+                "document_title": item.get("title") or "",
+                "document_version": item.get("version") or "",
+                "claims": [
+                    {
+                        "text": line,
+                        "evidence_ids": [item["evidence_id"]],
+                    }
+                    for line in self._extractive_claims(item, query, 3)
+                ],
+            }
+            for item in items
+        ]
+
+    def _extractive_claims(
+        self,
+        item: dict[str, str],
+        query: str,
+        limit: int,
+    ) -> list[str]:
+        """manual·report parser의 전체 segment만 관련성 순으로 골라 비교 claim을 만든다."""
+
+        candidates = list(
+            self._formatter.claim_segments(
+                item["body"],
+                item.get("section_title") or "",
+            )
+        ) or list(self._report_formatter.claim_segments(item["body"]))
+        query_terms = EvidenceSafetyGate.query_terms(query)
+        ranked = sorted(
+            enumerate(dict.fromkeys(candidates)),
+            key=lambda pair: (
+                -sum(term in pair[1].lower() for term in query_terms),
+                pair[0],
+            ),
+        )
+        return [line for _, line in ranked[:limit]]
 
     def _answer_summary(
         self,
@@ -339,13 +526,8 @@ class EvidenceBoundAnswerComposer:
         return selected or ["확인 가능한 본문이 없습니다."]
 
     def _extract_query(self, content: str) -> str:
-        match = self._QUERY_PATTERN.search(content)
-        query = match.group("query").strip() if match else ""
-        if "후속 질문:" in query:
-            return query.rsplit("후속 질문:", 1)[1].strip()
-        if "현재 질문:" in query:
-            return query.rsplit("현재 질문:", 1)[1].strip()
-        return query
+        payload = parse_answer_input(content)
+        return payload["query"].strip() if payload is not None else ""
 
     @staticmethod
     def _latest_user_content(messages: list[dict[str, Any]]) -> str:
@@ -355,45 +537,15 @@ class EvidenceBoundAnswerComposer:
         return ""
 
     def _extract_evidence(self, content: str) -> list[dict[str, str]]:
-        evidence: list[dict[str, str]] = []
-        for index, match in enumerate(self._EVIDENCE_PATTERN.finditer(content)):
-            evidence_id = match.group("evidence_id").strip()
-            text = match.group("text").strip()
-            if not evidence_id or not text:
-                continue
-            metadata, separator, body = text.partition("본문내용:\n")
-            fields = {
-                key: value.strip()
-                for key, value in (
-                    line.split(":", 1)
-                    for line in metadata.splitlines()
-                    if ":" in line
-                )
-            }
-            evidence.append(
-                {
-                    "evidence_id": evidence_id,
-                    "document_id": fields.get("문서ID", ""),
-                    "title": fields.get("문서명", ""),
-                    "manual_id": fields.get("지침번호", ""),
-                    "version": fields.get("버전", ""),
-                    "section_title": fields.get("영역", ""),
-                    "citation": fields.get("근거", ""),
-                    "body": body.strip() if separator else text,
-                    "page_start": fields.get("페이지", ""),
-                    "chunk_index": fields.get("청크순서", index),
-                    "score": fields.get("검색점수", ""),
-                    "document_status": fields.get("문서상태", ""),
-                    "approval_status": fields.get("승인상태", ""),
-                    "validity_status": fields.get("유효성상태", ""),
-                    "effective_from": fields.get("유효시작일", ""),
-                    "effective_to": fields.get("유효종료일", ""),
-                }
-            )
-        return evidence
+        payload = parse_answer_input(content)
+        if payload is None:
+            return []
+        return [dict(item) for item in payload["evidence"]]
 
 
 def create_app() -> FastAPI:
+    """health와 evidence-bound chat completion route를 포함한 FastAPI app을 만든다."""
+
     app = FastAPI(title="Answervice Local Evidence Answer", version="1.0")
     composer = EvidenceBoundAnswerComposer(AnswerSafetySettings.load())
 

@@ -1,79 +1,45 @@
+"""LLM prompt의 질문·evidence를 복원하고 구조 답변을 제한 길이로 render한다."""
+
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from .answer_contracts import AnswerSection, Citation
+from .answer_prompt import parse_answer_input
 from .answer_safety import AnswerSafetySettings
 
 
 class AnswerPromptParser:
-    _EVIDENCE_PATTERN = re.compile(
-        r"ID:\s*(?P<evidence_id>[^\n]+)\n(?P<text>.*?)(?=\n\nID:|\n\nEND_EVIDENCE|\Z)",
-        re.DOTALL,
-    )
-    _QUERY_PATTERN = re.compile(
-        r"질문:\s*(?P<query>.*?)(?:\n요청 의도:|\n\n제공된 근거)",
-        re.DOTALL,
-    )
+    """고정 prompt label에서 질문과 허용 evidence metadata를 안전하게 추출한다."""
 
     def __init__(self, settings: AnswerSafetySettings) -> None:
         self._settings = settings
 
     def extract_query(self, content: str) -> str:
-        match = self._QUERY_PATTERN.search(content)
-        query = match.group("query").strip() if match else ""
-        if "후속 질문:" in query:
-            return query.rsplit("후속 질문:", 1)[1].strip()
-        if "현재 질문:" in query:
-            return query.rsplit("현재 질문:", 1)[1].strip()
-        return query
+        """사용자 prompt의 질문 field를 반환하고 계약 불일치 시 빈 문자열을 반환한다."""
+
+        payload = parse_answer_input(content)
+        return payload["query"].strip() if payload is not None else ""
 
     def extract_evidence(self, content: str) -> list[dict[str, Any]]:
-        evidence: list[dict[str, Any]] = []
-        used_chars = 0
-        for match in self._EVIDENCE_PATTERN.finditer(content):
-            if len(evidence) >= self._settings.maximum_chunks:
-                break
-            evidence_id = match.group("evidence_id").strip()
-            text = match.group("text").strip()
-            metadata, separator, body = text.partition("본문내용:\n")
-            body = body.strip() if separator else text
-            if not evidence_id or not body or used_chars + len(body) > self._settings.maximum_evidence_chars:
-                continue
-            fields = {
-                key: value.strip()
-                for key, value in (
-                    line.split(":", 1) for line in metadata.splitlines() if ":" in line
-                )
-            }
-            evidence.append({
-                "evidence_id": evidence_id,
-                "document_id": fields.get("문서ID", fields.get("지침번호", "")),
-                "title": fields.get("문서명", ""),
-                "manual_id": fields.get("지침번호", ""),
-                "version": fields.get("버전", ""),
-                "section_title": fields.get("영역", ""),
-                "article_number": fields.get("조항번호", ""),
-                "page_start": fields.get("페이지", ""),
-                "chunk_id": fields.get("청크ID", ""),
-                "chunk_index": fields.get("청크순서", ""),
-                "citation": fields.get("근거", ""),
-                "retrieval_score": fields.get("검색점수", ""),
-                "vector_score": fields.get("벡터점수", ""),
-                "lexical_score": fields.get("어휘점수", ""),
-                "document_status": fields.get("문서상태", ""),
-                "approval_status": fields.get("승인상태", ""),
-                "validity_status": fields.get("유효성상태", ""),
-                "effective_from": fields.get("유효시작일", ""),
-                "effective_to": fields.get("유효종료일", ""),
-                "body": body,
-            })
-            used_chars += len(body)
-        return evidence
+        """개수·문자 한도 안에서 evidence block과 citation metadata를 복원한다."""
+
+        payload = parse_answer_input(content)
+        if payload is None:
+            return []
+        evidence = payload["evidence"]
+        if (
+            len(evidence) > self._settings.maximum_chunks
+            or sum(len(item["body"]) for item in evidence)
+            > self._settings.maximum_evidence_chars
+        ):
+            return []
+        return [dict(item) for item in evidence]
 
     @staticmethod
     def latest_user_content(messages: list[dict[str, Any]]) -> str:
+        """chat message를 역순 탐색해 최신 문자열 user content를 반환한다."""
+
         for message in reversed(messages):
             if message.get("role") == "user" and isinstance(message.get("content"), str):
                 return message["content"]
@@ -81,10 +47,14 @@ class AnswerPromptParser:
 
 
 class StructuredAnswerRenderer:
+    """근거 연결 section을 출력 한도에 맞추고 citation과 읽기 형식으로 변환한다."""
+
     def __init__(self, settings: AnswerSafetySettings) -> None:
         self._settings = settings
 
     def limit_sections(self, sections: list[AnswerSection]) -> tuple[list[AnswerSection], bool]:
+        """section·claim 수와 최종 문자 한도를 적용해 결과와 truncation 여부를 반환한다."""
+
         limited = []
         truncated = False
         for section in sections:
@@ -103,6 +73,8 @@ class StructuredAnswerRenderer:
 
     @staticmethod
     def citations(sections: list[AnswerSection], evidence: list[dict[str, Any]]) -> list[Citation]:
+        """실제 사용된 evidence ID만 원래 citation 순서로 중복 없이 반환한다."""
+
         by_id = {str(item.get("evidence_id")): item for item in evidence}
         used_ids = list(dict.fromkeys(
             evidence_id
@@ -121,6 +93,8 @@ class StructuredAnswerRenderer:
 
     @staticmethod
     def render(sections: list[AnswerSection], citations: list[Citation]) -> str:
+        """문서·조항별 claim과 근거를 일관된 한국어 사용자 답변으로 직렬화한다."""
+
         documents = list(dict.fromkeys(
             f"{section.document_title or '확인 불가'}"
             + (f" v{section.document_version}" if section.document_version else "")

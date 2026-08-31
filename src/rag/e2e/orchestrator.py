@@ -1,3 +1,5 @@
+"""Analysis→RAG 검색·답변→ML 예측의 실런타임 E2E 순서와 증거 보고서 저장을 조정한다."""
+
 from __future__ import annotations
 
 import json
@@ -17,7 +19,7 @@ from .contracts import DynamicE2EConfig, DynamicE2EReport, E2EStage, StageEviden
 
 
 class DynamicE2EOrchestrator:
-    """Runs the full path only through configured, real runtime endpoints."""
+    """설정된 실런타임만 호출해 단계 계약을 검증하고 성공·차단·실패 보고서를 만든다."""
 
     def __init__(self, config: DynamicE2EConfig) -> None:
         self._config = config
@@ -29,6 +31,8 @@ class DynamicE2EOrchestrator:
         self._ml = MlRuntimeClient(config, http)
 
     def run(self) -> DynamicE2EReport:
+        """세 런타임을 순차 검증하며 근거·trace·모델 승인 위반을 실패 단계로 기록한다."""
+
         report = DynamicE2EReport(
             request_id=self._config.request_id,
             trace_id=self._config.trace_id,
@@ -125,6 +129,8 @@ class DynamicE2EOrchestrator:
             return report
 
     def persist(self, report: DynamicE2EReport) -> Path:
+        """보고서를 임시 파일에 쓴 뒤 원자적으로 교체하고 최종 JSON 경로를 반환한다."""
+
         self._config.output_dir.mkdir(parents=True, exist_ok=True)
         destination = self._config.output_dir / f"dynamic-e2e-{report.request_id}.json"
         temporary = destination.with_suffix(".tmp")

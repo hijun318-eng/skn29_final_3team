@@ -1,3 +1,5 @@
+"""RAG 검색 결과의 recall·인용·점수 품질을 질문 suite로 평가한다."""
+
 from __future__ import annotations
 
 import math
@@ -6,9 +8,12 @@ from typing import Any
 from .access_policy import SearchAccessPolicy
 from .qwen_embedding import QwenEmbeddingProvider
 from .retrieval_service import VectorRetrievalService
+from .vector_models import has_complete_locator
 
 
 class QualityEvaluator:
+    """접근 정책을 적용한 검색 결과를 기대 문서와 비교해 품질 지표를 계산한다."""
+
     def __init__(
         self,
         policy: SearchAccessPolicy,
@@ -26,6 +31,8 @@ class QualityEvaluator:
         schema_version: str,
         seed: int | None = None,
     ) -> dict[str, object]:
+        """질문별 retrieval을 실행하고 hit·citation completeness를 집계한다."""
+
         decision = self._policy.decide("MANAGER", 10)
         vectors = self._embedding.embed_queries([str(item["query"]) for item in queries])
         details: list[dict[str, object]] = []
@@ -42,8 +49,7 @@ class QualityEvaluator:
                 citation_complete += int(
                     result.manual_id in result.citation
                     and f"v{result.version}" in result.citation
-                    and result.page_start > 0
-                    and result.page_end >= result.page_start
+                    and has_complete_locator(result)
                 )
             expected = item["expected_manual_id"]
             if expected is None:

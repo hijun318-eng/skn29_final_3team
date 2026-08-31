@@ -9,6 +9,7 @@ from app.contracts import RuntimeFeature
 from app.database import get_sessionmaker
 from app.runtime_features import runtime_feature_enabled
 from app.services.internal_manual_query import InternalManualQueryService
+from app.services.mcp_agent_tools import MCPInternalManualExecutor
 from app.services.rag_gateway import InternalManualAgent
 
 
@@ -22,7 +23,7 @@ def internal_manual_query_service() -> InternalManualQueryService:
         else None
     )
     executor_factory = (
-        (lambda: InternalManualAgent(database_url))
+        (lambda: MCPInternalManualExecutor(database_url))
         if database_url
         else None
     )

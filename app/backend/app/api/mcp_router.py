@@ -1,4 +1,4 @@
-"""MCP JSON-RPC tool 목록·호출을 origin/protocol/role 검증과 owner-scoped analysis 조회에 연결한다."""
+"""MCP JSON-RPC 목록·호출을 versioned Analysis·RAG·ML Tool 경계에 연결한다."""
 
 from __future__ import annotations
 
@@ -26,10 +26,17 @@ from app.adapters.mcp_tool_rate_limit_repository import (
 )
 from app.auth import AuthenticationError, Principal
 from app.context import TokenAuthenticator, bearer_auth, token_authenticator
+from app.contracts import RuntimeFeature
 from app.database import DatabaseConfigurationError, get_sessionmaker, session_scope
 from app.ports.mcp_tool import (
+    MCPToolDescriptor,
     MCPToolDispatchError,
     MCPToolInfrastructureError,
+)
+from app.runtime_features import runtime_feature_enabled
+from app.services.mcp_agent_tools import (
+    ml_predict_descriptor,
+    rag_answer_descriptor,
 )
 from app.services.mcp_tool_registry import (
     ANALYSIS_GET_RUN_ANNOTATIONS,
@@ -567,9 +574,20 @@ def _tool_registry() -> MCPToolRegistry:
     """현재 handler가 구현된 descriptor만 runtime registry에 조립한다."""
 
     return MCPToolRegistry(
-        (analysis_get_run_descriptor(_database_url),),
+        _implemented_tool_descriptors(),
         _registry_rows,
     )
+
+
+def _implemented_tool_descriptors() -> tuple[MCPToolDescriptor, ...]:
+    """코드 handler와 feature flag가 함께 준비된 MCP Tool만 조립한다."""
+
+    descriptors = [analysis_get_run_descriptor(_database_url)]
+    if runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE):
+        descriptors.append(rag_answer_descriptor(_database_url))
+    if runtime_feature_enabled(RuntimeFeature.ML_PREDICTION):
+        descriptors.append(ml_predict_descriptor(_database_url))
+    return tuple(descriptors)
 
 
 async def _tool_call_access(
@@ -578,8 +596,12 @@ async def _tool_call_access(
 ) -> tuple[MCPToolAccess, MCPRejectedCallReason | None, str | None]:
     """한 registry snapshot으로 호출 허용 여부와 내부 거부 원인을 판정한다."""
 
-    descriptor = analysis_get_run_descriptor(_database_url)
-    if tool_name != descriptor.name:
+    descriptors = _implemented_tool_descriptors()
+    descriptor = next(
+        (item for item in descriptors if item.name == tool_name),
+        None,
+    )
+    if descriptor is None:
         return MCPToolAccess(False, False, None), "UNKNOWN_TOOL", None
 
     rows = tuple(await _registry_rows())
@@ -587,7 +609,7 @@ async def _tool_call_access(
     async def cached_rows() -> Sequence[Mapping[str, Any]]:
         return rows
 
-    access = await MCPToolRegistry((descriptor,), cached_rows).resolve(
+    access = await MCPToolRegistry(descriptors, cached_rows).resolve(
         tool_name,
         principal.role,
     )
@@ -682,6 +704,7 @@ async def _record_run(
     error_code: str | None = None,
     *,
     tool_id: UUID = TOOL_ID,
+    tool_semantic_version: str = TOOL_SEMANTIC_VERSION,
 ) -> None:
     try:
         async with session_scope(_database_url()) as session:
@@ -689,14 +712,18 @@ async def _record_run(
                 text(
                     """
                     INSERT INTO tooling.tool_runs
-                        (tool_run_id, tool_id, caller_user_id, caller_role, trace_id,
-                         input_hash, status, latency_ms, output_ref_json, error_code)
-                    VALUES (:run_id, :tool_id, :user_id, :role, :trace_id,
+                        (tool_run_id, tool_id, tool_semantic_version,
+                         caller_user_id, caller_role, trace_id, input_hash,
+                         status, latency_ms, output_ref_json, error_code)
+                    VALUES (:run_id, :tool_id, :tool_semantic_version,
+                            :user_id, :role, :trace_id,
                             :input_hash, :status, :latency_ms, CAST(:output_ref AS jsonb), :error_code)
                     """
                 ),
                 {
-                    "run_id": uuid4(), "tool_id": tool_id, "user_id": principal.subject,
+                    "run_id": uuid4(), "tool_id": tool_id,
+                    "tool_semantic_version": tool_semantic_version,
+                    "user_id": principal.subject,
                     "role": principal.role.value, "trace_id": trace_id,
                     "input_hash": hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest(),
                     "status": status, "latency_ms": max(0, round((time.perf_counter() - started) * 1000)),
@@ -804,6 +831,7 @@ async def _audit_or_error(
     error_code: str | None = None,
     *,
     tool_id: UUID = TOOL_ID,
+    tool_semantic_version: str = TOOL_SEMANTIC_VERSION,
 ) -> JSONResponse | None:
     """감사 저장에 실패하면 원래 Tool 결과 대신 JSON-RPC server error를 반환한다."""
 
@@ -817,6 +845,7 @@ async def _audit_or_error(
             output_ref,
             error_code,
             tool_id=tool_id,
+            tool_semantic_version=tool_semantic_version,
         )
     except MCPInfrastructureError as error:
         return _rpc_infrastructure_error(request_id, error)
@@ -830,6 +859,7 @@ async def _record_cancelled_run(
     started: float,
     *,
     tool_id: UUID,
+    tool_semantic_version: str,
 ) -> None:
     """요청 task 취소와 분리해 terminal cancellation receipt 저장을 끝낸다."""
 
@@ -843,6 +873,7 @@ async def _record_cancelled_run(
             {},
             "REQUEST_CANCELLED",
             tool_id=tool_id,
+            tool_semantic_version=tool_semantic_version,
         )
     )
     try:
@@ -870,6 +901,7 @@ async def _audited_tool_error(
     status: str = "FAILED",
     protocol_error: bool = False,
     tool_id: UUID = TOOL_ID,
+    tool_semantic_version: str = TOOL_SEMANTIC_VERSION,
 ) -> JSONResponse:
     """실패 감사를 먼저 저장하고 공개 MCP 오류 형식으로 안전하게 변환한다."""
 
@@ -883,6 +915,7 @@ async def _audited_tool_error(
         {},
         error_code,
         tool_id=tool_id,
+        tool_semantic_version=tool_semantic_version,
     )
     if audit_error is not None:
         return audit_error
@@ -938,8 +971,9 @@ async def mcp_post(
 ) -> Response:
     """MCP JSON-RPC 요청의 origin·버전·header·도구 권한을 검증해 한 건을 실행한다.
 
-    현재 주체가 소유한 분석 run만 조회하며 성공·거부·실패를 모두 tool audit에 남긴다.
-    프로토콜 위반은 JSON-RPC 오류로, 저장소 장애는 도구 실행 오류로 닫힌다.
+    현재 주체에게 승인된 exact registry Tool만 실행하며 성공·거부·실패를 모두
+    tool audit에 남긴다. 프로토콜 위반은 JSON-RPC 오류로, 저장소·runtime 장애는
+    도구 실행 오류로 닫힌다.
     """
     if not _origin_allowed(request.headers.get("Origin")):
         return _rpc_error(None, -32600, "Origin is not allowed", 403)
@@ -1131,6 +1165,7 @@ async def mcp_post(
             status="DENIED",
             protocol_error=True,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
     try:
         quota = await _consume_tool_quota(principal, descriptor.tool_id)
@@ -1145,6 +1180,7 @@ async def mcp_post(
             {},
             error.code,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
         if audit_error is not None:
             return audit_error
@@ -1165,6 +1201,7 @@ async def mcp_post(
                 {},
                 "RATE_LIMITED",
                 tool_id=descriptor.tool_id,
+                tool_semantic_version=descriptor.semantic_version,
             )
             if audit_error is not None:
                 return audit_error
@@ -1184,6 +1221,7 @@ async def mcp_post(
             arguments,
             started,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
         raise
     except MCPInfrastructureError as error:
@@ -1197,6 +1235,7 @@ async def mcp_post(
             {},
             error.code,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
         if audit_error is not None:
             return audit_error
@@ -1212,6 +1251,7 @@ async def mcp_post(
             str(error),
             protocol_error=error.protocol_error,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
     audit_error = await _audit_or_error(
         request_id,
@@ -1222,6 +1262,7 @@ async def mcp_post(
         started,
         dict(result.audit_output_ref),
         tool_id=descriptor.tool_id,
+        tool_semantic_version=descriptor.semantic_version,
     )
     if audit_error is not None:
         return audit_error

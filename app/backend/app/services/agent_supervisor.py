@@ -517,6 +517,46 @@ class DeterministicAgentSupervisor:
 
         return frozenset(self._ports)
 
+    async def readiness_for(
+        self,
+        request: AgentRequest,
+        agent: AgentKind,
+    ) -> AgentPortReadiness:
+        """복합 실행 전에 선택 Agent의 실제 Port readiness를 실행 없이 확인한다."""
+
+        if request.target_agent is not agent:
+            raise AgentDispatchError(
+                "AGENT_INVOCATION_MISMATCH",
+                "Supervisor task와 readiness 대상 Agent가 일치하지 않습니다.",
+                evidence_refs=(
+                    (request.supervisor_plan_ref,)
+                    if request.supervisor_plan_ref is not None
+                    else ()
+                ),
+            )
+        port = self._ports.get(agent)
+        if port is None:
+            raise AgentDispatchError(
+                "AGENT_NOT_CONFIGURED",
+                "요청한 기능의 Agent가 구성되지 않았습니다.",
+            )
+        readiness = await port.readiness(request)
+        if (
+            not isinstance(readiness, AgentPortReadiness)
+            or readiness.agent is not agent
+        ):
+            raise AgentDispatchError(
+                "AGENT_PORT_READINESS_INVALID",
+                "Agent 실행 준비 상태 계약이 올바르지 않습니다.",
+            )
+        if readiness.status != "ready":
+            raise AgentDispatchError(
+                "AGENT_PORT_NOT_READY",
+                "요청한 기능의 실행 서비스가 준비되지 않았습니다.",
+                evidence_refs=readiness.release_refs,
+            )
+        return readiness
+
     async def resolve(self, request: AgentRequest) -> SupervisorDecision:
         """주입된 resolver의 서버 소유 결정을 검증해 반환한다."""
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import threading
 import time
 from dataclasses import asdict
@@ -661,7 +662,6 @@ class VectorRagApplication:
     ) -> dict:
         """소비 전 retrieval receipt와 evidence identity를 검증해 근거 제한 답변을 생성한다."""
 
-        import os
         from .answer_contracts import AnswerRequest
         from .answer_service import AnswerService
 
@@ -698,8 +698,10 @@ class VectorRagApplication:
         # Also, check answer endpoint and api key from ENV
         api_key = os.getenv("RAG_ANSWER_API_KEY", "").strip()
         endpoint = os.getenv("RAG_ANSWER_ENDPOINT", "").strip()
-        if not api_key or not endpoint:
+        answer_model = os.getenv("RAG_ANSWER_MODEL", "").strip()
+        if not api_key or not endpoint or not answer_model:
             raise RuntimeError("RAG answer transport is not configured")
+        answer_config = {**answer_config, "model": answer_model}
 
         answer_service = AnswerService(answer_config, api_key, endpoint)
 
@@ -723,7 +725,7 @@ class VectorRagApplication:
             query_hash=hashlib.sha256(normalized_query.encode("utf-8")).hexdigest(),
             status=response.status,
             latency_ms=latency_ms,
-            model_id=str(answer_config.get("model") or "gpt-4o-mini"),
+            model_id=answer_model,
             answer_hash=hashlib.sha256(response.answer.encode("utf-8")).hexdigest(),
             answer_type=response.answer_type,
             citation_evidence_ids=[item.evidence_id for item in response.citations],

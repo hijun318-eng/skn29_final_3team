@@ -65,6 +65,7 @@ class AgentRequest(ContractModel):
     context: RequestContext
     target_agent: AgentKind | None = None
     invocation: MLPredictionInvocation | None = None
+    task_objective: str | None = Field(default=None, min_length=1, max_length=240)
     supervisor_plan_ref: str | None = Field(
         default=None,
         pattern=SUPERVISOR_PLAN_REFERENCE_PATTERN,
@@ -85,6 +86,10 @@ class AgentRequest(ContractModel):
                 )
             if self.target_agent is None:
                 raise ValueError("Supervisor 계획에는 target Agent가 필요합니다.")
+            if self.task_objective is None:
+                raise ValueError("Supervisor 계획에는 실행 objective가 필요합니다.")
+        elif self.task_objective is not None:
+            raise ValueError("모델 계획이 아닌 요청은 task objective를 가질 수 없습니다.")
         if (self.target_agent is AgentKind.ML_PREDICTION) != has_ml_invocation:
             raise ValueError(
                 "ML target Agent와 prediction invocation은 함께 지정해야 합니다."

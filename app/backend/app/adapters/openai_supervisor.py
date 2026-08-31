@@ -23,13 +23,13 @@ from app.ports.agent import AgentKind, AgentRequest, canonical_agent_request_fin
 from app.services.agent_supervisor import AgentDispatchError
 from app.services.supervisor_planner import (
     SupervisorCapabilityCatalog,
+    SupervisorExecutionPlan,
     SupervisorPlanResult,
-    SupervisorRoutePlan,
 )
 
 
 SUPERVISOR_MODEL = "gpt-5.6-terra"
-SUPERVISOR_RESPONSE_SCHEMA_NAME = "answervice_supervisor_route_plan"
+SUPERVISOR_RESPONSE_SCHEMA_NAME = "answervice_supervisor_execution_plan_v2"
 _REASONING_EFFORTS = frozenset({"none", "low", "medium", "high", "xhigh", "max"})
 _AGENT_DESCRIPTIONS = {
     AgentKind.ANALYSIS_WORKFLOW: (
@@ -44,13 +44,14 @@ _AGENT_DESCRIPTIONS = {
 }
 _INSTRUCTIONS = """당신은 Answervice의 실행 계획 Supervisor입니다.
 답변이나 데이터 분석을 직접 수행하지 말고 제공된 JSON Schema의 계획 하나만 반환하세요.
-현재 단계에서는 한 command에 정확히 한 Agent만 선택할 수 있습니다.
+한 command를 실제로 필요한 고유 Agent task 1~3개로만 분해하세요. 같은 Agent를 반복하지 마세요.
 ANALYSIS_WORKFLOW는 승인된 정형 지표 분석과 이전 분석의 표·차트 변경에 사용합니다.
 INTERNAL_GUIDELINE은 내부 문서 근거가 필요한 질문에 사용합니다.
 ML_PREDICTION은 제공된 ML scope 안의 미래 객실 수요 예측에만 사용하고 구조화 입력을 채웁니다.
+각 objective는 사용자 문장에서 해당 Agent가 처리할 범위만 간결하게 다시 쓰며 새 사실을 추가하지 마세요.
 직전 route는 생략된 후속 요청의 문맥을 판정할 때만 사용하세요.
-요청이 둘 이상의 Agent를 동시에 필요로 하거나, 필수 입력이 없거나, 필요한 Agent가 unavailable이면
-다른 Agent로 대체하지 말고 UNAVAILABLE을 선택하세요. 사용자의 문장에 없는 사실을 만들지 마세요."""
+필수 입력이 없거나 필요한 Agent가 unavailable이면 다른 Agent로 대체하지 말고
+status=UNAVAILABLE, tasks=[]와 사유를 반환하세요. 실행 가능하면 status=EXECUTABLE로 반환하세요."""
 
 
 def _response_text(response: dict[str, Any]) -> str:
@@ -180,7 +181,7 @@ class OpenAISupervisorPlanner:
                     "name": SUPERVISOR_RESPONSE_SCHEMA_NAME,
                     "strict": True,
                     "schema": to_openai_strict_schema(
-                        SupervisorRoutePlan.model_json_schema()
+                        SupervisorExecutionPlan.model_json_schema()
                     ),
                 }
             },
@@ -211,7 +212,7 @@ class OpenAISupervisorPlanner:
                 or not response_model.strip()
             ):
                 raise ValueError("supervisor response identity is invalid")
-            plan = SupervisorRoutePlan.model_validate_json(
+            plan = SupervisorExecutionPlan.model_validate_json(
                 _response_text(response)
             )
         except asyncio.CancelledError:

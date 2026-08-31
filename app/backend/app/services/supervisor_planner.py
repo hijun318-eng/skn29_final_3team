@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from enum import Enum
 from typing import Literal, Protocol
 
 from pydantic import ConfigDict, Field, model_validator
@@ -16,16 +15,7 @@ from app.services.agent_supervisor import AgentDispatchError
 from app.services.ml_prediction_service import MLRuntimeCapability
 
 
-SUPERVISOR_ROUTE_PLAN_VERSION = "SupervisorRoutePlan.v1"
-
-
-class SupervisorPlanRoute(str, Enum):
-    """현재 한 command에서 실행 가능한 Agent 또는 안전한 미실행 판정이다."""
-
-    ANALYSIS_WORKFLOW = AgentKind.ANALYSIS_WORKFLOW.value
-    INTERNAL_GUIDELINE = AgentKind.INTERNAL_GUIDELINE.value
-    ML_PREDICTION = AgentKind.ML_PREDICTION.value
-    UNAVAILABLE = "UNAVAILABLE"
+SUPERVISOR_EXECUTION_PLAN_VERSION = "SupervisorExecutionPlan.v2"
 
 
 class SupervisorMLPropertyScope(ContractModel):
@@ -120,25 +110,50 @@ class SupervisorCapabilityCatalog(ContractModel):
         )
 
 
-class SupervisorRoutePlan(ContractModel):
-    """Terra가 반환하고 서버가 다시 검증하는 최소 단일 route 계획이다."""
+class SupervisorTaskPlan(ContractModel):
+    """Terra가 한 Agent에 배정한 원문 범위 내의 실행 task다."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal["SupervisorRoutePlan.v1"] = (
-        SUPERVISOR_ROUTE_PLAN_VERSION
-    )
-    route: SupervisorPlanRoute
+    agent: AgentKind
     objective: str = Field(min_length=1, max_length=240)
     ml_prediction: MLPredictionAction | None = None
 
     @model_validator(mode="after")
-    def validate_route_payload(self) -> "SupervisorRoutePlan":
-        """ML route에만 구조화 예측 입력을 허용한다."""
+    def validate_task_payload(self) -> "SupervisorTaskPlan":
+        """ML task에만 구조화 예측 입력을 허용한다."""
 
         has_ml_input = self.ml_prediction is not None
-        if (self.route is SupervisorPlanRoute.ML_PREDICTION) != has_ml_input:
-            raise ValueError("Supervisor ML route와 prediction 입력이 일치하지 않습니다.")
+        if (self.agent is AgentKind.ML_PREDICTION) != has_ml_input:
+            raise ValueError("Supervisor ML task와 prediction 입력이 일치하지 않습니다.")
+        return self
+
+
+class SupervisorExecutionPlan(ContractModel):
+    """한 command를 최대 세 개의 고유 Agent task로 분해한 strict 계획이다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["SupervisorExecutionPlan.v2"] = (
+        SUPERVISOR_EXECUTION_PLAN_VERSION
+    )
+    status: Literal["EXECUTABLE", "UNAVAILABLE"]
+    tasks: tuple[SupervisorTaskPlan, ...] = Field(default=(), max_length=3)
+    unavailable_reason: str | None = Field(default=None, min_length=1, max_length=240)
+
+    @model_validator(mode="after")
+    def validate_execution_plan(self) -> "SupervisorExecutionPlan":
+        """실행 가능 계획과 안전한 미실행 계획을 완전히 분리한다."""
+
+        if self.status == "UNAVAILABLE":
+            if self.tasks or self.unavailable_reason is None:
+                raise ValueError("미실행 계획은 task 없이 사유를 제공해야 합니다.")
+            return self
+        if not self.tasks or self.unavailable_reason is not None:
+            raise ValueError("실행 계획은 task만 제공해야 합니다.")
+        agents = tuple(task.agent for task in self.tasks)
+        if len(agents) != len(set(agents)):
+            raise ValueError("Supervisor 실행 계획에 중복 Agent가 있습니다.")
         return self
 
 
@@ -146,7 +161,7 @@ class SupervisorRoutePlan(ContractModel):
 class SupervisorPlanResult:
     """검증된 계획과 외부 응답을 원문 없이 봉인한 증거 참조다."""
 
-    plan: SupervisorRoutePlan
+    plan: SupervisorExecutionPlan
     evidence_ref: str
     model: str
     response_id: str
@@ -167,38 +182,67 @@ class SupervisorPlanner(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class MaterializedSupervisorPlan:
+    """같은 외부 계획 영수증에 결속된 하나 이상의 immutable Agent 요청이다."""
+
+    requests: tuple[AgentRequest, ...]
+    evidence_ref: str
+
+    def __post_init__(self) -> None:
+        if not self.requests or len(self.requests) > 3:
+            raise ValueError("Supervisor 실행 요청 수가 올바르지 않습니다.")
+        if any(
+            request.supervisor_plan_ref != self.evidence_ref
+            for request in self.requests
+        ):
+            raise ValueError("Supervisor 실행 요청과 계획 영수증이 일치하지 않습니다.")
+
+    @property
+    def is_composite(self) -> bool:
+        """둘 이상의 Agent가 필요한 계획인지 반환한다."""
+
+        return len(self.requests) > 1
+
+
 def materialize_supervisor_plan(
     request: AgentRequest,
     result: SupervisorPlanResult,
     catalog: SupervisorCapabilityCatalog,
-) -> AgentRequest:
-    """모델 계획을 허용 Agent·ML 범위와 대조해 immutable 실행 요청으로 만든다."""
+) -> MaterializedSupervisorPlan:
+    """모델 task를 허용 Agent·ML 범위와 대조해 immutable 요청들로 만든다."""
 
     plan = result.plan
-    if plan.route is SupervisorPlanRoute.UNAVAILABLE:
+    if plan.status == "UNAVAILABLE":
         raise AgentDispatchError(
             "AGENT_ROUTE_NOT_RESOLVED",
             "현재 연결된 Agent만으로 요청을 안전하게 실행할 수 없습니다.",
             evidence_refs=(result.evidence_ref,),
         )
-    selected_agent = AgentKind(plan.route.value)
-    if selected_agent not in catalog.available_agents:
-        raise AgentDispatchError(
-            "AGENT_MODEL_PLAN_OUTSIDE_CAPABILITY",
-            "Supervisor 계획이 현재 승인된 Agent 범위를 벗어났습니다.",
-            evidence_refs=(result.evidence_ref,),
+    requests: list[AgentRequest] = []
+    for task in plan.tasks:
+        if task.agent not in catalog.available_agents:
+            raise AgentDispatchError(
+                "AGENT_MODEL_PLAN_OUTSIDE_CAPABILITY",
+                "Supervisor 계획이 현재 승인된 Agent 범위를 벗어났습니다.",
+                evidence_refs=(result.evidence_ref,),
+            )
+        invocation = (
+            MLPredictionInvocation(
+                **task.ml_prediction.model_dump(mode="python")
+            )
+            if task.ml_prediction is not None
+            else None
         )
-    invocation = (
-        MLPredictionInvocation(
-            **plan.ml_prediction.model_dump(mode="python")
+        payload = request.model_dump(mode="python")
+        payload.update(
+            target_agent=task.agent,
+            invocation=invocation,
+            task_objective=task.objective,
+            supervisor_plan_ref=result.evidence_ref,
         )
-        if plan.ml_prediction is not None
-        else None
+        requests.append(AgentRequest.model_validate(payload))
+    return MaterializedSupervisorPlan(
+        requests=tuple(requests),
+        evidence_ref=result.evidence_ref,
     )
-    payload = request.model_dump(mode="python")
-    payload.update(
-        target_agent=selected_agent,
-        invocation=invocation,
-        supervisor_plan_ref=result.evidence_ref,
-    )
-    return AgentRequest.model_validate(payload)

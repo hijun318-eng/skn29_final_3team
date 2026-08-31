@@ -57,6 +57,7 @@ def _planned_request() -> AgentRequest:
             semantic_release_id="semantic-v1",
         ),
         target_agent=AgentKind.ANALYSIS_WORKFLOW,
+        task_objective="객실 매출 지표 분석",
         supervisor_plan_ref=f"model-supervisor:sha256:{'a' * 64}",
     )
 

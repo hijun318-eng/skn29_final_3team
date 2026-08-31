@@ -119,7 +119,7 @@ class GovernedAnalysisCapabilityProbe:
 
         try:
             candidates = await self._data_platform.search_asset_candidates(
-                request.command.user_message,
+                request.task_objective or request.command.user_message,
                 request.context.model_dump(mode="json"),
             )
         except NoEntitledAssetsError:
@@ -220,7 +220,9 @@ class GovernedAnalysisCapabilityProbe:
             "as_of": context.as_of.isoformat(),
             "timezone": context.timezone,
             "question_sha256": hashlib.sha256(
-                request.command.user_message.encode("utf-8")
+                (request.task_objective or request.command.user_message).encode(
+                    "utf-8"
+                )
             ).hexdigest(),
             "matched": matched,
             "outcome": outcome,
@@ -281,7 +283,7 @@ class InternalGuidelineCapabilityProbe:
                 outcome="RAG_CAPABILITY_NOT_ENTITLED",
             )
         candidate = await self._searcher.search_capability(
-            request.command.user_message,
+            request.task_objective or request.command.user_message,
             request.context.role.value,
         )
         validated = self._validate_candidate(candidate)
@@ -389,7 +391,9 @@ class InternalGuidelineCapabilityProbe:
             "as_of": context.as_of.isoformat(),
             "timezone": context.timezone,
             "question_sha256": hashlib.sha256(
-                request.command.user_message.encode("utf-8")
+                (request.task_objective or request.command.user_message).encode(
+                    "utf-8"
+                )
             ).hexdigest(),
             "matched": matched,
             "outcome": outcome,

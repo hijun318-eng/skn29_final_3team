@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -31,6 +32,7 @@ from app.services.conversation_agent_ports import (
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryService
 from app.services.ml_prediction_service import MLPredictionService
+from app.services.mcp_agent_tools import MCPMLPredictionExecutor
 
 
 def build_conversation_agent_supervisor(
@@ -49,6 +51,8 @@ def build_conversation_agent_supervisor(
     ]
     | None = None,
     ml_prediction_service_factory: Callable[[], MLPredictionService] | None = None,
+    ml_prediction_executor_factory: Callable[[MLPredictionService], Any] | None = None,
+    composite_augmentation: Any | None = None,
 ) -> DeterministicAgentSupervisor:
     """필수 분석 Port와 명시적으로 활성화된 선택 Port만 production에 등록한다."""
 
@@ -64,6 +68,25 @@ def build_conversation_agent_supervisor(
         if ml_enabled
         else None
     )
+    ml_executor = None
+    if ml_service is not None:
+        if ml_prediction_executor_factory is not None:
+            ml_executor = ml_prediction_executor_factory(ml_service)
+        else:
+            database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+            if not database_url:
+                raise AgentDispatchError(
+                    "AGENT_PORT_NOT_READY",
+                    "ML MCP 실행에 APP_RUNTIME_DATABASE_URL이 필요합니다.",
+                )
+            ml_executor = MCPMLPredictionExecutor(database_url, ml_service)
+        if not callable(getattr(ml_executor, "readiness", None)) or not callable(
+            getattr(ml_executor, "execute", None)
+        ):
+            raise AgentDispatchError(
+                "AGENT_PORT_NOT_READY",
+                "ML MCP executor 계약이 올바르지 않습니다.",
+            )
     effective_route_resolver = route_resolver
     effective_capability_routing = capability_routing_enabled
     probes = {}
@@ -144,6 +167,7 @@ def build_conversation_agent_supervisor(
                 orchestrator,
                 execution_gate,
                 admission=admission,
+                composite_augmentation=composite_augmentation,
             )
         ),
     }
@@ -153,13 +177,14 @@ def build_conversation_agent_supervisor(
                 orchestrator,
                 internal_manual_query_service_factory,
                 admission=admission,
+                composite_augmentation=composite_augmentation,
             )
         )
-    if ml_service is not None:
+    if ml_executor is not None:
         ports[AgentKind.ML_PREDICTION] = ReadinessGuardedAgentPort(
             MLPredictionAgentPort(
                 orchestrator,
-                ml_service,
+                ml_executor,
                 admission=admission,
             )
         )

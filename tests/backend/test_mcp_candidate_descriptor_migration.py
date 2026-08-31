@@ -118,17 +118,25 @@ class MCPCandidateDescriptorMigrationTest(unittest.TestCase):
         self.assertGreaterEqual(source.count("output_schema_json ="), 4)
         self.assertGreaterEqual(source.count("transport = 'MCP_STREAMABLE_HTTP'"), 3)
 
-        active_code_descriptors = tuple(
-            descriptor.name for descriptor in _tool_registry()._descriptors
-        )
+        with patch(
+            "app.api.mcp_router.runtime_feature_enabled",
+            return_value=False,
+        ):
+            active_code_descriptors = tuple(
+                descriptor.name for descriptor in _tool_registry()._descriptors
+            )
         self.assertEqual(("analysis.get_run",), active_code_descriptors)
 
-    def test_each_candidate_is_disabled_and_has_no_runtime_handler(self) -> None:
-        """세 candidate 모두 DB 경계에만 있고 운영 dispatcher에는 조립되지 않는다."""
+    def test_each_candidate_is_disabled_at_historical_revision(self) -> None:
+        """64 시점 candidate는 비활성이며 feature-off runtime에서도 노출되지 않는다."""
 
-        runtime_names = {
-            descriptor.name for descriptor in _tool_registry()._descriptors
-        }
+        with patch(
+            "app.api.mcp_router.runtime_feature_enabled",
+            return_value=False,
+        ):
+            runtime_names = {
+                descriptor.name for descriptor in _tool_registry()._descriptors
+            }
         statements = _capture_sql(self.migration, "upgrade")
         candidates = (
             (
@@ -269,7 +277,7 @@ class MCPCandidateDescriptorMigrationTest(unittest.TestCase):
         """Runtime activation receipt cannot drift from the disabled DB candidate."""
 
         self.assertEqual(str(RAG_TOOL_ID), self.migration.RAG_ANSWER_TOOL_ID)
-        self.assertEqual("1.2.0-candidate", RAG_TOOL_SEMANTIC_VERSION)
+        self.assertEqual("1.2.0", RAG_TOOL_SEMANTIC_VERSION)
         self.assertEqual(
             self.migration.RAG_ANSWER_INPUT_SCHEMA,
             RAG_TOOL_INPUT_SCHEMA,

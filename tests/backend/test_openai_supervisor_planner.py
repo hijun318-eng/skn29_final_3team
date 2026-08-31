@@ -83,10 +83,16 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
             200,
             json=_response(
                 {
-                    "schema_version": "SupervisorRoutePlan.v1",
-                    "route": "ANALYSIS_WORKFLOW",
-                    "objective": "승인된 객실 매출 지표 분석",
-                    "ml_prediction": None,
+                    "schema_version": "SupervisorExecutionPlan.v2",
+                    "status": "EXECUTABLE",
+                    "tasks": [
+                        {
+                            "agent": "ANALYSIS_WORKFLOW",
+                            "objective": "승인된 객실 매출 지표 분석",
+                            "ml_prediction": None,
+                        }
+                    ],
+                    "unavailable_reason": None,
                 }
             ),
         )
@@ -126,7 +132,7 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
     model_input = json.loads(payload["input"])
     assert model_input["question"] == request.command.user_message
     assert "user_id" not in model_input
-    assert result.plan.route.value == AgentKind.ANALYSIS_WORKFLOW.value
+    assert result.plan.tasks[0].agent is AgentKind.ANALYSIS_WORKFLOW
     assert re.fullmatch(r"model-supervisor:sha256:[0-9a-f]{64}", result.evidence_ref)
 
 
@@ -136,14 +142,20 @@ def test_ml_plan_is_materialized_only_from_dynamic_runtime_scope() -> None:
             200,
             json=_response(
                 {
-                    "schema_version": "SupervisorRoutePlan.v1",
-                    "route": "ML_PREDICTION",
-                    "objective": "지원 범위의 30일 객실 수요 예측",
-                    "ml_prediction": {
-                        "property_id": "GRAND",
-                        "as_of": "2026-08-28",
-                        "horizon_days": 30,
-                    },
+                    "schema_version": "SupervisorExecutionPlan.v2",
+                    "status": "EXECUTABLE",
+                    "tasks": [
+                        {
+                            "agent": "ML_PREDICTION",
+                            "objective": "지원 범위의 30일 객실 수요 예측",
+                            "ml_prediction": {
+                                "property_id": "GRAND",
+                                "as_of": "2026-08-28",
+                                "horizon_days": 30,
+                            },
+                        }
+                    ],
+                    "unavailable_reason": None,
                 }
             ),
         )
@@ -176,13 +188,15 @@ def test_ml_plan_is_materialized_only_from_dynamic_runtime_scope() -> None:
             return request, result
 
     request, result = asyncio.run(run())
-    planned_request = materialize_supervisor_plan(request, result, catalog)
+    materialized = materialize_supervisor_plan(request, result, catalog)
+    planned_request = materialized.requests[0]
 
     assert planned_request.command.requested_route is None
     assert planned_request.target_agent is AgentKind.ML_PREDICTION
     assert planned_request.invocation is not None
     assert planned_request.invocation.property_id == "GRAND"
     assert planned_request.invocation.horizon_days == 30
+    assert planned_request.task_objective == "지원 범위의 30일 객실 수요 예측"
     assert planned_request.supervisor_plan_ref == result.evidence_ref
 
 
@@ -192,10 +206,16 @@ def test_invalid_model_contract_fails_without_agent_fallback() -> None:
             200,
             json=_response(
                 {
-                    "schema_version": "SupervisorRoutePlan.v1",
-                    "route": "INTERNAL_GUIDELINE",
-                    "objective": "문서 검색",
-                    "ml_prediction": None,
+                    "schema_version": "SupervisorExecutionPlan.v2",
+                    "status": "EXECUTABLE",
+                    "tasks": [
+                        {
+                            "agent": "INTERNAL_GUIDELINE",
+                            "objective": "문서 검색",
+                            "ml_prediction": None,
+                        }
+                    ],
+                    "unavailable_reason": None,
                     "unexpected": "not allowed",
                 }
             ),

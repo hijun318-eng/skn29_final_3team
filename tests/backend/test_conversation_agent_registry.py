@@ -18,7 +18,12 @@ from app.agent_contracts import AgentDecisionSource
 from app.authorization import permission_snapshot_id
 from app.contracts import RequestContext, Role
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentRequest, MLPredictionInvocation
+from app.ports.agent import (
+    AgentKind,
+    AgentPortReadiness,
+    AgentRequest,
+    MLPredictionInvocation,
+)
 from app.ports.data_platform import NoEntitledAssetsError
 from app.services.agent_supervisor import (
     AgentDispatchError,
@@ -99,6 +104,29 @@ class _MLService:
         return self._capability
 
 
+class _MLMCPExecutor:
+    """Registry unit test가 명시적으로 주입하는 MCP 경계 test double이다."""
+
+    def __init__(self, service: _MLService) -> None:
+        self._service = service
+
+    async def readiness(self, _role: Role) -> AgentPortReadiness:
+        capability = await self._service.capabilities()
+        return AgentPortReadiness(
+            agent=AgentKind.ML_PREDICTION,
+            status="ready",
+            capability_version=str(capability["schema_version"]),
+            release_refs=(f"ml-model:sha256:{capability['model_hash']}",),
+        )
+
+    async def execute(self, *_args, **_kwargs):
+        raise AssertionError("Registry test does not execute the ML MCP Tool")
+
+
+def _ml_mcp_executor_factory(service: _MLService) -> _MLMCPExecutor:
+    return _MLMCPExecutor(service)
+
+
 class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
     """선택 Agent가 feature·capability 계약을 통해야만 등록되게 한다."""
 
@@ -119,6 +147,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=ml_factory,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         self.assertEqual(
@@ -141,6 +170,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=_MLService,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         self.assertEqual(
@@ -189,6 +219,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=lambda: service,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         routing = await supervisor.route_with_state(request)
@@ -246,6 +277,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=lambda: service,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         with self.assertRaises(AgentDispatchError) as raised:
@@ -308,6 +340,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=lambda: service,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
             routing = await supervisor.route_with_state(request)
 

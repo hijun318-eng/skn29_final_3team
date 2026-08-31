@@ -259,7 +259,7 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_ml_port_executes_only_the_structured_invocation(self) -> None:
         class MLService:
-            async def readiness(self):
+            async def readiness(self, _role):
                 return AgentPortReadiness(
                     agent=AgentKind.ML_PREDICTION,
                     status="ready",
@@ -267,13 +267,13 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
                     release_refs=("ml-model:sha256:" + "a" * 64,),
                 )
 
-            async def generate_prediction(self, payload):
+            async def execute(self, payload, **_kwargs):
                 self.payload = payload
-                return {"status": "SUCCEEDED", "horizon_days": payload["horizon_days"]}
-
-            async def persist_prediction(self, session, prediction):
-                self.session = session
-                self.persisted = prediction
+                return {
+                    "status": "SUCCEEDED",
+                    "horizon_days": payload["horizon_days"],
+                    "mcp_tool_run_id": str(uuid4()),
+                }
 
         class MLOrchestrator:
             async def execute_ml_prediction_command(
@@ -285,7 +285,7 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
                 persister,
             ):
                 prediction = await executor(context)
-                await persister(object(), prediction)
+                self.assert_is_none = persister
                 return {
                     "status": "SUCCESS",
                     "turn": {"turn_id": uuid4(), "route": "ML_PREDICTION"},
@@ -327,7 +327,7 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.agent, AgentKind.ML_PREDICTION)
         self.assertEqual(service.payload["horizon_days"], 90)
-        self.assertEqual(service.persisted, result.payload["data"]["ml_prediction"])
+        self.assertIsNone(port._orchestrator.assert_is_none)
 
     async def test_internal_guideline_port_forwards_pre_admission(self) -> None:
         request = _agent_request("INTERNAL_GUIDELINE")

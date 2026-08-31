@@ -24,7 +24,7 @@ from app.database import session_scope
 RAG_TOOL_DESCRIPTOR: dict[str, Any] = {
     "tool_id": UUID("8edce655-e454-5b76-b56f-5e49aa2884d4"),
     "tool_code": "rag.answer",
-    "semantic_version": "1.2.0-candidate",
+    "semantic_version": "1.2.0",
     "title": "Answer from Internal Documents",
     "description": (
         "Answer only from approved internal documents with citation-bound evidence."
@@ -155,10 +155,12 @@ RAG_TOOL_DESCRIPTOR: dict[str, Any] = {
 RAG_TOOL_ID = RAG_TOOL_DESCRIPTOR["tool_id"]
 RAG_TOOL_CODE = RAG_TOOL_DESCRIPTOR["tool_code"]
 RAG_TOOL_SEMANTIC_VERSION = RAG_TOOL_DESCRIPTOR["semantic_version"]
+RAG_TOOL_TITLE = RAG_TOOL_DESCRIPTOR["title"]
 RAG_TOOL_DESCRIPTION = RAG_TOOL_DESCRIPTOR["description"]
 RAG_TOOL_TRANSPORT = RAG_TOOL_DESCRIPTOR["transport"]
 RAG_TOOL_TIMEOUT_SECONDS = RAG_TOOL_DESCRIPTOR["timeout_seconds"]
 RAG_TOOL_ROLES = RAG_TOOL_DESCRIPTOR["required_roles"]
+RAG_TOOL_ANNOTATIONS = RAG_TOOL_DESCRIPTOR["annotations"]
 RAG_TOOL_INPUT_SCHEMA = RAG_TOOL_DESCRIPTOR["input_schema"]
 RAG_TOOL_OUTPUT_SCHEMA = RAG_TOOL_DESCRIPTOR["output_schema"]
 RAG_CAPABILITY_CANDIDATE_VERSION = "RagCapabilityCandidate.v1"
@@ -426,14 +428,72 @@ class InternalManualAgent:
         intent: str = "REGULATION_CHECK",
         selected_document_ids: tuple[str, ...] = (),
     ) -> dict[str, Any]:
-        """앱 역할을 검증해 검색·답변 도구를 호출하고 근거가 있는 결과만 반환한다."""
+        """legacy API 경로에서 registry·감사를 소유하고 순수 runtime을 호출한다."""
+
+        normalized = query.strip()
+        if not 2 <= len(normalized) <= 500:
+            raise RagToolError("RAG_INPUT_INVALID", "질문은 2자 이상 500자 이하여야 합니다.", 422)
+        if _ROLE_MAP.get(app_role) is None:
+            raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
+        started = time.perf_counter()
+        await self._assert_enabled(app_role)
+        try:
+            output = await self._execute_runtime(
+                query=query,
+                actor_id=actor_id,
+                app_role=app_role,
+                trace_id=trace_id,
+                recent_utterances=recent_utterances,
+                resolved_question=resolved_question,
+                domains=domains,
+                intent=intent,
+                selected_document_ids=selected_document_ids,
+            )
+        except RagToolError as error:
+            await self._record(
+                actor_id,
+                app_role,
+                trace_id,
+                normalized,
+                {},
+                started,
+                error.code,
+            )
+            raise
+        error_code = (
+            "RAG_DEPENDENCY_FAILED" if output.get("status") == "ERROR" else None
+        )
+        await self._record(
+            actor_id,
+            app_role,
+            trace_id,
+            normalized,
+            output if error_code is None else {},
+            started,
+            error_code,
+        )
+        return output
+
+    async def _execute_runtime(
+        self,
+        query: str,
+        actor_id: UUID,
+        app_role: str,
+        trace_id: str,
+        recent_utterances: tuple[str, ...] = (),
+        resolved_question: str | None = None,
+        domains: tuple[str, ...] = (),
+        intent: str = "REGULATION_CHECK",
+        selected_document_ids: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        """DB registry·감사와 분리된 서명 RAG runtime adapter를 실행한다."""
+
         normalized = query.strip()
         if not 2 <= len(normalized) <= 500:
             raise RagToolError("RAG_INPUT_INVALID", "질문은 2자 이상 500자 이하여야 합니다.", 422)
         rag_role = _ROLE_MAP.get(app_role)
         if rag_role is None:
             raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
-        started = time.perf_counter()
         recent = tuple(
             utterance.strip()
             for utterance in recent_utterances[-3:]
@@ -450,7 +510,6 @@ class InternalManualAgent:
             [*(f"이전 질문: {utterance}" for utterance in recent), f"현재 질문: {normalized}"]
         ))[-500:].strip()
         actor_hash = hashlib.sha256(str(actor_id).encode("utf-8")).hexdigest()
-        await self._assert_enabled(app_role)
         try:
             search = await self._signed_post(
                 "/v1/tools/internal-manual-search",
@@ -496,7 +555,6 @@ class InternalManualAgent:
                     _NO_EVIDENCE_MESSAGE,
                     list(search.get("processing_steps") or []) + ["NO_EVIDENCE_RETURNED"],
                 )
-                await self._record(actor_id, app_role, trace_id, normalized, output, started)
                 return output
 
             evidence_blocks = [
@@ -544,7 +602,6 @@ class InternalManualAgent:
                     list(search.get("processing_steps") or []) + ["ANSWER_EVIDENCE_REJECTED"],
                 )
                 output["answer_id"] = str(answer.get("request_id") or "")
-                await self._record(actor_id, app_role, trace_id, normalized, output, started)
                 return output
             if answer_status == "POTENTIAL_CONFLICT":
                 output = {
@@ -555,7 +612,6 @@ class InternalManualAgent:
                     "conflicts": list(answer.get("conflicts") or []),
                     "evidence_bundle": self._evidence_bundle(results),
                 }
-                await self._record(actor_id, app_role, trace_id, normalized, output, started)
                 return output
             if answer_status != "ANSWER":
                 raise RagToolError("RAG_ANSWER_FAILED", "근거 답변을 생성하지 못했습니다.")
@@ -649,13 +705,10 @@ class InternalManualAgent:
                     ),
                 },
             }
-            await self._record(actor_id, app_role, trace_id, normalized, output, started)
             return output
-        except RagToolError as error:
-            await self._record(actor_id, app_role, trace_id, normalized, {}, started, error.code)
+        except RagToolError:
             raise
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
-            await self._record(actor_id, app_role, trace_id, normalized, {}, started, "RAG_DEPENDENCY_FAILED")
             return self._empty_answer_output(
                 "ERROR",
                 trace_id,
@@ -663,6 +716,26 @@ class InternalManualAgent:
                 _DEPENDENCY_FAILURE_MESSAGE,
                 ["DEPENDENCY_FAILED"],
             )
+
+    async def execute_mcp_handler(
+        self,
+        query: str,
+        actor_id: UUID,
+        app_role: str,
+        trace_id: str,
+        recent_utterances: tuple[str, ...] = (),
+        selected_document_ids: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        """공용 MCP registry·dispatcher가 승인한 한 번의 RAG handler 실행이다."""
+
+        return await self._execute_runtime(
+            query=query,
+            actor_id=actor_id,
+            app_role=app_role,
+            trace_id=trace_id,
+            recent_utterances=recent_utterances,
+            selected_document_ids=selected_document_ids,
+        )
 
     async def search_capability(
         self,
@@ -1321,11 +1394,13 @@ class InternalManualAgent:
                 await session.execute(
                     text(
                         "INSERT INTO tooling.tool_runs "
-                        "(tool_run_id,tool_id,caller_user_id,caller_role,trace_id,input_hash,status,latency_ms,output_ref_json,error_code) "
-                        "VALUES (:run_id,:tool_id,:actor,:role,:trace,:input_hash,:status,:latency,CAST(:output AS jsonb),:error)"
+                        "(tool_run_id,tool_id,tool_semantic_version,caller_user_id,caller_role,trace_id,input_hash,status,latency_ms,output_ref_json,error_code) "
+                        "VALUES (:run_id,:tool_id,:tool_version,:actor,:role,:trace,:input_hash,:status,:latency,CAST(:output AS jsonb),:error)"
                     ),
                     {
-                        "run_id": uuid4(), "tool_id": RAG_TOOL_ID, "actor": actor_id, "role": role,
+                        "run_id": uuid4(), "tool_id": RAG_TOOL_ID,
+                        "tool_version": RAG_TOOL_SEMANTIC_VERSION,
+                        "actor": actor_id, "role": role,
                         "trace": trace_id, "input_hash": hashlib.sha256(query.encode("utf-8")).hexdigest(),
                         "status": "FAILED" if error_code else "SUCCEEDED",
                         "latency": max(0, round((time.perf_counter() - started) * 1000)),

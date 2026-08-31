@@ -73,7 +73,7 @@ function normalizedDraftBlock(block: ReportBlock): DraftLayoutBlock {
 }
 
 function minimumDraftHeight(block: ReportBlock): number {
-  return block.type === "page_break" ? 1 : block.type === "artifact" ? 12 : block.type === "chart" ? 7 : block.type === "table" ? 5 : 4;
+  return block.type === "page_break" ? 1 : block.type === "artifact" ? 5 : block.type === "chart" ? 7 : block.type === "table" ? 5 : 4;
 }
 
 /** 모든 좌표 범위와 블록 간 겹침이 유효한지 순수 함수로 검사한다. */

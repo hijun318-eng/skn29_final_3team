@@ -442,6 +442,10 @@ class ConversationSlotResolver:
             and not candidate_metric_ids
             and bool(node1_output.get("period_candidates"))
         )
+        has_current_analysis_delta = cls.has_executable_analysis_delta(
+            node1_output,
+            analysis_inheritance_slots,
+        )
 
         # 3-1. 단일 지표 ChangeSet 호환성을 유지하면서 복수 지표 묶음을 원자적으로 적용한다.
         inherited_metric_id = (
@@ -535,13 +539,17 @@ class ConversationSlotResolver:
 
         # 3-4. 시간 범위 해석 (TimeAlgebraEngine 적용)
         last_time_range = (
-            cls._parse_stored_time_range(last_analysis_slots.get("time_range"))
-            or (
-                cls._parse_stored_time_range(last_slots.get("time_range"))
-                if not pending_range_slots
-                else None
+            (
+                cls._parse_stored_time_range(last_analysis_slots.get("time_range"))
+                or (
+                    cls._parse_stored_time_range(last_slots.get("time_range"))
+                    if not pending_range_slots
+                    else None
+                )
             )
-        ) if previous_turns else None
+            if previous_turns and (not is_followup or has_current_analysis_delta)
+            else None
+        )
 
         # latest_snapshot은 source time의 서버 기준일 전 MAX를 선택하므로 질문이나
         # 직전 턴의 range를 물려받지 않는다. 이 mode는 DataHub 후보를 고른 뒤
@@ -724,6 +732,87 @@ class ConversationSlotResolver:
             node1_output.get("metric_resolution") == "missing"
             and not node1_output.get("measurement_source_texts")
             and node1_output.get("analysis_operation") in operations
+        )
+
+    @classmethod
+    def has_executable_analysis_delta(
+        cls,
+        node1_output: dict[str, Any],
+        previous_analysis_slots: dict[str, Any] | None = None,
+    ) -> bool:
+        """현재 발화에서 서버가 실행에 반영할 수 있는 typed 변경이 있는지 판정한다.
+
+        생략형이라는 모델 신호만으로 지표·기간·차원·필터를 모두 상속하면 기간 해석에
+        실패한 발화도 직전 요청과 같은 쿼리로 실행될 수 있다. 질문 문자열을 다시 파싱하지
+        않고 Node 1이 현재 발화에서 확정한 실행 슬롯만 확인한다. 연산·버킷·행 제한은 직전
+        값과 실제로 다를 때만 변경으로 인정해, 모델이 직전 연산을 반복 출력한 것만으로
+        이전 기간 전체가 재실행되지 않게 한다.
+        """
+
+        previous = previous_analysis_slots or {}
+        raw_metric_ids = node1_output.get("selected_metric_ids")
+        has_metric = bool(
+            isinstance(node1_output.get("selected_metric_id"), str)
+            and node1_output["selected_metric_id"]
+        ) or bool(
+            isinstance(raw_metric_ids, (list, tuple))
+            and any(isinstance(item, str) and item for item in raw_metric_ids)
+        )
+        operations = {
+            "aggregate",
+            "breakdown",
+            "time_trend",
+            "top_n",
+            "bottom_n",
+            "period_comparison",
+        }
+        candidate_operation = node1_output.get("analysis_operation")
+        candidate_time_bucket = node1_output.get("analysis_time_bucket")
+        candidate_result_limit = node1_output.get("result_limit")
+        return bool(
+            has_metric
+            or node1_output.get("dimension_fields")
+            or node1_output.get("filter_fields")
+            or node1_output.get("period_candidates")
+            or node1_output.get("time_mode") == "latest_snapshot"
+            or (
+                candidate_operation in operations
+                and candidate_operation != previous.get("analysis_operation")
+            )
+            or (
+                candidate_time_bucket in {"day", "week", "month", "quarter", "year"}
+                and candidate_time_bucket != previous.get("analysis_time_bucket")
+            )
+            or (
+                isinstance(candidate_result_limit, int)
+                and not isinstance(candidate_result_limit, bool)
+                and candidate_result_limit != previous.get("result_limit")
+            )
+        )
+
+    @staticmethod
+    def has_grounded_analysis_slot_delta(node1_output: dict[str, Any]) -> bool:
+        """오류로 거부된 Metric을 상속해도 되는 현재 발화의 독립 실행 근거를 확인한다.
+
+        연산 종류 하나는 모델의 기본 출력일 수 있어 ``INVALID_METRIC``을 무시할 근거가
+        되지 않는다. 현재 발화에서 별도로 확정된 Metric·기간·차원·필터·snapshot만
+        preflight 오류를 해제할 수 있다.
+        """
+
+        raw_metric_ids = node1_output.get("selected_metric_ids")
+        return bool(
+            (
+                isinstance(node1_output.get("selected_metric_id"), str)
+                and node1_output["selected_metric_id"]
+            )
+            or (
+                isinstance(raw_metric_ids, (list, tuple))
+                and any(isinstance(item, str) and item for item in raw_metric_ids)
+            )
+            or node1_output.get("dimension_fields")
+            or node1_output.get("filter_fields")
+            or node1_output.get("period_candidates")
+            or node1_output.get("time_mode") == "latest_snapshot"
         )
 
     @staticmethod

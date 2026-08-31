@@ -134,6 +134,24 @@
   color: #2f425c;
 }
 
+.report-whole-artifact.report-artifact-state.is-legacy {
+  min-height: 18mm;
+  flex: 0 0 auto;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: none;
+  align-items: flex-start;
+  gap: 2.5mm;
+  padding: 4mm;
+  color: #6e5524;
+  border: 0.2mm solid #e6d4ad;
+  border-radius: 2mm;
+  background: #fffaf0;
+}
+
+.report-whole-artifact.report-artifact-state.is-legacy > svg { margin-top: 0.4mm; color: #b27b16; }
+.report-whole-artifact.report-artifact-state.is-legacy b { display: block; color: #5a431a; font-size: 8pt; }
+.report-whole-artifact.report-artifact-state.is-legacy p { margin: 1.2mm 0 0; color: #78623a; font-size: 7pt; line-height: 1.45; }
+
 .report-whole-artifact-heading {
   min-width: 0;
   display: flex;

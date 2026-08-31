@@ -3244,7 +3244,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             "기간 변경 후속 질문",
         )
         first_message = "2026년 3월 호텔별 객실 매출"
-        second_message = "4월은?"
+        second_message = "3월부터 5월은?"
         room_asset = {"urn": "urn:li:dataset:(serving,room_daily,PROD)"}
         self.support.program(
             first_message,
@@ -3297,9 +3297,9 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             "filter_fields": [],
             "period_candidates": [
                 {
-                    "start": "2026-04-01T00:00:00+09:00",
-                    "end_exclusive": "2026-05-01T00:00:00+09:00",
-                    "source_text": "4월",
+                    "start": "2026-03-01T00:00:00+09:00",
+                    "end_exclusive": "2026-06-01T00:00:00+09:00",
+                    "source_text": "3월부터 5월",
                 }
             ],
             "period_relationship": "single",
@@ -3350,9 +3350,98 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             ],
             slots["dimension_fields"],
         )
-        self.assertEqual("2026-04-01", slots["time_range"]["start"])
-        self.assertEqual("2026-05-01", slots["time_range"]["end_exclusive"])
+        self.assertEqual("2026-03-01", slots["time_range"]["start"])
+        self.assertEqual("2026-06-01", slots["time_range"]["end_exclusive"])
+        request = self.submitted_requests[-1]
+        self.assertIsNotNone(request.resolved_slots)
+        self.assertEqual("2026-03-01", request.resolved_slots.period_start)
+        self.assertEqual("2026-06-01", request.resolved_slots.period_end_exclusive)
         self.assertEqual(2, len(self.submitted_requests))
+
+    async def test_unresolved_period_only_followup_never_replays_previous_period(self) -> None:
+        """기간 재해석이 비어 있으면 직전 기간으로 같은 분석을 조용히 재실행하지 않는다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "기간 해석 실패",
+        )
+        first_message = "6월 객실 매출"
+        second_message = "3월부터 5월은?"
+        self.support.program(
+            first_message,
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            metric_resolution="selected",
+            measurement_source_texts=["객실 매출"],
+            period_candidates=[
+                {
+                    "start": "2026-06-01T00:00:00+09:00",
+                    "end_exclusive": "2026-07-01T00:00:00+09:00",
+                    "source_text": "6월",
+                }
+            ],
+            period_relationship="single",
+            analysis_operation="aggregate",
+            intent_candidates=["aggregate"],
+            requested_route="ANALYSIS",
+            is_elliptical=False,
+        )
+        first = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+
+        unresolved = {
+            "metric_resolution": "missing",
+            "metric_ids": [],
+            "metric_candidates": [],
+            "measurement_source_text": None,
+            "measurement_source_texts": [],
+            "selected_metric_id": None,
+            "selected_metric_ids": [],
+            "intent_candidates": ["aggregate"],
+            "analysis_operation": "aggregate",
+            "analysis_time_bucket": None,
+            "result_limit": None,
+            "dimension_candidates": [],
+            "dimension_fields": [],
+            "filter_fields": [],
+            "period_candidates": [],
+            "period_relationship": "single",
+            "requested_route": "ANALYSIS",
+            "presentation_type": None,
+            "is_elliptical": True,
+        }
+        self.support.program_error(
+            second_message,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문에 분석할 지표가 포함되지 않았습니다.",
+                partial_context=unresolved,
+            ),
+        )
+
+        second = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("CLARIFICATION_REQUIRED", second["status"])
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE.value, second["code"])
+        self.assertEqual("BLOCKED", second["turn"]["terminal_status"])
+        self.assertIsNone(second["turn"]["resolved_slots"]["time_range"])
+        self.assertFalse(
+            second["turn"]["resolved_slots"]["is_inherited_period"]
+        )
+        self.assertEqual(1, len(self.submitted_requests))
 
     async def test_latest_snapshot_topic_does_not_inherit_previous_range(self) -> None:
         """새 snapshot 지표는 직전 range를 질문에 없던 cutoff로 재해석하지 않는다."""

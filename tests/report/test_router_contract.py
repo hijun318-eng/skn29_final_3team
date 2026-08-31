@@ -182,6 +182,26 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(409, immutable.exception.status_code)
         self.assertIn("Artifact view block 제목", str(immutable.exception.detail))
 
+        migrated = await self.router.replace_draft_blocks(
+            "report-artifact-title",
+            1,
+            {
+                "blocks": [{
+                    "block_id": "summary-atomic-1",
+                    "title": "객실 매출 분석 · 요약",
+                    "artifact_id": "artifact-1",
+                    "type": "artifact",
+                    "columns": 8,
+                    "w": 8,
+                    "h": 5,
+                    "content": '{"visibleViews":["summary"]}',
+                }],
+                "expected_draft_revision": 1,
+            },
+        )
+        self.assertEqual("summary-atomic-1", migrated["blocks"][0]["block_id"])
+        self.assertEqual("객실 매출 분석 · 요약", migrated["blocks"][0]["title"])
+
     async def test_router_rejects_unknown_fields(self):
         with self.assertRaises(ReportRouteError) as invalid:
             await self.router.create_definition({

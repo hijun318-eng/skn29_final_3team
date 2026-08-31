@@ -1,4 +1,4 @@
-"""Report Assistant 모델 실패가 실제 HTTP 경계에서 안전한 공개 계약으로 유지되는지 검증한다."""
+"""보고서·Assistant 실패가 실제 HTTP 경계에서 안전한 공개 계약으로 유지되는지 검증한다."""
 
 from __future__ import annotations
 
@@ -221,6 +221,57 @@ def test_page_renderer_failure_is_retryable_only_on_actual_assistant_endpoints()
     assert response.json()["error"]["code"] == "INTERNAL_ERROR"
     assert "REPORT_ASSISTANT_PAGE_RENDER_FAILED" not in response.text
     assert "must-not-leak" not in response.text
+
+
+def test_report_block_revision_conflict_requires_reopening_the_latest_draft() -> None:
+    boundary = FastAPI()
+
+    @boundary.middleware("http")
+    async def bind_request_context(request: Request, call_next):
+        request.state.request_id = uuid4()
+        request.state.trace_id = "report-draft-http-boundary"
+        return await call_next(request)
+
+    boundary.add_exception_handler(StarletteHTTPException, http_error)
+
+    @boundary.put("/reports/definitions/{definition_id}/versions/{version}/blocks")
+    async def fail_save(definition_id: str, version: int):
+        if version == 2:
+            raise HTTPException(
+                status_code=409,
+                detail="Legacy Report draft has no release receipt",
+            )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "REPORT_REVISION_CONFLICT",
+                "current_draft_revision": 4,
+                "internal": f"{definition_id}:{version}:must-not-leak",
+            },
+        )
+
+    with TestClient(boundary) as client:
+        response = client.put(f"/reports/definitions/{uuid4()}/versions/3/blocks")
+        legacy_response = client.put(
+            f"/reports/definitions/{uuid4()}/versions/2/blocks"
+        )
+
+    body = response.json()
+    assert response.status_code == 409
+    assert body["error"]["code"] == "REPORT_DRAFT_CONFLICT"
+    assert body["error"]["retryable"] is True
+    assert body["error"]["required_action"] == "RETRY"
+    assert "최신 초안을 다시 연 뒤" in body["error"]["message"]
+    assert "current_draft_revision" not in response.text
+    assert "must-not-leak" not in response.text
+
+    legacy_body = legacy_response.json()
+    assert legacy_response.status_code == 409
+    assert legacy_body["error"]["code"] == "REPORT_DRAFT_CONFLICT"
+    assert legacy_body["error"]["retryable"] is False
+    assert legacy_body["error"]["required_action"] == "CONTACT_ADMIN"
+    assert "이전 형식 보고서의 분석 근거 버전" in legacy_body["error"]["message"]
+    assert "Legacy Report draft" not in legacy_response.text
 
 
 def _external_transfer_disclosure(assistant_request_id: str) -> dict[str, object]:

@@ -1,10 +1,9 @@
 /** 대화형 분석 워크스페이스의 세션·멀티턴 상태·증적 서랍·보고서 연계를 통합 관리하는 모듈이다. */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, FilePlus2, MessageSquareText, Plus, Save, Send, Sparkles, TableProperties } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FilePlus2, Info, MessageSquareText, Plus, Send, Sparkles } from "lucide-react";
 import { AnalysisApiError, createAnalysisClient, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
-import { AnalysisArtifactCollection } from "../components/analysis/AnalysisArtifactCollection";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
 import MLPredictionWorkspace from "../components/ml/MLPredictionWorkspace";
@@ -36,12 +35,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [reportModal, setReportModal] = useState("");
   const [reportModalRun, setReportModalRun] = useState(null);
   const [reportTitle, setReportTitle] = useState("");
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState(null);
   const [savedBusy, setSavedBusy] = useState(false);
   const [definitions, setDefinitions] = useState([]);
   const [definitionQuery, setDefinitionQuery] = useState("");
   const [visibleDefinitionCount, setVisibleDefinitionCount] = useState(10);
-  const [compactViewport, setCompactViewport] = useState(() => window.matchMedia?.("(max-width: 650px)").matches ?? false);
   const requestInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const activeTraceId = useRef("");
@@ -80,7 +78,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   };
 
   useEffect(() => {
-    refreshSaved().catch((err) => setMessage(err instanceof Error ? err.message : "저장된 분석을 불러오지 못했습니다."));
+    refreshSaved().catch((err) => setFeedback({ tone: "error", message: err instanceof Error ? err.message : "저장된 분석을 불러오지 못했습니다." }));
 
     const storedConvId = window.sessionStorage.getItem(CONVERSATION_KEY);
     if (storedConvId) {
@@ -166,14 +164,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
 
   useEffect(() => () => activeCommandAbortController.current?.abort(), []);
 
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 650px)");
-    const updateViewport = () => setCompactViewport(media.matches);
-    updateViewport();
-    media.addEventListener("change", updateViewport);
-    return () => media.removeEventListener("change", updateViewport);
-  }, []);
-
   const initConversation = async (generation) => {
     const conv = await analysisClient.createConversation();
     if (generation !== undefined && requestGeneration.current !== generation) return "";
@@ -201,7 +191,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     setReportModal("");
     setReportModalRun(null);
     setReportTitle("");
-    setMessage("");
+    setFeedback(null);
   };
 
   // action은 UI가 이미 아는 동작을 자연어로 바꾸지 않고 전달하는 typed 신호다(서버가 재검증).
@@ -244,7 +234,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     setSubmitting(true);
     setEvidenceOpen(false);
     setSelectedEvidenceRun(null);
-    setMessage("");
+    setFeedback(null);
     const traceId = createUuid();
     const commandIdempotencyKey = createUuid();
     activeTraceId.current = traceId;
@@ -484,12 +474,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const saveAnalysis = async (targetRun) => {
     if (!["success", "partial"].includes(targetRun.status) || !targetRun.requestId || savedBusy) return;
     setSavedBusy(true);
-    setMessage("");
+    setFeedback(null);
     try {
       await analysisClient.createDefinition(targetRun.question, targetRun.requestId);
-      setMessage("현재 분석을 저장했습니다.");
+      setFeedback({ tone: "success", message: "현재 분석을 저장했습니다." });
       await refreshSaved();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "분석을 저장하지 못했습니다."); }
+    } catch (error) { setFeedback({ tone: "error", message: error instanceof Error ? error.message : "분석을 저장하지 못했습니다." }); }
     finally { setSavedBusy(false); }
   };
 
@@ -500,7 +490,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     setSubmitting(true);
     setEvidenceOpen(false);
     setSelectedEvidenceRun(null);
-    setMessage("저장 분석을 현재 권한과 릴리스에서 다시 실행하고 있습니다.");
+    setFeedback({ tone: "info", message: "저장 분석을 현재 권한과 릴리스에서 다시 실행하고 있습니다." });
     try {
       const receipt = await analysisClient.replayDefinition(definition.definition_id, {});
       if (!["SUCCEEDED", "PARTIAL"].includes(receipt.status)) {
@@ -516,10 +506,10 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         resolvedSlots: null,
         viewType: "SUMMARY",
       }]);
-      setMessage("저장 분석을 새 실행으로 완료했습니다.");
+      setFeedback({ tone: "success", message: "저장 분석을 새 실행으로 완료했습니다." });
       await refreshSaved();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다.");
+      setFeedback({ tone: "error", message: error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다." });
     } finally {
       requestInFlight.current = false;
       setSavedBusy(false);
@@ -532,20 +522,20 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     if (!canDraftReport) return;
     const artId = reportModalRun?.artifact?.artifactId || reportModalRun?.artifact?.artifact_id;
     if (!artId) return;
-    setMessage("");
+    setFeedback(null);
     try {
       await reportClient.createDraftFromArtifact(artId, reportTitle.trim() || reportTitleForAnalysis(reportModalRun));
       setReportModal("");
       onNavigate("/reports");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "보고서 초안을 저장하지 못했습니다."); }
+    } catch (error) { setFeedback({ tone: "error", message: error instanceof Error ? error.message : "보고서 초안을 저장하지 못했습니다." }); }
   };
 
   const copyEvidence = async (value) => {
     try {
       await navigator.clipboard.writeText(String(value ?? ""));
-      setMessage("식별 정보를 복사했습니다.");
+      setFeedback({ tone: "success", message: "식별 정보를 복사했습니다." });
     } catch {
-      setMessage("식별 정보를 복사하지 못했습니다.");
+      setFeedback({ tone: "error", message: "식별 정보를 복사하지 못했습니다." });
     }
   };
 
@@ -562,19 +552,17 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         {visibleDefinitions.length === 0 && <small className="chat-history-empty">아직 저장된 분석이 없습니다.</small>}
         {visibleDefinitions.map((d) => (
           <button disabled={savedBusy} title={d.question} onClick={() => void replaySavedDefinition(d)} key={d.definition_id}>
-            <MessageSquareText size={15} /><span>{d.title}<small>다시 분석하기</small></span>
+            <MessageSquareText size={15} /><span>{d.question}<small>다시 분석하기</small></span>
           </button>
         ))}
         {filteredDefinitions.length > visibleDefinitionCount && (
           <button type="button" className="saved-analysis-more" onClick={() => setVisibleDefinitionCount((c) => c + 10)}>더 보기</button>
         )}
-        {!compactViewport && <AnalysisArtifactCollection analysisClient={analysisClient} />}
       </aside>
 
       {/* 중앙: 대화 스레드 메인 */}
       <main className="chat-main" inert={Boolean(reportModal)}>
         <div className="chat-scroll-region">
-        {compactViewport && <div className="analysis-artifact-mobile"><AnalysisArtifactCollection analysisClient={analysisClient} /></div>}
         {turns.length === 0 && !submitting && (
           emptyMode === "rag-documents" ? (
             <RagEmptyState
@@ -659,7 +647,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
-                      onSave={["success", "partial"].includes(turnItem.run.status) ? () => void saveAnalysis(turnItem.run) : undefined}
+                      onSave={["success", "partial"].includes(turnItem.run.status) && !turnItem.isArtifactReuse ? () => void saveAnalysis(turnItem.run) : undefined}
                       saveDisabled={savedBusy}
                       onCreateReportDraft={canDraftReport && turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
                         setReportModalRun(turnItem.run);
@@ -696,7 +684,10 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           </div>
         )}
 
-        {message && <p className="analysis-notice" role="status">{message}</p>}
+        {feedback?.message && <p className={`analysis-notice analysis-notice--${feedback.tone}`} role={feedback.tone === "error" ? "alert" : "status"}>
+          {feedback.tone === "error" ? <AlertTriangle size={16} aria-hidden="true" /> : feedback.tone === "success" ? <CheckCircle2 size={16} aria-hidden="true" /> : <Info size={16} aria-hidden="true" />}
+          <span>{feedback.message}</span>
+        </p>}
 
         </div>
 

@@ -388,7 +388,7 @@ assert.match(source("authorization.ts"), /분석 사용자/);
 assert.match(source("authorization.ts"), /알 수 없는 역할/);
 assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
-assert.match(source("pages/AgentPage.jsx"), /className="analysis-notice"/);
+assert.match(source("pages/AgentPage.jsx"), /className=\{`analysis-notice analysis-notice--\$\{feedback\.tone\}`\}/);
 assert.match(source("pages/AgentPage.jsx"), /reportTitleForAnalysis/);
 assert.match(source("pages/AgentPage.jsx"), /createDraftFromArtifact\(artId, reportTitle\.trim\(\) \|\| reportTitleForAnalysis\(reportModalRun\)\)/);
 assert.match(source("pages/AgentPage.jsx"), /definitions\.filter/);

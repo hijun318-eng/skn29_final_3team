@@ -122,7 +122,8 @@ try {
     currency: { label: "억 원", unit: "billion", policy: {} },
     renderView: () => createElement("div", null, "unexpected"),
   }));
-  assert.match(legacyBundleHtml, /이전 합본 분석 요소는 표시할 수 없습니다/);
+  assert.match(legacyBundleHtml, /이전 형식의 합본 분석 요소입니다/);
+  assert.match(legacyBundleHtml, /각각 독립 블록으로 정리됩니다/);
   assert.doesNotMatch(legacyBundleHtml, /unexpected|객실 매출|6,114/);
   for (const [artifactState, expected] of [
     [{ status: "error", message: "연결 실패", requiredAction: "RETRY" }, "연결 실패"],

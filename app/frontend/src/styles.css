@@ -275,7 +275,7 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
 .top-actions>.session-signout{width:auto;height:36px;padding:0 11px;display:flex;align-items:center;gap:6px;color:#665c54}
 .top-actions>.session-signout:hover{border-color:#b7aca0;background:#f8f5f0}
 .chat-history-empty{display:block;margin:8px;padding:12px 8px;color:#8e99a8;font-size:11px;line-height:1.5}
-.analysis-notice{max-width:840px;margin:14px auto;padding:10px 12px;color:#bcd5f5;border-left:3px solid #1c69d4;background:#0f1827;font-size:12px;line-height:1.5}
+.analysis-notice{width:fit-content;max-width:min(100%,840px);margin:14px auto;padding:10px 12px;display:flex;align-items:flex-start;gap:8px;color:#c9d7e6;border:1px solid #2d4159;border-radius:8px;background:#0f1927;font-size:12px;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.12)}.analysis-notice>svg{margin-top:1px;flex:none}.analysis-notice--info>svg{color:#70a9f4}.analysis-notice--success>svg{color:#65c18c}.analysis-notice--error{color:#f0c3c0;border-color:#633b40;background:#211418}.analysis-notice--error>svg{color:#e77d75}
 .run-history-panel{max-width:840px;margin:14px auto 28px;color:#aeb9c8;border-top:1px solid #26344a;font-size:12px}
 .run-history-panel>summary{min-height:44px;padding:0 4px;display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;color:#c7d2df}
 .run-history-panel>summary::-webkit-details-marker{display:none}
@@ -813,7 +813,8 @@ html[data-theme="light"] body{color:#18263a;background:#f4f7fb}html[data-theme="
 @media(max-width:720px){.rag-empty-state>.rag-help-actions{grid-template-columns:1fr}}
 
 /* 대화 스크롤과 composer를 별도 행으로 나눠 결과 위를 덮는 fixed 오버레이를 만들지 않는다. */
-html:has(.chat-layout),body:has(.chat-layout){overflow:hidden}
+html:has(.chat-layout),body:has(.chat-layout){height:100%;overflow:hidden}
+.app-shell:has(.chat-layout){height:100dvh;min-height:0;overflow:hidden}.app-shell:has(.chat-layout)>.workspace{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.app-shell:has(.chat-layout)>.workspace>.page-stage{min-height:0;overflow:hidden}.app-shell:has(.chat-layout) .chat-layout{height:100%;min-height:0}.chat-history,.chat-layout .evidence-panel{min-height:0;overflow:auto}
 .chat-main{padding:0;display:grid;grid-template-rows:minmax(0,1fr) auto;overflow:hidden}
 .chat-scroll-region{min-width:0;min-height:0;padding:18px 25px 32px;overflow:auto;scroll-padding-bottom:32px;overscroll-behavior:contain}
 .chat-input{position:static;min-width:0;width:100%;padding:10px 25px calc(12px + env(safe-area-inset-bottom))}.chat-main>.chat-input{background:transparent}
@@ -823,7 +824,7 @@ html:has(.chat-layout),body:has(.chat-layout){overflow:hidden}
 .turn-user-bubble .user-text,.agent-narrative-text,.analysis-state h3,.analysis-state p,.analysis-state small,.analysis-result-section h3,.analysis-chart-fallback,.analysis-view-unavailable,.analysis-input-error,.analysis-notice{min-width:0;overflow-wrap:anywhere}
 .analysis-view-unavailable[data-view="kpi"]>svg{color:#79adf5}.analysis-view-unavailable[data-view="table"]>svg{color:#8eb8d8}.analysis-view-unavailable[data-view="chart"]>svg{color:#e3a447}
 
-@media(max-width:650px){.chat-main{height:calc(100dvh - var(--app-header-height));min-height:0;padding:0}.chat-scroll-region{padding:12px 12px 28px}.chat-input{max-width:none;padding:10px 12px calc(12px + env(safe-area-inset-bottom))}.conversation-end{scroll-margin-block-end:28px}}
+@media(max-width:650px){.app-shell:has(.chat-layout) .chat-layout,.chat-main{height:100%;min-height:0}.chat-main{padding:0}.chat-scroll-region{padding:12px 12px 28px}.chat-input{max-width:none;padding:10px 12px calc(12px + env(safe-area-inset-bottom))}.conversation-end{scroll-margin-block-end:28px}}
 
 /* 분석 입력과 결과 액션은 테마별 실제 색으로 상태를 구분하고 텍스트 투명도를 사용하지 않는다. */
 .question-field input::placeholder,.saved-analysis-search input::placeholder{color:#91a4ba;opacity:1}
@@ -847,7 +848,7 @@ html:has(.chat-layout),body:has(.chat-layout){overflow:hidden}
 .notion-data-embed{padding-left:15px}.notion-data-embed-live{padding-left:16px}.notion-data-embed::before{display:none}
 .markdown-copy blockquote{border:1px solid #2a3a50;border-radius:6px}
 .report-evidence{padding-left:0}.report-evidence::before{display:none}
-.analysis-notice{border:1px solid #2d4f7b;border-radius:8px}
+.theme-light .analysis-notice{color:#36516d;border-color:#d2deea;background:#fff;box-shadow:0 8px 24px rgba(43,70,101,.08)}.theme-light .analysis-notice--info>svg{color:#176fe5}.theme-light .analysis-notice--success{color:#276349;border-color:#bcdcc9;background:#f0f9f4}.theme-light .analysis-notice--success>svg{color:#31855f}.theme-light .analysis-notice--error{color:#91352f;border-color:#e3bbb7;background:#fff3f2}.theme-light .analysis-notice--error>svg{color:#b84139}
 .notion-block{border-left:0!important}.notion-block:hover{box-shadow:inset 0 0 0 1px #29496f}.notion-block.selected,.notion-block.dragging{box-shadow:inset 0 0 0 1px #4f99f5}
 .analysis-next-action{border:1px solid #355e92;border-radius:7px}
 .report-finalization-panel,.report-finalization-panel.is-final{border:1px solid #2b4463}
@@ -897,7 +898,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
 /* 분석 대화는 기준일·메시지·상태·입력창을 하나의 920px 콘텐츠 축에 맞춘다. */
 .chat-main{--analysis-thread-width:920px}
 .chat-scroll-region{scrollbar-gutter:stable both-edges}
-.chat-layout .conversation,.chat-layout .analysis-notice{width:min(100%,var(--analysis-thread-width));max-width:none;margin-inline:auto}
+.chat-layout .conversation{width:min(100%,var(--analysis-thread-width));max-width:none;margin-inline:auto}.chat-layout .analysis-notice{max-width:min(100%,var(--analysis-thread-width));margin-inline:auto}
 
 /* AI 응답 바깥의 레거시 말풍선을 없애 결과·오류·진행 카드가 한 번만 경계를 갖게 한다. */
 .chat-layout .message.message--agent>.agent-response-container{width:100%;max-width:calc(100% - 42px);padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}

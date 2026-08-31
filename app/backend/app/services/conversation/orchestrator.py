@@ -113,6 +113,7 @@ def _clarification_resolved_by_inheritance(
             partial.get("metric_resolution") == "missing"
             and slots.is_inherited_metric
             and bool(slots.metric_ids)
+            and ConversationSlotResolver.has_grounded_analysis_slot_delta(partial)
         )
     if error.code is ContextBuildErrorCode.PERIOD_REQUIRED:
         return (

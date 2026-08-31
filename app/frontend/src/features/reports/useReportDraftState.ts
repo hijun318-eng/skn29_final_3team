@@ -24,6 +24,7 @@ import {
   mergeDraftCurrencyPolicy,
   readDraftBlockSettings,
   resizeDraftBlocks,
+  splitLegacyCompositeArtifactBlocks,
 } from "./reportDraftMutations.ts";
 import type {
   DraftCurrencyPolicy,
@@ -474,14 +475,23 @@ export function useReportDraftState(
   const fitHydratedArtifactViews = useCallback((artifactMap = optionsRef.current.artifacts ?? {}): boolean => {
     if (!optionsRef.current.editable) return false;
     const current = blocksRef.current;
-    const fitted = fitAutoArtifactViewLayout(current, artifactMap, orientationRef.current);
+    const migrated = splitLegacyCompositeArtifactBlocks(
+      current,
+      artifactMap,
+      optionsRef.current.artifactSources ?? [],
+      orientationRef.current,
+      createUuid,
+    );
+    const fitted = fitAutoArtifactViewLayout(migrated.blocks, artifactMap, orientationRef.current);
     if (JSON.stringify(fitted) === JSON.stringify(current)) return false;
     const fittedSaved = fitAutoArtifactViewLayout(savedBlocksRef.current, artifactMap, savedOrientationRef.current);
     blocksRef.current = copyDraftBlocks(fitted);
     savedBlocksRef.current = copyDraftBlocks(fittedSaved);
     setBlocks(blocksRef.current);
-    setIsDirty(draftChanged(blocksRef.current));
-    announce("차트와 표 높이를 실제 데이터에 맞춰 조정했습니다.");
+    setIsDirty(migrated.migratedSourceCount > 0 || draftChanged(blocksRef.current));
+    announce(migrated.migratedSourceCount > 0
+      ? `이전 합본 분석 요소 ${migrated.migratedSourceCount}개를 독립 블록으로 정리했습니다. 검토한 뒤 저장해 주세요.`
+      : "차트와 표 높이를 실제 데이터에 맞춰 조정했습니다.");
     return true;
   }, [announce, draftChanged]);
 

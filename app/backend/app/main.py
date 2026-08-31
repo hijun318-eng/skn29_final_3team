@@ -29,6 +29,7 @@ from app.contracts import (
     ErrorCode,
     ErrorResponse,
     OPENAPI_DOCUMENT_VERSION,
+    RequiredAction,
     response_meta,
 )
 from app.report_contracts import (
@@ -175,6 +176,47 @@ def _public_external_transfer_outcome_unknown(
         retryable=policy.retryable,
         required_action=policy.required_action.value,
     )
+
+
+def _public_report_draft_conflict(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> ErrorBody | None:
+    """block CAS 충돌만 최신 초안을 다시 열어야 하는 공개 오류로 구분한다."""
+
+    path_parts = request.url.path.split("/")
+    if (
+        exc.status_code != 409
+        or len(path_parts) != 7
+        or path_parts[:3] != ["", "reports", "definitions"]
+        or not path_parts[3]
+        or path_parts[4] != "versions"
+        or not path_parts[5]
+        or path_parts[6] != "blocks"
+    ):
+        return None
+    if (
+        isinstance(exc.detail, dict)
+        and exc.detail.get("code") == "REPORT_REVISION_CONFLICT"
+    ):
+        return ErrorBody(
+            code=ErrorCode.REPORT_DRAFT_CONFLICT,
+            message=(
+                "보고서의 다른 변경이 먼저 저장되었습니다. "
+                "최신 초안을 다시 연 뒤 변경사항을 적용해 주세요."
+            ),
+        )
+    if exc.detail == "Legacy Report draft has no release receipt":
+        return ErrorBody(
+            code=ErrorCode.REPORT_DRAFT_CONFLICT,
+            message=(
+                "이전 형식 보고서의 분석 근거 버전을 확인할 수 없어 저장하지 않았습니다. "
+                "관리자에게 안전한 보고서 전환을 요청해 주세요."
+            ),
+            retryable=False,
+            required_action=RequiredAction.CONTACT_ADMIN,
+        )
+    return None
 
 
 def _public_report_assistant_external_transfer_error(
@@ -383,6 +425,8 @@ async def http_error(request: Request, exc: StarletteHTTPException) -> JSONRespo
         error = _public_report_assistant_page_constraint_error(request, exc)
     if error is None:
         error = _public_external_transfer_outcome_unknown(request, exc)
+    if error is None:
+        error = _public_report_draft_conflict(request, exc)
     if error is None:
         code, message = _HTTP_ERROR_MAP.get(
             exc.status_code,

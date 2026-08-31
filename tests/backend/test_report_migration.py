@@ -371,6 +371,34 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("report_definition_release_receipt_immutable", source)
         self.assertIn("report_run_release_receipt_immutable", source)
 
+    def test_legacy_report_receipt_backfill_requires_one_owned_approved_artifact_receipt(self):
+        source = (MIGRATIONS / "20260901_71_legacy_report_receipt_backfill.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('revision = "20260901_71"', source)
+        self.assertIn('down_revision = "20260831_70"', source)
+        self.assertIn("version.status = 'draft'", source)
+        self.assertIn("definition.archived_at IS NULL", source)
+        self.assertIn("request.user_id = definition.owner_id", source)
+        self.assertIn("artifact.status = 'APPROVED'", source)
+        self.assertIn("request.status IN ('SUCCEEDED', 'PARTIAL')", source)
+        self.assertIn("count(DISTINCT (", source)
+        self.assertIn(") = 1", source)
+        self.assertIn("artifact.user_artifact_lifecycle", source)
+        self.assertIn("artifact_id IS NOT NULL", source)
+        self.assertIn("report_definition_release_receipt_immutable", source)
+        self.assertIn(
+            '"governance.product_release_bindings IN ACCESS EXCLUSIVE MODE"',
+            source,
+        )
+        self.assertIn("DROP TRIGGER product_release_bindings_immutable", source)
+        self.assertIn("def _create_binding_immutable_trigger", source)
+        self.assertGreaterEqual(source.count("_create_binding_immutable_trigger()"), 2)
+        self.assertIn("migration-20260901-71", source)
+        self.assertNotIn("':v'", source)
+        self.assertIn("Backfilled Report receipt is already in use", source)
+
 
 if __name__ == "__main__":
     unittest.main()

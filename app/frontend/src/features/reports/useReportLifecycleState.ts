@@ -21,6 +21,7 @@ import { reportAssistantSessionMatchesDefinition } from "./reportAssistantSessio
 import type {
   AssistantTrace,
   CreateDefinitionResult,
+  DefinitionCollection,
   DefinitionListState,
   DefinitionStatusFilter,
   FinalAssetFormat,
@@ -54,6 +55,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DefinitionStatusFilter>("all");
+  const [definitionCollection, setDefinitionCollectionState] = useState<DefinitionCollection>("active");
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
@@ -77,11 +79,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   } | null>(null);
 
   const definitionsRef = useRef(definitions);
+  const definitionCollectionRef = useRef<DefinitionCollection>(definitionCollection);
+  const definitionsRequestRef = useRef(0);
   const selectedDefinitionRef = useRef(selectedDefinition);
   const assistantSessionRef = useRef(assistantSession);
   const assistantRequestRef = useRef(0);
   const runsRequestRef = useRef("");
   definitionsRef.current = definitions;
+  definitionCollectionRef.current = definitionCollection;
   selectedDefinitionRef.current = selectedDefinition;
   assistantSessionRef.current = assistantSession;
 
@@ -138,6 +143,11 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSuggestionSet(null);
     setAssistantInstruction("");
   }, []);
+  const ensureAssistantEditable = useCallback(() => {
+    if (!selectedDefinitionRef.current?.archivedAt) return true;
+    setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 보고서를 복원해 주세요.");
+    return false;
+  }, []);
 
   const selectDefinition = useCallback((definition: ReportDefinitionVersion | null) => {
     setSelectedDefinition(definition);
@@ -156,20 +166,77 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return definition;
   }, []);
 
-  const loadDefinitions = useCallback(async () => {
+  const loadDefinitionsFor = useCallback(async (collection: DefinitionCollection) => {
+    const request = definitionsRequestRef.current + 1;
+    definitionsRequestRef.current = request;
+    definitionCollectionRef.current = collection;
+    setDefinitionCollectionState(collection);
+    if (collection === "archived") setCreateOpen(false);
     setDefinitionState("loading");
-    const items = await mutate("definitions", () => reportClient.listDefinitions());
+    const items = await mutate(
+      "definitions",
+      () => reportClient.listDefinitions(collection === "archived"),
+      () => definitionsRequestRef.current === request,
+    );
+    if (definitionsRequestRef.current !== request) return null;
     if (items === null) {
       setDefinitionState("error");
       return null;
     }
     const next = sortReportDefinitions(items);
+    definitionsRef.current = next;
     setDefinitions(next);
     setSelectedDefinition((current) => (
-      current ? next.find((item) => isSameReportDefinition(item, current)) ?? current : current
+      current ? next.find((item) => isSameReportDefinition(item, current)) ?? null : current
     ));
     setDefinitionState(next.length ? "ready" : "empty");
     return next;
+  }, [mutate, reportClient]);
+
+  const loadDefinitions = useCallback(
+    () => loadDefinitionsFor(definitionCollectionRef.current),
+    [loadDefinitionsFor],
+  );
+
+  const setDefinitionCollection = useCallback((collection: DefinitionCollection) => {
+    if (collection !== "active" && collection !== "archived") return Promise.resolve(null);
+    if (collection === definitionCollectionRef.current && definitionState !== "error") {
+      return Promise.resolve(definitionsRef.current);
+    }
+    clearFeedback();
+    setSelectedDefinition(null);
+    clearAssistantTrace();
+    return loadDefinitionsFor(collection);
+  }, [clearAssistantTrace, clearFeedback, definitionState, loadDefinitionsFor]);
+
+  const archiveDefinition = useCallback(async (definitionId: string) => {
+    const archived = await mutate(
+      `archive:${definitionId}`,
+      () => reportClient.archiveDefinition(definitionId),
+    );
+    if (!archived) return null;
+    const next = definitionsRef.current.filter((item) => item.definitionId !== definitionId);
+    definitionsRef.current = next;
+    setDefinitions(next);
+    setDefinitionState(next.length ? "ready" : "empty");
+    setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
+    setNotice("보고서를 보관했습니다. 보관함에서 확정 문서를 계속 열람할 수 있습니다.");
+    return archived;
+  }, [mutate, reportClient]);
+
+  const restoreDefinition = useCallback(async (definitionId: string) => {
+    const restored = await mutate(
+      `restore:${definitionId}`,
+      () => reportClient.restoreDefinition(definitionId),
+    );
+    if (!restored) return null;
+    const next = definitionsRef.current.filter((item) => item.definitionId !== definitionId);
+    definitionsRef.current = next;
+    setDefinitions(next);
+    setDefinitionState(next.length ? "ready" : "empty");
+    setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
+    setNotice("보고서를 복원했습니다. 활성 보고서에서 다시 편집할 수 있습니다.");
+    return restored;
   }, [mutate, reportClient]);
 
   const fetchDefinition = useCallback((definition: Pick<ReportDefinitionVersion, "definitionId" | "version">) => (
@@ -189,9 +256,8 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       return null;
     }
     const initialContent = newContent.trim();
-    const blockId = createUuid();
     const blocks: ReportBlockRequest[] = initialContent ? [{
-      block_id: blockId,
+      block_id: createUuid(),
       title: "운영 요약",
       columns: 12,
       type: "text",
@@ -213,10 +279,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setNewTitle("");
     setNewContent("");
     clearAssistantTrace();
-    return { definition, blockId, initialContent };
+    return { definition, initialContent };
   }, [clearAssistantTrace, mutate, newContent, newTitle, reportClient, upsertDefinition]);
 
   const createNextDraft = useCallback(async (definition: ReportDefinitionVersion) => {
+    if (definition.archivedAt) {
+      setError("보관된 보고서는 복원한 뒤 새 버전을 만들 수 있습니다.");
+      return null;
+    }
     if (definition.status !== "approved") return definition;
     const draft = await mutate("next-draft", () => reportClient.createNextDraft(
       definition.definitionId,
@@ -236,6 +306,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       blocks?: ReportDefinitionVersion["blocks"];
     } = {},
   ) => {
+    if (definition.archivedAt) {
+      setError("보관된 보고서는 복원한 뒤 확정할 수 있습니다.");
+      return null;
+    }
     if (definition.status !== "draft") return null;
     const approved = await mutate("approve", () => reportClient.approveDefinition(
       definition.definitionId,
@@ -309,6 +383,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     definition: ReportDefinitionVersion | null = selectedDefinitionRef.current,
     runOptions: ManualRunOptions = {},
   ): Promise<ManualRunResult | null> => {
+    if (definition?.archivedAt) {
+      setError("보관된 보고서는 실행할 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!definition || definition.status !== "approved") return null;
     const receipt = await mutate("run", () => reportClient.createManualRun({
       definition_id: definition.definitionId,
@@ -338,6 +416,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     override: Partial<ScheduleFormValues> = {},
   ) => {
     const values = { cadence, scheduleAt, ...override };
+    if (definition?.archivedAt) {
+      setError("보관된 보고서에는 예약을 만들 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!definition || definition.status !== "approved" || !values.scheduleAt) return null;
     const schedule = await mutate("schedule-create", () => reportClient.createSchedule({
       schedule_id: createUuid(),
@@ -371,6 +453,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     instruction: string,
     requestOptions: { upsert?: boolean } = {},
   ) => {
+    if (!ensureAssistantEditable()) return null;
     const normalizedInstruction = instruction.trim();
     if (!artifactId || !normalizedInstruction) return null;
     const request = ++assistantRequestRef.current;
@@ -385,7 +468,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantInstruction("");
     setNotice("AI 초안을 만들었습니다. 게시하거나 확정하기 전에 내용을 검토해 주세요.");
     return result;
-  }, [mutate, reportClient, upsertDefinition]);
+  }, [ensureAssistantEditable, mutate, reportClient, upsertDefinition]);
 
   const submitAssistantInstruction = useCallback(async (
     definition: ReportDefinitionVersion,
@@ -396,6 +479,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     operationScope: ReportAssistantOperationScope = "full_report",
   ) => {
     const normalized = instruction.trim();
+    if (definition.archivedAt) {
+      setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!artifactId || !normalized || definition.status !== "draft") return null;
     const request = ++assistantRequestRef.current;
     setAssistantSuggestionSet(null);
@@ -463,6 +550,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     artifactIds: readonly string[] = [artifactId],
     selectedBlockId: string | null = null,
   ) => {
+    if (definition.archivedAt) {
+      setError("보관된 보고서에서는 AI 품질 검토를 실행할 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!artifactId || definition.status !== "draft") return null;
     const request = ++assistantRequestRef.current;
     setAssistantSuggestionSet(null);
@@ -503,6 +594,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     assistantRequestId: string,
     definition: Pick<ReportDefinitionVersion, "definitionId" | "version">,
   ) => {
+    if (!ensureAssistantEditable()) return null;
     const request = ++assistantRequestRef.current;
     const session = await mutate(
       "assistant-recover",
@@ -517,9 +609,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSession(session);
     setAssistantSuggestionSet(null);
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   const retryAssistantSession = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     if (!current?.retryable || current.phase !== "failed") return null;
     const request = ++assistantRequestRef.current;
@@ -536,9 +629,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantInstruction("");
     setNotice("새 Assistant 세션을 열었습니다. 지시를 다시 입력해 주세요.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   const cancelAssistantSession = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     if (!current || !["ready", "waiting_patch_approval", "waiting_approval"].includes(current.phase)) {
       return null;
@@ -555,9 +649,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSuggestionSet(null);
     setNotice("Report Assistant 요청을 취소했습니다. 보고서는 변경되지 않았습니다.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   const approveAssistantRequest = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.analysis_plan?.request_id;
     if (!current || !requestId) return null;
@@ -578,9 +673,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     upsertDefinition(definition);
     setNotice(`AI가 검증된 Artifact를 반영한 v${definition.version} 초안을 만들었습니다.`);
     return { session, definition };
-  }, [mutate, reportClient, upsertDefinition]);
+  }, [ensureAssistantEditable, mutate, reportClient, upsertDefinition]);
 
   const rejectAssistantRequest = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.analysis_plan?.request_id;
     if (!current || !requestId) return null;
@@ -594,9 +690,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSuggestionSet(null);
     setNotice("새 데이터 분석 계획을 거절했습니다.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   const approveAssistantPatch = useCallback(async (operationIndexes?: readonly number[]) => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.patch_request_id;
     if (!current || !requestId) return null;
@@ -618,9 +715,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     upsertDefinition(definition);
     setNotice(`검토한 AI 변경안을 v${definition.version} 초안으로 저장했습니다.`);
     return { session, definition };
-  }, [mutate, reportClient, upsertDefinition]);
+  }, [ensureAssistantEditable, mutate, reportClient, upsertDefinition]);
 
   const rejectAssistantPatch = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.patch_request_id;
     if (!current || !requestId) return null;
@@ -634,7 +732,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSuggestionSet(null);
     setNotice("AI 변경안을 취소했습니다. 보고서는 변경되지 않았습니다.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   useEffect(() => {
     if (!autoLoad) return;
@@ -698,6 +796,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     visibleDefinitions,
     query,
     statusFilter,
+    definitionCollection,
     createOpen,
     newTitle,
     newContent,
@@ -725,6 +824,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     assistantSuggestionSet,
     setQuery,
     setStatusFilter,
+    setDefinitionCollection,
     setCreateOpen,
     setNewTitle,
     setNewContent,
@@ -741,6 +841,8 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     selectDefinition,
     upsertDefinition,
     loadDefinitions,
+    archiveDefinition,
+    restoreDefinition,
     fetchDefinition,
     findLatestDraft,
     createDefinition,
@@ -765,16 +867,16 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     retryAssistantSession,
     cancelAssistantSession,
   }), [
-    analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, assistantInstruction,
+    analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, archiveDefinition, assistantInstruction,
     assistantEvaluation, assistantReview, assistantSession, assistantSuggestionSet, assistantTrace, cadence,
     clearAssistantTrace, clearFeedback, createDefinition, createNextDraft, createOpen, createSchedule,
-    definitionState, definitions, error, fetchDefinition, filteredRuns, finalDocument,
+    definitionCollection, definitionState, definitions, error, fetchDefinition, filteredRuns, finalDocument,
     finalDocumentState, findLatestDraft, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
     pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient, requestAssistantDraft,
-    restoreAssistantSession, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
+    restoreAssistantSession, restoreDefinition, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
     runs, scheduleAt, schedules, selectedDefinition, selectedRun, selectedSchedules,
-    selectDefinition, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
+    selectDefinition, setDefinitionCollection, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
     reviewAssistantReport, submitAssistantInstruction, visibleDefinitions, visibleRunCount, visibleRuns,
   ]);
 }

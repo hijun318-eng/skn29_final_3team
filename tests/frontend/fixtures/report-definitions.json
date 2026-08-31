@@ -10,6 +10,8 @@
       "orientation": "landscape",
       "currency_display_unit": "million",
       "approved_at": null,
+      "archived_at": null,
+      "archived_by": null,
       "blocks": [
         {
           "block_id": "block-summary",

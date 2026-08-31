@@ -5,11 +5,13 @@ import {
   assertReportContractVersion,
   assertReportOrientation,
   normalizeReportDefinition,
+  normalizeReportDefinitionLifecycle,
   normalizeReportDocument,
   normalizeReportRun,
   type ManualRunCommandResponse,
   type ReportBlockRequest,
   type ReportDefinitionListResponse,
+  type ReportDefinitionLifecycleResponse,
   type ReportDefinitionResponse,
   type ReportDefinitionVersion,
   type ReportDocument,
@@ -264,10 +266,33 @@ export function createReportClient(
         await send("/reports/drafts/from-analysis-artifact", "POST", { artifact_id: artifactId, title }),
       ));
     },
-    async listDefinitions(): Promise<readonly ReportDefinitionVersion[]> {
-      const payload = await parse<ReportDefinitionListResponse>(await send("/reports/definitions"));
+    async listDefinitions(archived = false): Promise<readonly ReportDefinitionVersion[]> {
+      const query = archived ? "?archived=true" : "";
+      const payload = await parse<ReportDefinitionListResponse>(await send(`/reports/definitions${query}`));
       assertReportContractVersion(payload.contract_version);
       return payload.items.map(normalizeReportDefinition);
+    },
+    async archiveDefinition(definitionId: string) {
+      const response = await parse<ReportDefinitionLifecycleResponse>(await send(
+        `/reports/definitions/${encodeURIComponent(definitionId)}/archive`,
+        "POST",
+      ));
+      const lifecycle = normalizeReportDefinitionLifecycle(response);
+      if (lifecycle.definitionId !== definitionId || !lifecycle.archived) {
+        throw new Error("Report 보관 응답이 요청과 일치하지 않습니다.");
+      }
+      return lifecycle;
+    },
+    async restoreDefinition(definitionId: string) {
+      const response = await parse<ReportDefinitionLifecycleResponse>(await send(
+        `/reports/definitions/${encodeURIComponent(definitionId)}/restore`,
+        "POST",
+      ));
+      const lifecycle = normalizeReportDefinitionLifecycle(response);
+      if (lifecycle.definitionId !== definitionId || lifecycle.archived) {
+        throw new Error("Report 복원 응답이 요청과 일치하지 않습니다.");
+      }
+      return lifecycle;
     },
     async getDefinition(definitionId: string, version: number) {
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(

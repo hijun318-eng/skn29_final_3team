@@ -376,6 +376,8 @@ const serverOnlyDefinition = normalizeReportDefinition({
   orientation: "landscape",
   currency_display_unit: "million",
   approved_at: null,
+  archived_at: null,
+  archived_by: null,
 });
 assert.equal(loadFrontendDraft({ getItem: () => null }, report.definitionId, report.version), null);
 assert.equal(serverOnlyDefinition.blocks[0].type, "artifact");

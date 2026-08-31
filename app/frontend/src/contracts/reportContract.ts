@@ -125,6 +125,15 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly orientation: ReportOrientation;
   readonly currencyDisplayUnit: ReportCurrencyDisplayUnit;
   readonly approvedAt?: string;
+  readonly archivedAt?: string;
+  readonly archivedBy?: string;
+}
+
+/** 보고서 정의 전체의 비파괴 보관 상태다. */ export interface ReportDefinitionLifecycle {
+  readonly definitionId: string;
+  readonly archived: boolean;
+  readonly archivedAt?: string;
+  readonly archivedBy?: string;
 }
 
 /** 정의 버전에 연결된 immutable 분석 artifact 참조다. */ export interface ReportArtifactVersion {
@@ -185,6 +194,15 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly orientation: ReportOrientation;
   readonly currency_display_unit: ReportCurrencyDisplayUnit;
   readonly approved_at: string | null;
+  readonly archived_at: string | null;
+  readonly archived_by: string | null;
+}
+
+/** 정의 보관·복원 명령의 wire 응답이다. */ export interface ReportDefinitionLifecycleResponse {
+  readonly definition_id: string;
+  readonly archived: boolean;
+  readonly archived_at: string | null;
+  readonly archived_by: string | null;
 }
 
 /** 최종 문서 API의 versioned wire envelope다. */ export interface ReportDocumentResponse {

@@ -45,15 +45,20 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   if (page.view === "list") {
     return <ReportListView
       createOpen={lifecycle.createOpen}
+      definitionCollection={lifecycle.definitionCollection}
       definitionState={lifecycle.definitionState}
       error={lifecycle.error}
       errorRef={page.errorRef}
       newContent={lifecycle.newContent}
       newTitle={lifecycle.newTitle}
+      notice={lifecycle.notice}
+      onArchive={lifecycle.archiveDefinition}
+      onCollectionChange={lifecycle.setDefinitionCollection}
       onCreate={page.createDefinition}
       onEdit={page.openEditor}
       onOpen={page.openPreview}
       onRefresh={lifecycle.loadDefinitions}
+      onRestore={lifecycle.restoreDefinition}
       pending={lifecycle.pending}
       query={lifecycle.query}
       setCreateOpen={lifecycle.setCreateOpen}

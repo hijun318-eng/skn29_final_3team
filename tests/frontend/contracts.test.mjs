@@ -310,7 +310,7 @@ assert.doesNotMatch(source("api/analysisClient.ts"), /restoredMetrics|row\[metri
 assert.match(reportSources.evidence, /export function reportEvidenceReady/);
 assert.match(reportSources.artifacts, /if \(!artifact \|\| !reportEvidenceReady\(artifact\)\)/);
 assert.match(reportSources.artifacts, /if \(includeLibrary\) \{[\s\S]*discoveredAnalysisSources\.forEach\(\(source\) => hydrationIds\.add\(source\.artifactId\)\)/);
-assert.match(reportSources.controller, /const canEdit = Boolean\(isDraft && !lifecycle\.pending\)/);
+assert.match(reportSources.controller, /const canEdit = Boolean\(isDraft && !isArchived && !lifecycle\.pending\)/);
 assert.match(reportSources.editorCanvas, /aria-busy=\{pending === "save"\}/);
 assert.match(reportSources.controller, /existingDraft/);
 assert.match(reportSources.controller, /window\.confirm\(`확정본 v\$\{current\.version\}을 기준으로 새 편집 버전을 만들까요\?`\)/);
@@ -342,7 +342,8 @@ assert.match(reportSources.listView, /enterprise-reports-list/);
 assert.match(reportSources.documentView, /legacy-report-document generated-preview/);
 assert.match(reportSources.lifecycle, /createNextDraft/);
 assert.match(reportSources.lifecycle, /const blocks: ReportBlockRequest\[\] = initialContent \? \[\{/);
-assert.match(reportSources.controller, /blocks: \[\{ id: result\.blockId, title: "운영 요약"/);
+assert.match(reportSources.controller, /const initialBlockId = createUuid\(\);[\s\S]*blocks: \[\{ id: initialBlockId, title: "운영 요약"/);
+assert.doesNotMatch(reportSources.lifecycle, /const blockId = createUuid\(\);[\s\S]*block_id: blockId/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /run-history-panel|listRuns\(/);
 assert.match(source("components/analysis/AnalysisDashboardViews.tsx"), /<EnterpriseChart/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /label: "기본 제외"|label: "GOLD"/);

@@ -19,6 +19,71 @@ from .vector_result_mapper import to_vector_search_result
 from .pgvector_observability import PgVectorObservabilityMixin
 
 
+_ARTICLE_SECTION_PATTERN = re.compile(r"^제([0-9]+)조 (.+)$")
+_NEXT_ARTICLE_PATTERN = re.compile(r"^\s*제\s*[0-9]+\s*조")
+
+
+def _matches_active_evidence_projection(
+    stored: dict[str, str],
+    active_row: tuple[object, ...],
+    ordinal: int,
+) -> bool:
+    """검색 receipt가 원시 chunk 또는 서버의 조항 투영과 정확히 일치하는지 확인한다."""
+
+    if len(active_row) != 10 or int(active_row[0]) != ordinal:
+        return False
+    (
+        _,
+        evidence_id,
+        manual_id,
+        title,
+        version,
+        document_type,
+        owner_team,
+        source_section,
+        source_text,
+        page_start,
+    ) = active_row
+    exact_fields = {
+        "evidence_id": str(evidence_id),
+        "manual_id": str(manual_id),
+        "title": str(title),
+        "version": str(version),
+        "document_type": str(document_type),
+        "owner_team": str(owner_team),
+    }
+    if any(stored.get(field) != value for field, value in exact_fields.items()):
+        return False
+
+    source_section = str(source_section)
+    source_text = str(source_text)
+    locator = "explicit-segment" if document_type == "INTERNAL_REPORT" else "p"
+    source_citation = (
+        f"[{title} v{version} {locator}.{page_start} {source_section}]"
+    )
+    if (
+        stored.get("section_title") == source_section
+        and stored.get("text") == source_text
+        and stored.get("citation") == source_citation
+    ):
+        return True
+
+    if document_type != "MANUAL":
+        return False
+    article_section = str(stored.get("section_title") or "")
+    article_match = _ARTICLE_SECTION_PATTERN.fullmatch(article_section)
+    if article_match is None or article_match.group(2) != source_section:
+        return False
+    projected_text = str(stored.get("text") or "")
+    if projected_text != source_text:
+        if not projected_text or not source_text.startswith(projected_text):
+            return False
+        if _NEXT_ARTICLE_PATTERN.match(source_text[len(projected_text) :]) is None:
+            return False
+    article_citation = f"[{title} v{version} p.{page_start} {article_section}]"
+    return stored.get("citation") == article_citation
+
+
 class PgVectorRepository(PgVectorObservabilityMixin):
     """PostgreSQL에서 immutable release와 역할 필터 검색을 원자적으로 수행한다."""
 
@@ -1496,8 +1561,10 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             raise RuntimeError("RAG answer evidence differs from its search receipt")
         matched = connection.execute(
             """
-            SELECT evidence.ordinality, document.manual_id,
-                   evidence.item->>'evidence_id'
+            SELECT evidence.ordinality, evidence.item->>'evidence_id',
+                   document.manual_id, document.title, document.version,
+                   document.document_type, document.owner_team,
+                   chunk.section_title, chunk.content, chunk.page_start
             FROM jsonb_array_elements(%s::jsonb)
                  WITH ORDINALITY AS evidence(item, ordinality)
             JOIN corpus_active_release active ON active.singleton=TRUE
@@ -1535,24 +1602,6 @@ class PgVectorRepository(PgVectorObservabilityMixin):
               AND chunk.embedding_dimensions=release.embedding_dimensions
               AND chunk.embedding_version=release.embedding_version
               AND chunk.source_document_hash=document.content_checksum
-              AND evidence.item->>'text'=chunk.content
-              AND evidence.item->>'title'=document.title
-              AND evidence.item->>'version'=document.version
-              AND evidence.item->>'document_type'=document.document_type
-              AND evidence.item->>'owner_team'=document.owner_team
-              AND evidence.item->>'section_title'=chunk.section_title
-              AND evidence.item->>'citation'=(
-                  CASE
-                    WHEN document.document_type='INTERNAL_REPORT' THEN
-                      '[' || document.title || ' v' || document.version ||
-                      ' explicit-segment.' || chunk.page_start::text || ' ' ||
-                      chunk.section_title || ']'
-                    ELSE
-                      '[' || document.title || ' v' || document.version ||
-                      ' p.' || chunk.page_start::text || ' ' ||
-                      chunk.section_title || ']'
-                  END
-              )
             ORDER BY evidence.ordinality
             FOR SHARE OF active, release, document, chunk
             """,
@@ -1562,7 +1611,13 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                 role,
             ),
         ).fetchall()
-        if [str(item[2]) for item in matched] != evidence_ids:
+        if len(matched) != len(stored) or any(
+            not _matches_active_evidence_projection(item, row, index)
+            for index, (item, row) in enumerate(
+                zip(stored, matched, strict=True),
+                start=1,
+            )
+        ):
             raise RuntimeError(
                 "RAG retrieval evidence no longer matches authorized corpus rows"
             )

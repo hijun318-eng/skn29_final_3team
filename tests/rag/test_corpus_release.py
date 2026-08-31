@@ -22,7 +22,10 @@ from src.rag.embedding_input import EmbeddingInputBuilder
 from src.rag.backup_validation import PgBackupRestoreValidator
 from src.rag.pdf_ingestion import PdfManualParser
 from src.rag.processing_profile import processing_profile_sha256
-from src.rag.pgvector_repository import PgVectorRepository
+from src.rag.pgvector_repository import (
+    PgVectorRepository,
+    _matches_active_evidence_projection,
+)
 from src.rag.source_bytes import SOURCE_MAX_BYTES_BY_SUFFIX
 from src.rag.vector_application import VectorRagApplication
 from src.rag.vector_models import PdfChunk, PdfDocument
@@ -1742,7 +1745,22 @@ def test_answer_uses_only_exact_current_release_receipt_evidence() -> None:
                     hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
                 )
             ),
-            _Result(rows=[(1, "MANUAL-ONE", evidence[0]["evidence_id"])]),
+            _Result(
+                rows=[
+                    (
+                        1,
+                        evidence[0]["evidence_id"],
+                        "MANUAL-ONE",
+                        "Manual one",
+                        "1.0",
+                        "MANUAL",
+                        "UNASSIGNED",
+                        "Section",
+                        "Approved manual content",
+                        1,
+                    )
+                ]
+            ),
             _Result(rowcount=1),
         ]
     )
@@ -1786,10 +1804,65 @@ def test_answer_uses_only_exact_current_release_receipt_evidence() -> None:
     assert "JOIN corpus_release_chunks" in evidence_sql
     assert "document.approval_status='APPROVED'" in evidence_sql
     assert "document.validity_status!='UNRESOLVED'" in evidence_sql
-    assert "document.document_type='INTERNAL_REPORT'" in evidence_sql
-    assert "explicit-segment." in evidence_sql
+    assert "chunk.section_title, chunk.content, chunk.page_start" in evidence_sql
     assert "FOR SHARE OF active, release, document, chunk" in evidence_sql
     assert "SET consumed_at=CURRENT_TIMESTAMP" in connection.statements[2][0]
+
+
+def test_answer_accepts_server_bounded_article_projection() -> None:
+    evidence = {
+        "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
+        "text": "제4조에 이어지는 승인 절차",
+        "title": "Manual one",
+        "manual_id": "MANUAL-ONE",
+        "version": "1.0",
+        "document_type": "MANUAL",
+        "owner_team": "UNASSIGNED",
+        "section_title": "제4조 Section",
+        "citation": "[Manual one v1.0 p.1 제4조 Section]",
+    }
+    active_row = (
+        1,
+        evidence["evidence_id"],
+        "MANUAL-ONE",
+        "Manual one",
+        "1.0",
+        "MANUAL",
+        "UNASSIGNED",
+        "Section",
+        "제4조에 이어지는 승인 절차  \n제5조 다음 절차",
+        1,
+    )
+
+    assert _matches_active_evidence_projection(evidence, active_row, 1) is True
+
+
+def test_answer_rejects_arbitrary_article_prefix_projection() -> None:
+    evidence = {
+        "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
+        "text": "Approved",
+        "title": "Manual one",
+        "manual_id": "MANUAL-ONE",
+        "version": "1.0",
+        "document_type": "MANUAL",
+        "owner_team": "UNASSIGNED",
+        "section_title": "제4조 Section",
+        "citation": "[Manual one v1.0 p.1 제4조 Section]",
+    }
+    active_row = (
+        1,
+        evidence["evidence_id"],
+        "MANUAL-ONE",
+        "Manual one",
+        "1.0",
+        "MANUAL",
+        "UNASSIGNED",
+        "Section",
+        "Approved manual content",
+        1,
+    )
+
+    assert _matches_active_evidence_projection(evidence, active_row, 1) is False
 
 
 def test_answer_rejects_retired_or_mismatched_retrieval_receipt() -> None:
@@ -1920,7 +1993,22 @@ def test_answer_receipt_is_consumed_once_with_compare_and_set() -> None:
                     hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
                 )
             ),
-            _Result(rows=[(1, "MANUAL-ONE", evidence[0]["evidence_id"])]),
+            _Result(
+                rows=[
+                    (
+                        1,
+                        evidence[0]["evidence_id"],
+                        "MANUAL-ONE",
+                        "Manual one",
+                        "1.0",
+                        "MANUAL",
+                        "UNASSIGNED",
+                        "Section",
+                        "Approved manual content",
+                        1,
+                    )
+                ]
+            ),
             _Result(rowcount=0),
         ]
     )

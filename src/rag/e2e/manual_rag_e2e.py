@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -98,15 +99,44 @@ class ManualRagE2EOrchestrator:
     def run(self) -> ManualRagE2EReport:
         trace_id = str(uuid4())
         report = ManualRagE2EReport(str(uuid4()), trace_id, datetime.now(timezone.utc).isoformat())
+        actor_hash = hashlib.sha256(
+            f"manual-rag-e2e:{self._config.role}".encode("utf-8")
+        ).hexdigest()
         try:
             self._verify_health(report, "/health/live", "LIVE_READY")
             self._verify_health(report, "/health/ready", "READY")
-            search_payload = {"query": self._config.query, "top_k": self._config.top_k, "recent_utterances": [], "selected_document_ids": []}
+            search_payload = {
+                "query": self._config.query,
+                "top_k": self._config.top_k,
+                "recent_utterances": [],
+                "selected_document_ids": [],
+                "trace_id": trace_id,
+                "actor_hash": actor_hash,
+            }
             search = self._http.post(f"{self._config.base_url}/v1/tools/internal-manual-search", search_payload, self._signed_headers(search_payload, trace_id))
             evidence_blocks = self._evidence_blocks(search)
             report.record("SEARCHED", {"evidence_count": len(search.get("results", [])), "gateway_request_id": search.get("gateway_request_id", "")})
-            answer_payload = {"query": self._config.query, "evidence_blocks": evidence_blocks}
+            retrieval_request_id = str(search.get("request_id") or "")
+            if not retrieval_request_id:
+                raise ManualRagE2EError("Manual RAG search returned no retrieval receipt")
+            answer_query = search.get("answer_query")
+            if not isinstance(answer_query, str) or answer_query != self._config.query:
+                raise ManualRagE2EError(
+                    "Manual RAG search returned no normalized answer query"
+                )
+            answer_payload = {
+                "query": answer_query,
+                "evidence_blocks": evidence_blocks,
+                "intent": "REGULATION_CHECK",
+                "retrieval_request_id": retrieval_request_id,
+                "trace_id": trace_id,
+                "actor_hash": actor_hash,
+            }
             answer = self._http.post(f"{self._config.base_url}/v1/tools/internal-manual-answer", answer_payload, self._signed_headers(answer_payload, trace_id))
+            if answer.get("trace_id") != trace_id:
+                raise ManualRagE2EError(
+                    "Manual RAG answer did not preserve the signed trace"
+                )
             self._validate_answer(answer, evidence_blocks)
             report.record("ANSWERED", {"status": answer["status"], "citation_count": len(answer["citations"]), "gateway_request_id": answer.get("gateway_request_id", "")})
             report.record("SUCCEEDED", {"contract": "manual-policy-rag-v1"})
@@ -133,6 +163,10 @@ class ManualRagE2EOrchestrator:
             canonical_answer_request(
                 payload["query"],
                 tuple(payload.get("evidence_blocks", [])),
+                str(payload.get("intent") or "REGULATION_CHECK"),
+                str(payload.get("retrieval_request_id") or "") or None,
+                trace_id=str(payload["trace_id"]),
+                actor_hash=str(payload["actor_hash"]),
             )
             if "evidence_blocks" in payload
             else canonical_search_request(
@@ -140,12 +174,14 @@ class ManualRagE2EOrchestrator:
                 int(payload["top_k"]),
                 tuple(payload.get("recent_utterances", ())),
                 tuple(payload.get("selected_document_ids", ())),
+                trace_id=str(payload["trace_id"]),
+                actor_hash=str(payload["actor_hash"]),
             )
         )
         signature = GatewayRequestAuthenticator.build_signature(
             self._config.gateway_secret, timestamp, request_id, self._config.role, canonical
         )
-        return {"X-Verified-Role": self._config.role, "X-Request-Id": request_id, "X-Request-Timestamp": timestamp, "X-Request-Signature": signature, "X-Trace-Id": trace_id}
+        return {"X-Verified-Role": self._config.role, "X-Request-Id": request_id, "X-Request-Timestamp": timestamp, "X-Request-Signature": signature}
 
     @staticmethod
     def _evidence_blocks(search: dict[str, Any]) -> list[dict[str, str]]:

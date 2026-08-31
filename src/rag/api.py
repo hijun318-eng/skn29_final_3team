@@ -31,14 +31,18 @@ class ManualSearchRequest(BaseModel):
     resolved_question: str | None = Field(default=None, min_length=2, max_length=500)
     domains: list[Literal["PRIVACY", "REPORT", "CUSTOMER_SERVICE", "ROOM", "RESERVATION_CHECKIN_PAYMENT", "CANCELLATION_REFUND_COMPENSATION", "FOOD_BEVERAGE", "LEISURE", "FACILITY", "SAFETY", "PARKING_EVENT_LOBBY"]] = Field(default_factory=list, max_length=3)
     intent: Literal["PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA", "REGULATION_CHECK", "COMPARISON", "SUMMARY"] = "REGULATION_CHECK"
+    trace_id: str = Field(min_length=1, max_length=128)
+    actor_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 
 class ManualAnswerRequest(BaseModel):
     query: str = Field(min_length=2, max_length=500)
-    evidence_blocks: list[dict] = Field(default_factory=list)
+    evidence_blocks: list[dict] = Field(min_length=1, max_length=50)
     intent: Literal["PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA", "REGULATION_CHECK", "COMPARISON", "SUMMARY"] = "REGULATION_CHECK"
-    retrieval_request_id: str | None = None
+    retrieval_request_id: str = Field(min_length=36, max_length=36)
+    trace_id: str = Field(min_length=1, max_length=128)
+    actor_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 def create_app(project_root: Path | None = None) -> FastAPI:
     root = (project_root or Path.cwd()).resolve()
@@ -61,6 +65,10 @@ def create_app(project_root: Path | None = None) -> FastAPI:
         status = service.status()
         if not status.get("embedding_api_configured"):
             raise HTTPException(status_code=503, detail="Embedding provider is not configured")
+        if status.get("status") != "healthy" or not status.get(
+            "active_corpus_release"
+        ):
+            raise HTTPException(status_code=503, detail="Active corpus release is not ready")
         return status
 
     @app.post("/v1/tools/internal-manual-search")
@@ -75,7 +83,15 @@ def create_app(project_root: Path | None = None) -> FastAPI:
         recent = tuple(request.recent_utterances)
         selected = tuple(request.selected_document_ids)
         signed_payload = canonical_search_request(
-            request.query, request.top_k, recent, selected, request.resolved_question, tuple(request.domains), request.intent
+            request.query,
+            request.top_k,
+            recent,
+            selected,
+            request.resolved_question,
+            tuple(request.domains),
+            request.intent,
+            trace_id=request.trace_id,
+            actor_hash=request.actor_hash,
         )
         try:
             role = authenticator.verify(
@@ -88,6 +104,8 @@ def create_app(project_root: Path | None = None) -> FastAPI:
                 role,
                 request.top_k,
                 request_id=str(request_id),
+                trace_id=request.trace_id,
+                actor_hash=request.actor_hash,
                 recent_utterances=recent,
                 selected_document_ids=selected,
                 resolved_question=request.resolved_question,
@@ -120,6 +138,8 @@ def create_app(project_root: Path | None = None) -> FastAPI:
             tuple(request.evidence_blocks),
             request.intent,
             request.retrieval_request_id,
+            trace_id=request.trace_id,
+            actor_hash=request.actor_hash,
         )
         try:
             role = authenticator.verify(
@@ -129,11 +149,13 @@ def create_app(project_root: Path | None = None) -> FastAPI:
                 raise GatewayAuthenticationError("Replayed gateway request")
             result = service.answer(
                 request_id=str(request_id),
-                trace_id=str(request_id),
+                trace_id=request.trace_id,
                 query=request.query,
                 evidence_blocks=request.evidence_blocks,
+                role=role,
                 intent=request.intent,
                 retrieval_request_id=request.retrieval_request_id,
+                actor_hash=request.actor_hash,
             )
             audit.record(
                 request_id,

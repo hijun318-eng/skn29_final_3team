@@ -21,6 +21,8 @@ class VectorRetrievalService:
         retrieval_mode: str = "HYBRID",
         maximum_chunks_per_document: int = 1,
     ) -> list[VectorSearchResult]:
+        if retrieval_mode == "HYBRID_RERANK" and self._reranker is None:
+            raise RuntimeError("RAG reranker is not configured in this runtime")
         # Handle rerank top_k logic
         db_top_k = decision.top_k
         if retrieval_mode == "HYBRID_RERANK":

@@ -7,6 +7,8 @@ from pathlib import Path
 from .evidence_repository import RagEvidenceRepository
 from .quality_evaluation import QualityQuery, SyntheticQualitySuite
 from .vector_settings import VectorSettings
+from .corpus_manifest import CorpusManifest
+from .processing_profile import processing_profile_sha256
 
 
 class EvaluationQuestionReportWriter:
@@ -19,7 +21,25 @@ class EvaluationQuestionReportWriter:
 
     def __init__(self, project_root: Path) -> None:
         self._settings = VectorSettings.load(project_root)
-        self._repository = RagEvidenceRepository(self._settings.database_url)
+        manifest = CorpusManifest.load(
+            self._settings.corpus_manifest_path,
+            self._settings.manuals_dir,
+        )
+        self._repository = RagEvidenceRepository(
+            self._settings.database_url,
+            {
+                "provider": self._settings.embedding_provider,
+                "model": self._settings.model_id,
+                "dimensions": self._settings.dimension,
+                "version": self._settings.model_revision,
+            },
+            manifest.manifest_sha256,
+            manifest.included_document_checksums,
+            processing_profile_sha256(
+                self._settings.chunk_max_tokens,
+                self._settings.chunk_overlap_tokens,
+            ),
+        )
 
     def write(self) -> dict[str, object]:
         suite = SyntheticQualitySuite()

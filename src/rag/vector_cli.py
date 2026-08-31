@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -52,7 +53,12 @@ def main() -> int:
     if arguments.command == "ingest":
         payload = application.ingest(arguments.limit)
     elif arguments.command == "search":
-        payload = application.search(arguments.query, arguments.role, arguments.top_k)
+        payload = application.search(
+            arguments.query,
+            arguments.role,
+            arguments.top_k,
+            actor_hash=hashlib.sha256(b"RAG_LOCAL_CLI").hexdigest(),
+        )
     else:
         payload = actions[arguments.command]()
     print(json.dumps(payload, ensure_ascii=False, indent=2))

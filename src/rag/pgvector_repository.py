@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 import re
@@ -17,49 +18,239 @@ from .pgvector_observability import PgVectorObservabilityMixin
 
 
 class PgVectorRepository(PgVectorObservabilityMixin):
-    def __init__(self, database_url: str) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        expected_embedding: dict[str, object] | None = None,
+        corpus_manifest_sha256: str | None = None,
+        expected_documents: dict[str, str] | None = None,
+        processing_profile_sha256: str | None = None,
+    ) -> None:
         self._database_url = database_url
+        self._expected_embedding = (
+            self._validated_embedding_metadata(expected_embedding)
+            if expected_embedding is not None
+            else None
+        )
+        if corpus_manifest_sha256 is not None and re.fullmatch(
+            r"[0-9a-f]{64}", corpus_manifest_sha256
+        ) is None:
+            raise ValueError("RAG corpus manifest hash is invalid")
+        self._corpus_manifest_sha256 = corpus_manifest_sha256
+        if expected_documents is not None and (
+            not expected_documents
+            or any(
+                re.fullmatch(r"[A-Z][A-Z0-9-]{2,99}", manual_id) is None
+                or re.fullmatch(r"[0-9a-f]{64}", checksum) is None
+                for manual_id, checksum in expected_documents.items()
+            )
+        ):
+            raise ValueError("RAG expected corpus documents are invalid")
+        self._expected_documents = (
+            dict(expected_documents) if expected_documents is not None else None
+        )
+        if processing_profile_sha256 is not None and re.fullmatch(
+            r"[0-9a-f]{64}", processing_profile_sha256
+        ) is None:
+            raise ValueError("RAG processing profile hash is invalid")
+        self._processing_profile_sha256 = processing_profile_sha256
+
+    @staticmethod
+    def _validated_embedding_metadata(
+        metadata: dict[str, object],
+    ) -> dict[str, object]:
+        if (
+            set(metadata) != {"provider", "model", "dimensions", "version"}
+            or not isinstance(metadata["provider"], str)
+            or not metadata["provider"]
+            or not isinstance(metadata["model"], str)
+            or not metadata["model"]
+            or type(metadata["dimensions"]) is not int
+            or int(metadata["dimensions"]) <= 0
+            or not isinstance(metadata["version"], str)
+            or not metadata["version"]
+        ):
+            raise ValueError("RAG embedding metadata is invalid")
+        return dict(metadata)
+
+    def _active_embedding(self) -> dict[str, object]:
+        if (
+            self._expected_embedding is None
+            or self._corpus_manifest_sha256 is None
+        ):
+            raise RuntimeError("RAG active release metadata is not configured")
+        return self._expected_embedding
+
+    def _active_release_parameters(self) -> list[object]:
+        metadata = self._active_embedding()
+        return [
+            metadata["provider"],
+            metadata["model"],
+            metadata["dimensions"],
+            metadata["version"],
+            self._corpus_manifest_sha256,
+            self._required_processing_profile(),
+        ]
+
+    def _required_documents(self) -> dict[str, str]:
+        if self._expected_documents is None:
+            raise RuntimeError("RAG expected corpus documents are not configured")
+        return self._expected_documents
+
+    def _required_processing_profile(self) -> str:
+        if self._processing_profile_sha256 is None:
+            raise RuntimeError("RAG processing profile is not configured")
+        return self._processing_profile_sha256
+
+    def _assert_runtime_contract(
+        self,
+        metadata: dict[str, object],
+        corpus_manifest_sha256: str,
+        processing_profile_sha256: str,
+    ) -> dict[str, object]:
+        validated = self._validated_embedding_metadata(metadata)
+        if (
+            self._expected_embedding is not None
+            and validated != self._expected_embedding
+        ):
+            raise ValueError("RAG embedding metadata differs from runtime startup")
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", corpus_manifest_sha256) is None
+            or (
+                self._corpus_manifest_sha256 is not None
+                and corpus_manifest_sha256 != self._corpus_manifest_sha256
+            )
+        ):
+            raise ValueError("RAG corpus manifest hash differs from runtime startup")
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", processing_profile_sha256) is None
+            or (
+                self._processing_profile_sha256 is not None
+                and processing_profile_sha256 != self._processing_profile_sha256
+            )
+        ):
+            raise ValueError("RAG processing profile differs from runtime startup")
+        return validated
 
     def migrate(self, migration_path: Path) -> None:
         sql = migration_path.read_text(encoding="utf-8")
         with psycopg.connect(self._database_url, autocommit=True) as connection:
             connection.execute(sql)
 
-    def start_run(self, run_id: UUID, metadata: dict[str, object]) -> None:
+    def start_run(
+        self,
+        run_id: UUID,
+        metadata: dict[str, object],
+        corpus_manifest_sha256: str,
+        processing_profile_sha256: str,
+    ) -> None:
+        metadata = self._assert_runtime_contract(
+            metadata,
+            corpus_manifest_sha256,
+            processing_profile_sha256,
+        )
         with psycopg.connect(self._database_url) as connection:
-            connection.execute(
+            started = connection.execute(
                 """INSERT INTO ingestion_runs(
                        run_id, started_at, status, embedding_provider, embedding_model,
                        embedding_dimensions, embedding_version
                    ) VALUES (%s, %s, 'RUNNING', %s, %s, %s, %s)""",
                 (run_id, datetime.now(timezone.utc), metadata["provider"], metadata["model"], metadata["dimensions"], metadata["version"]),
             )
+            staged = connection.execute(
+                """
+                INSERT INTO corpus_releases(
+                    release_id, status, embedding_provider, embedding_model,
+                    embedding_dimensions, embedding_version,
+                    corpus_manifest_sha256, processing_profile_sha256
+                ) VALUES (%s, 'STAGING', %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    run_id,
+                    metadata["provider"],
+                    metadata["model"],
+                    metadata["dimensions"],
+                    metadata["version"],
+                    corpus_manifest_sha256,
+                    processing_profile_sha256,
+                ),
+            )
+            if started.rowcount != 1 or staged.rowcount != 1:
+                raise RuntimeError("RAG staging release could not be started")
 
     def finish_run(
         self, run_id: UUID, status: str, document_count: int, chunk_count: int, error: str | None = None
     ) -> None:
+        if status != "FAILED":
+            raise ValueError("Only failed corpus releases may finish without publish")
         with psycopg.connect(self._database_url) as connection:
-            connection.execute(
+            finished = connection.execute(
                 """
                 UPDATE ingestion_runs
                 SET finished_at=%s, status=%s, document_count=%s, chunk_count=%s, error_text=%s
-                WHERE run_id=%s
+                WHERE run_id=%s AND status='RUNNING'
                 """,
                 (datetime.now(timezone.utc), status, document_count, chunk_count, error, run_id),
             )
+            failed = connection.execute(
+                """
+                UPDATE corpus_releases
+                SET status='FAILED', document_count=%s, chunk_count=%s
+                WHERE release_id=%s AND status='STAGING'
+                """,
+                (document_count, chunk_count, run_id),
+            )
+            if finished.rowcount != 1 or failed.rowcount != 1:
+                raise RuntimeError("RAG failed release could not be finalized")
 
-    def unchanged(self, document: PdfDocument, metadata: dict[str, object]) -> bool:
+    def unchanged(
+        self,
+        document: PdfDocument,
+        metadata: dict[str, object],
+        processing_profile_sha256: str,
+    ) -> bool:
+        """Detect a reusable document only under the exact processing contract."""
+
+        metadata = self._validated_embedding_metadata(metadata)
+        if self._expected_embedding is not None and metadata != self._expected_embedding:
+            raise ValueError("RAG embedding metadata differs from runtime startup")
+        if processing_profile_sha256 != self._required_processing_profile():
+            raise ValueError("RAG processing profile differs from runtime startup")
         with psycopg.connect(self._database_url) as connection:
             row = connection.execute(
                 """
                 SELECT d.content_checksum, d.title, d.version, d.source_path,
-                       MIN(c.embedding_provider), MIN(c.embedding_model), MIN(c.embedding_dimensions),
-                       MIN(c.embedding_version), COUNT(DISTINCT c.embedding_provider), COUNT(DISTINCT c.embedding_version)
-                FROM documents d JOIN document_chunks c ON c.manual_id=d.manual_id
-                WHERE d.manual_id=%s AND d.deleted_at IS NULL AND c.deleted_at IS NULL
+                       COUNT(c.chunk_id)
+                FROM corpus_active_release active
+                JOIN corpus_releases release ON release.release_id=active.release_id
+                JOIN corpus_release_documents d ON d.release_id=release.release_id
+                JOIN corpus_release_chunks c
+                  ON c.release_id=d.release_id AND c.manual_id=d.manual_id
+                WHERE active.singleton=TRUE
+                  AND release.status='ACTIVE'
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.processing_profile_sha256=%s
+                  AND d.manual_id=%s
+                  AND d.deleted_at IS NULL
+                  AND c.deleted_at IS NULL
+                  AND c.embedding_provider=release.embedding_provider
+                  AND c.embedding_model=release.embedding_model
+                  AND c.embedding_dimensions=release.embedding_dimensions
+                  AND c.embedding_version=release.embedding_version
+                  AND c.source_document_hash=d.content_checksum
                 GROUP BY d.content_checksum, d.title, d.version, d.source_path
                 """,
-                (document.manual_id,),
+                (
+                    metadata["provider"],
+                    metadata["model"],
+                    metadata["dimensions"],
+                    metadata["version"],
+                    processing_profile_sha256,
+                    document.manual_id,
+                ),
             ).fetchone()
         return bool(
             row
@@ -67,74 +258,229 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             and row[1] == document.title
             and row[2] == document.version
             and row[3] == document.source_path
-            and row[4] == metadata["provider"]
-            and row[5] == metadata["model"]
-            and row[6] == metadata["dimensions"]
-            and row[7] == metadata["version"]
-            and row[8] == 1
-            and row[9] == 1
+            and int(row[4]) > 0
         )
 
-    def replace_document(
-        self, document: PdfDocument, chunks: list[PdfChunk], embeddings: np.ndarray, metadata: dict[str, object]
+    def copy_active_document(
+        self,
+        release_id: UUID,
+        document: PdfDocument,
+        metadata: dict[str, object],
+        processing_profile_sha256: str,
     ) -> int:
-        if len(chunks) != len(embeddings):
-            raise ValueError("Chunk and embedding counts differ")
+        """Copy one byte-identical active document into the target staging release."""
+
+        metadata = self._validated_embedding_metadata(metadata)
+        if self._expected_embedding is not None and metadata != self._expected_embedding:
+            raise ValueError("RAG embedding metadata differs from runtime startup")
+        if processing_profile_sha256 != self._required_processing_profile():
+            raise ValueError("RAG processing profile differs from runtime startup")
         with psycopg.connect(self._database_url) as connection:
-            archived = connection.execute(
+            source = connection.execute(
                 """
-                INSERT INTO document_versions(
-                    manual_id, title, version, source_path, content_checksum,
-                    document_status, authority_level, validity_status, role_scope,
-                    document_type, owner_team, effective_from, expires_at,
-                    approval_status, archive_reason
-                )
-                SELECT manual_id, title, version, source_path, content_checksum,
-                       document_status, authority_level, validity_status, role_scope,
-                       document_type, owner_team, effective_from, expires_at,
-                       approval_status, 'CONTENT_REPLACED'
-                FROM documents
-                WHERE manual_id=%s AND deleted_at IS NULL
-                ON CONFLICT(manual_id, content_checksum) DO NOTHING
-                RETURNING version_id
-                """,
-                (document.manual_id,),
-            ).fetchone()
-            if archived:
-                connection.execute(
-                    """
-                    INSERT INTO document_chunk_versions(
-                        version_id, chunk_id, chunk_index, page_start, page_end, section_title,
-                        content, content_checksum, embedding
-                    )
-                    SELECT %s, chunk_id, chunk_index, page_start, page_end, section_title,
-                           content, content_checksum, embedding
-                    FROM document_chunks WHERE manual_id=%s AND deleted_at IS NULL
-                    """,
-                    (archived[0], document.manual_id),
-                )
-                connection.execute(
-                    """
-                    INSERT INTO document_lifecycle_logs(manual_id, action, actor_role, reason)
-                    VALUES (%s, 'VERSION_ARCHIVED', 'SYSTEM_ADMIN', 'CONTENT_REPLACED')
-                    """,
-                    (document.manual_id,),
-                )
-            connection.execute(
-                """
-                INSERT INTO documents(
-                    manual_id, title, version, source_path, content_checksum, role_scope,
-                    document_type, owner_team, effective_from, expires_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT(manual_id) DO UPDATE SET
-                    title=EXCLUDED.title, version=EXCLUDED.version,
-                    source_path=EXCLUDED.source_path, content_checksum=EXCLUDED.content_checksum,
-                    role_scope=EXCLUDED.role_scope, document_type=EXCLUDED.document_type,
-                    owner_team=EXCLUDED.owner_team, effective_from=EXCLUDED.effective_from,
-                    expires_at=EXCLUDED.expires_at, deleted_at=NULL,
-                    updated_at=CURRENT_TIMESTAMP
+                SELECT release.release_id
+                FROM corpus_active_release active
+                JOIN corpus_releases release ON release.release_id=active.release_id
+                WHERE active.singleton=TRUE
+                  AND release.status='ACTIVE'
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.processing_profile_sha256=%s
+                FOR SHARE OF active, release
                 """,
                 (
+                    metadata["provider"],
+                    metadata["model"],
+                    metadata["dimensions"],
+                    metadata["version"],
+                    processing_profile_sha256,
+                ),
+            ).fetchone()
+            if source is None:
+                raise RuntimeError("Active RAG release changed during corpus staging")
+            source_release_id = source[0]
+            target = connection.execute(
+                """
+                SELECT 1 FROM corpus_releases
+                WHERE release_id=%s AND status='STAGING'
+                  AND embedding_provider=%s AND embedding_model=%s
+                  AND embedding_dimensions=%s AND embedding_version=%s
+                  AND corpus_manifest_sha256=%s
+                  AND processing_profile_sha256=%s
+                FOR UPDATE
+                """,
+                (
+                    release_id,
+                    metadata["provider"],
+                    metadata["model"],
+                    metadata["dimensions"],
+                    metadata["version"],
+                    self._corpus_manifest_sha256,
+                    processing_profile_sha256,
+                ),
+            ).fetchone()
+            if target is None:
+                raise RuntimeError("RAG target staging release is unavailable or drifted")
+            source_document = connection.execute(
+                """
+                SELECT d.title, d.version, d.source_path, d.content_checksum,
+                       d.deleted_at
+                FROM corpus_release_documents d
+                WHERE d.release_id=%s AND d.manual_id=%s
+                FOR UPDATE
+                """,
+                (source_release_id, document.manual_id),
+            ).fetchone()
+            if source_document != (
+                document.title,
+                document.version,
+                document.source_path,
+                document.checksum,
+                None,
+            ):
+                raise RuntimeError("Active RAG document changed during corpus staging")
+            source_chunks = connection.execute(
+                """
+                SELECT c.chunk_id, c.deleted_at, c.embedding_provider,
+                       c.embedding_model, c.embedding_dimensions,
+                       c.embedding_version, c.source_document_hash
+                FROM corpus_release_chunks c
+                WHERE c.release_id=%s AND c.manual_id=%s
+                ORDER BY c.chunk_id
+                FOR SHARE
+                """,
+                (source_release_id, document.manual_id),
+            ).fetchall()
+            if not source_chunks or any(
+                chunk[1] is not None
+                or chunk[2] != metadata["provider"]
+                or chunk[3] != metadata["model"]
+                or chunk[4] != metadata["dimensions"]
+                or chunk[5] != metadata["version"]
+                or chunk[6] != document.checksum
+                for chunk in source_chunks
+            ):
+                raise RuntimeError(
+                    "Active RAG document chunks are incomplete or drifted"
+                )
+            copied_document = connection.execute(
+                """
+                INSERT INTO corpus_release_documents(
+                    release_id, manual_id, title, version, source_path,
+                    content_checksum, document_status, authority_level,
+                    validity_status, role_scope, document_type, owner_team,
+                    effective_from, expires_at, approval_status, deleted_at
+                )
+                SELECT %s, d.manual_id, d.title, d.version, d.source_path,
+                       d.content_checksum, d.document_status, d.authority_level,
+                       d.validity_status, d.role_scope, d.document_type, d.owner_team,
+                       d.effective_from, d.expires_at, d.approval_status, d.deleted_at
+                FROM corpus_release_documents d
+                WHERE d.release_id=%s
+                  AND d.manual_id=%s
+                  AND d.content_checksum=%s
+                  AND d.deleted_at IS NULL
+                RETURNING manual_id
+                """,
+                (
+                    release_id,
+                    source_release_id,
+                    document.manual_id,
+                    document.checksum,
+                ),
+            ).fetchone()
+            if copied_document is None:
+                raise RuntimeError("Active RAG document changed during corpus staging")
+            copied_chunks = connection.execute(
+                """
+                INSERT INTO corpus_release_chunks(
+                    release_id, chunk_id, manual_id, chunk_index,
+                    page_start, page_end, section_title, content,
+                    content_checksum, embedding, embedding_provider,
+                    embedding_model, embedding_dimensions, embedding_version,
+                    source_document_hash, token_count, embedded_at, deleted_at
+                )
+                SELECT %s, c.chunk_id, c.manual_id, c.chunk_index,
+                       c.page_start, c.page_end, c.section_title, c.content,
+                       c.content_checksum, c.embedding, c.embedding_provider,
+                       c.embedding_model, c.embedding_dimensions,
+                       c.embedding_version, c.source_document_hash,
+                       c.token_count, c.embedded_at, c.deleted_at
+                FROM corpus_release_chunks c
+                WHERE c.release_id=%s
+                  AND c.manual_id=%s
+                RETURNING chunk_id
+                """,
+                (
+                    release_id,
+                    source_release_id,
+                    document.manual_id,
+                ),
+            ).fetchall()
+            if len(copied_chunks) != len(source_chunks):
+                raise RuntimeError("Active RAG document chunks were not copied exactly")
+        return len(copied_chunks)
+
+    def stage_document(
+        self,
+        release_id: UUID,
+        document: PdfDocument,
+        chunks: list[PdfChunk],
+        embeddings: np.ndarray,
+        metadata: dict[str, object],
+    ) -> int:
+        """Write one document only inside the requested staging release."""
+
+        metadata = self._validated_embedding_metadata(metadata)
+        if (
+            self._expected_embedding is not None
+            and metadata != self._expected_embedding
+        ):
+            raise ValueError("RAG embedding metadata differs from runtime startup")
+        if (
+            len(chunks) != len(embeddings)
+            or not chunks
+            or any(chunk.manual_id != document.manual_id for chunk in chunks)
+            or any(len(vector) != metadata["dimensions"] for vector in embeddings)
+        ):
+            raise ValueError("Chunk and embedding counts differ or are empty")
+        if self._required_documents().get(document.manual_id) != document.checksum:
+            raise ValueError("RAG staged document differs from corpus manifest")
+        with psycopg.connect(self._database_url) as connection:
+            release = connection.execute(
+                """
+                SELECT 1 FROM corpus_releases
+                WHERE release_id=%s AND status='STAGING'
+                  AND embedding_provider=%s AND embedding_model=%s
+                  AND embedding_dimensions=%s AND embedding_version=%s
+                  AND corpus_manifest_sha256=%s
+                  AND processing_profile_sha256=%s
+                FOR UPDATE
+                """,
+                (
+                    release_id,
+                    metadata["provider"],
+                    metadata["model"],
+                    metadata["dimensions"],
+                    metadata["version"],
+                    self._corpus_manifest_sha256,
+                    self._required_processing_profile(),
+                ),
+            ).fetchone()
+            if release is None:
+                raise RuntimeError("RAG staging release is unavailable or drifted")
+            connection.execute(
+                """
+                INSERT INTO corpus_release_documents(
+                    release_id, manual_id, title, version, source_path,
+                    content_checksum, role_scope, document_type, owner_team,
+                    effective_from, expires_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    release_id,
                     document.manual_id,
                     document.title,
                     document.version,
@@ -147,19 +493,23 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                     document.expires_at,
                 ),
             )
-            connection.execute("DELETE FROM document_chunks WHERE manual_id=%s", (document.manual_id,))
             with connection.cursor() as cursor:
                 cursor.executemany(
                     """
-                    INSERT INTO document_chunks(
-                        chunk_id, manual_id, chunk_index, page_start, page_end, section_title,
-                        content, content_checksum, embedding, embedding_provider,
+                    INSERT INTO corpus_release_chunks(
+                        release_id, chunk_id, manual_id, chunk_index,
+                        page_start, page_end, section_title, content,
+                        content_checksum, embedding, embedding_provider,
                         embedding_model, embedding_dimensions, embedding_version,
-                        source_document_hash, embedded_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        source_document_hash, token_count
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector,
+                        %s, %s, %s, %s, %s, %s
+                    )
                     """,
                     [
                         (
+                            release_id,
                             chunk.chunk_id,
                             chunk.manual_id,
                             chunk.chunk_index,
@@ -174,18 +524,395 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                             metadata["dimensions"],
                             metadata["version"],
                             document.checksum,
+                            chunk.token_count,
                         )
                         for chunk, vector in zip(chunks, embeddings, strict=True)
                     ],
                 )
-            connection.execute(
-                """
-                INSERT INTO document_lifecycle_logs(manual_id, action, actor_role, reason)
-                VALUES (%s, 'UPSERT', 'SYSTEM_ADMIN', 'INGESTION')
-                """,
-                (document.manual_id,),
-            )
         return len(chunks)
+
+    def publish_release(
+        self,
+        release_id: UUID,
+        *,
+        expected_document_count: int,
+        expected_chunk_count: int,
+        metadata: dict[str, object],
+        corpus_manifest_sha256: str,
+        processing_profile_sha256: str,
+    ) -> dict[str, object]:
+        """Validate a complete staging release and atomically move the active pointer."""
+
+        metadata = self._assert_runtime_contract(
+            metadata,
+            corpus_manifest_sha256,
+            processing_profile_sha256,
+        )
+        expected_documents = self._required_documents()
+        if expected_document_count != len(expected_documents):
+            raise ValueError("RAG expected document count differs from corpus manifest")
+        if expected_document_count <= 0 or expected_chunk_count <= 0:
+            raise ValueError("RAG corpus release must contain documents and chunks")
+        with psycopg.connect(self._database_url) as connection:
+            pointer = connection.execute(
+                """
+                SELECT release_id FROM corpus_active_release
+                WHERE singleton=TRUE FOR UPDATE
+                """
+            ).fetchone()
+            if pointer is None:
+                raise RuntimeError("RAG active release pointer is unavailable")
+            receipt = connection.execute(
+                """
+                SELECT release.status,
+                       (SELECT COUNT(*) FROM corpus_release_documents d
+                        WHERE d.release_id=release.release_id),
+                       (SELECT COUNT(*) FROM corpus_release_documents d
+                        WHERE d.release_id=release.release_id
+                          AND d.deleted_at IS NOT NULL),
+                       (SELECT COUNT(*) FROM corpus_release_chunks c
+                        WHERE c.release_id=release.release_id),
+                       (SELECT COUNT(*) FROM corpus_release_chunks c
+                        WHERE c.release_id=release.release_id
+                          AND c.deleted_at IS NOT NULL),
+                       (SELECT COUNT(*) FROM corpus_release_chunks c
+                        WHERE c.release_id=release.release_id
+                          AND (c.embedding_provider<>release.embedding_provider
+                            OR c.embedding_model<>release.embedding_model
+                            OR c.embedding_dimensions<>release.embedding_dimensions
+                            OR c.embedding_version<>release.embedding_version
+                            OR c.source_document_hash<>(
+                                SELECT d.content_checksum
+                                FROM corpus_release_documents d
+                                WHERE d.release_id=c.release_id
+                                  AND d.manual_id=c.manual_id
+                            ))),
+                       (SELECT COUNT(*) FROM corpus_release_documents d
+                        WHERE d.release_id=release.release_id
+                          AND NOT EXISTS (
+                              SELECT 1 FROM corpus_release_chunks c
+                              WHERE c.release_id=d.release_id
+                                AND c.manual_id=d.manual_id
+                                AND c.deleted_at IS NULL
+                          )),
+                       (SELECT COUNT(*) FROM corpus_release_documents d
+                        WHERE d.release_id=release.release_id
+                          AND d.deleted_at IS NULL
+                          AND d.document_status='WORKING_KNOWLEDGE'
+                          AND d.approval_status='APPROVED'
+                          AND d.validity_status!='UNRESOLVED'
+                          AND cardinality(d.role_scope)>0
+                          AND 'STAFF'=ANY(d.role_scope)
+                          AND (d.effective_from IS NULL
+                            OR d.effective_from<=CURRENT_DATE)
+                          AND (d.expires_at IS NULL
+                            OR d.expires_at>=CURRENT_DATE)),
+                       (SELECT COALESCE(
+                            jsonb_object_agg(d.manual_id, d.content_checksum),
+                            '{}'::jsonb
+                        ) FROM corpus_release_documents d
+                        WHERE d.release_id=release.release_id)
+                FROM corpus_releases release
+                WHERE release.release_id=%s
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.corpus_manifest_sha256=%s
+                  AND release.processing_profile_sha256=%s
+                FOR UPDATE
+                """,
+                (
+                    release_id,
+                    metadata["provider"],
+                    metadata["model"],
+                    metadata["dimensions"],
+                    metadata["version"],
+                    corpus_manifest_sha256,
+                    processing_profile_sha256,
+                ),
+            ).fetchone()
+            if receipt != (
+                "STAGING",
+                expected_document_count,
+                0,
+                expected_chunk_count,
+                0,
+                0,
+                0,
+                expected_document_count,
+                expected_documents,
+            ):
+                raise RuntimeError("RAG staging release is incomplete or drifted")
+            previous_release_id = pointer[0]
+            if previous_release_id is not None:
+                previous_receipt = connection.execute(
+                    """
+                    SELECT release.status, release.document_count,
+                           (SELECT COUNT(*) FROM corpus_release_documents d
+                            WHERE d.release_id=release.release_id),
+                           (SELECT COUNT(*) FROM corpus_release_documents d
+                            WHERE d.release_id=release.release_id
+                              AND d.deleted_at IS NOT NULL),
+                           release.chunk_count,
+                           (SELECT COUNT(*) FROM corpus_release_chunks c
+                            WHERE c.release_id=release.release_id),
+                           (SELECT COUNT(*) FROM corpus_release_chunks c
+                            WHERE c.release_id=release.release_id
+                              AND c.deleted_at IS NOT NULL),
+                           (SELECT COUNT(*) FROM corpus_release_chunks c
+                            WHERE c.release_id=release.release_id
+                              AND (c.embedding_provider<>release.embedding_provider
+                                OR c.embedding_model<>release.embedding_model
+                                OR c.embedding_dimensions<>release.embedding_dimensions
+                                OR c.embedding_version<>release.embedding_version
+                                OR c.source_document_hash<>(
+                                    SELECT d.content_checksum
+                                    FROM corpus_release_documents d
+                                    WHERE d.release_id=c.release_id
+                                      AND d.manual_id=c.manual_id
+                                ))),
+                           (SELECT COUNT(*) FROM corpus_release_documents d
+                            WHERE d.release_id=release.release_id
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM corpus_release_chunks c
+                                  WHERE c.release_id=d.release_id
+                                    AND c.manual_id=d.manual_id
+                                    AND c.deleted_at IS NULL
+                              )),
+                           (SELECT COUNT(*) FROM ingestion_runs run
+                            WHERE run.run_id=release.release_id
+                              AND run.status='SUCCESS'
+                              AND run.document_count=release.document_count
+                              AND run.chunk_count=release.chunk_count)
+                    FROM corpus_releases release
+                    WHERE release.release_id=%s
+                    FOR UPDATE
+                    """,
+                    (previous_release_id,),
+                ).fetchone()
+                if (
+                    previous_receipt is None
+                    or previous_receipt[0] != "ACTIVE"
+                    or previous_receipt[1] <= 0
+                    or previous_receipt[1] != previous_receipt[2]
+                    or previous_receipt[3] != 0
+                    or previous_receipt[4] <= 0
+                    or previous_receipt[4] != previous_receipt[5]
+                    or previous_receipt[6:] != (0, 0, 0, 1)
+                ):
+                    raise RuntimeError("Previous RAG active release receipt is invalid")
+                retired = connection.execute(
+                    """
+                    UPDATE corpus_releases SET status='RETIRED'
+                    WHERE release_id=%s AND status='ACTIVE'
+                    """,
+                    (previous_release_id,),
+                )
+                if retired.rowcount != 1:
+                    raise RuntimeError("Previous RAG active release was not retired")
+            published_at = datetime.now(timezone.utc)
+            activated = connection.execute(
+                """
+                UPDATE corpus_releases
+                SET status='ACTIVE', document_count=%s, chunk_count=%s,
+                    published_at=%s
+                WHERE release_id=%s AND status='STAGING'
+                """,
+                (
+                    expected_document_count,
+                    expected_chunk_count,
+                    published_at,
+                    release_id,
+                ),
+            )
+            if activated.rowcount != 1:
+                raise RuntimeError("RAG staging release was not activated")
+            pointer_update = connection.execute(
+                """
+                UPDATE corpus_active_release
+                SET release_id=%s, updated_at=%s
+                WHERE singleton=TRUE
+                """,
+                (release_id, published_at),
+            )
+            if pointer_update.rowcount != 1:
+                raise RuntimeError("RAG active release pointer was not updated")
+            finished = connection.execute(
+                """
+                UPDATE ingestion_runs
+                SET finished_at=%s, status='SUCCESS', document_count=%s,
+                    chunk_count=%s, error_text=NULL
+                WHERE run_id=%s AND status='RUNNING'
+                """,
+                (
+                    published_at,
+                    expected_document_count,
+                    expected_chunk_count,
+                    release_id,
+                ),
+            )
+            if finished.rowcount != 1:
+                raise RuntimeError("RAG ingestion run was not finalized")
+        return {
+            "release_id": str(release_id),
+            "previous_release_id": (
+                str(previous_release_id) if previous_release_id is not None else None
+            ),
+            "document_count": expected_document_count,
+            "chunk_count": expected_chunk_count,
+            "corpus_manifest_sha256": corpus_manifest_sha256,
+            "processing_profile_sha256": processing_profile_sha256,
+            **metadata,
+        }
+
+    def active_release_receipt(
+        self,
+        metadata: dict[str, object],
+        corpus_manifest_sha256: str,
+        processing_profile_sha256: str,
+    ) -> dict[str, object] | None:
+        """Return an active release only when pointer, counts and all metadata match."""
+
+        metadata = self._assert_runtime_contract(
+            metadata,
+            corpus_manifest_sha256,
+            processing_profile_sha256,
+        )
+        with psycopg.connect(self._database_url) as connection:
+            row = connection.execute(
+                """
+                SELECT release.release_id, release.document_count,
+                       release.chunk_count, release.published_at,
+                       (SELECT COUNT(*) FROM corpus_release_documents eligible
+                        WHERE eligible.release_id=release.release_id
+                          AND eligible.deleted_at IS NULL
+                          AND eligible.document_status='WORKING_KNOWLEDGE'
+                          AND eligible.approval_status='APPROVED'
+                          AND eligible.validity_status!='UNRESOLVED'
+                          AND cardinality(eligible.role_scope)>0
+                          AND 'STAFF'=ANY(eligible.role_scope)
+                          AND (eligible.effective_from IS NULL
+                            OR eligible.effective_from<=CURRENT_DATE)
+                          AND (eligible.expires_at IS NULL
+                            OR eligible.expires_at>=CURRENT_DATE))
+                FROM corpus_active_release active
+                JOIN corpus_releases release ON release.release_id=active.release_id
+                WHERE active.singleton=TRUE
+                  AND release.status='ACTIVE'
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.corpus_manifest_sha256=%s
+                  AND release.processing_profile_sha256=%s
+                  AND (SELECT COALESCE(
+                          jsonb_object_agg(d.manual_id, d.content_checksum),
+                          '{}'::jsonb
+                       ) FROM corpus_release_documents d
+                       WHERE d.release_id=release.release_id)=%s::jsonb
+                  AND release.document_count>0
+                  AND release.chunk_count>0
+                  AND EXISTS (
+                      SELECT 1 FROM ingestion_runs run
+                      WHERE run.run_id=release.release_id
+                        AND run.status='SUCCESS'
+                        AND run.document_count=release.document_count
+                        AND run.chunk_count=release.chunk_count
+                  )
+                  AND EXISTS (
+                      SELECT 1 FROM corpus_release_documents eligible
+                      WHERE eligible.release_id=release.release_id
+                        AND eligible.deleted_at IS NULL
+                        AND eligible.document_status='WORKING_KNOWLEDGE'
+                        AND eligible.approval_status='APPROVED'
+                        AND eligible.validity_status!='UNRESOLVED'
+                        AND cardinality(eligible.role_scope)>0
+                        AND 'STAFF'=ANY(eligible.role_scope)
+                        AND (eligible.effective_from IS NULL
+                          OR eligible.effective_from<=CURRENT_DATE)
+                        AND (eligible.expires_at IS NULL
+                          OR eligible.expires_at>=CURRENT_DATE)
+                  )
+                  AND release.document_count=(
+                      SELECT COUNT(*) FROM corpus_release_documents d
+                      WHERE d.release_id=release.release_id
+                  )
+                  AND release.document_count=(
+                      SELECT COUNT(*) FROM corpus_release_documents eligible
+                      WHERE eligible.release_id=release.release_id
+                        AND eligible.deleted_at IS NULL
+                        AND eligible.document_status='WORKING_KNOWLEDGE'
+                        AND eligible.approval_status='APPROVED'
+                        AND eligible.validity_status!='UNRESOLVED'
+                        AND cardinality(eligible.role_scope)>0
+                        AND 'STAFF'=ANY(eligible.role_scope)
+                        AND (eligible.effective_from IS NULL
+                          OR eligible.effective_from<=CURRENT_DATE)
+                        AND (eligible.expires_at IS NULL
+                          OR eligible.expires_at>=CURRENT_DATE)
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM corpus_release_documents d
+                      WHERE d.release_id=release.release_id
+                        AND d.deleted_at IS NOT NULL
+                  )
+                  AND release.chunk_count=(
+                      SELECT COUNT(*) FROM corpus_release_chunks c
+                      WHERE c.release_id=release.release_id
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM corpus_release_chunks c
+                      WHERE c.release_id=release.release_id
+                        AND c.deleted_at IS NOT NULL
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM corpus_release_chunks c
+                      WHERE c.release_id=release.release_id
+                        AND (c.embedding_provider<>release.embedding_provider
+                          OR c.embedding_model<>release.embedding_model
+                          OR c.embedding_dimensions<>release.embedding_dimensions
+                          OR c.embedding_version<>release.embedding_version
+                          OR c.source_document_hash<>(
+                              SELECT d.content_checksum
+                              FROM corpus_release_documents d
+                              WHERE d.release_id=c.release_id
+                                AND d.manual_id=c.manual_id
+                          ))
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM corpus_release_documents d
+                      WHERE d.release_id=release.release_id
+                        AND NOT EXISTS (
+                            SELECT 1 FROM corpus_release_chunks c
+                            WHERE c.release_id=d.release_id
+                              AND c.manual_id=d.manual_id
+                              AND c.deleted_at IS NULL
+                        )
+                  )
+                """,
+                (
+                    metadata["provider"],
+                    metadata["model"],
+                    metadata["dimensions"],
+                    metadata["version"],
+                    corpus_manifest_sha256,
+                    processing_profile_sha256,
+                    json.dumps(self._required_documents(), sort_keys=True),
+                ),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "release_id": str(row[0]),
+            "document_count": int(row[1]),
+            "chunk_count": int(row[2]),
+            "published_at": row[3].isoformat() if row[3] is not None else None,
+            "approved_document_count": int(row[4]),
+            "corpus_manifest_sha256": corpus_manifest_sha256,
+            "processing_profile_sha256": processing_profile_sha256,
+            **metadata,
+        }
 
     def search(
         self,
@@ -211,9 +938,24 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                    c.chunk_id, c.chunk_index, d.document_status,
                    d.authority_level, d.validity_status, d.approval_status,
                    d.document_type, d.owner_team, d.effective_from, d.expires_at
-            FROM document_chunks c
-            JOIN documents d ON d.manual_id = c.manual_id
-            WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
+            FROM corpus_active_release active
+            JOIN corpus_releases release ON release.release_id=active.release_id
+            JOIN corpus_release_documents d ON d.release_id=release.release_id
+            JOIN corpus_release_chunks c
+              ON c.release_id=d.release_id AND c.manual_id=d.manual_id
+            WHERE active.singleton=TRUE
+              AND release.status='ACTIVE'
+              AND release.embedding_provider=%s
+              AND release.embedding_model=%s
+              AND release.embedding_dimensions=%s
+              AND release.embedding_version=%s
+              AND release.corpus_manifest_sha256=%s
+              AND release.processing_profile_sha256=%s
+              AND c.embedding_provider=release.embedding_provider
+              AND c.embedding_model=release.embedding_model
+              AND c.embedding_dimensions=release.embedding_dimensions
+              AND c.embedding_version=release.embedding_version
+              AND c.deleted_at IS NULL AND d.deleted_at IS NULL
               AND d.document_status = 'WORKING_KNOWLEDGE'
               AND d.approval_status = 'APPROVED'
               AND %s = ANY(d.role_scope)
@@ -227,6 +969,7 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         """
         params = [
             query_vector,
+            *self._active_release_parameters(),
             role,
             allow_unresolved,
             list(selected_manual_ids),
@@ -330,9 +1073,24 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                        d.document_status, d.authority_level, d.validity_status,
                        d.approval_status, d.document_type, d.owner_team,
                        d.effective_from, d.expires_at
-                FROM document_chunks c
-                JOIN documents d ON d.manual_id=c.manual_id
-                WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
+                FROM corpus_active_release active
+                JOIN corpus_releases release ON release.release_id=active.release_id
+                JOIN corpus_release_documents d ON d.release_id=release.release_id
+                JOIN corpus_release_chunks c
+                  ON c.release_id=d.release_id AND c.manual_id=d.manual_id
+                WHERE active.singleton=TRUE
+                  AND release.status='ACTIVE'
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.corpus_manifest_sha256=%s
+                  AND release.processing_profile_sha256=%s
+                  AND c.embedding_provider=release.embedding_provider
+                  AND c.embedding_model=release.embedding_model
+                  AND c.embedding_dimensions=release.embedding_dimensions
+                  AND c.embedding_version=release.embedding_version
+                  AND c.deleted_at IS NULL AND d.deleted_at IS NULL
                   AND d.manual_id=ANY(%s::text[])
                   AND %s=ANY(d.role_scope)
                   AND d.document_status='WORKING_KNOWLEDGE'
@@ -342,7 +1100,12 @@ class PgVectorRepository(PgVectorObservabilityMixin):
                   AND (d.expires_at IS NULL OR d.expires_at >= CURRENT_DATE)
                 ORDER BY d.manual_id, c.page_start, c.chunk_index
                 """,
-                (list(manual_ids), role, allow_unresolved),
+                (
+                    *self._active_release_parameters(),
+                    list(manual_ids),
+                    role,
+                    allow_unresolved,
+                ),
             ).fetchall()
 
         by_manual: dict[str, list[tuple[object, ...]]] = {}
@@ -440,40 +1203,281 @@ class PgVectorRepository(PgVectorObservabilityMixin):
             rows = connection.execute(
                 """
                 SELECT manual_id, title, version, document_type, owner_team
-                FROM documents
-                WHERE deleted_at IS NULL
-                  AND document_status = 'WORKING_KNOWLEDGE'
-                  AND approval_status = 'APPROVED'
-                  AND %s = ANY(role_scope)
-                  AND (%s OR validity_status != 'UNRESOLVED')
-                  AND (effective_from IS NULL OR effective_from <= CURRENT_DATE)
-                  AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)
-                ORDER BY title, manual_id
+                FROM corpus_active_release active
+                JOIN corpus_releases release ON release.release_id=active.release_id
+                JOIN corpus_release_documents document
+                  ON document.release_id=release.release_id
+                WHERE active.singleton=TRUE
+                  AND release.status='ACTIVE'
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.corpus_manifest_sha256=%s
+                  AND release.processing_profile_sha256=%s
+                  AND document.deleted_at IS NULL
+                  AND document.document_status = 'WORKING_KNOWLEDGE'
+                  AND document.approval_status = 'APPROVED'
+                  AND %s = ANY(document.role_scope)
+                  AND (%s OR document.validity_status != 'UNRESOLVED')
+                  AND (document.effective_from IS NULL OR document.effective_from <= CURRENT_DATE)
+                  AND (document.expires_at IS NULL OR document.expires_at >= CURRENT_DATE)
+                ORDER BY document.title, document.manual_id
                 """,
-                (role, allow_unresolved),
+                (*self._active_release_parameters(), role, allow_unresolved),
             ).fetchall()
         return [{"manual_id": row[0], "title": row[1], "version": row[2], "document_type": row[3], "owner_team": row[4]} for row in rows]
 
-    def source_path(self, manual_id: str, role: str, allow_unresolved: bool) -> Path:
+    def source_receipt(
+        self,
+        manual_id: str,
+        role: str,
+        allow_unresolved: bool,
+    ) -> tuple[Path, str]:
         with psycopg.connect(self._database_url) as connection:
             row = connection.execute(
                 """
-                SELECT source_path
-                FROM documents
-                WHERE manual_id = %s
-                  AND deleted_at IS NULL
-                  AND document_status = 'WORKING_KNOWLEDGE'
-                  AND approval_status = 'APPROVED'
-                  AND %s = ANY(role_scope)
-                  AND (%s OR validity_status != 'UNRESOLVED')
-                  AND (effective_from IS NULL OR effective_from <= CURRENT_DATE)
-                  AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)
+                SELECT source_path, content_checksum
+                FROM corpus_active_release active
+                JOIN corpus_releases release ON release.release_id=active.release_id
+                JOIN corpus_release_documents document
+                  ON document.release_id=release.release_id
+                WHERE active.singleton=TRUE
+                  AND release.status='ACTIVE'
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.corpus_manifest_sha256=%s
+                  AND release.processing_profile_sha256=%s
+                  AND document.manual_id = %s
+                  AND document.deleted_at IS NULL
+                  AND document.document_status = 'WORKING_KNOWLEDGE'
+                  AND document.approval_status = 'APPROVED'
+                  AND %s = ANY(document.role_scope)
+                  AND (%s OR document.validity_status != 'UNRESOLVED')
+                  AND (document.effective_from IS NULL OR document.effective_from <= CURRENT_DATE)
+                  AND (document.expires_at IS NULL OR document.expires_at >= CURRENT_DATE)
                 """,
-                (manual_id, role, allow_unresolved),
+                (
+                    *self._active_release_parameters(),
+                    manual_id,
+                    role,
+                    allow_unresolved,
+                ),
             ).fetchone()
         if row is None:
             raise FileNotFoundError(manual_id)
-        return Path(row[0])
+        return Path(row[0]), str(row[1])
+
+    def load_answer_evidence(
+        self,
+        *,
+        retrieval_request_id: str,
+        role: str,
+        query: str,
+        answer_intent: str,
+        trace_id: str,
+        actor_hash: str,
+        caller_evidence: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        """Atomically consume evidence bound to the current authorized release."""
+
+        try:
+            receipt_id = UUID(retrieval_request_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("RAG retrieval receipt identity is invalid") from error
+        if (
+            not role.strip()
+            or not answer_intent.strip()
+            or not trace_id.strip()
+            or len(trace_id) > 128
+            or len(actor_hash) != 64
+            or any(character not in "0123456789abcdef" for character in actor_hash)
+        ):
+            raise ValueError("RAG retrieval receipt principal is invalid")
+        query_sha256 = hashlib.sha256(query.encode("utf-8")).hexdigest()
+        with psycopg.connect(self._database_url) as connection:
+            row = connection.execute(
+                """
+                SELECT receipt.evidence_ids, receipt.evidence_payload,
+                       receipt.evidence_payload_sha256
+                FROM retrieval_evidence_receipts receipt
+                JOIN corpus_active_release active
+                  ON active.release_id=receipt.release_id
+                JOIN corpus_releases release
+                  ON release.release_id=receipt.release_id
+                WHERE receipt.receipt_id=%s
+                  AND receipt.user_role=%s
+                  AND receipt.answer_intent=%s
+                  AND receipt.trace_id=%s
+                  AND receipt.actor_hash=%s
+                  AND receipt.answer_query_sha256=%s
+                  AND receipt.consumed_at IS NULL
+                  AND receipt.expires_at>CURRENT_TIMESTAMP
+                  AND active.singleton=TRUE
+                  AND release.status='ACTIVE'
+                  AND release.embedding_provider=%s
+                  AND release.embedding_model=%s
+                  AND release.embedding_dimensions=%s
+                  AND release.embedding_version=%s
+                  AND release.corpus_manifest_sha256=%s
+                  AND release.processing_profile_sha256=%s
+                  AND (SELECT COALESCE(
+                          jsonb_object_agg(d.manual_id, d.content_checksum),
+                          '{}'::jsonb
+                       ) FROM corpus_release_documents d
+                       WHERE d.release_id=release.release_id)=%s::jsonb
+                FOR UPDATE OF receipt
+                FOR SHARE OF active, release
+                """,
+                (
+                    receipt_id,
+                    role,
+                    answer_intent,
+                    trace_id,
+                    actor_hash,
+                    query_sha256,
+                    *self._active_release_parameters(),
+                    json.dumps(self._required_documents(), sort_keys=True),
+                ),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(
+                    "RAG retrieval receipt is unavailable, expired, consumed, or unauthorized"
+                )
+            return self._consume_answer_evidence_receipt(
+                connection=connection,
+                receipt_id=receipt_id,
+                role=role,
+                row=row,
+                caller_evidence=caller_evidence,
+            )
+
+    def _consume_answer_evidence_receipt(
+        self,
+        *,
+        connection: psycopg.Connection,
+        receipt_id: UUID,
+        role: str,
+        row: tuple[object, ...],
+        caller_evidence: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        evidence_ids = [str(value) for value in row[0]]
+        stored = row[1]
+        if isinstance(stored, str):
+            stored = json.loads(stored)
+        fields = {
+            "evidence_id",
+            "text",
+            "title",
+            "manual_id",
+            "section_title",
+            "citation",
+        }
+        if (
+            not isinstance(stored, list)
+            or not stored
+            or len(stored) != len(evidence_ids)
+            or len(stored) > 50
+            or any(
+                not isinstance(item, dict)
+                or set(item) != fields
+                or any(not isinstance(value, str) for value in item.values())
+                or not item["evidence_id"]
+                or not item["text"]
+                for item in stored
+            )
+            or [item["evidence_id"] for item in stored] != evidence_ids
+        ):
+            raise RuntimeError("RAG retrieval evidence receipt is invalid")
+        canonical = json.dumps(
+            stored,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        if (
+            hashlib.sha256(canonical.encode("utf-8")).hexdigest() != str(row[2])
+            or caller_evidence != stored
+        ):
+            raise RuntimeError("RAG answer evidence differs from its search receipt")
+        matched = connection.execute(
+            """
+            SELECT evidence.ordinality, document.manual_id,
+                   evidence.item->>'evidence_id'
+            FROM jsonb_array_elements(%s::jsonb)
+                 WITH ORDINALITY AS evidence(item, ordinality)
+            JOIN corpus_active_release active ON active.singleton=TRUE
+            JOIN corpus_releases release ON release.release_id=active.release_id
+            JOIN corpus_release_documents document
+              ON document.release_id=release.release_id
+             AND document.manual_id=evidence.item->>'manual_id'
+            JOIN corpus_release_chunks chunk
+              ON chunk.release_id=document.release_id
+             AND chunk.manual_id=document.manual_id
+             AND evidence.item->>'evidence_id'=(
+                 document.manual_id || ':' || document.version || ':' ||
+                 chunk.page_start::text || ':' || chunk.chunk_id
+             )
+            WHERE release.status='ACTIVE'
+              AND release.embedding_provider=%s
+              AND release.embedding_model=%s
+              AND release.embedding_dimensions=%s
+              AND release.embedding_version=%s
+              AND release.corpus_manifest_sha256=%s
+              AND release.processing_profile_sha256=%s
+              AND document.deleted_at IS NULL
+              AND document.document_status='WORKING_KNOWLEDGE'
+              AND document.approval_status='APPROVED'
+              AND document.validity_status!='UNRESOLVED'
+              AND cardinality(document.role_scope)>0
+              AND %s=ANY(document.role_scope)
+              AND (document.effective_from IS NULL
+                OR document.effective_from<=CURRENT_DATE)
+              AND (document.expires_at IS NULL
+                OR document.expires_at>=CURRENT_DATE)
+              AND chunk.deleted_at IS NULL
+              AND chunk.embedding_provider=release.embedding_provider
+              AND chunk.embedding_model=release.embedding_model
+              AND chunk.embedding_dimensions=release.embedding_dimensions
+              AND chunk.embedding_version=release.embedding_version
+              AND chunk.source_document_hash=document.content_checksum
+              AND evidence.item->>'text'=chunk.content
+              AND evidence.item->>'title'=document.title
+              AND evidence.item->>'section_title'=chunk.section_title
+              AND evidence.item->>'citation'=(
+                  '[' || document.title || ' v' || document.version ||
+                  ' p.' || chunk.page_start::text || ' ' ||
+                  chunk.section_title || ']'
+              )
+            ORDER BY evidence.ordinality
+            FOR SHARE OF active, release, document, chunk
+            """,
+            (
+                canonical,
+                *self._active_release_parameters(),
+                role,
+            ),
+        ).fetchall()
+        if [str(item[2]) for item in matched] != evidence_ids:
+            raise RuntimeError(
+                "RAG retrieval evidence no longer matches authorized corpus rows"
+            )
+        consumed = connection.execute(
+            """
+            UPDATE retrieval_evidence_receipts
+            SET consumed_at=CURRENT_TIMESTAMP
+            WHERE receipt_id=%s
+              AND consumed_at IS NULL
+              AND expires_at>CURRENT_TIMESTAMP
+            """,
+            (receipt_id,),
+        )
+        if consumed.rowcount != 1:
+            raise RuntimeError("RAG retrieval receipt could not be consumed")
+        return [dict(item) for item in stored]
 
     def record_answer_trace(
         self,

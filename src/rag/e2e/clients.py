@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from .contracts import DynamicE2EConfig, RuntimeEndpoint
+from ..request_auth import (
+    GatewayRequestAuthenticator,
+    canonical_answer_request,
+    canonical_search_request,
+)
 
 
 class RuntimeRequestError(RuntimeError):
@@ -171,47 +176,78 @@ class RagGatewayClient:
         self._http = http
 
     def search(self) -> JsonResponse:
+        actor_hash = hashlib.sha256(
+            self._config.user_id.encode("utf-8")
+        ).hexdigest()
         payload = {
             "query": self._config.rag_query,
             "top_k": self._config.top_k,
             "recent_utterances": [],
             "selected_document_ids": [],
+            "trace_id": self._config.trace_id,
+            "actor_hash": actor_hash,
         }
-        headers = self._headers(self._canonical_search_payload(payload))
+        headers = self._headers(
+            canonical_search_request(
+                payload["query"],
+                payload["top_k"],
+                tuple(payload["recent_utterances"]),
+                tuple(payload["selected_document_ids"]),
+                trace_id=self._config.trace_id,
+                actor_hash=actor_hash,
+            )
+        )
         return self._http.post(self._url(self._config.rag_search_path), payload, headers)
 
-    def answer(self, evidence_blocks: list[dict[str, Any]]) -> JsonResponse:
+    def answer(
+        self,
+        evidence_blocks: list[dict[str, Any]],
+        retrieval_request_id: str,
+        answer_query: str,
+    ) -> JsonResponse:
         if not evidence_blocks:
             raise RuntimeRequestError(
                 code="RAG_EVIDENCE_EMPTY",
                 message="RAG answer call requires evidence returned by the real search runtime",
             )
         payload = {
-            "query": self._config.rag_query,
+            "query": answer_query,
             "evidence_blocks": evidence_blocks,
+            "intent": "REGULATION_CHECK",
+            "retrieval_request_id": retrieval_request_id,
+            "trace_id": self._config.trace_id,
+            "actor_hash": hashlib.sha256(
+                self._config.user_id.encode("utf-8")
+            ).hexdigest(),
         }
-        headers = self._headers(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        headers = self._headers(
+            canonical_answer_request(
+                payload["query"],
+                tuple(evidence_blocks),
+                payload["intent"],
+                retrieval_request_id,
+                trace_id=self._config.trace_id,
+                actor_hash=str(payload["actor_hash"]),
+            )
+        )
         return self._http.post(self._url(self._config.rag_answer_path), payload, headers)
 
     def _headers(self, signed_payload: str) -> dict[str, str]:
         timestamp = str(int(time.time()))
-        material = f"{self._config.request_id}\n{timestamp}\n{signed_payload}".encode("utf-8")
-        signature = hmac.new(
-            self._config.rag_gateway_secret.encode("utf-8"),
-            material,
-            hashlib.sha256,
-        ).hexdigest()
+        request_id = str(uuid4())
+        signature = GatewayRequestAuthenticator.build_signature(
+            self._config.rag_gateway_secret,
+            timestamp,
+            request_id,
+            self._config.role,
+            signed_payload,
+        )
         return {
             "X-Verified-Role": self._config.role,
-            "X-Request-Id": self._config.request_id,
+            "X-Request-Id": request_id,
             "X-Request-Timestamp": timestamp,
             "X-Request-Signature": signature,
-            "X-Trace-Id": self._config.trace_id,
         }
-
-    @staticmethod
-    def _canonical_search_payload(payload: dict[str, Any]) -> str:
-        return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
     def _url(self, path: str) -> str:
         return f"{self._config.rag.base_url.rstrip('/')}{path}"

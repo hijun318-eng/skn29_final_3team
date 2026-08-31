@@ -22,8 +22,23 @@ class FakeManualRagHttpClient:
     def post(self, url: str, payload: dict, headers: dict) -> dict:
         self.posts.append((url, payload, headers))
         if url.endswith("internal-manual-search"):
-            return {"no_evidence": False, "results": [{"evidence_id": "EV-001", "content": "장애는 즉시 보고한다."}]}
-        return {"status": "ANSWER", "answer": "즉시 보고한다.", "citations": [{"evidence_id": self.answer_citation}]}
+            return {
+                "request_id": "11111111-1111-4111-8111-111111111111",
+                "answer_query": "장애 보고 절차",
+                "no_evidence": False,
+                "results": [
+                    {
+                        "evidence_id": "EV-001",
+                        "content": "장애는 즉시 보고한다.",
+                    }
+                ],
+            }
+        return {
+            "status": "ANSWER",
+            "trace_id": payload["trace_id"],
+            "answer": "즉시 보고한다.",
+            "citations": [{"evidence_id": self.answer_citation}],
+        }
 
 
 class ManualRagE2EOrchestratorTest(unittest.TestCase):
@@ -46,10 +61,21 @@ class ManualRagE2EOrchestratorTest(unittest.TestCase):
             payload["top_k"],
             tuple(payload["recent_utterances"]),
             tuple(payload["selected_document_ids"]),
+            trace_id=payload["trace_id"],
+            actor_hash=payload["actor_hash"],
         )
         expected = GatewayRequestAuthenticator.build_signature(self.config.gateway_secret, headers["X-Request-Timestamp"], headers["X-Request-Id"], self.config.role, canonical)
         self.assertEqual(headers["X-Request-Signature"], expected)
         self.assertEqual(http.posts[1][1]["evidence_blocks"][0]["evidence_id"], "EV-001")
+        self.assertEqual(
+            http.posts[1][1]["retrieval_request_id"],
+            "11111111-1111-4111-8111-111111111111",
+        )
+        self.assertEqual(http.posts[1][1]["query"], "장애 보고 절차")
+        self.assertEqual(
+            http.posts[1][1]["actor_hash"],
+            http.posts[0][1]["actor_hash"],
+        )
 
     def test_answer_with_unknown_citation_fails_e2e(self) -> None:
         report = ManualRagE2EOrchestrator(self.config, FakeManualRagHttpClient("EV-UNKNOWN")).run()

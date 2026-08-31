@@ -9,7 +9,7 @@ import math
 import os
 import re
 import time
-from typing import Any
+from typing import Any, Mapping, NoReturn
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
@@ -22,6 +22,124 @@ from app.database import session_scope
 
 RAG_TOOL_ID = UUID("8edce655-e454-5b76-b56f-5e49aa2884d4")
 RAG_TOOL_CODE = "rag.answer"
+RAG_TOOL_SEMANTIC_VERSION = "1.2.0-candidate"
+RAG_TOOL_DESCRIPTION = (
+    "Answer only from approved internal documents with citation-bound evidence."
+)
+RAG_TOOL_TRANSPORT = "MCP_STREAMABLE_HTTP"
+RAG_TOOL_TIMEOUT_SECONDS = 30
+RAG_TOOL_ROLES = ("analyst",)
+RAG_TOOL_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "minLength": 2, "maxLength": 500},
+        "selected_document_ids": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1, "maxLength": 100},
+            "maxItems": 10,
+            "uniqueItems": True,
+        },
+        "recent_utterances": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1, "maxLength": 500},
+            "maxItems": 3,
+        },
+    },
+    "required": ["query"],
+    "additionalProperties": False,
+}
+RAG_TOOL_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "string",
+            "enum": ["ANSWER", "NO_EVIDENCE", "CONFLICT"],
+        },
+        "trace_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "answer": {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+            "additionalProperties": False,
+        },
+        "citations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "evidence_id": {"type": "string", "minLength": 1},
+                    "citation": {"type": "string"},
+                },
+                "required": ["evidence_id", "citation"],
+                "additionalProperties": False,
+            },
+        },
+        "evidence_bundle": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "evidence_id": {"type": "string", "minLength": 1},
+                    "document_id": {"type": "string", "minLength": 1},
+                    "document_name": {"type": "string"},
+                    "section": {"type": "string"},
+                    "snippet": {"type": "string"},
+                    "score": {"type": "number", "minimum": 0},
+                },
+                "required": [
+                    "evidence_id",
+                    "document_id",
+                    "document_name",
+                    "section",
+                    "snippet",
+                    "score",
+                ],
+                "additionalProperties": False,
+            },
+        },
+        "conflicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string", "minLength": 1},
+                    "evidence_ids": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 2,
+                        "uniqueItems": True,
+                    },
+                },
+                "required": ["description", "evidence_ids"],
+                "additionalProperties": False,
+            },
+            "minItems": 1,
+        },
+    },
+    "required": ["status", "trace_id", "evidence_bundle"],
+    "additionalProperties": False,
+    "allOf": [
+        {
+            "if": {"properties": {"status": {"enum": ["ANSWER", "NO_EVIDENCE"]}}},
+            "then": {
+                "required": ["answer", "citations"],
+                "not": {"required": ["conflicts"]},
+            },
+        },
+        {
+            "if": {"properties": {"status": {"const": "CONFLICT"}}},
+            "then": {
+                "required": ["conflicts"],
+                "not": {
+                    "anyOf": [
+                        {"required": ["answer"]},
+                        {"required": ["citations"]},
+                    ]
+                },
+            },
+        },
+    ],
+}
 RAG_CAPABILITY_CANDIDATE_VERSION = "RagCapabilityCandidate.v1"
 RAG_RUNTIME_RECEIPT_VERSION = "RagRuntimeReceipt.v1"
 RAG_MAX_EMBEDDING_DIMENSION = 65536
@@ -68,6 +186,180 @@ class InternalManualAgent:
     ) -> int:
         """명시적 비교 또는 승인된 두 문서 snapshot을 최대 두 개까지 유지한다."""
         return 2 if intent == "COMPARISON" or len(selected_document_ids) > 1 else 1
+
+    @staticmethod
+    def public_tool_output(result: Mapping[str, Any]) -> dict[str, Any]:
+        """Conversation 표시 필드를 제외한 closed MCP 결과만 반환한다."""
+
+        def invalid() -> NoReturn:
+            raise RagToolError(
+                "RAG_PUBLIC_OUTPUT_INVALID",
+                "RAG 공개 결과 계약이 올바르지 않습니다.",
+                502,
+            )
+
+        if not isinstance(result, Mapping):
+            invalid()
+        status = result.get("status")
+        trace_id = result.get("trace_id")
+        raw_evidence = result.get("evidence_bundle")
+        if (
+            not isinstance(status, str)
+            or status not in {"ANSWER", "NO_EVIDENCE", "CONFLICT"}
+            or not isinstance(trace_id, str)
+            or not 1 <= len(trace_id) <= 128
+            or not isinstance(raw_evidence, list)
+            or len(raw_evidence) > 50
+        ):
+            invalid()
+
+        evidence_bundle: list[dict[str, Any]] = []
+        for item in raw_evidence:
+            if not isinstance(item, Mapping):
+                invalid()
+            evidence_id = item.get("evidence_id")
+            document_id = item.get("document_id")
+            document_name = item.get("document_name")
+            section = item.get("section")
+            snippet = item.get("snippet")
+            score = item.get("score")
+            if (
+                not isinstance(evidence_id, str)
+                or not evidence_id
+                or not isinstance(document_id, str)
+                or not document_id
+                or not isinstance(document_name, str)
+                or not isinstance(section, str)
+                or not isinstance(snippet, str)
+                or isinstance(score, bool)
+                or not isinstance(score, (int, float))
+                or not math.isfinite(float(score))
+                or float(score) < 0
+            ):
+                invalid()
+            evidence_bundle.append(
+                {
+                    "evidence_id": evidence_id,
+                    "document_id": document_id,
+                    "document_name": document_name,
+                    "section": section,
+                    "snippet": snippet,
+                    "score": score,
+                }
+            )
+
+        public: dict[str, Any] = {
+            "status": status,
+            "trace_id": trace_id,
+            "evidence_bundle": evidence_bundle,
+        }
+        if status in {"ANSWER", "NO_EVIDENCE"}:
+            raw_answer = result.get("answer")
+            raw_citations = result.get("citations")
+            if (
+                not isinstance(raw_answer, Mapping)
+                or not isinstance(raw_answer.get("text"), str)
+                or not isinstance(raw_citations, list)
+                or len(raw_citations) > 50
+            ):
+                invalid()
+            citations: list[dict[str, str]] = []
+            for item in raw_citations:
+                if (
+                    not isinstance(item, Mapping)
+                    or not isinstance(item.get("evidence_id"), str)
+                    or not item["evidence_id"]
+                    or not isinstance(item.get("citation"), str)
+                ):
+                    invalid()
+                citations.append(
+                    {
+                        "evidence_id": item["evidence_id"],
+                        "citation": item["citation"],
+                    }
+                )
+            public["answer"] = {"text": raw_answer["text"]}
+            public["citations"] = citations
+            return public
+
+        raw_conflicts = result.get("conflicts")
+        if not isinstance(raw_conflicts, list) or not 1 <= len(raw_conflicts) <= 50:
+            invalid()
+        conflicts: list[dict[str, Any]] = []
+        for item in raw_conflicts:
+            if not isinstance(item, Mapping):
+                invalid()
+            description = item.get("description")
+            evidence_ids = item.get("evidence_ids")
+            if (
+                not isinstance(description, str)
+                or not description
+                or not isinstance(evidence_ids, list)
+                or len(evidence_ids) < 2
+                or any(not isinstance(value, str) or not value for value in evidence_ids)
+                or len(evidence_ids) != len(set(evidence_ids))
+            ):
+                invalid()
+            conflicts.append(
+                {"description": description, "evidence_ids": list(evidence_ids)}
+            )
+        public["conflicts"] = conflicts
+        return public
+
+    @staticmethod
+    def _validate_search_contract(search: Mapping[str, Any]) -> dict[str, Any]:
+        """검색 결과가 현재 corpus release를 식별하는 closed v2 계약인지 확인한다."""
+
+        release = search.get("retrieval_release")
+        expected_keys = {
+            "schema_version",
+            "release_id",
+            "model_revision",
+            "embedding_dimension",
+            "corpus_manifest_sha256",
+            "processing_profile_sha256",
+        }
+        if not isinstance(release, dict) or set(release) != expected_keys:
+            raise RagToolError(
+                "RAG_OUTPUT_INVALID",
+                "RAG 검색 release 계약이 올바르지 않습니다.",
+                502,
+            )
+        release_id = release["release_id"]
+        try:
+            parsed_release_id = UUID(release_id) if isinstance(release_id, str) else None
+        except ValueError:
+            parsed_release_id = None
+        dimension = release["embedding_dimension"]
+        if (
+            release["schema_version"] != "RagRetrievalRelease.v2"
+            or parsed_release_id is None
+            or str(parsed_release_id) != release_id
+            or not isinstance(release["model_revision"], str)
+            or re.fullmatch(
+                r"[A-Za-z0-9._:/+-]{1,160}", release["model_revision"]
+            )
+            is None
+            or isinstance(dimension, bool)
+            or not isinstance(dimension, int)
+            or not 1 <= dimension <= RAG_MAX_EMBEDDING_DIMENSION
+            or not isinstance(release["corpus_manifest_sha256"], str)
+            or re.fullmatch(
+                r"[0-9a-f]{64}", release["corpus_manifest_sha256"]
+            )
+            is None
+            or not isinstance(release["processing_profile_sha256"], str)
+            or re.fullmatch(
+                r"[0-9a-f]{64}", release["processing_profile_sha256"]
+            )
+            is None
+        ):
+            raise RagToolError(
+                "RAG_OUTPUT_INVALID",
+                "RAG 검색 release 계약이 올바르지 않습니다.",
+                502,
+            )
+        return dict(release)
 
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
@@ -126,7 +418,8 @@ class InternalManualAgent:
         search_top_k = 10 if selected_ids else 8 if domains else 5
         contextual_query = (resolved_question or "\n".join(
             [*(f"이전 질문: {utterance}" for utterance in recent), f"현재 질문: {normalized}"]
-        ))[-500:]
+        ))[-500:].strip()
+        actor_hash = hashlib.sha256(str(actor_id).encode("utf-8")).hexdigest()
         await self._assert_enabled(app_role)
         try:
             search = await self._signed_post(
@@ -139,9 +432,31 @@ class InternalManualAgent:
                     "top_k": search_top_k,
                     "recent_utterances": list(recent),
                     "selected_document_ids": list(selected_ids),
+                    "trace_id": trace_id,
+                    "actor_hash": actor_hash,
                 },
                 rag_role,
             )
+            self._validate_search_contract(search)
+            answer_query = search.get("answer_query")
+            retrieval_request_id = str(search.get("request_id") or "")
+            try:
+                parsed_retrieval_request_id = UUID(retrieval_request_id)
+            except ValueError:
+                parsed_retrieval_request_id = None
+            if (
+                not isinstance(answer_query, str)
+                or answer_query != contextual_query
+                or not 2 <= len(answer_query) <= 500
+                or search.get("trace_id") != trace_id
+                or parsed_retrieval_request_id is None
+                or str(parsed_retrieval_request_id) != retrieval_request_id
+            ):
+                raise RagToolError(
+                    "RAG_OUTPUT_INVALID",
+                    "RAG 검색 답변 질문 계약이 올바르지 않습니다.",
+                    502,
+                )
             results = search.get("results") if isinstance(search, dict) else None
             if search.get("no_evidence") is True or not isinstance(results, list) or not results:
                 output = self._empty_answer_output(
@@ -165,13 +480,21 @@ class InternalManualAgent:
             answer = await self._signed_post(
                 "/v1/tools/internal-manual-answer",
                 {
-                    "query": contextual_query,
+                    "query": answer_query,
                     "evidence_blocks": evidence_blocks,
                     "intent": intent,
-                    "retrieval_request_id": str(search.get("request_id") or "") or None,
+                    "retrieval_request_id": retrieval_request_id,
+                    "trace_id": trace_id,
+                    "actor_hash": actor_hash,
                 },
                 rag_role,
             )
+            if answer.get("trace_id") != trace_id:
+                raise RagToolError(
+                    "RAG_OUTPUT_INVALID",
+                    "RAG 답변 추적 계약이 올바르지 않습니다.",
+                    502,
+                )
             answer_status = str(answer.get("status") or "")
             if answer_status == "NO_EVIDENCE":
                 output = self._empty_answer_output(
@@ -324,6 +647,8 @@ class InternalManualAgent:
                 403,
             )
         await self._assert_enabled(app_role)
+        trace_id = str(uuid4())
+        actor_hash = hashlib.sha256(b"RAG_CAPABILITY_PROBE").hexdigest()
         try:
             search = await self._signed_post(
                 "/v1/tools/internal-manual-search",
@@ -335,6 +660,8 @@ class InternalManualAgent:
                     "top_k": 3,
                     "recent_utterances": [],
                     "selected_document_ids": [],
+                    "trace_id": trace_id,
+                    "actor_hash": actor_hash,
                 },
                 rag_role,
             )
@@ -397,12 +724,14 @@ class InternalManualAgent:
 
         execution_state = search.get("execution_state")
         tool = search.get("tool")
-        retrieval_release = search.get("retrieval_release")
-        embedding_dimension = (
-            retrieval_release.get("embedding_dimension")
-            if isinstance(retrieval_release, dict)
-            else None
-        )
+        try:
+            retrieval_release = InternalManualAgent._validate_search_contract(search)
+        except RagToolError as error:
+            raise RagToolError(
+                "RAG_CAPABILITY_RELEASE_INVALID",
+                "RAG capability release 근거가 올바르지 않습니다.",
+            ) from error
+        embedding_dimension = retrieval_release["embedding_dimension"]
         if (
             not isinstance(execution_state, dict)
             or execution_state.get("p2_gate") != "TECHNICALLY_VALIDATED"
@@ -412,11 +741,6 @@ class InternalManualAgent:
             or tool.get("tool_code") != "internal-manual-search"
             or not isinstance(tool.get("semantic_version"), str)
             or not re.fullmatch(r"[A-Za-z0-9._+-]{1,80}", tool["semantic_version"])
-            or not isinstance(retrieval_release, dict)
-            or retrieval_release.get("schema_version")
-            != "RagRetrievalRelease.v1"
-            or not isinstance(retrieval_release.get("model_revision"), str)
-            or not retrieval_release["model_revision"].strip()
             or isinstance(embedding_dimension, bool)
             or not isinstance(embedding_dimension, int)
             or not 1 <= embedding_dimension <= RAG_MAX_EMBEDDING_DIMENSION
@@ -567,6 +891,9 @@ class InternalManualAgent:
         execution_state = health.get("execution_state")
         tool = health.get("tool")
         dimension = health.get("expected_dimension")
+        corpus_manifest_sha256 = health.get("corpus_manifest_sha256")
+        processing_profile_sha256 = health.get("processing_profile_sha256")
+        active_corpus_release = health.get("active_corpus_release")
         documents = catalog.get("documents")
         if (
             health.get("status") != "healthy"
@@ -589,7 +916,27 @@ class InternalManualAgent:
             or isinstance(dimension, bool)
             or not isinstance(dimension, int)
             or not 1 <= dimension <= RAG_MAX_EMBEDDING_DIMENSION
+            or not isinstance(corpus_manifest_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", corpus_manifest_sha256) is None
+            or not isinstance(processing_profile_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", processing_profile_sha256) is None
+            or not isinstance(active_corpus_release, dict)
+            or active_corpus_release.get("corpus_manifest_sha256")
+            != corpus_manifest_sha256
+            or active_corpus_release.get("processing_profile_sha256")
+            != processing_profile_sha256
+            or active_corpus_release.get("provider")
+            != health.get("embedding_provider")
+            or active_corpus_release.get("model") != health.get("model_id")
+            or active_corpus_release.get("dimensions") != dimension
+            or active_corpus_release.get("version") != health.get("model_revision")
+            or isinstance(active_corpus_release.get("approved_document_count"), bool)
+            or not isinstance(
+                active_corpus_release.get("approved_document_count"), int
+            )
+            or active_corpus_release["approved_document_count"] < 1
             or not isinstance(documents, list)
+            or not documents
         ):
             raise RagToolError(
                 "RAG_RUNTIME_RECEIPT_INVALID",
@@ -602,6 +949,8 @@ class InternalManualAgent:
                 "tool_version": tool["semantic_version"],
                 "model_revision": health["model_revision"],
                 "embedding_dimension": dimension,
+                "corpus_manifest_sha256": corpus_manifest_sha256,
+                "processing_profile_sha256": processing_profile_sha256,
                 "document_count": len(documents),
             },
             ensure_ascii=False,
@@ -615,6 +964,8 @@ class InternalManualAgent:
             "tool_version": tool["semantic_version"],
             "model_revision": health["model_revision"],
             "embedding_dimension": dimension,
+            "corpus_manifest_sha256": corpus_manifest_sha256,
+            "processing_profile_sha256": processing_profile_sha256,
             "capability_hash": hashlib.sha256(
                 canonical.encode("utf-8")
             ).hexdigest(),
@@ -686,19 +1037,48 @@ class InternalManualAgent:
                 row = (
                     await session.execute(
                         text(
-                            "SELECT required_roles_json FROM tooling.tool_registry "
-                            "WHERE tool_id=:tool_id AND tool_code=:tool_code AND is_enabled=true"
+                            "SELECT tool_id, tool_code, semantic_version, description, "
+                            "input_schema_json, output_schema_json, transport, "
+                            "timeout_seconds, required_roles_json, is_enabled "
+                            "FROM tooling.tool_registry "
+                            "WHERE tool_id=:tool_id OR tool_code=:tool_code"
                         ),
                         {"tool_id": RAG_TOOL_ID, "tool_code": RAG_TOOL_CODE},
                     )
-                ).scalar_one_or_none()
+                ).mappings().one_or_none()
         except SQLAlchemyError as error:
             raise RagToolError("RAG_REGISTRY_UNAVAILABLE", "RAG Tool Registry를 확인하지 못했습니다.") from error
-        if row is None:
+        if not self._registry_contract_matches(row):
             raise RagToolError("RAG_TOOL_DISABLED", "RAG Tool이 승인되지 않았습니다.", 503)
-        roles = row if isinstance(row, list) else json.loads(row)
-        if app_role not in roles:
+        if app_role not in RAG_TOOL_ROLES:
             raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
+
+    @staticmethod
+    def _registry_contract_matches(row: Mapping[str, Any] | None) -> bool:
+        """Require the enabled App registry row to match the full code contract."""
+
+        if row is None:
+            return False
+        try:
+            roles = row["required_roles_json"]
+            if isinstance(roles, str):
+                roles = json.loads(roles)
+            return bool(
+                UUID(str(row["tool_id"])) == RAG_TOOL_ID
+                and row["tool_code"] == RAG_TOOL_CODE
+                and row["semantic_version"] == RAG_TOOL_SEMANTIC_VERSION
+                and row["description"] == RAG_TOOL_DESCRIPTION
+                and row["input_schema_json"] == RAG_TOOL_INPUT_SCHEMA
+                and row["output_schema_json"] == RAG_TOOL_OUTPUT_SCHEMA
+                and row["transport"] == RAG_TOOL_TRANSPORT
+                and type(row["timeout_seconds"]) is int
+                and row["timeout_seconds"] == RAG_TOOL_TIMEOUT_SECONDS
+                and type(roles) is list
+                and tuple(roles) == RAG_TOOL_ROLES
+                and row["is_enabled"] is True
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return False
 
     async def _record(
         self,
@@ -762,7 +1142,6 @@ class InternalManualAgent:
             "title": str(item.get("title") or ""),
             "manual_id": str(item.get("manual_id") or ""),
             "section_title": str(item.get("section_title") or ""),
-            "page_start": str(item.get("page_start") or ""),
             "citation": str(item.get("citation") or ""),
         }
 

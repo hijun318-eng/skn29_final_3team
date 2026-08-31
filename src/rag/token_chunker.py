@@ -8,17 +8,25 @@ from .vector_models import PdfChunk
 SECTION_PATTERN = re.compile(r"(?m)^\s*(\d+(?:\.\d+)*)[.)]\s+([^\n]{2,100})")
 TOKEN_PATTERN = re.compile(r"[가-힣]|[A-Za-z0-9_]+|[^\s]")
 SENTENCE_PATTERN = re.compile(r"(?<=[.!?。])\s+|\n+")
+TOKEN_CHUNKER_SCHEMA_VERSION = "sentence-v2.0"
+TOKEN_CHUNKER_DEFAULT_MIN_TOKENS = 24
 
 
 class TokenChunker:
     """모델 tokenizer와 무관하게 문단·문장 경계를 우선하는 재현 가능한 chunker다."""
 
-    def __init__(self, provider: Any, max_tokens: int, overlap_tokens: int, min_tokens: int = 24):
+    def __init__(
+        self,
+        provider: Any,
+        max_tokens: int,
+        overlap_tokens: int,
+        min_tokens: int = TOKEN_CHUNKER_DEFAULT_MIN_TOKENS,
+    ):
         self.provider = provider
         self.max_tokens = max_tokens
         self.overlap_tokens = overlap_tokens
         self.min_tokens = min_tokens
-        self.schema_version = "sentence-v2.0"
+        self.schema_version = TOKEN_CHUNKER_SCHEMA_VERSION
 
     def chunk_blocks(self, manual_id: str, page_number: int, blocks: list[str]) -> list[PdfChunk]:
         chunks: list[PdfChunk] = []

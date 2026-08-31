@@ -10,6 +10,8 @@ from unittest.mock import Mock, patch
 from src.rag.runtime_device import RuntimeDeviceSelector
 from src.rag.embedding_provider import OpenAIEmbeddingProvider
 from src.rag.vector_settings import VectorSettings
+from src.rag.retrieval_service import VectorRetrievalService
+import numpy as np
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +66,33 @@ class RuntimeSettingsTest(unittest.TestCase):
     def test_runtime_settings_reject_nonexistent_openai_embedding_model(self) -> None:
         with self.assertRaisesRegex(ValueError, "small or text-embedding-3-large"):
             VectorSettings.load(PROJECT_ROOT)
+
+    def test_reranker_environment_names_fail_closed_in_candidate_runtime(self) -> None:
+        for variable in ("RAG_RERANKER_PATH", "RERANKER_PATH"):
+            with self.subTest(variable=variable):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "RAG_DATABASE_URL": "postgresql://rag_test@localhost/rag_test",
+                        variable: "/models/reranker",
+                    },
+                    clear=True,
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError, "reranker is not available"
+                    ):
+                        VectorSettings.load(PROJECT_ROOT)
+
+    def test_hybrid_rerank_never_silently_falls_back_without_dependency(self) -> None:
+        retrieval = VectorRetrievalService(object())  # type: ignore[arg-type]
+
+        with self.assertRaisesRegex(RuntimeError, "reranker is not configured"):
+            retrieval.retrieve(
+                "query",
+                np.asarray([0.1], dtype=np.float32),
+                object(),  # type: ignore[arg-type]
+                retrieval_mode="HYBRID_RERANK",
+            )
 
     @patch("src.rag.embedding_provider.urlopen")
     def test_openai_provider_sends_the_pinned_model_and_vector_dimension(

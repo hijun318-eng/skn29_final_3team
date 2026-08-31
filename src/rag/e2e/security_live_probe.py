@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import time
@@ -28,7 +29,12 @@ class LiveSecurityContractVerifier:
         self._role = role
 
     def verify(self) -> list[SecurityCheckResult]:
-        payload = {"query": self._query, "top_k": 3, "trace_id": str(uuid.uuid4())}
+        payload = {
+            "query": self._query,
+            "top_k": 3,
+            "trace_id": str(uuid.uuid4()),
+            "actor_hash": hashlib.sha256(b"RAG_SECURITY_LIVE_PROBE").hexdigest(),
+        }
         normal_headers = self._signed_headers(payload, self._role, int(time.time()))
         normal_status, normal_body = self._post(payload, normal_headers)
         results = [
@@ -52,7 +58,12 @@ class LiveSecurityContractVerifier:
     def _signed_headers(self, payload: dict[str, object], role: str, epoch_seconds: int) -> dict[str, str]:
         request_id = str(uuid.uuid4())
         timestamp = str(epoch_seconds)
-        canonical_request = canonical_search_request(self._query, int(payload["top_k"]))
+        canonical_request = canonical_search_request(
+            self._query,
+            int(payload["top_k"]),
+            trace_id=str(payload["trace_id"]),
+            actor_hash=str(payload["actor_hash"]),
+        )
         signature = GatewayRequestAuthenticator.build_signature(self._secret, timestamp, request_id, role, canonical_request)
         return {
             "Content-Type": "application/json",

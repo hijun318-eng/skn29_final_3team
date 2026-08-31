@@ -95,7 +95,6 @@ MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint�
 | `OPENAI_EMBEDDING_DIMENSIONS` | `1024` |
 | `OPENAI_EMBEDDING_ENDPOINT` | `https://api.openai.com/v1/embeddings` |
 | `RAG_MODEL_PATH` | Qwen fallback를 명시적으로 빌드할 때만 사용 |
-| `RAG_RERANKER_PATH` | `models/bge-reranker-v2-m3` |
 | `RAG_ANSWER_ENDPOINT` | `http://rag-local-answer:8001/v1/chat/completions` |
 | `RAG_ANSWER_MODEL` | `rag-local-answer-v2` |
 | `RAG_DEVICE` | `cpu` |
@@ -103,7 +102,9 @@ MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint�
 | `RAG_EVIDENCE_DIR` | `evals/runs/rag` |
 | `RAG_BACKUP_DIR` | `backups/rag` |
 
-기본 적재는 `data/rag/manuals`의 개별 PDF 17개만 사용한다. 적재 후에도 문서별 `approval_status`, 역할 범위, 유효기간 Gate를 모두 통과한 문서만 검색·목록·PDF 원문 경로에 노출된다.
+기본 적재는 `config/rag/corpus_manifest.json`이 `MANUAL`로 선언한 PDF만 사용한다. manifest는 디렉터리의 모든 PDF, 문서 ID, PDF bytes SHA-256을 exact-match하며, `REFERENCE` 문서는 파일명과 무관하게 제외한다. release는 parser/chunker 설정 hash가 같은 byte-identical 문서만 이전 승인 상태와 chunk를 승계한다. 적재 후에도 문서별 `approval_status`, 역할 범위, 유효기간 Gate를 모두 통과한 문서만 검색·목록·PDF 원문 경로에 노출된다.
+
+현재 candidate image에는 reranker dependency/release가 포함되지 않는다. `RAG_RERANKER_PATH` 또는 과거 `RERANKER_PATH`를 설정하면 startup이 실패하며 `HYBRID_RERANK`도 silent fallback 없이 거부된다.
 
 `RAG_GATEWAY_HMAC_SECRET`은 32자 이상이어야 하며 저장소에 기록하지 않는다.
 환경변수 이름과 컨테이너 경로 예시는 `infrastructure/rag/.env.example`을 사용하되 `REQUIRED` 값을 실제 운영 secret으로 교체해 로컬 `.env` 또는 secret manager에만 둔다.

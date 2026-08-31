@@ -14,6 +14,7 @@ class VectorSettings:
     config_dir: Path
     migrations_dir: Path
     manuals_dir: Path
+    corpus_manifest_path: Path
     smoke_queries_path: Path
     evidence_dir: Path
     backup_dir: Path
@@ -33,7 +34,6 @@ class VectorSettings:
     max_sequence_length: int
     chunk_max_tokens: int
     chunk_overlap_tokens: int
-    reranker_path: str | None
 
     @classmethod
     def load(cls, project_root: Path) -> "VectorSettings":
@@ -46,6 +46,11 @@ class VectorSettings:
             "RAG_MIGRATIONS_DIR", root / "infrastructure" / "rag" / "db" / "init", root
         )
         manuals_dir = cls._path_from_env("RAG_MANUALS_DIR", root / "data" / "rag" / "manuals", root)
+        corpus_manifest_path = cls._path_from_env(
+            "RAG_CORPUS_MANIFEST_PATH",
+            config_dir / "corpus_manifest.json",
+            root,
+        )
         smoke_queries_path = cls._path_from_env(
             "RAG_SMOKE_QUERIES_PATH", root / "evals" / "testsets" / "rag" / "smoke_queries.json", root
         )
@@ -72,11 +77,18 @@ class VectorSettings:
             raise ValueError(
                 "Embedding dimension must match the configured pgvector schema"
             )
+        if os.getenv("RAG_RERANKER_PATH", "").strip() or os.getenv(
+            "RERANKER_PATH", ""
+        ).strip():
+            raise ValueError(
+                "RAG reranker is not available in the candidate runtime"
+            )
         return cls(
             project_root=root,
             config_dir=config_dir,
             migrations_dir=migrations_dir,
             manuals_dir=manuals_dir,
+            corpus_manifest_path=corpus_manifest_path,
             smoke_queries_path=smoke_queries_path,
             evidence_dir=evidence_dir,
             backup_dir=backup_dir,
@@ -96,7 +108,6 @@ class VectorSettings:
             max_sequence_length=int(embedding.get("max_sequence_length", 2048)),
             chunk_max_tokens=int(retrieval.get("chunk_max_tokens", 384)),
             chunk_overlap_tokens=int(retrieval.get("chunk_overlap_tokens", 64)),
-            reranker_path=os.getenv("RERANKER_PATH", "").strip() or None,
         )
 
     @staticmethod

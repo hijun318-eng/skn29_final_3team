@@ -1,0 +1,22 @@
+{
+  "schema_version": "RagCorpusManifest.v1",
+  "documents": [
+    {"source_file": "00_전체안내_및_업무별_빠른찾기.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-4BD7128E84FB", "source_sha256": "8e95f609ad1d891992d4370fb4d6a291666347973874cb7e594fdd98963a8efa"},
+    {"source_file": "01_공통.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-2FC377147FE5", "source_sha256": "e64ac1333c6f03b6df6c09848500d28ae64eb26ce91554815e1651185a01d17e"},
+    {"source_file": "02_개인정보.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-6FF666F09446", "source_sha256": "19c6e1aa99d66843e99c93c2361f64a11d9a85fcbcd55d08d3c20d2804b06410"},
+    {"source_file": "03_보고서.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-1F729EDE31A5", "source_sha256": "c4dd0adfeb21c0e5a9e5bde2f1229be0a7142ffd6d9a59dc38213ee799912b4f"},
+    {"source_file": "04_알림_협조.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-74AFFA8C392F", "source_sha256": "4684597c2abd6d610f6f31a04683e285172907ff819c6c9414e8531f3ab243fb"},
+    {"source_file": "05_대화형_분석.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-ECD162933342", "source_sha256": "e12d04670003a9e36bcd14766004349d5bbf33646ade21749236a94ef060ff72"},
+    {"source_file": "06_고객응대.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-EC1D9CA2679B", "source_sha256": "9435f2de83d9b92cdb4bfc51bcc038cba8ba310496bd6f35c9a63f5294f4d75a"},
+    {"source_file": "07_외부_후기.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-5E37FD97EE33", "source_sha256": "6315e9b969986c21683f6d510db1d07a19b94b6d3677b664749566297ac52bdb"},
+    {"source_file": "08_식음.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-CAE03DC80B29", "source_sha256": "98a92b9a4bb9f4912420f1777056551c8d3a458aa112b4266f15a7eccd7fb0eb"},
+    {"source_file": "09_입실_퇴실_예약_결제.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-F1F7CA18F02E", "source_sha256": "845eb5976923bc80a0d36dcfcc931165220d1fe9615dbcecced7daedca030657"},
+    {"source_file": "10_레저.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-3639C950AD04", "source_sha256": "0aa721e37cb9322b20a78d878b77d7310f7bf9961efbb1d22ee28b2142cd3691"},
+    {"source_file": "11_시설.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-26808F2E8638", "source_sha256": "2dc57afef45f4ae88548d9eb52c25a9426e51c0f72f80cce77c994abc7b5b0c1"},
+    {"source_file": "12_주차_행사_로비.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-C90878432D7A", "source_sha256": "db09f144d5666130ba9d731f03a490d3ff4069b34cbf85907f029c9fa6dda585"},
+    {"source_file": "13_객실.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-176E8FA6202D", "source_sha256": "ddb051cf9b3a295101395db1aa27bbd7a192ee70019ce4654e685d072bc50ff4"},
+    {"source_file": "14_안전.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-EB0224E8A037", "source_sha256": "f688b023e273d5dbbd2b18aae427ffdaf0d48a709f9b399b4bee7956500c7e17"},
+    {"source_file": "15_고객의견.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-DAE195190F10", "source_sha256": "35d69a395b3abef6d87c707115967ad48ea08c9797500525ad5c70f54b2ec6b6"},
+    {"source_file": "16_취소.pdf", "document_kind": "MANUAL", "manual_id": "MANUAL-451E4E48F8B0", "source_sha256": "40070192965ebf48bf33675c9d0155ef5d6029402b91f8ad5775ab1956e914b5"}
+  ]
+}

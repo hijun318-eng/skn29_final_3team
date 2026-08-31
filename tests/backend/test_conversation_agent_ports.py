@@ -144,6 +144,8 @@ class _RagExecutor:
         return {
             "status": "ANSWER",
             "routing": {"snapshot_question": kwargs["query"]},
+            "processing_steps": ["DOCUMENT_SEARCHED", "ANSWERED"],
+            "document": {"body": "승인된 시설 안전 절차"},
         }
 
     async def runtime_receipt(self, app_role: str):
@@ -153,6 +155,8 @@ class _RagExecutor:
             "tool_version": "1.0.0",
             "model_revision": "embedding-release:d1536",
             "embedding_dimension": 1536,
+            "corpus_manifest_sha256": "b" * 64,
+            "processing_profile_sha256": "c" * 64,
             "capability_hash": "a" * 64,
         }
 
@@ -217,6 +221,19 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.agent, AgentKind.INTERNAL_GUIDELINE)
         self.assertEqual(result.payload["data"]["type"], "INTERNAL_GUIDELINE")
         self.assertEqual(result.payload["data"]["turn"]["turn_id"], turn_id)
+        rag_response = result.payload["data"]["rag_response"]
+        self.assertEqual(
+            rag_response["routing"]["snapshot_question"],
+            request.command.user_message,
+        )
+        self.assertEqual(
+            rag_response["processing_steps"],
+            ["DOCUMENT_SEARCHED", "ANSWERED"],
+        )
+        self.assertEqual(
+            rag_response["document"],
+            {"body": "승인된 시설 안전 절차"},
+        )
         self.assertIsNone(repository.appended)
 
     async def test_internal_guideline_readiness_is_runtime_receipted(self) -> None:
@@ -237,6 +254,8 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             any(ref.startswith("rag-capability:sha256:") for ref in readiness.release_refs)
         )
+        self.assertIn("rag-corpus:sha256:" + "b" * 64, readiness.release_refs)
+        self.assertIn("rag-processing:sha256:" + "c" * 64, readiness.release_refs)
 
     async def test_ml_port_executes_only_the_structured_invocation(self) -> None:
         class MLService:

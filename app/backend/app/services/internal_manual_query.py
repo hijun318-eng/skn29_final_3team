@@ -186,6 +186,8 @@ class InternalManualQueryService:
             "tool_version",
             "model_revision",
             "embedding_dimension",
+            "corpus_manifest_sha256",
+            "processing_profile_sha256",
             "capability_hash",
         }
         if (
@@ -200,6 +202,14 @@ class InternalManualQueryService:
             or isinstance(receipt["embedding_dimension"], bool)
             or not isinstance(receipt["embedding_dimension"], int)
             or receipt["embedding_dimension"] < 1
+            or not isinstance(receipt["corpus_manifest_sha256"], str)
+            or not re.fullmatch(
+                r"[0-9a-f]{64}", receipt["corpus_manifest_sha256"]
+            )
+            or not isinstance(receipt["processing_profile_sha256"], str)
+            or not re.fullmatch(
+                r"[0-9a-f]{64}", receipt["processing_profile_sha256"]
+            )
             or not isinstance(receipt["capability_hash"], str)
             or not re.fullmatch(r"[0-9a-f]{64}", receipt["capability_hash"])
         ):
@@ -211,6 +221,8 @@ class InternalManualQueryService:
             release_refs=(
                 f"rag-tool:{receipt['tool_code']}:{receipt['tool_version']}",
                 f"rag-retrieval:{receipt['model_revision']}:{receipt['embedding_dimension']}",
+                f"rag-corpus:sha256:{receipt['corpus_manifest_sha256']}",
+                f"rag-processing:sha256:{receipt['processing_profile_sha256']}",
                 f"rag-capability:sha256:{receipt['capability_hash']}",
             ),
         )
@@ -229,6 +241,12 @@ class InternalManualQueryService:
                 "RAG_ACCESS_DENIED",
                 "RAG 검색 권한이 없습니다.",
                 403,
+            )
+        if not self._enabled:
+            raise InternalManualQueryError(
+                "RAG_FEATURE_DISABLED",
+                "내부지침 검색 기능이 비활성화되었습니다.",
+                503,
             )
 
         recent_utterances: tuple[str, ...] = ()
@@ -264,12 +282,6 @@ class InternalManualQueryService:
                         409,
                     )
 
-        if not self._enabled:
-            raise InternalManualQueryError(
-                "RAG_FEATURE_DISABLED",
-                "내부지침 검색 기능이 비활성화되었습니다.",
-                503,
-            )
         if self._repository is None or self._executor_factory is None:
             raise InternalManualQueryError(
                 "RAG_REGISTRY_UNAVAILABLE",

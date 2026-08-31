@@ -103,6 +103,9 @@ def canonical_search_request(
     resolved_question: str | None = None,
     domains: tuple[str, ...] = (),
     intent: str = "REGULATION_CHECK",
+    *,
+    trace_id: str,
+    actor_hash: str,
 ) -> str:
     return json.dumps(
         {
@@ -113,6 +116,8 @@ def canonical_search_request(
             "recent_utterances": list(recent_utterances),
             "selected_document_ids": list(selected_document_ids),
             "top_k": top_k,
+            "trace_id": trace_id,
+            "actor_hash": actor_hash,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -125,6 +130,9 @@ def canonical_answer_request(
     evidence_blocks: tuple[dict[str, object], ...] = (),
     intent: str = "REGULATION_CHECK",
     retrieval_request_id: str | None = None,
+    *,
+    trace_id: str,
+    actor_hash: str,
 ) -> str:
     normalized = tuple(
         {key: block[key] for key in sorted(block.keys())} if isinstance(block, dict) else {}
@@ -136,6 +144,8 @@ def canonical_answer_request(
             "evidence_blocks": normalized,
             "intent": intent,
             "retrieval_request_id": retrieval_request_id,
+            "trace_id": trace_id,
+            "actor_hash": actor_hash,
         },
         ensure_ascii=False,
         sort_keys=True,

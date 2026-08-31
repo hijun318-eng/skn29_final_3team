@@ -12,7 +12,10 @@ from statistics import mean
 
 from .access_policy import SearchAccessPolicy
 from .pgvector_repository import PgVectorRepository
+from .corpus_manifest import CorpusManifest
+from .processing_profile import processing_profile_sha256
 from .qwen_embedding import QwenEmbeddingProvider
+from .embedding_provider import OpenAIEmbeddingProvider
 from .retrieval_service import VectorRetrievalService
 from .vector_settings import VectorSettings
 from .contextual_query import ContextualQueryBuilder
@@ -102,18 +105,70 @@ class MarkdownQuestionSuite:
 class ManualQuestionEvaluationService:
     def __init__(self, project_root: Path) -> None:
         self._settings = VectorSettings.load(project_root)
-        repository = PgVectorRepository(self._settings.database_url)
-        self._retrieval = VectorRetrievalService(repository)
+        manifest = CorpusManifest.load(
+            self._settings.corpus_manifest_path,
+            self._settings.manuals_dir,
+        )
+        self._manifest = manifest
+        self._processing_profile_sha256 = processing_profile_sha256(
+            self._settings.chunk_max_tokens,
+            self._settings.chunk_overlap_tokens,
+        )
+        self._repository = PgVectorRepository(
+            self._settings.database_url,
+            {
+                "provider": self._settings.embedding_provider,
+                "model": self._settings.model_id,
+                "dimensions": self._settings.dimension,
+                "version": self._settings.model_revision,
+            },
+            manifest.manifest_sha256,
+            manifest.included_document_checksums,
+            self._processing_profile_sha256,
+        )
+        self._retrieval = VectorRetrievalService(self._repository)
         self._policy = SearchAccessPolicy.load(
             self._settings.config_dir / "access_policy.json"
         )
-        self._embedding = QwenEmbeddingProvider(
-            self._settings.model_path, self._settings.device,
-            self._settings.dimension, self._settings.max_sequence_length,
-            self._settings.query_prompt_name,
+        self._embedding: QwenEmbeddingProvider | OpenAIEmbeddingProvider | None = None
+
+    def _build_embedding_provider(
+        self,
+    ) -> QwenEmbeddingProvider | OpenAIEmbeddingProvider:
+        if self._settings.embedding_provider == "openai":
+            return OpenAIEmbeddingProvider(
+                self._settings.embedding_api_key,
+                self._settings.model_id,
+                self._settings.dimension,
+                self._settings.embedding_endpoint,
+                self._settings.embedding_timeout_seconds,
+                self._settings.embedding_maximum_attempts,
+            )
+        if self._settings.embedding_provider == "qwen":
+            return QwenEmbeddingProvider(
+                self._settings.model_path,
+                self._settings.device,
+                self._settings.dimension,
+                self._settings.max_sequence_length,
+                self._settings.query_prompt_name,
+            )
+        raise ValueError(
+            f"Unsupported RAG_EMBEDDING_PROVIDER: {self._settings.embedding_provider}"
         )
 
     def evaluate(self, question_path: Path) -> dict[str, object]:
+        if self._repository.active_release_receipt(
+            {
+                "provider": self._settings.embedding_provider,
+                "model": self._settings.model_id,
+                "dimensions": self._settings.dimension,
+                "version": self._settings.model_revision,
+            },
+            self._manifest.manifest_sha256,
+            self._processing_profile_sha256,
+        ) is None:
+            raise RuntimeError("Active RAG corpus release is not ready for evaluation")
+        self._embedding = self._build_embedding_provider()
         evaluation_started = time.perf_counter()
         questions = MarkdownQuestionSuite.load(question_path)
         decision = self._policy.decide("MANAGER", 10)

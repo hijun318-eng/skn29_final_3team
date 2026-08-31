@@ -15,6 +15,7 @@ MANUAL_ID_PATTERN = re.compile(
 )
 VERSION_PATTERN = re.compile(r"\bv(\d+(?:\.\d+)*)\b", re.IGNORECASE)
 SECTION_PATTERN = re.compile(r"(?m)^\s*(\d+(?:\.\d+)*)[.)]\s+([^\n]{2,100})")
+PDF_PARSER_CONTRACT_VERSION = "fitz-blocks-v1.0"
 
 
 class PdfManualParser:
@@ -26,7 +27,7 @@ class PdfManualParser:
     def parse(self, path: Path) -> tuple[PdfDocument, list[PdfChunk], list[str], dict[str, Any]]:
         source_bytes = path.read_bytes()
         source_checksum = hashlib.sha256(source_bytes).hexdigest()
-        pages = self._extract_pages(path)
+        pages = self._extract_pages(source_bytes)
 
         page_count = len(pages)
         empty_page_count = sum(1 for _, blocks in pages if not blocks)
@@ -100,13 +101,13 @@ class PdfManualParser:
 
         return document, chunks, warnings, manifest
 
-    def _extract_pages(self, path: Path) -> list[tuple[int, list[str]]]:
+    def _extract_pages(self, source_bytes: bytes) -> list[tuple[int, list[str]]]:
         try:
             import fitz
         except ModuleNotFoundError as error:
             raise RuntimeError("PyMuPDF is required to parse PDF manuals") from error
         pages = []
-        with fitz.open(path) as document:
+        with fitz.open(stream=source_bytes, filetype="pdf") as document:
             for index, page in enumerate(document):
                 # get_text("blocks") returns tuple: (x0, y0, x1, y1, text, block_no, block_type)
                 # We need to sort and keep block_type 0 (text)
@@ -116,8 +117,6 @@ class PdfManualParser:
         return pages
 
     def _extract_manual_id(self, path: Path, text: str) -> str:
-        if "내부업무매뉴얼_통합본" in path.name:
-            return "MANUAL-COMBINED-001"
         match = MANUAL_ID_PATTERN.search(text) or MANUAL_ID_PATTERN.search(path.name)
         if match:
             return match.group(1)

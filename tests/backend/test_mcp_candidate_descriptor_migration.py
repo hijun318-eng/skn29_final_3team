@@ -10,6 +10,16 @@ from unittest.mock import patch
 from jsonschema import Draft202012Validator, FormatChecker
 
 from app.api.mcp_router import _tool_registry
+from app.services.rag_gateway import (
+    RAG_TOOL_DESCRIPTION,
+    RAG_TOOL_ID,
+    RAG_TOOL_INPUT_SCHEMA,
+    RAG_TOOL_OUTPUT_SCHEMA,
+    RAG_TOOL_ROLES,
+    RAG_TOOL_SEMANTIC_VERSION,
+    RAG_TOOL_TIMEOUT_SECONDS,
+    RAG_TOOL_TRANSPORT,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -211,6 +221,27 @@ class MCPCandidateDescriptorMigrationTest(unittest.TestCase):
                 schema = getattr(self.migration, name)
                 Draft202012Validator.check_schema(schema)
                 _assert_nested_objects_are_closed(self, schema)
+
+    def test_rag_runtime_activation_descriptor_exactly_matches_migration(self) -> None:
+        """Runtime activation receipt cannot drift from the disabled DB candidate."""
+
+        self.assertEqual(str(RAG_TOOL_ID), self.migration.RAG_ANSWER_TOOL_ID)
+        self.assertEqual("1.2.0-candidate", RAG_TOOL_SEMANTIC_VERSION)
+        self.assertEqual(
+            self.migration.RAG_ANSWER_INPUT_SCHEMA,
+            RAG_TOOL_INPUT_SCHEMA,
+        )
+        self.assertEqual(
+            self.migration.RAG_ANSWER_OUTPUT_SCHEMA,
+            RAG_TOOL_OUTPUT_SCHEMA,
+        )
+        self.assertEqual(
+            "Answer only from approved internal documents with citation-bound evidence.",
+            RAG_TOOL_DESCRIPTION,
+        )
+        self.assertEqual("MCP_STREAMABLE_HTTP", RAG_TOOL_TRANSPORT)
+        self.assertEqual(30, RAG_TOOL_TIMEOUT_SECONDS)
+        self.assertEqual(("analyst",), RAG_TOOL_ROLES)
 
     def test_migration_json_does_not_create_sqlalchemy_bind_tokens(self) -> None:
         """JSON scalar 앞 공백을 보존해 ``:false``·``:16`` bind 오인을 막는다."""

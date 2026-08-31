@@ -40,11 +40,38 @@ class DynamicE2EOrchestrator:
             self._record_health(report, E2EStage.RAG_SEARCH, self._rag_health, "rag")
             search = self._record_call(report, E2EStage.RAG_SEARCH, self._rag.search)
             evidence_blocks = self._extract_evidence_blocks(search.payload)
+            answer_query = search.payload.get("answer_query")
+            if (
+                not isinstance(answer_query, str)
+                or answer_query != self._config.rag_query
+            ):
+                raise RuntimeRequestError(
+                    code="RAG_ANSWER_QUERY_INVALID",
+                    message="RAG search did not return its normalized answer query",
+                    response=search.payload,
+                )
+            retrieval_request_id = str(search.payload.get("request_id") or "")
+            if not retrieval_request_id:
+                raise RuntimeRequestError(
+                    code="RAG_RETRIEVAL_RECEIPT_MISSING",
+                    message="RAG search did not return its retrieval request receipt",
+                    response=search.payload,
+                )
             answer = self._record_call(
                 report,
                 E2EStage.RAG_ANSWER,
-                lambda: self._rag.answer(evidence_blocks),
+                lambda: self._rag.answer(
+                    evidence_blocks,
+                    retrieval_request_id,
+                    answer_query,
+                ),
             )
+            if answer.payload.get("trace_id") != self._config.trace_id:
+                raise RuntimeRequestError(
+                    code="RAG_ANSWER_TRACE_INVALID",
+                    message="RAG answer did not preserve the signed trace",
+                    response=answer.payload,
+                )
             self._validate_answer_uses_search_evidence(answer.payload, evidence_blocks)
 
             health = self._record_call(report, E2EStage.ML_HEALTH, self._ml.health)
@@ -165,9 +192,9 @@ class DynamicE2EOrchestrator:
                     message="The real RAG runtime returned a non-object search result",
                     response=payload,
                 )
-            evidence_id = result.get("chunk_id") or result.get("document_id") or result.get("manual_id")
+            evidence_id = result.get("evidence_id")
             citation = result.get("citation")
-            text = result.get("snippet") or result.get("content") or result.get("text")
+            text = result.get("content") or result.get("snippet") or result.get("text")
             if not all(isinstance(value, str) and value.strip() for value in (evidence_id, citation, text)):
                 raise RuntimeRequestError(
                     code="RAG_EVIDENCE_INCOMPLETE",
@@ -179,6 +206,9 @@ class DynamicE2EOrchestrator:
                     "evidence_id": evidence_id,
                     "citation": citation,
                     "text": text,
+                    "title": str(result.get("title") or ""),
+                    "manual_id": str(result.get("manual_id") or ""),
+                    "section_title": str(result.get("section_title") or ""),
                 }
             )
         return evidence_blocks

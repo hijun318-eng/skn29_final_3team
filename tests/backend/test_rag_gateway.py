@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 import sys
 from uuid import uuid4
 
 import pytest
+from jsonschema import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,7 +15,194 @@ BACKEND = ROOT / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.services.rag_gateway import InternalManualAgent, RagToolError
+from app.services.rag_gateway import (
+    InternalManualAgent,
+    RagToolError,
+    RAG_TOOL_CODE,
+    RAG_TOOL_DESCRIPTION,
+    RAG_TOOL_ID,
+    RAG_TOOL_INPUT_SCHEMA,
+    RAG_TOOL_OUTPUT_SCHEMA,
+    RAG_TOOL_ROLES,
+    RAG_TOOL_SEMANTIC_VERSION,
+    RAG_TOOL_TIMEOUT_SECONDS,
+    RAG_TOOL_TRANSPORT,
+)
+from src.rag.vector_application import VectorRagApplication
+
+
+def _registry_receipt() -> dict[str, object]:
+    return {
+        "tool_id": RAG_TOOL_ID,
+        "tool_code": RAG_TOOL_CODE,
+        "semantic_version": RAG_TOOL_SEMANTIC_VERSION,
+        "description": RAG_TOOL_DESCRIPTION,
+        "input_schema_json": RAG_TOOL_INPUT_SCHEMA,
+        "output_schema_json": RAG_TOOL_OUTPUT_SCHEMA,
+        "transport": RAG_TOOL_TRANSPORT,
+        "timeout_seconds": RAG_TOOL_TIMEOUT_SECONDS,
+        "required_roles_json": list(RAG_TOOL_ROLES),
+        "is_enabled": True,
+    }
+
+
+def test_gateway_answer_evidence_matches_runtime_closed_contract() -> None:
+    projected = InternalManualAgent._evidence_block(
+        {
+            "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
+            "content": "승인된 근거 본문",
+            "title": "업무 매뉴얼",
+            "manual_id": "MANUAL-ONE",
+            "section_title": "1. 승인 절차",
+            "page_start": 1,
+            "citation": "MANUAL-ONE p.1",
+        }
+    )
+
+    assert set(projected) == {
+        "evidence_id",
+        "text",
+        "title",
+        "manual_id",
+        "section_title",
+        "citation",
+    }
+    assert VectorRagApplication._validated_answer_evidence([projected]) == [
+        projected
+    ]
+
+
+def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -> None:
+    agent = object.__new__(InternalManualAgent)
+    calls: list[tuple[str, dict[str, object], str]] = []
+    actor_id = uuid4()
+    trace_id = "trace-rag-user-request"
+    retrieval_request_id = str(uuid4())
+
+    async def allow(_role: str) -> None:
+        return None
+
+    async def record(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    async def signed_post(
+        path: str,
+        payload: dict[str, object],
+        role: str,
+    ) -> dict[str, object]:
+        calls.append((path, payload, role))
+        if path.endswith("internal-manual-search"):
+            return {
+                "request_id": retrieval_request_id,
+                "trace_id": trace_id,
+                "answer_query": payload["resolved_question"],
+                "retrieval_release": {
+                    "schema_version": "RagRetrievalRelease.v2",
+                    "release_id": str(uuid4()),
+                    "model_revision": "text-embedding-3-large:d1024",
+                    "embedding_dimension": 1024,
+                    "corpus_manifest_sha256": "b" * 64,
+                    "processing_profile_sha256": "c" * 64,
+                },
+                "no_evidence": False,
+                "results": [
+                    {
+                        "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
+                        "manual_id": "MANUAL-ONE",
+                        "title": "업무 매뉴얼",
+                        "version": "1.0",
+                        "page_start": 1,
+                        "page_end": 1,
+                        "section_title": "승인 절차",
+                        "content": "승인된 근거 본문",
+                        "snippet": "승인된 근거 본문",
+                        "citation": "[업무 매뉴얼 v1.0 p.1 승인 절차]",
+                        "score": 0.9,
+                        "validity_status": "VALID",
+                    }
+                ],
+                "processing_steps": ["DOCUMENT_SEARCHED"],
+                "agent": "INTERNAL_GUIDELINE",
+            }
+        return {
+            "status": "ANSWER",
+            "request_id": str(uuid4()),
+            "trace_id": trace_id,
+            "answer": "승인된 근거 답변",
+            "answer_type": "POLICY",
+            "citations": [
+                {
+                    "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
+                    "citation": "[업무 매뉴얼 v1.0 p.1 승인 절차]",
+                }
+            ],
+        }
+
+    agent._assert_enabled = allow  # type: ignore[method-assign]
+    agent._record = record  # type: ignore[method-assign]
+    agent._signed_post = signed_post  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        agent.execute(
+            "  객실 승인 절차  ",
+            actor_id,
+            "analyst",
+            trace_id,
+        )
+    )
+
+    expected_actor_hash = hashlib.sha256(
+        str(actor_id).encode("utf-8")
+    ).hexdigest()
+    assert result["status"] == "ANSWER"
+    assert [path for path, _payload, _role in calls] == [
+        "/v1/tools/internal-manual-search",
+        "/v1/tools/internal-manual-answer",
+    ]
+    assert calls[0][1]["resolved_question"] == "현재 질문: 객실 승인 절차"
+    assert calls[1][1]["query"] == calls[0][1]["resolved_question"]
+    assert calls[1][1]["retrieval_request_id"] == retrieval_request_id
+    assert calls[0][1]["trace_id"] == calls[1][1]["trace_id"] == trace_id
+    assert (
+        calls[0][1]["actor_hash"]
+        == calls[1][1]["actor_hash"]
+        == expected_actor_hash
+    )
+
+
+def _runtime_health() -> dict[str, object]:
+    return {
+        "status": "healthy",
+        "embedding_api_configured": True,
+        "embedding_provider": "openai",
+        "model_id": "embedding-model",
+        "model_revision": "embedding-release:d1536",
+        "expected_dimension": 1536,
+        "corpus_manifest_sha256": "b" * 64,
+        "processing_profile_sha256": "c" * 64,
+        "active_corpus_release": {
+            "release_id": str(uuid4()),
+            "provider": "openai",
+            "model": "embedding-model",
+            "dimensions": 1536,
+            "version": "embedding-release:d1536",
+            "corpus_manifest_sha256": "b" * 64,
+            "processing_profile_sha256": "c" * 64,
+            "document_count": 1,
+            "approved_document_count": 1,
+            "chunk_count": 2,
+        },
+        "execution_state": {
+            "p2_gate": "TECHNICALLY_VALIDATED",
+            "production_integration": "LOCAL_DOCKER_VALIDATED",
+        },
+        "tool": {
+            "tool_code": "internal-manual-search",
+            "semantic_version": "1.2.0",
+            "read_only": True,
+            "destructive": False,
+        },
+    }
 
 
 def _capability_search_response(
@@ -33,9 +222,12 @@ def _capability_search_response(
             "semantic_version": "1.0.0-rc1",
         },
         "retrieval_release": {
-            "schema_version": "RagRetrievalRelease.v1",
+            "schema_version": "RagRetrievalRelease.v2",
+            "release_id": str(uuid4()),
             "model_revision": f"embedding-release:d{dimension}",
             "embedding_dimension": dimension,
+            "corpus_manifest_sha256": "b" * 64,
+            "processing_profile_sha256": "c" * 64,
         },
         "no_evidence": False,
         "results": [
@@ -60,6 +252,124 @@ def test_two_document_follow_up_preserves_approved_snapshot() -> None:
         "REGULATION_CHECK",
         ("MANUAL-FACILITY",),
     ) == 1
+
+
+def test_public_tool_output_projects_rich_answer_to_closed_contract() -> None:
+    rich_output = {
+        "status": "ANSWER",
+        "response_status": "ANSWERED",
+        "answer_type": "POLICY",
+        "answer_id": str(uuid4()),
+        "answer": {"text": "승인된 근거 답변", "internal": "drop"},
+        "agent": "INTERNAL_GUIDELINE",
+        "processing_steps": ["SEARCHED", "ANSWERED"],
+        "evidence_bundle": [
+            {
+                "evidence_id": "POL-PRIVACY-001:1.0:1:chunk-1",
+                "document_id": "POL-PRIVACY-001",
+                "document_name": "개인정보 보고 지침",
+                "document_version": "1.0",
+                "page_start": 1,
+                "page_end": 1,
+                "section": "1. 보고",
+                "snippet": "즉시 보고한다.",
+                "score": 0.91,
+                "confidence": "MEDIUM",
+            }
+        ],
+        "citations": [
+            {
+                "evidence_id": "POL-PRIVACY-001:1.0:1:chunk-1",
+                "citation": "POL-PRIVACY-001 p.1",
+                "internal": "drop",
+            }
+        ],
+        "request_id": str(uuid4()),
+        "trace_id": "trace-rag-answer",
+        "routing": {"intent": "REGULATION_CHECK"},
+        "document": {"body": "승인된 근거 답변"},
+    }
+
+    public = InternalManualAgent.public_tool_output(rich_output)
+
+    Draft202012Validator(RAG_TOOL_OUTPUT_SCHEMA).validate(public)
+    assert public == {
+        "status": "ANSWER",
+        "trace_id": "trace-rag-answer",
+        "answer": {"text": "승인된 근거 답변"},
+        "citations": [
+            {
+                "evidence_id": "POL-PRIVACY-001:1.0:1:chunk-1",
+                "citation": "POL-PRIVACY-001 p.1",
+            }
+        ],
+        "evidence_bundle": [
+            {
+                "evidence_id": "POL-PRIVACY-001:1.0:1:chunk-1",
+                "document_id": "POL-PRIVACY-001",
+                "document_name": "개인정보 보고 지침",
+                "section": "1. 보고",
+                "snippet": "즉시 보고한다.",
+                "score": 0.91,
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "rich_output",
+    [
+        {
+            "status": "NO_EVIDENCE",
+            "response_status": "NO_EVIDENCE",
+            "answer_type": "SUMMARY",
+            "answer": {"text": "근거를 찾지 못했습니다."},
+            "document": {"body": "근거를 찾지 못했습니다."},
+            "citations": [],
+            "evidence_bundle": [],
+            "processing_steps": ["NO_EVIDENCE_RETURNED"],
+            "trace_id": "trace-no-evidence",
+        },
+        {
+            "status": "CONFLICT",
+            "answer_id": str(uuid4()),
+            "trace_id": "trace-conflict",
+            "processing_steps": ["CONFLICT_DETECTED"],
+            "conflicts": [
+                {
+                    "description": "두 지침의 적용 시점이 다릅니다.",
+                    "evidence_ids": ["evidence-old", "evidence-new"],
+                    "internal": "drop",
+                }
+            ],
+            "evidence_bundle": [],
+        },
+    ],
+)
+def test_public_tool_output_projects_non_answer_states(
+    rich_output: dict[str, object],
+) -> None:
+    public = InternalManualAgent.public_tool_output(rich_output)
+
+    Draft202012Validator(RAG_TOOL_OUTPUT_SCHEMA).validate(public)
+    assert "response_status" not in public
+    assert "processing_steps" not in public
+
+
+def test_public_tool_output_rejects_unadvertised_error_as_success_payload() -> None:
+    with pytest.raises(RagToolError) as captured:
+        InternalManualAgent.public_tool_output(
+            {
+                "status": "ERROR",
+                "trace_id": "trace-error",
+                "answer": {"text": "dependency failed"},
+                "citations": [],
+                "evidence_bundle": [],
+            }
+        )
+
+    assert captured.value.code == "RAG_PUBLIC_OUTPUT_INVALID"
+    assert captured.value.status_code == 502
 
 
 def test_search_capability_calls_search_only_and_drops_document_body() -> None:
@@ -88,6 +398,8 @@ def test_search_capability_calls_search_only_and_drops_document_body() -> None:
         "/v1/tools/internal-manual-search"
     ]
     assert calls[0][2] == "STAFF"
+    assert isinstance(calls[0][1]["trace_id"], str)
+    assert len(str(calls[0][1]["actor_hash"])) == 64
     assert candidate["matched"] is True
     assert candidate["model_revision"] == "embedding-release:d1024"
     assert "content" not in candidate
@@ -134,6 +446,42 @@ def test_search_capability_accepts_a_replacement_embedding_dimension() -> None:
     assert candidate["model_revision"] == "embedding-release:d1536"
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema_version", "RagRetrievalRelease.v1"),
+        ("release_id", "not-a-uuid"),
+        ("model_revision", ""),
+        ("embedding_dimension", True),
+        ("embedding_dimension", 0),
+        ("corpus_manifest_sha256", "B" * 64),
+        ("processing_profile_sha256", "short"),
+    ],
+)
+def test_search_contract_rejects_invalid_v2_release_fields(
+    field: str,
+    value: object,
+) -> None:
+    search = _capability_search_response("객실 안전 점검 절차")
+    search["retrieval_release"][field] = value  # type: ignore[index]
+
+    with pytest.raises(RagToolError) as captured:
+        InternalManualAgent._validate_search_contract(search)
+
+    assert captured.value.code == "RAG_OUTPUT_INVALID"
+    assert captured.value.status_code == 502
+
+
+def test_search_contract_rejects_open_v2_release_object() -> None:
+    search = _capability_search_response("객실 안전 점검 절차")
+    search["retrieval_release"]["unexpected"] = "drift"  # type: ignore[index]
+
+    with pytest.raises(RagToolError) as captured:
+        InternalManualAgent._validate_search_contract(search)
+
+    assert captured.value.code == "RAG_OUTPUT_INVALID"
+
+
 def test_runtime_receipt_requires_health_and_a_signed_catalog_call() -> None:
     agent = object.__new__(InternalManualAgent)
     calls: list[str] = []
@@ -143,22 +491,7 @@ def test_runtime_receipt_requires_health_and_a_signed_catalog_call() -> None:
 
     async def health(_path: str) -> dict[str, object]:
         calls.append("health")
-        return {
-            "status": "healthy",
-            "embedding_api_configured": True,
-            "model_revision": "embedding-release:d1536",
-            "expected_dimension": 1536,
-            "execution_state": {
-                "p2_gate": "TECHNICALLY_VALIDATED",
-                "production_integration": "LOCAL_DOCKER_VALIDATED",
-            },
-            "tool": {
-                "tool_code": "internal-manual-search",
-                "semantic_version": "1.2.0",
-                "read_only": True,
-                "destructive": False,
-            },
-        }
+        return _runtime_health()
 
     async def signed_catalog(
         path: str,
@@ -169,7 +502,7 @@ def test_runtime_receipt_requires_health_and_a_signed_catalog_call() -> None:
         assert path == "/v1/tools/internal-manual-catalog"
         assert payload == {}
         assert role == "STAFF"
-        return {"documents": []}
+        return {"documents": [{"manual_id": "MANUAL-ONE"}]}
 
     agent._assert_enabled = allow  # type: ignore[method-assign]
     agent._get_json = health  # type: ignore[method-assign]
@@ -179,4 +512,59 @@ def test_runtime_receipt_requires_health_and_a_signed_catalog_call() -> None:
 
     assert calls == ["registry", "health", "signed-catalog"]
     assert receipt["embedding_dimension"] == 1536
+    assert receipt["corpus_manifest_sha256"] == "b" * 64
+    assert receipt["processing_profile_sha256"] == "c" * 64
     assert len(str(receipt["capability_hash"])) == 64
+
+
+def test_runtime_receipt_rejects_empty_policy_filtered_catalog() -> None:
+    agent = object.__new__(InternalManualAgent)
+
+    async def allow(_role: str) -> None:
+        return None
+
+    async def health(_path: str) -> dict[str, object]:
+        return _runtime_health()
+
+    async def empty_catalog(
+        _path: str,
+        _payload: dict[str, object],
+        _role: str,
+    ) -> dict[str, object]:
+        return {"documents": []}
+
+    agent._assert_enabled = allow  # type: ignore[method-assign]
+    agent._get_json = health  # type: ignore[method-assign]
+    agent._signed_post = empty_catalog  # type: ignore[method-assign]
+
+    with pytest.raises(RagToolError) as captured:
+        asyncio.run(agent.runtime_receipt("analyst"))
+
+    assert captured.value.code == "RAG_RUNTIME_RECEIPT_INVALID"
+
+
+@pytest.mark.parametrize(
+    ("field", "drift"),
+    [
+        ("tool_id", uuid4()),
+        ("tool_code", "rag.other"),
+        ("semantic_version", "1.2.1-candidate"),
+        ("description", "drifted"),
+        ("input_schema_json", {"type": "object"}),
+        ("output_schema_json", {"type": "object"}),
+        ("transport", "HTTP"),
+        ("timeout_seconds", 31),
+        ("required_roles_json", ["analyst", "platform_admin"]),
+        ("is_enabled", False),
+    ],
+)
+def test_registry_activation_requires_the_exact_candidate_descriptor(
+    field: str,
+    drift: object,
+) -> None:
+    receipt = _registry_receipt()
+    assert InternalManualAgent._registry_contract_matches(receipt) is True
+
+    receipt[field] = drift
+
+    assert InternalManualAgent._registry_contract_matches(receipt) is False

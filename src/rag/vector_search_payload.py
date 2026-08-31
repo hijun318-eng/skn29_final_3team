@@ -48,6 +48,10 @@ def build_search_payload(
     resolved_with_context: bool = False,
     model_revision: str | None = None,
     embedding_dimension: int | None = None,
+    corpus_release_id: str | None = None,
+    corpus_manifest_sha256: str | None = None,
+    processing_profile_sha256: str | None = None,
+    answer_query: str | None = None,
 ) -> dict[str, object]:
     return {
         "request_id": request_id,
@@ -55,11 +59,15 @@ def build_search_payload(
         "execution_state": asdict(P2GateStatus()),
         "tool": RagToolContract().public_metadata(),
         "retrieval_release": {
-            "schema_version": "RagRetrievalRelease.v1",
+            "schema_version": "RagRetrievalRelease.v2",
+            "release_id": corpus_release_id,
             "model_revision": model_revision,
             "embedding_dimension": embedding_dimension,
+            "corpus_manifest_sha256": corpus_manifest_sha256,
+            "processing_profile_sha256": processing_profile_sha256,
         },
         "query_hash": query_hash,
+        "answer_query": answer_query,
         "search_mode": retrieval_mode,
         "context": {
             "recent_utterance_count": recent_utterance_count,

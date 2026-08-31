@@ -25,6 +25,12 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
     assert _classify(
         "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/release_checksums.json"
     ) == "runtime-contract"
+    assert _classify("config/rag/corpus_manifest.json") == "runtime-contract"
+    assert _review_text(
+        "config/rag/corpus_manifest.json",
+        '{"schema_version":"RagCorpusManifest.v1","documents":[]}',
+        ".json",
+    ) == ()
     assert _classify("infrastructure/database/trino/etc/iceberg-view-coercions.json") == "runtime-contract"
     assert _classify(
         "infrastructure/database/datahub/metadata/schema.json"

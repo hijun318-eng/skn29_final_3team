@@ -673,6 +673,13 @@ async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_re
         def __init__(self, **kwargs):
             self.html = kwargs["string"]
 
+        @property
+        def pages(self):
+            return (object(),)
+
+        def render(self):
+            return self
+
         def write_pdf(self, **kwargs):
             return b"%PDF-1.7\natomic-artifact"
 

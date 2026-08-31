@@ -3,32 +3,79 @@
 from __future__ import annotations
 
 from collections import Counter
-from decimal import Decimal
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 import math
 import os
 from typing import Any, Iterable
 
 
+@dataclass(frozen=True)
+class ReportAssistantModelCostPolicy:
+    """한 요청 동안 고정해 사용하는 provider 단가와 최대 허용 비용이다."""
+
+    input_usd_per_million: Decimal
+    output_usd_per_million: Decimal
+    max_estimated_cost_usd: Decimal
+
+    def estimate(self, input_tokens: int, output_tokens: int) -> Decimal:
+        """검증된 token 수를 정책 단가로 계산한다."""
+
+        if (
+            isinstance(input_tokens, bool)
+            or isinstance(output_tokens, bool)
+            or not isinstance(input_tokens, int)
+            or not isinstance(output_tokens, int)
+            or input_tokens < 0
+            or output_tokens < 0
+        ):
+            raise RuntimeError("Report Assistant token 사용량이 유효하지 않습니다.")
+        million = Decimal(1_000_000)
+        return (
+            Decimal(input_tokens) * self.input_usd_per_million
+            + Decimal(output_tokens) * self.output_usd_per_million
+        ) / million
+
+
+def report_assistant_model_cost_policy() -> ReportAssistantModelCostPolicy:
+    """외부 모델 호출에 필요한 단가와 비용 상한을 명시 설정에서만 읽는다."""
+
+    names = (
+        "REPORT_ASSISTANT_INPUT_USD_PER_MILLION",
+        "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION",
+        "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD",
+    )
+    raw = tuple(os.getenv(name) for name in names)
+    if any(value is None or not value.strip() for value in raw):
+        raise RuntimeError("Report Assistant 비용 설정이 필요합니다.")
+    try:
+        input_price, output_price, cost_limit = (
+            Decimal(value) for value in raw if value is not None
+        )
+    except (InvalidOperation, ValueError) as error:
+        raise RuntimeError("Report Assistant 비용 설정이 유효하지 않습니다.") from error
+    values = (input_price, output_price, cost_limit)
+    if any(not value.is_finite() or value <= 0 for value in values):
+        raise RuntimeError("Report Assistant 비용 설정이 유효하지 않습니다.")
+    return ReportAssistantModelCostPolicy(
+        input_usd_per_million=input_price,
+        output_usd_per_million=output_price,
+        max_estimated_cost_usd=cost_limit,
+    )
+
+
 def estimate_model_cost(
     input_tokens: int | None,
     output_tokens: int | None,
+    *,
+    policy: ReportAssistantModelCostPolicy | None = None,
 ) -> Decimal | None:
-    """명시된 환경 단가가 있을 때만 token 사용량의 추정 비용을 반환한다."""
+    """실제 token 사용량을 호출 전 고정한 비용 정책으로 추정한다."""
 
     if input_tokens is None or output_tokens is None:
         return None
-    raw_input = os.getenv("REPORT_ASSISTANT_INPUT_USD_PER_MILLION")
-    raw_output = os.getenv("REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION")
-    if raw_input is None or raw_output is None:
-        return None
-    try:
-        input_price, output_price = Decimal(raw_input), Decimal(raw_output)
-    except Exception as error:
-        raise RuntimeError("Report Assistant 비용 단가 설정이 유효하지 않습니다.") from error
-    if input_price < 0 or output_price < 0:
-        raise RuntimeError("Report Assistant 비용 단가 설정이 유효하지 않습니다.")
-    million = Decimal(1_000_000)
-    return (Decimal(input_tokens) * input_price + Decimal(output_tokens) * output_price) / million
+    active_policy = policy or report_assistant_model_cost_policy()
+    return active_policy.estimate(input_tokens, output_tokens)
 
 
 def summarize_evaluations(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:

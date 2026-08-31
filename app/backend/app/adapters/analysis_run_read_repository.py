@@ -225,6 +225,9 @@ class AnalysisRunReadRepositoryMixin:
                                a.data_snapshot_json AS table_data,
                                a.chart_spec_json AS chart_data,
                                a.evidence_json AS evidence,
+                               a.product_release_id AS artifact_product_release_id,
+                               a.permission_snapshot_id AS artifact_permission_snapshot_id,
+                               a.semantic_release_id AS artifact_semantic_release_id,
                                a.artifact_id, a.artifact_checksum,
                                q.trino_query_id AS query_id
                         FROM analysis_v1.analysis_run_links l
@@ -252,6 +255,18 @@ class AnalysisRunReadRepositoryMixin:
             raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
         if row is None:
             raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
+        evidence = dict(row["evidence"] or {})
+        release_receipt = {
+            "product_release_id": row["artifact_product_release_id"],
+            "permission_snapshot_id": row["artifact_permission_snapshot_id"],
+            "semantic_release_id": row["artifact_semantic_release_id"],
+        }
+        for field, value in release_receipt.items():
+            embedded = evidence.get(field)
+            if embedded is not None and embedded != value:
+                raise ValueError(f"Artifact evidence의 {field}가 저장 receipt와 다릅니다.")
+            if value is not None:
+                evidence[field] = value
         return {
             "contract_version": ANALYSIS_PERSISTENCE_VERSION,
             "request_id": row["request_id"],
@@ -262,7 +277,7 @@ class AnalysisRunReadRepositoryMixin:
             "metrics": (row["evidence"] or {}).get("metric_values", []),
             "table": row["table_data"],
             "chart": row["chart_data"] or None,
-            "evidence": row["evidence"],
+            "evidence": evidence,
             "artifact_id": row["artifact_id"],
             "query_id": row["query_id"],
             "artifact_checksum": row["artifact_checksum"],

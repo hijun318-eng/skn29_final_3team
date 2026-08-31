@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 import logging
+import math
 import os
-import re
+from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import Any
+from uuid import UUID
 
 from app.adapters.async_model_client import (
     ModelAuthenticationError,
@@ -14,7 +19,13 @@ from app.adapters.async_model_client import (
     ModelRequestRejectedError,
 )
 from app.adapters.contract_model import openai_transport
-from app.adapters.model_schemas import PROMPT_IDS, request_definition, response_definition
+from app.adapters.model_schemas import (
+    PROMPT_IDS,
+    openai_payload,
+    qwen_payload,
+    request_definition,
+    response_definition,
+)
 from app.report_contracts import ReportAssistantPatch
 from app.report_patch import ATOMIC_ARTIFACT_VIEWS, artifact_view_title
 from src.ai.prompt_registry import get_prompt
@@ -29,26 +40,159 @@ from src.modelops.runtime_config import (
 logger = logging.getLogger("uvicorn.error")
 
 
-_KOREAN_TEXT_PATTERN = re.compile(r"[가-힣]")
-_PATCH_OPERATION_LABELS = {
-    "set_report_title": "보고서 제목 변경",
-    "set_report_orientation": "용지 방향 변경",
-    "set_currency_display_unit": "금액 단위 변경",
-    "compact_report_layout": "보고서 여백 정돈",
-    "add_report_page": "보고서 페이지 추가",
-    "update_block_title": "블록 제목 수정",
-    "resize_block": "블록 크기 조정",
-    "update_chart_settings": "차트 표시 방식 변경",
-    "update_table_settings": "표 표시 방식 변경",
-    "set_block_size_mode": "블록 크기 방식 변경",
-    "add_text": "텍스트 블록 추가",
-    "update_text": "텍스트 내용 수정",
-    "add_artifact_view": "분석 결과 보기 추가",
-    "reposition_block": "블록 위치 조정",
-    "remove_block": "블록 삭제",
-    "duplicate_block": "블록 복제",
-    "restore_previous_revision": "이전 보고서 버전 복구",
-}
+@dataclass(frozen=True)
+class ReportAssistantModelInvocation:
+    """동의와 비용 preflight를 통과해 호출별 receipt 기록만 남은 모델 실행권이다."""
+
+    node: str
+    route: Any
+    payload_hash: str
+    timeout: float
+    max_attempts: int
+    authorization: Any
+    repository: Any
+    model_execution_id: str | None = None
+
+
+def bind_report_assistant_model_execution(
+    invocation: ReportAssistantModelInvocation,
+    model_execution_id: str,
+) -> ReportAssistantModelInvocation:
+    """preflight invocation을 단 한 DB execution fencing token에 결속한다."""
+
+    try:
+        execution_id = str(UUID(model_execution_id))
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ReportAssistantModelError(
+            "Report Assistant model execution token is invalid",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+            attempts=0,
+        ) from error
+    if invocation.model_execution_id is not None:
+        raise ReportAssistantModelError(
+            "Report Assistant model invocation is already bound",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+            attempts=0,
+        )
+    return replace(invocation, model_execution_id=execution_id)
+
+
+def _provider_request_payload(
+    route: Any, node: str, payload: dict[str, object]
+) -> dict[str, object]:
+    """비용과 receipt hash가 실제 transport와 같은 provider request를 사용하게 한다."""
+
+    if route.provider == "openai":
+        return openai_payload(route.model, node, payload)
+    if route.provider == "qwen":
+        return qwen_payload(route.model, node, payload)
+    raise ValueError("unsupported Report Assistant model provider")
+
+
+def prepare_report_assistant_model_invocation(
+    node: str,
+    payload: dict[str, object],
+    *,
+    authorization: Any,
+    repository: Any,
+) -> ReportAssistantModelInvocation:
+    """동의 gate 다음에 contract·비용을 검사하고 transport용 불변 실행권을 만든다."""
+
+    route = authorization.route
+    if (
+        authorization.node != node
+        or node not in route.nodes
+        or authorization.route.route_fingerprint != route.route_fingerprint
+    ):
+        raise ReportAssistantModelError(
+            "Report Assistant transfer authorization is invalid",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+            attempts=0,
+        )
+    try:
+        validate_payload(request_definition(node), payload)
+        provider_request = _provider_request_payload(route, node, payload)
+    except (ContractError, KeyError, TypeError, ValueError) as error:
+        raise ReportAssistantModelError(
+            "Report Assistant request violates the active model contract",
+            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
+            attempts=0,
+        ) from error
+    timeout, configured_max_attempts = _model_runtime_limits()
+    # 외부 provider는 receipt commit 뒤 응답을 잃으면 실제 처리 여부를 증명할
+    # 수 없다. provider idempotency 계약 없이 같은 payload를 자동 재전송하지
+    # 않도록 외부 전송은 한 execution당 단 한 번만 허용한다. 내부 route만
+    # manifest가 승인한 네트워크 경계 안에서 configured retry를 사용한다.
+    max_attempts = (
+        1 if route.data_boundary == "external" else configured_max_attempts
+    )
+    if max_attempts > 4:
+        raise ReportAssistantModelError(
+            "Report Assistant model limits exceed the receipt contract",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+            attempts=0,
+        )
+    _enforce_model_cost_preflight(route, node, payload, max_attempts)
+    payload_hash = hashlib.sha256(
+        json.dumps(
+            provider_request,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    return ReportAssistantModelInvocation(
+        node=node,
+        route=route,
+        payload_hash=payload_hash,
+        timeout=timeout,
+        max_attempts=max_attempts,
+        authorization=authorization,
+        repository=repository,
+    )
+
+
+def _validated_invocation(
+    invocation: ReportAssistantModelInvocation | None,
+    node: str,
+    payload: dict[str, object],
+) -> ReportAssistantModelInvocation:
+    """임의 payload 직접 호출이 receipt 없이 transport에 도달하지 못하게 닫는다."""
+
+    try:
+        execution_id = str(UUID(str(invocation.model_execution_id))) if invocation else ""
+    except (TypeError, ValueError):
+        execution_id = ""
+    if (
+        invocation is None
+        or invocation.node != node
+        or invocation.authorization.node != node
+        or invocation.authorization.route.route_fingerprint
+        != invocation.route.route_fingerprint
+        or not execution_id
+    ):
+        raise ReportAssistantModelError(
+            "Report Assistant transfer authorization is required",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+            attempts=0,
+        )
+    actual_hash = hashlib.sha256(
+        json.dumps(
+            _provider_request_payload(invocation.route, node, payload),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    if actual_hash != invocation.payload_hash:
+        raise ReportAssistantModelError(
+            "Report Assistant transfer payload changed after authorization",
+            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
+            attempts=0,
+        )
+    return invocation
 
 
 def validate_report_change_operation_scope(
@@ -115,6 +259,8 @@ def _model_failure(
         code = "REPORT_ASSISTANT_MODEL_TIMEOUT"
     elif isinstance(error, OSError):
         code = "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED"
+    elif isinstance(error, ValueError) and str(error) == "ASSISTANT_MODEL_EXECUTION_CONFLICT":
+        code = "ASSISTANT_MODEL_EXECUTION_CONFLICT"
     elif isinstance(error, (ContractError, TypeError, ValueError)):
         code = "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID"
     else:
@@ -145,6 +291,61 @@ def _model_runtime_limits() -> tuple[float, int]:
             code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
         )
     return timeout, max_attempts
+
+
+def _enforce_model_cost_preflight(
+    route: Any,
+    node: str,
+    payload: dict[str, object],
+    max_attempts: int,
+) -> None:
+    """실제 provider 요청과 모든 내부 시도의 보수적 최대 비용을 호출 전에 제한한다."""
+
+    from app.services.report_assistant_operations import (
+        report_assistant_model_cost_policy,
+    )
+    from src.modelops.runtime import estimate_token_count
+
+    try:
+        if route.provider == "openai":
+            request_payload = openai_payload(route.model, node, payload)
+            output_budget = request_payload["max_completion_tokens"]
+        elif route.provider == "qwen":
+            request_payload = qwen_payload(route.model, node, payload)
+            output_budget = request_payload["max_tokens"]
+        else:
+            raise ValueError("unsupported Report Assistant model provider")
+        serialized = json.dumps(
+            request_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        input_tokens = estimate_token_count(serialized)
+        if (
+            isinstance(output_budget, bool)
+            or not isinstance(output_budget, int)
+            or output_budget < 1
+        ):
+            raise ValueError("invalid Report Assistant output budget")
+        policy = report_assistant_model_cost_policy()
+        maximum_cost = policy.estimate(
+            input_tokens * max_attempts,
+            output_budget * max_attempts,
+        )
+    except (KeyError, RuntimeError, TypeError, ValueError) as error:
+        raise ReportAssistantModelError(
+            "Report Assistant model cost configuration is invalid",
+            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+            attempts=0,
+        ) from error
+    if maximum_cost > policy.max_estimated_cost_usd:
+        raise ReportAssistantModelError(
+            "Report Assistant model cost budget would be exceeded",
+            code="ASSISTANT_COST_BUDGET_EXCEEDED",
+            attempts=0,
+        )
 
 
 def _validation_error_signature(error: Exception | None) -> str:
@@ -260,40 +461,19 @@ def report_patch_model_payload(patch: ReportAssistantPatch) -> dict[str, object]
     return {"summary": patch.summary, "operations": operations}
 
 
-def _user_facing_patch_summary(
-    raw_summary: object,
-    operations: list[dict[str, object]],
-) -> str:
-    """영문 모델 요약을 내부 operation 기반의 짧은 한국어 설명으로 대체한다."""
-
-    summary = str(raw_summary or "").strip()
-    if _KOREAN_TEXT_PATTERN.search(summary):
-        return summary
-    labels = list(dict.fromkeys(
-        _PATCH_OPERATION_LABELS.get(str(operation.get("op")), "보고서 구성 변경")
-        for operation in operations
-    ))
-    if not labels:
-        return "보고서 변경안"
-    if len(labels) == 1:
-        return labels[0]
-    return " · ".join(labels[:3])
-
-
-def _normalize_wire_text_operation(
+def _validate_wire_text_operation(
     payload: dict[str, object],
     raw_operation: dict[str, object],
 ) -> dict[str, object]:
-    """모델 wire text 연산을 typed patch 검증 전에 보존적으로 정규화한다."""
+    """모델 wire text 연산의 의미를 바꾸지 않고 typed 계약 위반을 닫는다."""
 
-    normalized = dict(raw_operation)
-    operation = normalized.get("op")
+    operation = raw_operation.get("op")
     if operation == "add_text":
-        if normalized.get("content") is not None and normalized.get("title") is None:
-            normalized["title"] = "핵심 요약"
-        return normalized
+        if not str(raw_operation.get("title") or "").strip():
+            raise ValueError("Report Assistant add_text requires a non-empty title")
+        return raw_operation
     if operation != "update_text":
-        return normalized
+        return raw_operation
 
     report = payload.get("report")
     blocks = report.get("blocks") if isinstance(report, dict) else None
@@ -304,26 +484,15 @@ def _normalize_wire_text_operation(
             block
             for block in blocks
             if isinstance(block, dict)
-            and block.get("block_id") == normalized.get("block_id")
+            and block.get("block_id") == raw_operation.get("block_id")
         ),
         None,
     )
     if target is None or target.get("type") == "text":
-        return normalized
-    if normalized.get("content") is None:
-        normalized["op"] = "update_block_title"
-        return normalized
-
-    normalized.update(
-        {
-            "op": "add_text",
-            "block_id": None,
-            "title": normalized.get("title") or "핵심 요약",
-            "after_block_id": target["block_id"],
-            "width": "full",
-        }
+        return raw_operation
+    raise ValueError(
+        "Report Assistant update_text requires an existing text block"
     )
-    return normalized
 
 
 def _model_artifact_by_alias(
@@ -385,43 +554,41 @@ def _validate_patch_target_types(
 
 async def generate_report_draft(
     payload: dict[str, object],
+    *,
+    invocation: ReportAssistantModelInvocation | None = None,
 ) -> tuple[dict[str, str], dict[str, object]]:
     """승인 artifact 입력에서 제목·요약·표·차트 label만 모델에 제안받는다.
 
     active request/response schema를 양쪽에서 검증하고 두 번까지만 호출하며, 빈 필드나 설정·
     transport 실패는 draft를 저장하지 못하도록 ``ReportAssistantModelError``로 닫는다.
     """
-    try:
-        route = active_route_for_node(
-            resolve_active_model_routes(),
-            "report_assistant",
-        )
-    except (OSError, ValueError) as error:
-        raise ReportAssistantModelError(
-            "Report Assistant model configuration is unavailable",
-            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
-        ) from error
-    try:
-        validate_payload(request_definition("report_assistant"), payload)
-    except (ContractError, TypeError, ValueError) as error:
-        raise ReportAssistantModelError(
-            "Report Assistant request violates the active model contract",
-            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
-        ) from error
-    timeout, max_attempts = _model_runtime_limits()
+    invocation = _validated_invocation(invocation, "report_assistant", payload)
+    route = invocation.route
+    timeout, max_attempts = invocation.timeout, invocation.max_attempts
     started = perf_counter()
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:
-            result = await openai_transport(
-                route.endpoint,
-                route.token,
-                "report_assistant",
-                payload,
-                timeout,
-                model=route.model,
-                provider=route.provider,
+            await invocation.authorization.record_attempt(
+                invocation.repository,
+                attempt=attempt,
+                payload_hash=invocation.payload_hash,
+                model_execution_id=invocation.model_execution_id,
+                minimum_lease_seconds=math.ceil(timeout) + 5,
             )
+            # httpx의 numeric timeout은 connect/read/write/pool 단계별 inactivity
+            # 제한이다. 느린 streaming 응답이 실행 lease보다 오래 살아남지 않도록
+            # provider attempt 전체 wall-clock도 같은 상한으로 닫는다.
+            async with asyncio.timeout(timeout):
+                result = await openai_transport(
+                    route.endpoint,
+                    route.token,
+                    "report_assistant",
+                    payload,
+                    timeout,
+                    model=route.model,
+                    provider=route.provider,
+                )
             transport_meta = result.pop(_TRANSPORT_META_KEY, {})
             validate_payload(response_definition("report_assistant"), result)
             fields = ("title", "executive_summary", "table_title", "chart_title")
@@ -444,7 +611,10 @@ async def generate_report_draft(
             )
         except (OSError, TimeoutError, TypeError, ValueError) as error:
             last_error = error
-            if isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError)):
+            if (
+                isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError))
+                or str(error) == "ASSISTANT_MODEL_EXECUTION_CONFLICT"
+            ):
                 break
     raise _model_failure(
         last_error,
@@ -456,6 +626,8 @@ async def generate_report_draft(
 
 async def generate_report_change_proposal(
     payload: dict[str, object],
+    *,
+    invocation: ReportAssistantModelInvocation | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """사용자 지시가 기존 artifact로 가능한지 새 분석 계획이 필요한지만 제안받는다.
 
@@ -464,21 +636,9 @@ async def generate_report_change_proposal(
     """
 
     node = "report_assistant_turn"
-    try:
-        route = active_route_for_node(resolve_active_model_routes(), node)
-    except (OSError, ValueError) as error:
-        raise ReportAssistantModelError(
-            "Report Assistant turn configuration is invalid",
-            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
-        ) from error
-    try:
-        validate_payload(request_definition(node), payload)
-    except (ContractError, TypeError, ValueError) as error:
-        raise ReportAssistantModelError(
-            "Report Assistant turn request is invalid",
-            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
-        ) from error
-    timeout, max_attempts = _model_runtime_limits()
+    invocation = _validated_invocation(invocation, node, payload)
+    route = invocation.route
+    timeout, max_attempts = invocation.timeout, invocation.max_attempts
     started = perf_counter()
     last_error: Exception | None = None
     failure_stage = "model_transport"
@@ -486,15 +646,23 @@ async def generate_report_change_proposal(
     for attempt in range(1, max_attempts + 1):
         try:
             failure_stage = "model_transport"
-            result = await openai_transport(
-                route.endpoint,
-                route.token,
-                node,
-                payload,
-                timeout,
-                model=route.model,
-                provider=route.provider,
+            await invocation.authorization.record_attempt(
+                invocation.repository,
+                attempt=attempt,
+                payload_hash=invocation.payload_hash,
+                model_execution_id=invocation.model_execution_id,
+                minimum_lease_seconds=math.ceil(timeout) + 5,
             )
+            async with asyncio.timeout(timeout):
+                result = await openai_transport(
+                    route.endpoint,
+                    route.token,
+                    node,
+                    payload,
+                    timeout,
+                    model=route.model,
+                    provider=route.provider,
+                )
             transport_meta = result.pop(_TRANSPORT_META_KEY, {})
             failure_stage = "response_contract"
             validate_payload(response_definition(node), result)
@@ -530,8 +698,8 @@ async def generate_report_change_proposal(
                 }
                 operations = []
                 for raw_operation in raw_patch["operations"]:
-                    failure_stage = "wire_text_normalization"
-                    raw_operation = _normalize_wire_text_operation(
+                    failure_stage = "wire_text_validation"
+                    raw_operation = _validate_wire_text_operation(
                         payload, raw_operation
                     )
                     failure_stage = "operation_projection"
@@ -592,11 +760,12 @@ async def generate_report_change_proposal(
                     str(operation["op"]) for operation in operations
                 )
                 failure_stage = "typed_patch"
+                summary = raw_patch["summary"].strip()
+                if not summary:
+                    raise ValueError("Report Assistant returned a blank patch summary")
                 patch = ReportAssistantPatch.model_validate(
                     {
-                        "summary": _user_facing_patch_summary(
-                            raw_patch["summary"], operations
-                        ),
+                        "summary": summary,
                         "operations": operations,
                     }
                 )
@@ -615,6 +784,7 @@ async def generate_report_change_proposal(
                 "analysis_plan": plan,
                 "patch": patch,
                 "suggestions": tuple(str(item).strip() for item in result["suggestions"]),
+                "exact_page_count": result["exact_page_count"],
             }
             failure_stage = "operation_scope_validation"
             validate_report_change_operation_scope(
@@ -638,7 +808,10 @@ async def generate_report_change_proposal(
             )
         except (ContractError, OSError, TimeoutError, TypeError, ValueError) as error:
             last_error = error
-            if isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError)):
+            if (
+                isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError))
+                or str(error) == "ASSISTANT_MODEL_EXECUTION_CONFLICT"
+            ):
                 break
     logger.warning(
         "Report Assistant turn failed after %s attempt(s): "
@@ -659,38 +832,36 @@ async def generate_report_change_proposal(
 
 async def generate_report_quality_review(
     payload: dict[str, object],
+    *,
+    invocation: ReportAssistantModelInvocation | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """현재 Report·승인 Artifact를 읽기만 하는 strict 품질 검토를 실행한다."""
 
     node = "report_assistant_review"
-    try:
-        route = active_route_for_node(resolve_active_model_routes(), node)
-    except (OSError, ValueError) as error:
-        raise ReportAssistantModelError(
-            "Report Assistant review configuration is invalid",
-            code="REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
-        ) from error
-    try:
-        validate_payload(request_definition(node), payload)
-    except (ContractError, TypeError, ValueError) as error:
-        raise ReportAssistantModelError(
-            "Report Assistant review request is invalid",
-            code="REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
-        ) from error
-    timeout, max_attempts = _model_runtime_limits()
+    invocation = _validated_invocation(invocation, node, payload)
+    route = invocation.route
+    timeout, max_attempts = invocation.timeout, invocation.max_attempts
     started = perf_counter()
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:
-            result = await openai_transport(
-                route.endpoint,
-                route.token,
-                node,
-                payload,
-                timeout,
-                model=route.model,
-                provider=route.provider,
+            await invocation.authorization.record_attempt(
+                invocation.repository,
+                attempt=attempt,
+                payload_hash=invocation.payload_hash,
+                model_execution_id=invocation.model_execution_id,
+                minimum_lease_seconds=math.ceil(timeout) + 5,
             )
+            async with asyncio.timeout(timeout):
+                result = await openai_transport(
+                    route.endpoint,
+                    route.token,
+                    node,
+                    payload,
+                    timeout,
+                    model=route.model,
+                    provider=route.provider,
+                )
             transport_meta = result.pop(_TRANSPORT_META_KEY, {})
             validate_payload(response_definition(node), result)
             prompt = get_prompt(PROMPT_IDS[node])
@@ -710,7 +881,10 @@ async def generate_report_quality_review(
             )
         except (ContractError, OSError, TimeoutError, TypeError, ValueError) as error:
             last_error = error
-            if isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError)):
+            if (
+                isinstance(error, (ModelAuthenticationError, ModelRequestRejectedError))
+                or str(error) == "ASSISTANT_MODEL_EXECUTION_CONFLICT"
+            ):
                 break
     raise _model_failure(
         last_error,

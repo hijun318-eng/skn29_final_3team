@@ -43,7 +43,7 @@ class AnalysisArtifactLifecycleRepositoryMixin:
         session,
         artifact_id: UUID,
     ) -> Mapping[str, Any]:
-        """승인·종단·소유 조건을 만족하는 source row를 잠그고 lifecycle을 읽는다."""
+        """승인·종단·소유 조건을 만족하는 owner request를 잠그고 lifecycle을 읽는다."""
 
         row = (await session.execute(
             text(
@@ -59,7 +59,7 @@ class AnalysisArtifactLifecycleRepositoryMixin:
                   AND a.status = 'APPROVED'
                   AND r.status IN ('SUCCEEDED', 'PARTIAL')
                   AND r.user_id = :owner_id
-                FOR UPDATE OF a
+                FOR UPDATE OF r
                 """
             ),
             {"artifact_id": artifact_id, "owner_id": self._owner_id},
@@ -78,9 +78,9 @@ class AnalysisArtifactLifecycleRepositoryMixin:
     ) -> AnalysisArtifactLifecycle:
         """현재 owner의 Artifact를 멱등 보관하고 진행 중 Assistant와 충돌하면 거부한다.
 
-        source Artifact row의 exclusive lock은 신규 Report·Assistant가 사용하는 share lock과
-        직렬화된다. 먼저 완료된 신규 결속은 기존 참조로 보존되고, 보관이 먼저 완료되면
-        뒤따르는 신규 결속이 active-only 조건에서 실패한다.
+        불변 source Artifact가 속한 owner request row의 exclusive lock은 신규
+        Report·Assistant의 key-share lock과 직렬화된다. 먼저 완료된 결속은
+        기존 참조로 보존되고, 보관이 먼저면 뒤따르는 active-only 결속이 실패한다.
         """
 
         self._validate_lifecycle_actor(actor_role, trace_id)

@@ -98,6 +98,7 @@ from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
 from app.services.runtime_feature_availability import available_runtime_features
+from app.user_account_roles import UserAccountRole, public_user_account_role
 
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,21 @@ def _controller() -> AnalysisController:
 
 
 router = APIRouter()
+
+
+def _public_session_role(role: Role) -> UserAccountRole:
+    """사용자 세션 응답에서 내부·legacy Role 노출을 401로 닫는다."""
+
+    try:
+        return public_user_account_role(role)
+    except ValueError as error:
+        raise ContextValidationError(
+            ErrorCode.AUTHENTICATION_REQUIRED,
+            "인증 정보를 확인할 수 없습니다.",
+            401,
+        ) from error
+
+
 readiness = AppDatabaseReadiness(lambda: _controller().data_platform)
 execution_gate = ConcurrentExecutionGate()
 
@@ -195,9 +211,10 @@ async def authenticated_session(
     """검증된 세션의 role만 공개하며 자격 증명이 없을 때는 anonymous 상태를 반환한다."""
     if context is None:
         return SessionResponse(data=SessionData(status="anonymous"), meta=response_meta(request_context(request)))
+    public_role = _public_session_role(context.role)
     return SessionResponse(
         data=SessionData(
-            role=context.role,
+            role=public_role,
             capabilities=capabilities_for(context.role),
             enabled_features=(
                 await available_runtime_features(context.role)
@@ -235,6 +252,7 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
         role=principal.role,
     )
     request.state.context = context
+    public_role = _public_session_role(principal.role)
     response.set_cookie(
         SESSION_COOKIE,
         session_token,
@@ -246,7 +264,7 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
     )
     return LoginResponse(
         data=LoginData(
-            role=principal.role,
+            role=public_role,
             capabilities=capabilities_for(principal.role),
             enabled_features=(
                 await available_runtime_features(principal.role)

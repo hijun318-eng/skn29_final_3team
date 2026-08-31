@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import re
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -48,7 +49,7 @@ class ReportArtifactRepositoryMixin:
         session,
         artifacts: list[dict[str, object]],
     ) -> None:
-        """Assistant 결속 대상의 owner·checksum·active 상태를 source row lock 아래 재검증한다."""
+        """Assistant 결속 대상을 owner request lock 아래 active 상태로 재검증한다."""
 
         for artifact in artifacts:
             locked = (await session.execute(
@@ -65,7 +66,7 @@ class ReportArtifactRepositoryMixin:
                       AND q.trino_query_id IS NOT NULL
                       AND r.status IN ('SUCCEEDED', 'PARTIAL')
                       AND r.user_id = :owner_id
-                    FOR KEY SHARE OF a
+                    FOR KEY SHARE OF r
                     """
                 ),
                 {
@@ -77,7 +78,7 @@ class ReportArtifactRepositoryMixin:
             if locked is None:
                 raise KeyError("활성 상태의 승인된 Assistant Artifact를 찾을 수 없습니다.")
 
-            # source key-share lock을 잡은 뒤 새 statement를 사용해야 archive가
+            # owner request key-share lock을 잡은 뒤 새 statement를 사용해야 archive가
             # 먼저 commit된 경우의 이전 lifecycle snapshot으로 결속하지 않는다.
             matched = (await session.execute(
                 text(
@@ -246,7 +247,7 @@ class ReportArtifactRepositoryMixin:
                       AND a.status = 'APPROVED'
                       AND r.status IN ('SUCCEEDED', 'PARTIAL')
                       AND r.user_id = :owner_id
-                    FOR KEY SHARE OF a
+                    FOR KEY SHARE OF r
                     """
                 ),
                 {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
@@ -340,6 +341,7 @@ class ReportArtifactRepositoryMixin:
         operation_scope: str | None = None,
         expected_phase: str | None = None,
         expected_message_revision: int | None = None,
+        model_execution_id: str | None = None,
     ) -> bool:
         """현재 소유자의 일치하는 running request만 실패 code와 완료 시각으로 종결한다.
 
@@ -357,7 +359,11 @@ class ReportArtifactRepositoryMixin:
                         phase = CASE WHEN phase IS NULL THEN NULL ELSE 'failed' END,
                         operation_scope = CASE
                             WHEN :operation_scope = 'report_title' THEN 'report_title'
-                            ELSE operation_scope END
+                            ELSE operation_scope END,
+                        model_execution_id = NULL,
+                        model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND status = 'running'
                       AND (CAST(:data_request_id AS uuid) IS NULL
@@ -366,6 +372,11 @@ class ReportArtifactRepositoryMixin:
                            OR phase = CAST(:expected_phase AS varchar))
                       AND (CAST(:expected_message_revision AS bigint) IS NULL
                            OR message_revision = CAST(:expected_message_revision AS bigint))
+                      AND (
+                          (CAST(:model_execution_id AS uuid) IS NULL
+                           AND model_execution_id IS NULL)
+                          OR model_execution_id = CAST(:model_execution_id AS uuid)
+                      )
                     RETURNING assistant_request_id
                     """
                 ),
@@ -380,6 +391,10 @@ class ReportArtifactRepositoryMixin:
                     "operation_scope": operation_scope,
                     "expected_phase": expected_phase,
                     "expected_message_revision": expected_message_revision,
+                    "model_execution_id": (
+                        _uuid(model_execution_id, "model_execution_id")
+                        if model_execution_id is not None else None
+                    ),
                 },
             )).scalar_one_or_none()
         return claimed is not None
@@ -399,10 +414,18 @@ class ReportArtifactRepositoryMixin:
                     SET phase = 'cancelled', status = 'failed',
                         operation_scope = 'full_report',
                         message_revision = message_revision + 1,
-                        error_code = 'ASSISTANT_CANCELLED', completed_at = now()
+                        error_code = 'ASSISTANT_CANCELLED', completed_at = now(),
+                        model_execution_id = NULL,
+                        model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase IN ('ready', 'waiting_patch_approval', 'waiting_approval')
                       AND status = 'running'
+                      AND (
+                          model_execution_id IS NULL
+                          OR model_execution_expires_at <= now()
+                      )
                     RETURNING assistant_request_id
                     """
                 ),
@@ -570,12 +593,14 @@ class ReportArtifactRepositoryMixin:
                         (assistant_request_id, owner_id, artifact_id, instruction_hash,
                          status, prompt_id, prompt_version, prompt_hash, phase, operation_scope,
                          session_definition_id, session_definition_version, base_revision,
-                         retry_of_assistant_request_id, retry_created_at)
+                         retry_of_assistant_request_id, retry_created_at,
+                         source_instruction, exact_page_count)
                     SELECT :retry_request_id, source.owner_id, source.artifact_id,
                            :instruction_hash, 'running', :prompt_id, :prompt_version,
                            :prompt_hash, 'ready', source.operation_scope, source.session_definition_id,
                            source.session_definition_version, source.base_revision,
-                           source.assistant_request_id, now()
+                           source.assistant_request_id, now(),
+                           source.source_instruction, source.exact_page_count
                     FROM report_v1.report_assistant_requests source
                     JOIN report_v1.report_definition_versions v
                       ON v.definition_id = source.session_definition_id
@@ -663,14 +688,17 @@ class ReportArtifactRepositoryMixin:
                     """
                     SELECT assistant_request_id, phase, session_definition_id,
                            session_definition_version, base_revision, artifact_id,
-                           analysis_plan_json, result_artifact_id, result_revision,
+                           analysis_plan_json, result_artifact_id, result_query_id,
+                           result_artifact_checksum, result_revision,
                            error_code, data_request_id, patch_request_id, operation_scope,
                            message_revision,
                            report_patch_json, status, instruction_hash,
                            decision_hash, model_version, prompt_id,
                            prompt_version, prompt_hash, approved_at, rejected_at,
                            retry_of_assistant_request_id, retry_created_at,
-                           patch_preview_json, approved_operation_indexes
+                           patch_preview_json, approved_operation_indexes,
+                           source_instruction, exact_page_count, verified_page_count,
+                           page_renderer_fingerprint
                     FROM report_v1.report_assistant_requests
                     WHERE retry_of_assistant_request_id = :source_request_id
                       AND owner_id = :owner_id
@@ -700,7 +728,8 @@ class ReportArtifactRepositoryMixin:
                     """
                     SELECT assistant_request_id, phase, session_definition_id,
                            session_definition_version, base_revision, artifact_id,
-                           analysis_plan_json, result_artifact_id, result_revision,
+                           analysis_plan_json, result_artifact_id, result_query_id,
+                           result_artifact_checksum, result_revision,
                            error_code, data_request_id, patch_request_id, operation_scope,
                            message_revision,
                            report_patch_json, status, instruction_hash,
@@ -709,7 +738,9 @@ class ReportArtifactRepositoryMixin:
                            output_hash,
                            approved_at, rejected_at,
                            retry_of_assistant_request_id, retry_created_at,
-                           patch_preview_json, approved_operation_indexes
+                           patch_preview_json, approved_operation_indexes,
+                           source_instruction, exact_page_count, verified_page_count,
+                           page_renderer_fingerprint
                     FROM report_v1.report_assistant_requests
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase IS NOT NULL
@@ -870,6 +901,11 @@ class ReportArtifactRepositoryMixin:
         operation_scope: str = "full_report",
         *,
         expected_message_revision: int,
+        source_instruction: str | None = None,
+        exact_page_count: int | None = None,
+        model_execution_id: str | None = None,
+        verified_page_count: int | None = None,
+        page_renderer_fingerprint: str | None = None,
     ) -> dict[str, object]:
         """검증·dry-run된 기존 근거 patch를 적용하지 않고 사용자 승인 대기로 저장한다."""
 
@@ -890,6 +926,10 @@ class ReportArtifactRepositoryMixin:
                         prompt_version = :prompt_version,
                         prompt_hash = :prompt_hash,
                         operation_scope = :operation_scope,
+                        source_instruction = :source_instruction,
+                        exact_page_count = :exact_page_count,
+                        verified_page_count = :verified_page_count,
+                        page_renderer_fingerprint = :page_renderer_fingerprint,
                         message_revision = message_revision + 1,
                         analysis_plan_json = NULL,
                         data_request_id = NULL,
@@ -899,12 +939,21 @@ class ReportArtifactRepositoryMixin:
                         result_query_id = NULL,
                         result_artifact_checksum = NULL,
                         result_revision = NULL,
-                        error_code = NULL
+                        error_code = NULL,
+                        model_execution_id = NULL,
+                        model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase = 'ready' AND status = 'running'
                       AND (operation_scope <> 'report_title'
                            OR :operation_scope = 'report_title')
                       AND message_revision = :expected_message_revision
+                      AND (
+                          (CAST(:model_execution_id AS uuid) IS NULL
+                           AND model_execution_id IS NULL)
+                          OR model_execution_id = CAST(:model_execution_id AS uuid)
+                      )
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, patch_request_id, report_patch_json,
@@ -924,7 +973,15 @@ class ReportArtifactRepositoryMixin:
                     "prompt_version": prompt_version,
                     "prompt_hash": prompt_hash,
                     "operation_scope": operation_scope,
+                    "source_instruction": source_instruction,
+                    "exact_page_count": exact_page_count,
+                    "verified_page_count": verified_page_count,
+                    "page_renderer_fingerprint": page_renderer_fingerprint,
                     "expected_message_revision": expected_message_revision,
+                    "model_execution_id": (
+                        _uuid(model_execution_id, "model_execution_id")
+                        if model_execution_id is not None else None
+                    ),
                     "request_id": _uuid(assistant_request_id, "assistant_request_id"),
                     "owner_id": self._owner_id,
                 },
@@ -959,6 +1016,11 @@ class ReportArtifactRepositoryMixin:
         operation_scope: str = "full_report",
         *,
         expected_message_revision: int,
+        source_instruction: str | None = None,
+        exact_page_count: int | None = None,
+        verified_page_count: int | None = None,
+        page_renderer_fingerprint: str | None = None,
+        model_execution_id: str | None = None,
     ) -> dict[str, object]:
         """승인 대기 patch를 owner·기존 request ID CAS로 검증된 대체안과 교환한다."""
 
@@ -979,16 +1041,29 @@ class ReportArtifactRepositoryMixin:
                         prompt_version = :prompt_version,
                         prompt_hash = :prompt_hash,
                         operation_scope = :operation_scope,
+                        source_instruction = :source_instruction,
+                        exact_page_count = :exact_page_count,
+                        verified_page_count = :verified_page_count,
+                        page_renderer_fingerprint = :page_renderer_fingerprint,
                         message_revision = message_revision + 1,
                         approved_at = NULL,
                         rejected_at = NULL,
-                        error_code = NULL
+                        error_code = NULL,
+                        model_execution_id = NULL,
+                        model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND patch_request_id = :expected_patch_request_id
                       AND phase = 'waiting_patch_approval' AND status = 'running'
                       AND (operation_scope <> 'report_title'
                            OR :operation_scope = 'report_title')
                       AND message_revision = :expected_message_revision
+                      AND (
+                          (CAST(:model_execution_id AS uuid) IS NULL
+                           AND model_execution_id IS NULL)
+                          OR model_execution_id = CAST(:model_execution_id AS uuid)
+                      )
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, patch_request_id, report_patch_json,
@@ -1011,7 +1086,15 @@ class ReportArtifactRepositoryMixin:
                     "prompt_version": prompt_version,
                     "prompt_hash": prompt_hash,
                     "operation_scope": operation_scope,
+                    "source_instruction": source_instruction,
+                    "exact_page_count": exact_page_count,
+                    "verified_page_count": verified_page_count,
+                    "page_renderer_fingerprint": page_renderer_fingerprint,
                     "expected_message_revision": expected_message_revision,
+                    "model_execution_id": (
+                        _uuid(model_execution_id, "model_execution_id")
+                        if model_execution_id is not None else None
+                    ),
                     "request_id": request_uuid,
                     "owner_id": self._owner_id,
                 },
@@ -1034,11 +1117,39 @@ class ReportArtifactRepositoryMixin:
         patch_request_id: str,
         approved: bool,
         operation_indexes: tuple[int, ...] | None = None,
+        *,
+        verified_page_count: int | None = None,
+        page_renderer_fingerprint: str | None = None,
+        approval_decision_hash: str | None = None,
     ) -> tuple[dict[str, object], bool]:
         """owner·session·patch 요청·phase를 한 CAS로 확인해 최초 결정만 claim한다."""
 
         request_uuid = _uuid(assistant_request_id, "assistant_request_id")
         patch_uuid = _uuid(patch_request_id, "patch_request_id")
+        if approval_decision_hash is not None and (
+            len(approval_decision_hash) != 64
+            or any(character not in "0123456789abcdef" for character in approval_decision_hash)
+        ):
+            raise ValueError("현재 승인 decision receipt가 유효하지 않습니다.")
+        if (
+            (verified_page_count is None) != (page_renderer_fingerprint is None)
+            or verified_page_count is not None
+            and (
+                isinstance(verified_page_count, bool)
+                or not isinstance(verified_page_count, int)
+                or verified_page_count < 1
+            )
+            or page_renderer_fingerprint is not None
+            and (
+                len(page_renderer_fingerprint) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in page_renderer_fingerprint
+                )
+                or approval_decision_hash is None
+            )
+        ):
+            raise ValueError("현재 승인 renderer receipt가 유효하지 않습니다.")
         target_phase = "saving_revision" if approved else "ready"
         async with self._sessionmaker.begin() as session:
             claimed = (await session.execute(
@@ -1054,10 +1165,40 @@ class ReportArtifactRepositoryMixin:
                         approved_operation_indexes = CASE
                             WHEN :approved THEN CAST(:operation_indexes AS smallint[])
                             ELSE approved_operation_indexes
-                        END
+                        END,
+                        source_instruction = CASE
+                            WHEN :approved THEN source_instruction ELSE NULL END,
+                        exact_page_count = CASE
+                            WHEN :approved THEN exact_page_count ELSE NULL END,
+                        verified_page_count = CASE
+                            WHEN :approved THEN COALESCE(
+                                CAST(:verified_page_count AS integer), verified_page_count
+                            ) ELSE NULL END,
+                        page_renderer_fingerprint = CASE
+                            WHEN :approved THEN COALESCE(
+                                :page_renderer_fingerprint, page_renderer_fingerprint
+                            ) ELSE NULL END,
+                        decision_hash = CASE
+                            WHEN :approved THEN COALESCE(
+                                :approval_decision_hash, decision_hash
+                            ) ELSE decision_hash END,
+                        analysis_plan_json = CASE
+                            WHEN :approved THEN analysis_plan_json ELSE NULL END,
+                        data_request_id = CASE
+                            WHEN :approved THEN data_request_id ELSE NULL END,
+                        result_artifact_id = CASE
+                            WHEN :approved THEN result_artifact_id ELSE NULL END,
+                        result_query_id = CASE
+                            WHEN :approved THEN result_query_id ELSE NULL END,
+                        result_artifact_checksum = CASE
+                            WHEN :approved THEN result_artifact_checksum ELSE NULL END
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND patch_request_id = :patch_request_id
                       AND phase = 'waiting_patch_approval' AND status = 'running'
+                      AND (
+                          model_execution_id IS NULL
+                          OR model_execution_expires_at <= now()
+                      )
                     RETURNING assistant_request_id
                     """
                 ),
@@ -1068,6 +1209,9 @@ class ReportArtifactRepositoryMixin:
                     "owner_id": self._owner_id,
                     "patch_request_id": patch_uuid,
                     "operation_indexes": list(operation_indexes) if operation_indexes is not None else None,
+                    "verified_page_count": verified_page_count,
+                    "page_renderer_fingerprint": page_renderer_fingerprint,
+                    "approval_decision_hash": approval_decision_hash,
                 },
             )).scalar_one_or_none()
         current = await self.get_assistant_session(assistant_request_id)
@@ -1085,9 +1229,63 @@ class ReportArtifactRepositoryMixin:
         ):
             patch = current.get("report_patch_json") or {}
             stored_selection = tuple(range(len(patch.get("operations") or ())))
-        same_selection = not approved or stored_selection == tuple(operation_indexes or ())
+        requested_selection = tuple(operation_indexes or ())
+        if approved and operation_indexes is None:
+            patch = current.get("report_patch_json") or {}
+            requested_selection = tuple(range(len(patch.get("operations") or ())))
+        same_selection = not approved or stored_selection == requested_selection
         if claimed is None and (not same_request or not already_decided or not same_selection):
             raise ValueError("현재 승인 대기 중인 patch 요청과 일치하지 않습니다.")
+        receipt_changed = (
+            approved
+            and claimed is None
+            and current.get("phase") == "saving_revision"
+            and verified_page_count is not None
+            and page_renderer_fingerprint is not None
+            and (
+                current.get("verified_page_count") != verified_page_count
+                or current.get("page_renderer_fingerprint")
+                != page_renderer_fingerprint
+            )
+        )
+        if receipt_changed:
+            expected_decision_hash = str(current.get("decision_hash") or "")
+            async with self._sessionmaker.begin() as session:
+                refreshed = (await session.execute(
+                    text(
+                        """
+                        UPDATE report_v1.report_assistant_requests
+                        SET verified_page_count = CAST(:verified_page_count AS integer),
+                            page_renderer_fingerprint = :page_renderer_fingerprint,
+                            decision_hash = :approval_decision_hash
+                        WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                          AND patch_request_id = :patch_request_id
+                          AND phase = 'saving_revision' AND status = 'running'
+                          AND decision_hash = :expected_decision_hash
+                          AND (
+                              model_execution_id IS NULL
+                              OR model_execution_expires_at <= now()
+                          )
+                        RETURNING assistant_request_id
+                        """
+                    ),
+                    {
+                        "verified_page_count": verified_page_count,
+                        "page_renderer_fingerprint": page_renderer_fingerprint,
+                        "approval_decision_hash": approval_decision_hash,
+                        "expected_decision_hash": expected_decision_hash,
+                        "request_id": request_uuid,
+                        "owner_id": self._owner_id,
+                        "patch_request_id": patch_uuid,
+                    },
+                )).scalar_one_or_none()
+            current = await self.get_assistant_session(assistant_request_id)
+            if refreshed is None and (
+                current.get("verified_page_count") != verified_page_count
+                or current.get("page_renderer_fingerprint")
+                != page_renderer_fingerprint
+            ):
+                raise ValueError("현재 승인 renderer receipt와 일치하지 않습니다.")
         return current, claimed is not None
 
     async def recover_stale_assistant_session(
@@ -1110,11 +1308,19 @@ class ReportArtifactRepositoryMixin:
                     UPDATE report_v1.report_assistant_requests
                     SET phase = 'failed', status = 'failed',
                         error_code = 'ASSISTANT_EXECUTION_INTERRUPTED',
-                        completed_at = now()
+                        completed_at = now(),
+                        model_execution_id = NULL,
+                        model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND status = 'running'
                       AND phase IN ('running_data_agent', 'waiting_artifact')
                       AND approved_at < now() - make_interval(secs => :stale_seconds)
+                      AND (
+                          model_execution_id IS NULL
+                          OR model_execution_expires_at <= now()
+                      )
                     """
                 ),
                 {
@@ -1140,6 +1346,9 @@ class ReportArtifactRepositoryMixin:
         operation_scope: str = "full_report",
         *,
         expected_message_revision: int,
+        source_instruction: str | None = None,
+        exact_page_count: int | None = None,
+        model_execution_id: str | None = None,
     ) -> dict[str, object]:
         """ready 세션에 검증된 모델 제안을 기록하고 새 데이터 계획만 승인 대기로 전이한다."""
 
@@ -1158,6 +1367,10 @@ class ReportArtifactRepositoryMixin:
                         prompt_version = :prompt_version,
                         prompt_hash = :prompt_hash,
                         operation_scope = :operation_scope,
+                        source_instruction = :source_instruction,
+                        exact_page_count = :exact_page_count,
+                        verified_page_count = NULL,
+                        page_renderer_fingerprint = NULL,
                         message_revision = message_revision + 1,
                         analysis_plan_json = CAST(:analysis_plan AS jsonb),
                         data_request_id = :data_request_id,
@@ -1171,12 +1384,21 @@ class ReportArtifactRepositoryMixin:
                         result_query_id = NULL,
                         result_artifact_checksum = NULL,
                         result_revision = NULL,
-                        error_code = NULL
+                        error_code = NULL,
+                        model_execution_id = NULL,
+                        model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase = 'ready' AND status = 'running'
                       AND (operation_scope <> 'report_title'
                            OR :operation_scope = 'report_title')
                       AND message_revision = :expected_message_revision
+                      AND (
+                          (CAST(:model_execution_id AS uuid) IS NULL
+                           AND model_execution_id IS NULL)
+                          OR model_execution_id = CAST(:model_execution_id AS uuid)
+                      )
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, result_artifact_id, result_revision,
@@ -1192,7 +1414,13 @@ class ReportArtifactRepositoryMixin:
                     "prompt_version": prompt_version,
                     "prompt_hash": prompt_hash,
                     "operation_scope": operation_scope,
+                    "source_instruction": source_instruction,
+                    "exact_page_count": exact_page_count,
                     "expected_message_revision": expected_message_revision,
+                    "model_execution_id": (
+                        _uuid(model_execution_id, "model_execution_id")
+                        if model_execution_id is not None else None
+                    ),
                     "analysis_plan": (
                         json.dumps(analysis_plan, ensure_ascii=False, sort_keys=True)
                         if analysis_plan is not None else None
@@ -1263,6 +1491,7 @@ class ReportArtifactRepositoryMixin:
                         FROM report_v1.report_assistant_requests
                         WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                           AND phase = :expected_phase AND status = 'running'
+                          AND decision_hash = :decision_hash
                           AND (CAST(:data_request_id AS uuid) IS NULL
                                OR data_request_id = CAST(:data_request_id AS uuid))
                         FOR UPDATE
@@ -1272,6 +1501,7 @@ class ReportArtifactRepositoryMixin:
                         "request_id": request_uuid,
                         "owner_id": self._owner_id,
                         "expected_phase": expected_phase,
+                        "decision_hash": decision_hash,
                         "data_request_id": data_uuid,
                     },
                 )).mappings().one_or_none()
@@ -1647,10 +1877,20 @@ class ReportArtifactRepositoryMixin:
                         approved_at = CASE WHEN :approved THEN now() ELSE approved_at END,
                         rejected_at = CASE WHEN :approved THEN rejected_at ELSE now() END,
                         operation_scope = CASE
-                            WHEN :approved THEN operation_scope ELSE 'full_report' END
+                            WHEN :approved THEN operation_scope ELSE 'full_report' END,
+                        source_instruction = CASE
+                            WHEN :approved THEN source_instruction ELSE NULL END,
+                        exact_page_count = CASE
+                            WHEN :approved THEN exact_page_count ELSE NULL END,
+                        verified_page_count = NULL,
+                        page_renderer_fingerprint = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND data_request_id = :data_request_id
                       AND phase = 'waiting_approval' AND status = 'running'
+                      AND (
+                          model_execution_id IS NULL
+                          OR model_execution_expires_at <= now()
+                      )
                     RETURNING assistant_request_id
                     """
                 ),
@@ -1685,6 +1925,50 @@ class ReportArtifactRepositoryMixin:
             "running_data_agent",
             "waiting_artifact",
         )
+        return await self.get_assistant_session(assistant_request_id)
+
+    async def stage_assistant_result_artifact(
+        self,
+        assistant_request_id: str,
+        data_request_id: str,
+        artifact: dict[str, object],
+    ) -> dict[str, object]:
+        """분석 결과 lineage를 합성 동의 전에 멱등 고정해 428 재개 입력을 보존한다."""
+
+        async with self._sessionmaker.begin() as session:
+            await self._lock_active_assistant_artifacts(session, [artifact])
+            staged = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET result_artifact_id = :artifact_id,
+                        result_query_id = :query_id,
+                        result_artifact_checksum = :artifact_checksum
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND data_request_id = :data_request_id
+                      AND phase = 'waiting_artifact' AND status = 'running'
+                      AND (
+                          result_artifact_id IS NULL
+                          OR (
+                              result_artifact_id = :artifact_id
+                              AND result_query_id = :query_id
+                              AND result_artifact_checksum = :artifact_checksum
+                          )
+                      )
+                    RETURNING assistant_request_id
+                    """
+                ),
+                {
+                    "artifact_id": _uuid(str(artifact["artifact_id"]), "artifact_id"),
+                    "query_id": str(artifact["trino_query_id"]),
+                    "artifact_checksum": str(artifact["artifact_checksum"]),
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "data_request_id": _uuid(data_request_id, "data_request_id"),
+                },
+            )).scalar_one_or_none()
+        if staged is None:
+            raise ValueError("ASSISTANT_STATE_CONFLICT")
         return await self.get_assistant_session(assistant_request_id)
 
     async def get_assistant_result_artifact(
@@ -1732,6 +2016,7 @@ class ReportArtifactRepositoryMixin:
         data_request_id: str,
         artifact: dict[str, object],
         *,
+        patch_request_id: str,
         decision_hash: str,
         model_version: str,
         prompt_id: str,
@@ -1739,15 +2024,21 @@ class ReportArtifactRepositoryMixin:
         prompt_hash: str,
         patch: dict[str, object],
         patch_preview: tuple[dict[str, object], ...],
+        verified_page_count: int,
+        page_renderer_fingerprint: str,
+        model_execution_id: str | None = None,
     ) -> dict[str, object]:
-        """검증된 Artifact lineage와 합성 patch를 고정하고 Revision 저장 대기로 원자 전이한다."""
+        """새 Artifact와 renderer 검증 patch를 고정하고 별도 patch 승인 대기로 전이한다."""
 
         async with self._sessionmaker.begin() as session:
+            await self._lock_active_assistant_artifacts(session, [artifact])
             row = (await session.execute(
                 text(
                     """
                     UPDATE report_v1.report_assistant_requests
-                    SET phase = 'saving_revision', result_artifact_id = :artifact_id,
+                    SET phase = 'waiting_patch_approval',
+                        patch_request_id = :patch_request_id,
+                        result_artifact_id = :artifact_id,
                         result_query_id = :query_id,
                         result_artifact_checksum = :artifact_checksum,
                         decision_hash = :decision_hash,
@@ -1756,14 +2047,29 @@ class ReportArtifactRepositoryMixin:
                         prompt_version = :prompt_version,
                         prompt_hash = :prompt_hash,
                         report_patch_json = CAST(:patch AS jsonb),
-                        patch_preview_json = CAST(:patch_preview AS jsonb)
+                        patch_preview_json = CAST(:patch_preview AS jsonb),
+                        approved_operation_indexes = NULL,
+                        verified_page_count = :verified_page_count,
+                        page_renderer_fingerprint = :page_renderer_fingerprint,
+                        approved_at = NULL,
+                        rejected_at = NULL,
+                        model_execution_id = NULL,
+                        model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND data_request_id = :data_request_id
                       AND phase = 'waiting_artifact' AND status = 'running'
+                      AND (
+                          (CAST(:model_execution_id AS uuid) IS NULL
+                           AND model_execution_id IS NULL)
+                          OR model_execution_id = CAST(:model_execution_id AS uuid)
+                      )
                     RETURNING assistant_request_id
                     """
                 ),
                 {
+                    "patch_request_id": _uuid(patch_request_id, "patch_request_id"),
                     "artifact_id": _uuid(str(artifact["artifact_id"]), "artifact_id"),
                     "query_id": str(artifact["trino_query_id"]),
                     "artifact_checksum": str(artifact["artifact_checksum"]),
@@ -1774,13 +2080,19 @@ class ReportArtifactRepositoryMixin:
                     "prompt_hash": prompt_hash,
                     "patch": json.dumps(patch, ensure_ascii=False, sort_keys=True),
                     "patch_preview": json.dumps(patch_preview, ensure_ascii=False),
+                    "verified_page_count": verified_page_count,
+                    "page_renderer_fingerprint": page_renderer_fingerprint,
+                    "model_execution_id": (
+                        _uuid(model_execution_id, "model_execution_id")
+                        if model_execution_id is not None else None
+                    ),
                     "request_id": _uuid(assistant_request_id, "assistant_request_id"),
                     "owner_id": self._owner_id,
                     "data_request_id": _uuid(data_request_id, "data_request_id"),
                 },
             )).scalar_one_or_none()
-        if row is None:
-            raise ValueError("Artifact를 저장할 Assistant phase가 일치하지 않습니다.")
+            if row is None:
+                raise ValueError("Artifact를 저장할 Assistant phase가 일치하지 않습니다.")
         return await self.get_assistant_session(assistant_request_id)
 
     async def finalize_assistant_revision(
@@ -2024,3 +2336,569 @@ class ReportArtifactRepositoryMixin:
             )).scalar_one_or_none()
         if row is None:
             raise ValueError("Report Assistant phase 전이에 실패했습니다.")
+
+    async def create_assistant_transfer_disclosure(
+        self,
+        assistant_request_id: str,
+        *,
+        disclosure_id: str,
+        policy_version: str,
+        node: str,
+        route: dict[str, object],
+        route_fingerprint: str,
+        binding_hash: str,
+        data_scopes: tuple[str, ...],
+        scope_hash: str,
+        excluded_data: tuple[str, ...],
+        content_warning: str,
+        disclosure_hash: str,
+        expires_at: object,
+    ) -> dict[str, object]:
+        """현재 owner 세션에 서버 생성 외부 전송 공개문을 append-only로 저장한다."""
+
+        disclosure_uuid = _uuid(disclosure_id, "disclosure_id")
+        async with self._sessionmaker.begin() as session:
+            lock_key = ":".join(
+                (
+                    str(assistant_request_id),
+                    str(self._owner_id),
+                    policy_version,
+                    node,
+                    route_fingerprint,
+                    binding_hash,
+                    scope_hash,
+                )
+            )
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+                {"lock_key": lock_key},
+            )
+            existing = (await session.execute(
+                text(
+                    """
+                    SELECT disclosure_id, assistant_request_id, policy_version, node,
+                           route_json, route_fingerprint, binding_hash,
+                           data_scopes_json, scope_hash, excluded_data_json, content_warning,
+                           disclosure_hash, created_at, expires_at
+                    FROM report_v1.report_assistant_transfer_disclosures disclosure
+                    WHERE disclosure.assistant_request_id = :request_id
+                      AND disclosure.owner_id = :owner_id
+                      AND disclosure.policy_version = :policy_version
+                      AND disclosure.node = :node
+                      AND disclosure.route_fingerprint = :route_fingerprint
+                      AND disclosure.binding_hash = :binding_hash
+                      AND disclosure.scope_hash = :scope_hash
+                      AND disclosure.expires_at > now()
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM report_v1.report_assistant_external_consents consent
+                          WHERE consent.disclosure_id = disclosure.disclosure_id
+                            AND consent.accepted
+                      )
+                    ORDER BY disclosure.created_at DESC, disclosure.disclosure_id DESC
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "policy_version": policy_version,
+                    "node": node,
+                    "route_fingerprint": route_fingerprint,
+                    "binding_hash": binding_hash,
+                    "scope_hash": scope_hash,
+                },
+            )).mappings().one_or_none()
+            if existing is not None:
+                return dict(existing)
+            row = (await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_assistant_transfer_disclosures
+                        (disclosure_id, assistant_request_id, owner_id, policy_version,
+                         node, route_json, route_fingerprint, binding_hash,
+                         data_scopes_json, scope_hash, excluded_data_json, content_warning,
+                         disclosure_hash, expires_at)
+                    SELECT :disclosure_id, request.assistant_request_id, request.owner_id,
+                           :policy_version, :node, CAST(:route_json AS jsonb),
+                           :route_fingerprint, :binding_hash,
+                           CAST(:data_scopes_json AS jsonb), :scope_hash,
+                           CAST(:excluded_data_json AS jsonb), :content_warning,
+                           :disclosure_hash, :expires_at
+                    FROM report_v1.report_assistant_requests request
+                    WHERE request.assistant_request_id = :request_id
+                      AND request.owner_id = :owner_id
+                    RETURNING disclosure_id, assistant_request_id, policy_version, node,
+                              route_json, route_fingerprint, binding_hash,
+                              data_scopes_json, scope_hash, excluded_data_json, content_warning,
+                              disclosure_hash, created_at, expires_at
+                    """
+                ),
+                {
+                    "disclosure_id": disclosure_uuid,
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "policy_version": policy_version,
+                    "node": node,
+                    "route_json": json.dumps(route, ensure_ascii=False, sort_keys=True),
+                    "route_fingerprint": route_fingerprint,
+                    "binding_hash": binding_hash,
+                    "data_scopes_json": json.dumps(data_scopes, ensure_ascii=False),
+                    "scope_hash": scope_hash,
+                    "excluded_data_json": json.dumps(excluded_data, ensure_ascii=False),
+                    "content_warning": content_warning,
+                    "disclosure_hash": disclosure_hash,
+                    "expires_at": expires_at,
+                },
+            )).mappings().one_or_none()
+        if row is None:
+            raise KeyError("Report Assistant 세션을 찾을 수 없습니다.")
+        return dict(row)
+
+    async def claim_assistant_model_execution(
+        self,
+        assistant_request_id: str,
+        *,
+        node: str,
+        expected_phase: str,
+        expected_message_revision: int,
+        expected_report_revision: int,
+        lease_seconds: int = 300,
+    ) -> str:
+        """동일 세션 revision의 모델 실행을 multi-instance DB CAS lease로 한 번만 claim한다."""
+
+        if node not in {
+            "report_assistant",
+            "report_assistant_turn",
+            "report_assistant_review",
+        }:
+            raise ValueError("Report Assistant model execution node is invalid")
+        if expected_phase not in {"ready", "waiting_patch_approval", "waiting_artifact"}:
+            raise ValueError("Report Assistant model execution phase is invalid")
+        if (
+            isinstance(expected_message_revision, bool)
+            or not isinstance(expected_message_revision, int)
+            or expected_message_revision < 0
+            or isinstance(expected_report_revision, bool)
+            or not isinstance(expected_report_revision, int)
+            or expected_report_revision < 1
+            or not 30 <= lease_seconds <= 3600
+        ):
+            raise ValueError("Report Assistant model execution lease is invalid")
+        execution_id = uuid4()
+        async with self._sessionmaker.begin() as session:
+            claimed = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests request
+                    SET model_execution_id = :execution_id,
+                        model_execution_node = :node,
+                        model_execution_message_revision = :message_revision,
+                        model_execution_expires_at = now()
+                            + make_interval(secs => :lease_seconds)
+                    WHERE request.assistant_request_id = :request_id
+                      AND request.owner_id = :owner_id
+                      AND request.status = 'running'
+                      AND request.phase = :expected_phase
+                      AND request.message_revision = :message_revision
+                      AND request.base_revision = :report_revision
+                      AND EXISTS (
+                          SELECT 1
+                          FROM report_v1.report_definition_versions version
+                          JOIN report_v1.report_definitions definition
+                            ON definition.definition_id = version.definition_id
+                          WHERE version.definition_id = request.session_definition_id
+                            AND version.version = request.session_definition_version
+                            AND version.revision = :report_revision
+                            AND version.status = 'draft'
+                            AND definition.owner_id = request.owner_id
+                      )
+                      AND (
+                          request.model_execution_id IS NULL
+                          OR (
+                              request.model_execution_expires_at <= now()
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM report_v1.report_assistant_transfer_receipts receipt
+                                  WHERE receipt.assistant_request_id = request.assistant_request_id
+                                    AND receipt.owner_id = request.owner_id
+                                    AND receipt.model_execution_id = request.model_execution_id
+                              )
+                          )
+                      )
+                    RETURNING model_execution_id
+                    """
+                ),
+                {
+                    "execution_id": execution_id,
+                    "node": node,
+                    "message_revision": expected_message_revision,
+                    "lease_seconds": lease_seconds,
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "expected_phase": expected_phase,
+                    "report_revision": expected_report_revision,
+                },
+            )).scalar_one_or_none()
+            ambiguous_execution = None
+            if claimed is None:
+                # receipt commit 뒤 process/response가 사라진 외부 POST는 provider가
+                # 처리했는지 서버가 증명할 수 없다. expired lease를 자동 takeover하면
+                # 같은 payload를 다시 전송할 수 있으므로 현재 세션을 fail-closed로
+                # 종결하고 사용자가 새 세션에서 다시 동의하도록 한다.
+                ambiguous_execution = (await session.execute(
+                    text(
+                        """
+                        UPDATE report_v1.report_assistant_requests request
+                        SET phase = 'failed', status = 'failed',
+                            error_code = 'EXTERNAL_TRANSFER_OUTCOME_UNKNOWN',
+                            completed_at = now(),
+                            model_execution_id = NULL,
+                            model_execution_node = NULL,
+                            model_execution_message_revision = NULL,
+                            model_execution_expires_at = NULL
+                        WHERE request.assistant_request_id = :request_id
+                          AND request.owner_id = :owner_id
+                          AND request.status = 'running'
+                          AND request.phase = :expected_phase
+                          AND request.message_revision = :message_revision
+                          AND request.base_revision = :report_revision
+                          AND request.model_execution_id IS NOT NULL
+                          AND request.model_execution_expires_at <= now()
+                          AND EXISTS (
+                              SELECT 1
+                              FROM report_v1.report_assistant_transfer_receipts receipt
+                              WHERE receipt.assistant_request_id = request.assistant_request_id
+                                AND receipt.owner_id = request.owner_id
+                                AND receipt.model_execution_id = request.model_execution_id
+                          )
+                        RETURNING request.assistant_request_id
+                        """
+                    ),
+                    {
+                        "request_id": _uuid(
+                            assistant_request_id, "assistant_request_id"
+                        ),
+                        "owner_id": self._owner_id,
+                        "expected_phase": expected_phase,
+                        "message_revision": expected_message_revision,
+                        "report_revision": expected_report_revision,
+                    },
+                )).scalar_one_or_none()
+        if ambiguous_execution is not None:
+            raise ValueError("EXTERNAL_TRANSFER_OUTCOME_UNKNOWN")
+        if claimed is None:
+            raise ValueError("ASSISTANT_MODEL_EXECUTION_CONFLICT")
+        return str(claimed)
+
+    async def release_assistant_model_execution(
+        self, assistant_request_id: str, execution_id: str
+    ) -> bool:
+        """실패·검토 완료 lease만 token CAS로 해제하고 다른 실행 claim은 보존한다."""
+
+        async with self._sessionmaker.begin() as session:
+            released = (await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET model_execution_id = NULL, model_execution_node = NULL,
+                        model_execution_message_revision = NULL,
+                        model_execution_expires_at = NULL
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND model_execution_id = :execution_id
+                    RETURNING assistant_request_id
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "execution_id": _uuid(execution_id, "model_execution_id"),
+                },
+            )).scalar_one_or_none()
+        return released is not None
+
+    async def get_latest_assistant_transfer_disclosure(
+        self, assistant_request_id: str
+    ) -> dict[str, object]:
+        """현재 owner 세션의 아직 만료되지 않은 최신 공개문 한 건만 반환한다."""
+
+        async with self._sessionmaker() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    SELECT disclosure.disclosure_id, disclosure.assistant_request_id,
+                           disclosure.policy_version, disclosure.node,
+                           disclosure.route_json, disclosure.route_fingerprint,
+                           disclosure.binding_hash, disclosure.data_scopes_json,
+                           disclosure.scope_hash, disclosure.excluded_data_json,
+                           disclosure.content_warning,
+                           disclosure.disclosure_hash, disclosure.created_at,
+                           disclosure.expires_at
+                    FROM report_v1.report_assistant_transfer_disclosures disclosure
+                    WHERE disclosure.assistant_request_id = :request_id
+                      AND disclosure.owner_id = :owner_id
+                      AND disclosure.expires_at > now()
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM report_v1.report_assistant_external_consents consent
+                          WHERE consent.disclosure_id = disclosure.disclosure_id
+                            AND consent.accepted
+                      )
+                    ORDER BY disclosure.created_at DESC, disclosure.disclosure_id DESC
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )).mappings().one_or_none()
+        if row is None:
+            raise KeyError("유효한 외부 전송 공개문을 찾을 수 없습니다.")
+        return dict(row)
+
+    async def get_assistant_transfer_disclosure(
+        self, assistant_request_id: str, disclosure_id: str
+    ) -> dict[str, object]:
+        """동의 검증용 공개문을 현재 owner·세션 범위에서 반환한다."""
+
+        async with self._sessionmaker() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    SELECT disclosure.disclosure_id, disclosure.assistant_request_id,
+                           disclosure.policy_version, disclosure.node,
+                           disclosure.route_json, disclosure.route_fingerprint,
+                           disclosure.binding_hash, disclosure.data_scopes_json,
+                           disclosure.scope_hash, disclosure.excluded_data_json,
+                           disclosure.content_warning,
+                           disclosure.disclosure_hash, disclosure.created_at,
+                           disclosure.expires_at
+                    FROM report_v1.report_assistant_transfer_disclosures disclosure
+                    WHERE disclosure.disclosure_id = :disclosure_id
+                      AND disclosure.assistant_request_id = :request_id
+                      AND disclosure.owner_id = :owner_id
+                      AND disclosure.expires_at > now()
+                    """
+                ),
+                {
+                    "disclosure_id": _uuid(disclosure_id, "disclosure_id"),
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )).mappings().one_or_none()
+        if row is None:
+            raise KeyError("유효한 외부 전송 공개문을 찾을 수 없습니다.")
+        return dict(row)
+
+    async def accept_assistant_external_transfer(
+        self,
+        assistant_request_id: str,
+        disclosure_id: str,
+        disclosure_hash: str,
+    ) -> dict[str, object]:
+        """서버 공개문 원본을 복제한 명시 동의 receipt를 원자적으로 저장한다."""
+
+        consent_id = uuid4()
+        async with self._sessionmaker.begin() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_assistant_external_consents
+                        (consent_id, disclosure_id, assistant_request_id, owner_id,
+                         policy_version, disclosure_hash, route_fingerprint,
+                         binding_hash, scope_hash, accepted)
+                    SELECT :consent_id, disclosure.disclosure_id,
+                           disclosure.assistant_request_id, disclosure.owner_id,
+                           disclosure.policy_version, disclosure.disclosure_hash,
+                           disclosure.route_fingerprint, disclosure.binding_hash,
+                           disclosure.scope_hash, TRUE
+                    FROM report_v1.report_assistant_transfer_disclosures disclosure
+                    WHERE disclosure.disclosure_id = :disclosure_id
+                      AND disclosure.assistant_request_id = :request_id
+                      AND disclosure.owner_id = :owner_id
+                      AND disclosure.disclosure_hash = :disclosure_hash
+                      AND disclosure.expires_at > now()
+                    ON CONFLICT (disclosure_id) DO NOTHING
+                    RETURNING consent_id, disclosure_id, assistant_request_id,
+                              policy_version, disclosure_hash, route_fingerprint,
+                              binding_hash, scope_hash, consented_at
+                    """
+                ),
+                {
+                    "consent_id": consent_id,
+                    "disclosure_id": _uuid(disclosure_id, "disclosure_id"),
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "disclosure_hash": disclosure_hash,
+                },
+            )).mappings().one_or_none()
+            if row is None:
+                row = (await session.execute(
+                    text(
+                        """
+                        SELECT consent.consent_id, consent.disclosure_id,
+                               consent.assistant_request_id, consent.policy_version,
+                               consent.disclosure_hash, consent.route_fingerprint,
+                               consent.binding_hash, consent.scope_hash,
+                               consent.consented_at
+                        FROM report_v1.report_assistant_external_consents consent
+                        JOIN report_v1.report_assistant_transfer_disclosures disclosure
+                          ON disclosure.disclosure_id = consent.disclosure_id
+                        WHERE consent.disclosure_id = :disclosure_id
+                          AND consent.assistant_request_id = :request_id
+                          AND consent.owner_id = :owner_id
+                          AND consent.disclosure_hash = :disclosure_hash
+                          AND disclosure.expires_at > now()
+                        """
+                    ),
+                    {
+                        "disclosure_id": _uuid(disclosure_id, "disclosure_id"),
+                        "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                        "owner_id": self._owner_id,
+                        "disclosure_hash": disclosure_hash,
+                    },
+                )).mappings().one_or_none()
+        if row is None:
+            raise ValueError("외부 전송 공개문이 만료되었거나 변경되었습니다.")
+        return dict(row)
+
+    async def find_assistant_external_consent(
+        self, assistant_request_id: str, binding_hash: str
+    ) -> dict[str, object] | None:
+        """현재 owner·결속과 정확히 일치하는 최신 명시 동의를 조회한다."""
+
+        async with self._sessionmaker() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    SELECT consent.consent_id, consent.disclosure_id,
+                           consent.assistant_request_id, consent.policy_version,
+                           consent.disclosure_hash, consent.route_fingerprint,
+                           consent.binding_hash, consent.scope_hash,
+                           consent.consented_at, disclosure.route_json,
+                           disclosure.data_scopes_json, disclosure.excluded_data_json
+                    FROM report_v1.report_assistant_external_consents consent
+                    JOIN report_v1.report_assistant_transfer_disclosures disclosure
+                      ON disclosure.disclosure_id = consent.disclosure_id
+                    WHERE consent.assistant_request_id = :request_id
+                      AND consent.owner_id = :owner_id
+                      AND consent.binding_hash = :binding_hash
+                      AND consent.accepted
+                    ORDER BY consent.consented_at DESC, consent.consent_id DESC
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "binding_hash": binding_hash,
+                },
+            )).mappings().one_or_none()
+        return None if row is None else dict(row)
+
+    async def insert_assistant_transfer_receipt(
+        self,
+        assistant_request_id: str,
+        *,
+        disclosure_id: str | None,
+        consent_id: str | None,
+        policy_version: str,
+        node: str,
+        attempt: int,
+        data_boundary: str,
+        manifest_version: str,
+        route_id: str,
+        provider: str,
+        model: str,
+        model_snapshot: str,
+        endpoint: str,
+        route_fingerprint: str,
+        binding_hash: str,
+        data_scopes: tuple[str, ...],
+        scope_hash: str,
+        payload_hash: str,
+        model_execution_id: str,
+        minimum_lease_seconds: int,
+    ) -> str:
+        """실제 transport 직전에 호출 원문 없는 canonical hash receipt를 커밋한다."""
+
+        receipt_id = uuid4()
+        async with self._sessionmaker.begin() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_assistant_transfer_receipts
+                        (transfer_receipt_id, assistant_request_id, owner_id,
+                         disclosure_id, consent_id, policy_version, node, attempt,
+                         data_boundary, manifest_version, route_id, provider, model,
+                         model_snapshot, endpoint, route_fingerprint, binding_hash,
+                         data_scopes_json, scope_hash, payload_hash,
+                         model_execution_id)
+                    SELECT :receipt_id, request.assistant_request_id, request.owner_id,
+                           :disclosure_id, :consent_id, :policy_version,
+                           CAST(:node AS varchar), :attempt,
+                           :data_boundary, :manifest_version, :route_id, :provider,
+                           :model, :model_snapshot, :endpoint, :route_fingerprint,
+                           :binding_hash, CAST(:data_scopes_json AS jsonb),
+                           :scope_hash, :payload_hash, :model_execution_id
+                    FROM report_v1.report_assistant_requests request
+                    WHERE request.assistant_request_id = :request_id
+                      AND request.owner_id = :owner_id
+                      AND request.status = 'running'
+                      AND request.phase IN (
+                          'ready', 'waiting_patch_approval', 'waiting_artifact'
+                      )
+                      AND request.model_execution_id = :model_execution_id
+                      AND request.model_execution_node = CAST(:node AS varchar)
+                      AND request.model_execution_message_revision = request.message_revision
+                      AND request.model_execution_expires_at >= now()
+                          + make_interval(secs => :minimum_lease_seconds)
+                      AND EXISTS (
+                          SELECT 1
+                          FROM report_v1.report_definition_versions version
+                          JOIN report_v1.report_definitions definition
+                            ON definition.definition_id = version.definition_id
+                          WHERE version.definition_id = request.session_definition_id
+                            AND version.version = request.session_definition_version
+                            AND version.revision = request.base_revision
+                            AND version.status = 'draft'
+                            AND definition.owner_id = request.owner_id
+                      )
+                    ON CONFLICT (assistant_request_id, model_execution_id, attempt)
+                    DO NOTHING
+                    RETURNING transfer_receipt_id
+                    """
+                ),
+                {
+                    "receipt_id": receipt_id,
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "disclosure_id": (
+                        None if disclosure_id is None else _uuid(disclosure_id, "disclosure_id")
+                    ),
+                    "consent_id": None if consent_id is None else _uuid(consent_id, "consent_id"),
+                    "policy_version": policy_version,
+                    "node": node,
+                    "attempt": attempt,
+                    "data_boundary": data_boundary,
+                    "manifest_version": manifest_version,
+                    "route_id": route_id,
+                    "provider": provider,
+                    "model": model,
+                    "model_snapshot": model_snapshot,
+                    "endpoint": endpoint,
+                    "route_fingerprint": route_fingerprint,
+                    "binding_hash": binding_hash,
+                    "data_scopes_json": json.dumps(data_scopes, ensure_ascii=False),
+                    "scope_hash": scope_hash,
+                    "payload_hash": payload_hash,
+                    "model_execution_id": _uuid(
+                        model_execution_id, "model_execution_id"
+                    ),
+                    "minimum_lease_seconds": minimum_lease_seconds,
+                },
+            )).scalar_one_or_none()
+        if row is None:
+            raise KeyError("Report Assistant 세션을 찾을 수 없습니다.")
+        return str(row)

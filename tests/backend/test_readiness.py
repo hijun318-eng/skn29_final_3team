@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from sys import path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +17,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.services.readiness import AppDatabaseReadiness
+from src.modelops.runtime_config import load_model_runtime_manifest
 
 
 def current_migration_head() -> str:
@@ -37,6 +39,32 @@ class _Session:
 
 
 class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        """readiness의 가상 model origin은 test manifest에서만 승인한다."""
+
+        manifest = load_model_runtime_manifest()
+        test_manifest = replace(
+            manifest,
+            route_profiles=tuple(
+                replace(
+                    route,
+                    approved_endpoint_origins=(
+                        "https://model.invalid",
+                        "https://primary.model.invalid",
+                    ) if route.route_id == "primary" else (
+                        "https://node2.model.invalid",
+                    ),
+                )
+                for route in manifest.route_profiles
+            ),
+        )
+        manifest_patch = patch(
+            "src.modelops.runtime_config.load_model_runtime_manifest",
+            return_value=test_manifest,
+        )
+        manifest_patch.start()
+        self.addCleanup(manifest_patch.stop)
+
     def test_mcp_rate_limit_probe_rejects_missing_settings(self) -> None:
         for environment in (
             {},

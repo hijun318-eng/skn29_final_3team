@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import re
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from src.ai.model_contracts import model_release_manifest
 from src.modelops.runtime_config import (
     active_route_for_node,
+    load_model_runtime_manifest,
     resolve_active_model_routes,
 )
 
@@ -26,6 +29,32 @@ NODE2 = {
     "NODE2_MODEL_API_TOKEN": "node2-token",
     "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
 }
+
+
+@pytest.fixture(autouse=True)
+def approved_test_model_origins():
+    """격리 test endpoint만 typed manifest fixture에서 명시적으로 승인한다."""
+
+    manifest = load_model_runtime_manifest()
+    test_manifest = replace(
+        manifest,
+        route_profiles=tuple(
+            replace(
+                route,
+                approved_endpoint_origins=(
+                    "https://primary.model.invalid",
+                ) if route.route_id == "primary" else (
+                    "https://node2.model.invalid",
+                ),
+            )
+            for route in manifest.route_profiles
+        ),
+    )
+    with patch(
+        "src.modelops.runtime_config.load_model_runtime_manifest",
+        return_value=test_manifest,
+    ):
+        yield
 
 
 def test_unconfigured_optional_route_covers_every_active_node_with_primary() -> None:

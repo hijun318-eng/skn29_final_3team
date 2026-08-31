@@ -29,6 +29,7 @@ from app.ports.mcp_tool import (
 ANALYSIS_GET_RUN_TOOL_ID = UUID("c4454392-2f92-54a4-ad13-b8cdaba45732")
 ANALYSIS_GET_RUN_NAME = "analysis.get_run"
 ANALYSIS_GET_RUN_SEMANTIC_VERSION = "1.0.0"
+ANALYSIS_GET_RUN_TITLE = "Get Analysis Run"
 ANALYSIS_GET_RUN_DESCRIPTION = (
     "Get one persisted Analysis Run owned by the authenticated user."
 )
@@ -330,7 +331,7 @@ def analysis_get_run_descriptor(
         tool_id=ANALYSIS_GET_RUN_TOOL_ID,
         name=ANALYSIS_GET_RUN_NAME,
         semantic_version=ANALYSIS_GET_RUN_SEMANTIC_VERSION,
-        title="Get Analysis Run",
+        title=ANALYSIS_GET_RUN_TITLE,
         description=ANALYSIS_GET_RUN_DESCRIPTION,
         input_schema=ANALYSIS_GET_RUN_INPUT_SCHEMA,
         output_schema=ANALYSIS_GET_RUN_OUTPUT_SCHEMA,

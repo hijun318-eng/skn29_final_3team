@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Mapping
@@ -18,7 +19,7 @@ from urllib.parse import urlsplit
 from src.ai.model_contracts import model_release_manifest
 
 
-_MANIFEST_VERSION = "MODEL-RUNTIME-v1.3.0"
+_MANIFEST_VERSION = "MODEL-RUNTIME-v1.5.0"
 _MANIFEST_PATH = Path(__file__).with_name("model_runtime_manifest.v1.json")
 _SUPPORTED_PROVIDERS = frozenset({"openai", "qwen"})
 
@@ -57,6 +58,9 @@ class ModelRouteProfile:
     """active release 노드 집합과 그 집합을 구성하는 환경 변수 계약을 묶는다."""
 
     route_id: str
+    data_boundary: str
+    route_label: str
+    approved_endpoint_origins: tuple[str, ...]
     nodes: tuple[str, ...]
     provider_env: str | None
     default_provider: str | None
@@ -107,12 +111,41 @@ class ActiveModelRoute:
     """실행 시점에 확정된 노드·provider·endpoint·model과 capacity를 보존한다."""
 
     route_id: str
+    manifest_version: str
+    data_boundary: str
     nodes: tuple[str, ...]
     provider: str
     endpoint: str
     token: str = field(repr=False)
     model: str
     capacity: ModelCapacityProfile
+    route_label: str = ""
+    approved_endpoint_origins: tuple[str, ...] = ()
+
+    @property
+    def route_fingerprint(self) -> str:
+        """credential을 제외한 실제 전송 route 계약의 canonical SHA-256을 반환한다."""
+
+        payload = {
+            "manifest_version": self.manifest_version,
+            "route_id": self.route_id,
+            "nodes": self.nodes,
+            "data_boundary": self.data_boundary,
+            "route_label": self.route_label,
+            "approved_endpoint_origins": self.approved_endpoint_origins,
+            "provider": self.provider,
+            "endpoint": self.endpoint,
+            "model": self.model,
+            "model_snapshot": self.capacity.snapshot,
+        }
+        return hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
 
 
 def _required_text(value: object, label: str) -> str:
@@ -192,6 +225,9 @@ def _parse_capacity(profile_id: str, raw: object) -> ModelCapacityProfile:
 
 def _parse_route(route_id: str, raw: object) -> ModelRouteProfile:
     expected = {
+        "data_boundary",
+        "route_label",
+        "approved_endpoint_origins",
         "nodes",
         "provider_env",
         "default_provider",
@@ -208,8 +244,21 @@ def _parse_route(route_id: str, raw: object) -> ModelRouteProfile:
     parsed_nodes = tuple(_required_text(node, "model route node") for node in nodes)
     if len(parsed_nodes) != len(set(parsed_nodes)):
         raise ValueError(f"model route {route_id!r} nodes are duplicated")
+    approved_origins = raw["approved_endpoint_origins"]
+    if (
+        not isinstance(approved_origins, list)
+        or any(not isinstance(origin, str) for origin in approved_origins)
+        or len(approved_origins) != len(set(approved_origins))
+    ):
+        raise ValueError(f"model route {route_id!r} approved origins are invalid")
     route = ModelRouteProfile(
         route_id=_required_text(route_id, "model route id"),
+        data_boundary=_required_text(raw["data_boundary"], "model data boundary"),
+        route_label=_required_text(raw["route_label"], "model route label"),
+        approved_endpoint_origins=tuple(
+            _validate_origin(origin, "approved endpoint origin")
+            for origin in approved_origins
+        ),
         nodes=parsed_nodes,
         provider_env=_optional_text(raw["provider_env"], "provider environment"),
         default_provider=_optional_text(raw["default_provider"], "default provider"),
@@ -220,8 +269,12 @@ def _parse_route(route_id: str, raw: object) -> ModelRouteProfile:
     )
     if not route.provider_env and not route.default_provider:
         raise ValueError(f"model route {route_id!r} has no provider source")
+    if route.data_boundary not in {"external", "internal"}:
+        raise ValueError(f"model route {route_id!r} data boundary is invalid")
     if route.default_provider and route.default_provider not in _SUPPORTED_PROVIDERS:
         raise ValueError(f"model route {route_id!r} default provider is unsupported")
+    if route.data_boundary == "external" and not route.approved_endpoint_origins:
+        raise ValueError(f"model route {route_id!r} has no approved endpoint origin")
     return route
 
 
@@ -324,6 +377,17 @@ def _validate_endpoint(value: str, environment_name: str) -> str:
     return value.rstrip("/")
 
 
+def _validate_origin(value: str, label: str) -> str:
+    """manifest가 승인한 credential 없는 HTTPS origin만 canonical form으로 허용한다."""
+
+    endpoint = _validate_endpoint(value, label)
+    parsed = urlsplit(endpoint)
+    if parsed.path not in {"", "/"}:
+        raise ValueError(f"{label} must not contain a path")
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    return f"https://{parsed.hostname.lower()}{port}"
+
+
 def resolve_active_model_routes(
     environment: Mapping[str, str] | None = None,
 ) -> tuple[ActiveModelRoute, ...]:
@@ -360,16 +424,34 @@ def resolve_active_model_routes(
         if provider not in _SUPPORTED_PROVIDERS:
             raise ValueError(f"model route {route.route_id!r} provider is unsupported")
         model = configured[route.model_env]
+        endpoint = _validate_endpoint(
+            configured[route.endpoint_env], route.endpoint_env
+        )
+        parsed_endpoint = urlsplit(endpoint)
+        endpoint_port = (
+            f":{parsed_endpoint.port}" if parsed_endpoint.port is not None else ""
+        )
+        endpoint_origin = f"https://{parsed_endpoint.hostname.lower()}{endpoint_port}"
+        # boundary label만 internal로 바꿔 외부 host에 대한 동의를 우회할 수
+        # 없도록, 실제로 활성화되는 모든 route는 manifest에 목적지 origin을
+        # 명시해야 한다. 아직 설정되지 않은 optional internal route는 fallback을
+        # 사용하고, 추후 sLLM endpoint가 확정될 때 승인 origin을 함께 추가한다.
+        if endpoint_origin not in route.approved_endpoint_origins:
+            raise ValueError(
+                f"model route {route.route_id!r} endpoint origin is not approved"
+            )
         active[route.route_id] = ActiveModelRoute(
             route_id=route.route_id,
+            manifest_version=manifest.manifest_version,
+            data_boundary=route.data_boundary,
             nodes=route.nodes,
             provider=provider,
-            endpoint=_validate_endpoint(
-                configured[route.endpoint_env], route.endpoint_env
-            ),
+            endpoint=endpoint,
             token=configured[route.token_env],
             model=model,
             capacity=manifest.capacity_for(model, provider=provider),
+            route_label=route.route_label,
+            approved_endpoint_origins=route.approved_endpoint_origins,
         )
     for route in inactive:
         fallback = active.get(route.fallback_route or "")

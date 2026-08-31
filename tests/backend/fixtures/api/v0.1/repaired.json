@@ -52,6 +52,7 @@
           "end_exclusive": "2041-04-01",
           "start": "2041-03-01"
         },
+        "permission_snapshot_id": null,
         "policy_version": "policy-v1",
         "product_release_id": null,
         "query_id": "fixture-query-repaired",
@@ -60,6 +61,7 @@
           "returned_rows": 1,
           "total_rows": 1
         },
+        "semantic_release_id": null,
         "snapshot": null,
         "sources": [
           {

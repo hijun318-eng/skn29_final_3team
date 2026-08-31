@@ -12,7 +12,7 @@
 - 새로고침 복구 API `GET /reports/assistant/sessions/{assistant_request_id}` 추가
 - Pydantic 응답 계약에서 데이터 실행 phase에 완전한 `analysis_plan`을 강제
 - 프런트엔드 Report client에 세션 생성·복구와 phase 검증 추가
-- 기존 `/reports/assistant/drafts` 호환 경로 유지
+- 승인 경계를 우회하던 `/reports/assistant/drafts`는 모델 호출 전 `410 Gone`으로 폐기
 
 ## 이번 단계에서 의도적으로 미실행
 

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -17,9 +18,14 @@ from app.adapters.async_model_client import (
     ModelRequestRejectedError,
 )
 from app.adapters.model_transport import OpenAITransport, openai_transport
-from app.adapters.report_assistant import generate_report_draft
+from app.adapters.report_assistant import (
+    bind_report_assistant_model_execution,
+    generate_report_draft,
+    prepare_report_assistant_model_invocation,
+)
 from tests.ai.test_contracts import VALID_PAYLOADS
 from src.modelops.runtime import _TRANSPORT_META_KEY
+from src.modelops.runtime_config import active_route_for_node, resolve_active_model_routes
 from src.ai.schema import validate_payload
 
 
@@ -382,6 +388,7 @@ class AsyncModelTransportTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_report_assistant_uses_strict_http_contract_and_trace_metadata(self) -> None:
         seen_wire: list[dict[str, object]] = []
+        payload = self._report_request()
 
         async def handler(request: httpx.Request) -> httpx.Response:
             provider_payload = json.loads(request.content)
@@ -415,9 +422,12 @@ class AsyncModelTransportTests(unittest.IsolatedAsyncioTestCase):
             patch.dict(
                 os.environ,
                 {
-                    "OPENAI_ENDPOINT": "https://report-model.invalid",
+                    "OPENAI_ENDPOINT": "https://api.openai.com/test",
                     "OPENAI_API_KEY": "report-token",
                     "OPENAI_MODEL": "gpt-5.4-mini",
+                    "REPORT_ASSISTANT_INPUT_USD_PER_MILLION": "1",
+                    "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION": "1",
+                    "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD": "100",
                 },
             ),
             patch(
@@ -425,7 +435,26 @@ class AsyncModelTransportTests(unittest.IsolatedAsyncioTestCase):
                 return_value=http,
             ) as client_factory,
         ):
-            proposal, trace = await generate_report_draft(self._report_request())
+            route = active_route_for_node(
+                resolve_active_model_routes(), "report_assistant"
+            )
+            authorization = SimpleNamespace(
+                node="report_assistant",
+                route=route,
+                record_attempt=AsyncMock(return_value="receipt-id"),
+            )
+            invocation = bind_report_assistant_model_execution(
+                prepare_report_assistant_model_invocation(
+                    "report_assistant",
+                    payload,
+                    authorization=authorization,
+                    repository=object(),
+                ),
+                "11111111-1111-4111-8111-111111111111",
+            )
+            proposal, trace = await generate_report_draft(
+                payload, invocation=invocation
+            )
 
         client_factory.assert_called_once_with(trust_env=False)
         self.assertTrue(http.is_closed)
@@ -433,6 +462,7 @@ class AsyncModelTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("model", proposal)
         self.assertEqual("gpt-5.4-mini", trace["model_version"])
         self.assertEqual("report-model-snapshot", trace["model_snapshot"])
+        authorization.record_attempt.assert_awaited_once()
 
 
 if __name__ == "__main__":

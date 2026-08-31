@@ -123,6 +123,49 @@ class MCPCandidateDescriptorMigrationTest(unittest.TestCase):
         )
         self.assertEqual(("analysis.get_run",), active_code_descriptors)
 
+    def test_each_candidate_is_disabled_and_has_no_runtime_handler(self) -> None:
+        """세 candidate 모두 DB 경계에만 있고 운영 dispatcher에는 조립되지 않는다."""
+
+        runtime_names = {
+            descriptor.name for descriptor in _tool_registry()._descriptors
+        }
+        statements = _capture_sql(self.migration, "upgrade")
+        candidates = (
+            (
+                "analysis.run",
+                self.migration.ANALYSIS_RUN_TOOL_ID,
+                "0.1.0-CANDIDATE",
+            ),
+            (
+                "rag.answer",
+                self.migration.RAG_ANSWER_TOOL_ID,
+                "1.2.0-CANDIDATE",
+            ),
+            (
+                "ml.predict",
+                self.migration.ML_PREDICT_TOOL_ID,
+                "0.1.0-CANDIDATE",
+            ),
+        )
+        for tool_code, tool_id, version in candidates:
+            with self.subTest(tool_code=tool_code):
+                self.assertNotIn(tool_code, runtime_names)
+                matching = tuple(
+                    statement
+                    for statement in statements
+                    if f"TOOL_ID = '{tool_id.upper()}'" in statement
+                    or f"'{tool_id.upper()}', '{tool_code.upper()}'" in statement
+                )
+                self.assertTrue(matching)
+                rendered = " ".join(matching)
+                self.assertIn(tool_code.upper(), rendered)
+                self.assertIn(version, rendered)
+                self.assertIn("IS_ENABLED", rendered)
+                self.assertRegex(
+                    rendered,
+                    r"IS_ENABLED = FALSE|IS_ENABLED\) VALUES \( .* FALSE \)",
+                )
+
     def test_upgrade_locks_exact_rag_predecessor_before_run_check(self) -> None:
         statements = _capture_sql(self.migration, "upgrade")
         rag_update = next(

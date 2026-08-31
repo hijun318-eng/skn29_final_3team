@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -13,7 +15,7 @@ from datetime import UTC
 from typing import Annotated, Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import text
@@ -36,6 +38,7 @@ from app.services.mcp_tool_registry import (
     ANALYSIS_GET_RUN_NAME,
     ANALYSIS_GET_RUN_OUTPUT_SCHEMA,
     ANALYSIS_GET_RUN_SEMANTIC_VERSION,
+    ANALYSIS_GET_RUN_TITLE,
     ANALYSIS_GET_RUN_TIMEOUT_SECONDS,
     ANALYSIS_GET_RUN_TOOL_ID,
     MCPToolAccess,
@@ -62,6 +65,7 @@ TOOL_RATE_LIMITED = 42900
 TOOL_ID = ANALYSIS_GET_RUN_TOOL_ID
 TOOL_NAME = ANALYSIS_GET_RUN_NAME
 TOOL_SEMANTIC_VERSION = ANALYSIS_GET_RUN_SEMANTIC_VERSION
+TOOL_TITLE = ANALYSIS_GET_RUN_TITLE
 TOOL_DESCRIPTION = ANALYSIS_GET_RUN_DESCRIPTION
 TOOL_TRANSPORT = "MCP_STREAMABLE_HTTP"
 TOOL_TIMEOUT_SECONDS = ANALYSIS_GET_RUN_TIMEOUT_SECONDS
@@ -83,6 +87,220 @@ _REJECTED_CALL_REASONS = frozenset(
     {"UNKNOWN_TOOL", "DISABLED_TOOL", "REGISTRY_CONTRACT_DRIFT"}
 )
 _REJECTED_CALL_BUCKET_PREFIX = "answervice:mcp:rejected-call:"
+_MCP_RESPONSE_MEDIA_TYPES = frozenset({"application/json", "text/event-stream"})
+logger = logging.getLogger(__name__)
+
+_MCP_REQUEST_ID_SCHEMA = {
+    "oneOf": [{"type": "string"}, {"type": "integer"}],
+}
+_MCP_REQUEST_META_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "io.modelcontextprotocol/protocolVersion": {
+            "type": "string",
+            "const": MCP_PROTOCOL_VERSION,
+        },
+        "io.modelcontextprotocol/clientCapabilities": {"type": "object"},
+        "io.modelcontextprotocol/clientInfo": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "version": {"type": "string", "minLength": 1},
+            },
+            "required": ["name", "version"],
+            "additionalProperties": True,
+        },
+    },
+    "required": [
+        "io.modelcontextprotocol/protocolVersion",
+        "io.modelcontextprotocol/clientCapabilities",
+    ],
+    "additionalProperties": True,
+}
+
+
+def _mcp_request_schema(method: str, params: Mapping[str, Any]) -> dict[str, Any]:
+    """OpenAPI에 실제로 수용하는 method별 JSON-RPC request shape를 만든다."""
+
+    return {
+        "type": "object",
+        "properties": {
+            "jsonrpc": {"type": "string", "const": "2.0"},
+            "id": _MCP_REQUEST_ID_SCHEMA,
+            "method": {"type": "string", "const": method},
+            "params": dict(params),
+        },
+        "required": ["jsonrpc", "id", "method", "params"],
+        "additionalProperties": True,
+    }
+
+
+_MCP_METADATA_ONLY_PARAMS_SCHEMA = {
+    "type": "object",
+    "properties": {"_meta": _MCP_REQUEST_META_SCHEMA},
+    "required": ["_meta"],
+    "additionalProperties": False,
+}
+_MCP_JSON_RPC_REQUEST_SCHEMA = {
+    "oneOf": [
+        _mcp_request_schema("server/discover", _MCP_METADATA_ONLY_PARAMS_SCHEMA),
+        _mcp_request_schema("tools/list", _MCP_METADATA_ONLY_PARAMS_SCHEMA),
+        _mcp_request_schema(
+            "tools/call",
+            {
+                "type": "object",
+                "properties": {
+                    "_meta": _MCP_REQUEST_META_SCHEMA,
+                    "name": {"type": "string", "minLength": 1},
+                    "arguments": {"type": "object"},
+                },
+                "required": ["_meta", "name"],
+                "additionalProperties": False,
+            },
+        ),
+    ]
+}
+_MCP_JSON_RPC_RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "jsonrpc": {"type": "string", "const": "2.0"},
+        "id": _MCP_REQUEST_ID_SCHEMA,
+        "result": {
+            "type": "object",
+            "properties": {
+                "resultType": {"type": "string", "const": "complete"},
+                "_meta": {"type": "object"},
+            },
+            "required": ["resultType", "_meta"],
+        },
+    },
+    "required": ["jsonrpc", "id", "result"],
+    "additionalProperties": False,
+}
+_MCP_JSON_RPC_ERROR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "jsonrpc": {"type": "string", "const": "2.0"},
+        "id": _MCP_REQUEST_ID_SCHEMA,
+        "error": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "integer"},
+                "message": {"type": "string"},
+                "data": {},
+            },
+            "required": ["code", "message"],
+            "additionalProperties": False,
+        },
+    },
+    "required": ["jsonrpc", "error"],
+    "additionalProperties": False,
+}
+_MCP_JSON_RPC_RESPONSE_SCHEMA = {
+    "oneOf": [_MCP_JSON_RPC_RESULT_SCHEMA, _MCP_JSON_RPC_ERROR_SCHEMA]
+}
+_MCP_POST_OPENAPI_EXTRA = {
+    "parameters": [
+        {
+            "name": "Accept",
+            "in": "header",
+            "required": True,
+            "schema": {
+                "type": "string",
+                "example": "application/json, text/event-stream",
+            },
+        },
+        {
+            "name": "MCP-Protocol-Version",
+            "in": "header",
+            "required": True,
+            "schema": {"type": "string", "const": MCP_PROTOCOL_VERSION},
+        },
+        {
+            "name": "Mcp-Method",
+            "in": "header",
+            "required": True,
+            "schema": {"type": "string"},
+        },
+        {
+            "name": "Mcp-Name",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string"},
+        },
+        {
+            "name": "Mcp-Session-Id",
+            "in": "header",
+            "required": False,
+            "deprecated": True,
+            "description": "2026-07-28 stateless transport ignores this legacy header.",
+            "schema": {"type": "string"},
+        },
+    ],
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {"schema": _MCP_JSON_RPC_REQUEST_SCHEMA},
+        },
+    },
+}
+_COMMON_ERROR_RESPONSE_SCHEMA = {"$ref": "#/components/schemas/ErrorResponse"}
+
+
+def _mcp_openapi_response(
+    description: str,
+    schema: Mapping[str, Any] = _MCP_JSON_RPC_RESPONSE_SCHEMA,
+) -> dict[str, Any]:
+    """한 HTTP 상태의 실제 JSON 응답 계약을 OpenAPI 항목으로 만든다."""
+
+    return {
+        "description": description,
+        "content": {"application/json": {"schema": dict(schema)}},
+    }
+
+
+_MCP_POST_RESPONSES = {
+    200: _mcp_openapi_response("JSON-RPC result or Tool-level error"),
+    400: _mcp_openapi_response(
+        "Malformed JSON-RPC request or mirrored-header mismatch"
+    ),
+    401: _mcp_openapi_response(
+        "Bearer authentication required",
+        _COMMON_ERROR_RESPONSE_SCHEMA,
+    ),
+    403: _mcp_openapi_response(
+        "Origin or authorization denied",
+        {
+            "oneOf": [
+                _MCP_JSON_RPC_ERROR_SCHEMA,
+                _COMMON_ERROR_RESPONSE_SCHEMA,
+            ]
+        },
+    ),
+    404: _mcp_openapi_response("JSON-RPC method not found"),
+    406: _mcp_openapi_response("Required response media types are not accepted"),
+    415: _mcp_openapi_response("Request body is not application/json"),
+    429: {
+        **_mcp_openapi_response("Tool call rate limited"),
+        "headers": {
+            "Retry-After": {"schema": {"type": "integer", "minimum": 1}},
+            "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+        },
+    },
+    500: _mcp_openapi_response(
+        "Unhandled server failure",
+        _COMMON_ERROR_RESPONSE_SCHEMA,
+    ),
+    503: _mcp_openapi_response(
+        "Authentication, MCP registry, quota, Tool, or audit unavailable",
+        {
+            "oneOf": [
+                _MCP_JSON_RPC_ERROR_SCHEMA,
+                _COMMON_ERROR_RESPONSE_SCHEMA,
+            ]
+        },
+    ),
+}
 
 
 def _database_url() -> str:
@@ -187,6 +405,37 @@ def _origin_allowed(origin: str | None) -> bool:
         return True
     allowed = {item.strip() for item in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if item.strip()}
     return origin in allowed
+
+
+def _is_json_content_type(value: str | None) -> bool:
+    """Charset parameter를 허용하되 JSON 이외 request media type은 거부한다."""
+
+    if value is None:
+        return False
+    return value.split(";", 1)[0].strip().lower() == "application/json"
+
+
+def _accepts_mcp_response_types(value: str | None) -> bool:
+    """한 POST가 JSON과 request-scoped SSE 응답을 모두 수용하는지 확인한다."""
+
+    if value is None:
+        return False
+    accepted: set[str] = set()
+    for item in value.split(","):
+        segments = [segment.strip() for segment in item.split(";")]
+        if not segments or not segments[0]:
+            continue
+        quality = 1.0
+        for parameter in segments[1:]:
+            key, separator, raw_quality = parameter.partition("=")
+            if separator and key.strip().lower() == "q":
+                try:
+                    quality = float(raw_quality.strip())
+                except ValueError:
+                    quality = 0.0
+        if 0 < quality <= 1:
+            accepted.add(segments[0].lower())
+    return _MCP_RESPONSE_MEDIA_TYPES.issubset(accepted)
 
 
 def _valid_request_id(value: Any) -> bool:
@@ -300,8 +549,8 @@ async def _registry_rows() -> Sequence[Mapping[str, Any]]:
             result = await session.execute(
                 text(
                     """
-                    SELECT tool_id, tool_code, semantic_version, description,
-                           input_schema_json, output_schema_json, transport,
+                    SELECT tool_id, tool_code, semantic_version, title, description,
+                           input_schema_json, output_schema_json, annotations_json, transport,
                            timeout_seconds, required_roles_json, is_enabled
                     FROM tooling.tool_registry
                     """
@@ -574,6 +823,41 @@ async def _audit_or_error(
     return None
 
 
+async def _record_cancelled_run(
+    principal: Principal,
+    trace_id: str,
+    arguments: Any,
+    started: float,
+    *,
+    tool_id: UUID,
+) -> None:
+    """요청 task 취소와 분리해 terminal cancellation receipt 저장을 끝낸다."""
+
+    audit_task = asyncio.create_task(
+        _record_run(
+            principal,
+            trace_id,
+            arguments,
+            "CANCELLED",
+            started,
+            {},
+            "REQUEST_CANCELLED",
+            tool_id=tool_id,
+        )
+    )
+    try:
+        await asyncio.shield(audit_task)
+    except asyncio.CancelledError:
+        # 동시에 들어온 추가 cancel도 audit child task에는 전파하지 않는다.
+        try:
+            await audit_task
+        except Exception:
+            logger.exception("MCP cancellation audit failed", extra={"trace_id": trace_id})
+    except Exception:
+        # 끊어진 client에 응답할 수 없으므로 감사 저장 실패를 운영 log로 남긴다.
+        logger.exception("MCP cancellation audit failed", extra={"trace_id": trace_id})
+
+
 async def _audited_tool_error(
     request_id: str | int,
     principal: Principal,
@@ -613,19 +897,44 @@ async def _audited_tool_error(
     )
 
 
-@mcp_router.get("/mcp", operation_id="mcpGet")
-async def mcp_get(_principal: Annotated[Principal, Security(_principal)]) -> Response:
-    """인증은 확인하되 MCP transport를 POST로만 제한하는 405 응답을 반환한다."""
+@mcp_router.get(
+    "/mcp",
+    operation_id="mcpGet",
+    status_code=405,
+    response_class=Response,
+    responses={405: {"description": "GET is not supported by stateless MCP"}},
+)
+async def mcp_get(
+    _authenticated: Annotated[Principal, Security(_principal)],
+) -> Response:
+    """2026-07-28에서 제거된 standalone GET stream을 405로 닫는다."""
     return Response(status_code=405, headers={"Allow": "POST"})
 
 
-@mcp_router.post("/mcp", operation_id="mcpPost")
+@mcp_router.delete(
+    "/mcp",
+    operation_id="mcpDelete",
+    status_code=405,
+    response_class=Response,
+    responses={405: {"description": "DELETE is not supported by stateless MCP"}},
+)
+async def mcp_delete(
+    _authenticated: Annotated[Principal, Security(_principal)],
+) -> Response:
+    """2026-07-28에서 제거된 protocol session 종료 요청을 405로 닫는다."""
+
+    return Response(status_code=405, headers={"Allow": "POST"})
+
+
+@mcp_router.post(
+    "/mcp",
+    operation_id="mcpPost",
+    openapi_extra=_MCP_POST_OPENAPI_EXTRA,
+    responses=_MCP_POST_RESPONSES,
+)
 async def mcp_post(
     request: Request,
     principal: Annotated[Principal, Security(_principal)],
-    protocol_version: Annotated[str, Header(alias="MCP-Protocol-Version")],
-    mcp_method: Annotated[str, Header(alias="Mcp-Method")],
-    mcp_name: Annotated[str | None, Header(alias="Mcp-Name")] = None,
 ) -> Response:
     """MCP JSON-RPC 요청의 origin·버전·header·도구 권한을 검증해 한 건을 실행한다.
 
@@ -634,6 +943,18 @@ async def mcp_post(
     """
     if not _origin_allowed(request.headers.get("Origin")):
         return _rpc_error(None, -32600, "Origin is not allowed", 403)
+    if not _is_json_content_type(request.headers.get("Content-Type")):
+        return _rpc_error(None, -32600, "Content-Type must be application/json", 415)
+    if not _accepts_mcp_response_types(request.headers.get("Accept")):
+        return _rpc_error(
+            None,
+            -32600,
+            "Accept must list application/json and text/event-stream",
+            406,
+        )
+    protocol_version = request.headers.get("MCP-Protocol-Version")
+    mcp_method = request.headers.get("Mcp-Method")
+    mcp_name = request.headers.get("Mcp-Name")
     try:
         payload = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -793,6 +1114,12 @@ async def mcp_post(
         return _rpc_error(request_id, -32602, "Unknown or disabled tool")
     descriptor = access.descriptor
     if not access.authorized:
+        try:
+            rejected_quota = await _consume_rejected_call_quota(principal)
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
+        if not rejected_quota.allowed:
+            return _rpc_rate_limited(request_id, rejected_quota)
         return await _audited_tool_error(
             request_id,
             principal,
@@ -823,19 +1150,24 @@ async def mcp_post(
             return audit_error
         return _rpc_infrastructure_error(request_id, error)
     if not quota.allowed:
-        audit_error = await _audit_or_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            "DENIED",
-            started,
-            {},
-            "RATE_LIMITED",
-            tool_id=descriptor.tool_id,
-        )
-        if audit_error is not None:
-            return audit_error
+        try:
+            rejected_quota = await _consume_rejected_call_quota(principal)
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
+        if rejected_quota.allowed:
+            audit_error = await _audit_or_error(
+                request_id,
+                principal,
+                trace_id,
+                arguments,
+                "DENIED",
+                started,
+                {},
+                "RATE_LIMITED",
+                tool_id=descriptor.tool_id,
+            )
+            if audit_error is not None:
+                return audit_error
         return _rpc_rate_limited(request_id, quota)
     try:
         result = await MCPToolDispatcher().dispatch(
@@ -845,6 +1177,15 @@ async def mcp_post(
             trace_id=trace_id,
             arguments=arguments,
         )
+    except asyncio.CancelledError:
+        await _record_cancelled_run(
+            principal,
+            trace_id,
+            arguments,
+            started,
+            tool_id=descriptor.tool_id,
+        )
+        raise
     except MCPInfrastructureError as error:
         audit_error = await _audit_or_error(
             request_id,

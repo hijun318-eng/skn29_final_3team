@@ -386,6 +386,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             (),
             {
                 "__init__": lambda self, **kwargs: None,
+                "pages": (object(),),
+                "render": lambda self: self,
                 "write_pdf": lambda self, **kwargs: b"%PDF-1.7\naggregate",
             },
         )
@@ -586,6 +588,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 (),
                 {
                     "__init__": lambda self, **kwargs: None,
+                    "pages": (object(),),
+                    "render": lambda self: self,
                     "write_pdf": lambda self, **kwargs: b"%PDF-1.7\ncontract",
                 },
             )
@@ -752,7 +756,15 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_report_assistant_awaits_the_async_model_transport(self):
-        from app.adapters.report_assistant import generate_report_draft
+        from app.adapters.report_assistant import (
+            bind_report_assistant_model_execution,
+            generate_report_draft,
+            prepare_report_assistant_model_invocation,
+        )
+        from src.modelops.runtime_config import (
+            active_route_for_node,
+            resolve_active_model_routes,
+        )
 
         response = {
             "title": "Operations report",
@@ -765,9 +777,12 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             patch.dict(
                 os.environ,
                 {
-                    "OPENAI_ENDPOINT": "https://model.invalid",
+                    "OPENAI_ENDPOINT": "https://api.openai.com/test",
                     "OPENAI_API_KEY": "test-token",
                     "OPENAI_MODEL": "gpt-5.4-mini",
+                    "REPORT_ASSISTANT_INPUT_USD_PER_MILLION": "1",
+                    "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION": "1",
+                    "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD": "100",
                 },
             ),
             patch(
@@ -775,11 +790,32 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 transport,
             ),
         ):
-            proposal, trace = await generate_report_draft(report_assistant_request())
+            payload = report_assistant_request()
+            route = active_route_for_node(
+                resolve_active_model_routes(), "report_assistant"
+            )
+            authorization = SimpleNamespace(
+                node="report_assistant",
+                route=route,
+                record_attempt=AsyncMock(return_value="receipt-id"),
+            )
+            invocation = bind_report_assistant_model_execution(
+                prepare_report_assistant_model_invocation(
+                    "report_assistant",
+                    payload,
+                    authorization=authorization,
+                    repository=object(),
+                ),
+                "22222222-2222-4222-8222-222222222222",
+            )
+            proposal, trace = await generate_report_draft(
+                payload, invocation=invocation
+            )
 
         self.assertEqual(response, proposal)
         self.assertEqual("gpt-5.4-mini", trace["model_version"])
         transport.assert_awaited_once()
+        authorization.record_attempt.assert_awaited_once()
 
 
 @unittest.skipUnless(

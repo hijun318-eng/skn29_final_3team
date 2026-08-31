@@ -11,9 +11,23 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.contracts import ChartSpec, Evidence, MetricValue, TableResult
+from app.contracts import (
+    ChartSpec,
+    EmptyData,
+    Evidence,
+    MetricValue,
+    ResponseMeta,
+    TableResult,
+)
 from src.report.domain import (
     BlockFailureCode,
+    MAX_REPORT_BLOCK_CONTENT_LENGTH,
+    MAX_REPORT_BLOCK_HEIGHT,
+    MAX_REPORT_BLOCK_ID_LENGTH,
+    MAX_REPORT_BLOCK_REFERENCE_ID_LENGTH,
+    MAX_REPORT_BLOCK_TITLE_LENGTH,
+    MAX_REPORT_BLOCKS,
+    MAX_REPORT_LAYOUT_ROWS,
     normalize_report_block_content,
     normalize_report_title,
 )
@@ -27,7 +41,7 @@ ReportChartType = Literal[
     "bar", "horizontal-bar", "line", "area", "stacked-bar", "donut", "pie"
 ]
 ReportBlockSizeMode = Literal["auto", "manual"]
-REPORT_MAX_BLOCKS = 100
+REPORT_MAX_BLOCKS = MAX_REPORT_BLOCKS
 
 
 class ReportContractModel(BaseModel):
@@ -37,18 +51,18 @@ class ReportContractModel(BaseModel):
 
 class ReportBlockRequest(ReportContractModel):
     """12열 격자에 배치할 표·차트·산출물·텍스트 블록의 위치, 크기와 데이터 참조를 입력받는다."""
-    block_id: str = Field(min_length=1)
-    title: str = Field(min_length=1)
-    artifact_id: str | None = None
-    query_id: str | None = None
-    view_spec_id: str | None = None
+    block_id: str = Field(min_length=1, max_length=MAX_REPORT_BLOCK_ID_LENGTH)
+    title: str = Field(min_length=1, max_length=MAX_REPORT_BLOCK_TITLE_LENGTH)
+    artifact_id: str | None = Field(default=None, min_length=1, max_length=MAX_REPORT_BLOCK_REFERENCE_ID_LENGTH)
+    query_id: str | None = Field(default=None, min_length=1, max_length=MAX_REPORT_BLOCK_REFERENCE_ID_LENGTH)
+    view_spec_id: str | None = Field(default=None, min_length=1, max_length=MAX_REPORT_BLOCK_REFERENCE_ID_LENGTH)
     columns: int | None = Field(default=None, ge=1, le=12)
     type: Literal["table", "chart", "artifact", "text", "page_break"] = "table"
     x: int = Field(default=0, ge=0, le=11)
-    y: int = Field(default=0, ge=0)
+    y: int = Field(default=0, ge=0, lt=MAX_REPORT_LAYOUT_ROWS)
     w: int | None = Field(default=None, ge=1, le=12)
-    h: int = Field(default=1, ge=1)
-    content: str = ""
+    h: int = Field(default=1, ge=1, le=MAX_REPORT_BLOCK_HEIGHT)
+    content: str = Field(default="", max_length=MAX_REPORT_BLOCK_CONTENT_LENGTH)
     evidence_refs: tuple[str, ...] = Field(default=(), max_length=16)
 
     @field_validator("evidence_refs")
@@ -67,6 +81,10 @@ class ReportBlockRequest(ReportContractModel):
         """새 저장 요청의 data block을 정확히 하나의 원자 view에 결속한다."""
 
         self.content = normalize_report_block_content(self.type, self.content)
+        if len(self.content) > MAX_REPORT_BLOCK_CONTENT_LENGTH:
+            raise ValueError("Report block content 길이가 허용 범위를 벗어났습니다.")
+        if self.y + self.h > MAX_REPORT_LAYOUT_ROWS:
+            raise ValueError("Report block layout이 저장 가능한 A4 격자 범위를 벗어났습니다.")
         return self
 
 
@@ -311,20 +329,6 @@ class RunDueReportScheduleResponse(ReportContractModel):
     run: ReportRunResponse | None = None
 
 
-class CreateReportAssistantDraftRequest(ReportContractModel):
-    """검증된 분석 산출물과 500자 이하 편집 지시로 AI 보고서 초안 생성을 요청한다."""
-    artifact_id: UUID
-    instruction: str = Field(default="경영 검토용 보고서 초안을 구성해 줘", min_length=1, max_length=500)
-
-    @field_validator("instruction")
-    @classmethod
-    def reject_blank_instruction(cls, value: str) -> str:
-        """AI 초안 지시의 양끝 공백을 제거하고 의미 없는 빈 지시는 모델 호출 전에 거부한다."""
-        if not value.strip():
-            raise ValueError("instruction은 비어 있을 수 없습니다.")
-        return value.strip()
-
-
 class ReportAssistantTraceResponse(ReportContractModel):
     """AI 초안에 사용한 모델·프롬프트 버전과 해시, 시도 횟수·지연 시간을 감사 증거로 반환한다."""
     model_version: str
@@ -366,14 +370,6 @@ class ReportAssistantReviewResponse(ReportContractModel):
     trace: ReportAssistantTraceResponse
 
 
-class ReportAssistantDraftResponse(ReportContractModel):
-    """AI 요청 ID, 성공 상태, 생성된 보고서 정의와 모델 호출 추적을 한 응답으로 반환한다."""
-    assistant_request_id: UUID
-    status: Literal["success"]
-    definition: ReportDefinitionResponse
-    trace: ReportAssistantTraceResponse
-
-
 ReportAssistantPhase = Literal[
     "ready",
     "waiting_patch_approval",
@@ -396,6 +392,7 @@ class ReportAssistantRequiredAction(str, Enum):
     REAUTHENTICATE = "REAUTHENTICATE"
     REOPEN_LATEST_REPORT = "REOPEN_LATEST_REPORT"
     CONTACT_ADMIN = "CONTACT_ADMIN"
+    REVIEW_EXTERNAL_TRANSFER = "REVIEW_EXTERNAL_TRANSFER"
 
 
 class ReportAssistantRetryPolicy(ReportContractModel):
@@ -419,6 +416,7 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
         "REPORT_ASSISTANT_MODEL_RATE_LIMITED",
         "REPORT_ASSISTANT_MODEL_TIMEOUT",
         "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED",
+        "REPORT_ASSISTANT_PAGE_RENDER_FAILED",
         "REPORT_ASSISTANT_TURN_MODEL_FAILED",
         "REPORT_ASSISTANT_TURN_MODEL_INVALID",
     }
@@ -436,6 +434,10 @@ def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetr
         "REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID": ReportAssistantRequiredAction.CONTACT_ADMIN,
         "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID": ReportAssistantRequiredAction.CONTACT_ADMIN,
         "REPORT_ASSISTANT_MODEL_REQUEST_REJECTED": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "EXTERNAL_TRANSFER_CONSENT_REQUIRED": ReportAssistantRequiredAction.REVIEW_EXTERNAL_TRANSFER,
+        # 자동 재전송은 금지한다. 사용자가 새 세션을 명시적으로 시작하면
+        # 새로운 공개문과 동의 아래에서만 다시 실행할 수 있다.
+        "EXTERNAL_TRANSFER_OUTCOME_UNKNOWN": ReportAssistantRequiredAction.RETRY,
     }
     if error_code in retryable:
         return ReportAssistantRetryPolicy(
@@ -488,6 +490,96 @@ class ReportAssistantReviewRequest(ReportContractModel):
     """비저장 품질 검토가 참고할 현재 편집기 선택 블록을 선택적으로 지정한다."""
 
     selected_block_id: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+ReportAssistantTransferScope = Literal[
+    "user_instruction",
+    "assistant_turn_history",
+    "report_metadata_layout",
+    "report_block_content",
+    "selected_artifact_metadata",
+    "selected_artifact_narrative",
+    "selected_artifact_metrics",
+    "selected_artifact_chart_spec",
+    "selected_artifact_table_snapshot",
+    "pending_patch",
+    "approved_new_analysis_artifact",
+]
+
+
+class ReportAssistantProviderRoute(ReportContractModel):
+    """credential·원문 endpoint를 제외하고 사용자에게 공개할 실제 모델 route다."""
+
+    node: Literal["report_assistant", "report_assistant_turn", "report_assistant_review"]
+    route_id: str = Field(min_length=1, max_length=64)
+    route_label: str = Field(min_length=1, max_length=96)
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=255)
+    data_boundary: Literal["external", "internal"]
+    destination_origin: str = Field(pattern=r"^https://[^/?#]+$")
+
+
+class ReportAssistantExternalTransferDisclosureResponse(ReportContractModel):
+    """외부 provider 전송 전에 서버가 확정한 route·데이터 범위 공개문이다."""
+
+    disclosure_id: UUID
+    assistant_request_id: UUID
+    policy_version: str = Field(min_length=1, max_length=96)
+    provider_routes: tuple[ReportAssistantProviderRoute, ...] = Field(min_length=1, max_length=3)
+    data_scopes: tuple[ReportAssistantTransferScope, ...] = Field(min_length=1, max_length=11)
+    excluded_data: tuple[str, ...] = Field(min_length=1, max_length=10)
+    content_warning: str = Field(min_length=1, max_length=500)
+    disclosure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime
+    consent_required: bool
+
+    @field_validator("data_scopes", "excluded_data")
+    @classmethod
+    def require_unique_disclosure_items(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        """공개문 목록의 중복을 거부해 hash와 화면 표현을 일치시킨다."""
+
+        if len(values) != len(set(values)):
+            raise ValueError("외부 전송 공개문 항목은 중복될 수 없습니다.")
+        return values
+
+
+class ReportAssistantExternalTransferConsentRequest(ReportContractModel):
+    """서버 생성 공개문 식별자·hash에 대한 명시적 수락만 입력받는다."""
+
+    disclosure_id: UUID
+    disclosure_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    accepted: Literal[True]
+
+
+class ReportAssistantExternalTransferConsentResponse(ReportContractModel):
+    """현재 owner·세션·route·scope에 결속된 append-only 동의 receipt를 반환한다."""
+
+    consent_id: UUID
+    assistant_request_id: UUID
+    policy_version: str = Field(min_length=1, max_length=96)
+    provider_routes: tuple[ReportAssistantProviderRoute, ...] = Field(min_length=1, max_length=3)
+    data_scopes: tuple[ReportAssistantTransferScope, ...] = Field(min_length=1, max_length=11)
+    consented_at: datetime
+
+
+class ReportAssistantExternalTransferError(ReportContractModel):
+    """428에서 동의 dialog 복구에 필요한 서버 공개문만 구조화해 반환한다."""
+
+    code: Literal["EXTERNAL_TRANSFER_CONSENT_REQUIRED"]
+    message: str
+    assistant_request_id: UUID
+    disclosure: ReportAssistantExternalTransferDisclosureResponse
+    required_action: Literal["REVIEW_EXTERNAL_TRANSFER"]
+    retryable: Literal[False] = False
+    trace_id: str = ""
+
+
+class ReportAssistantExternalTransferErrorResponse(ReportContractModel):
+    """공통 meta와 외부 전송 공개문을 결합한 전용 428 error envelope다."""
+
+    data: EmptyData = Field(default_factory=EmptyData)
+    meta: ResponseMeta
+    error: ReportAssistantExternalTransferError
 
 
 class ReportAssistantAnalysisScope(ReportContractModel):
@@ -589,7 +681,15 @@ class ReportAssistantSessionResponse(ReportContractModel):
     definition_version: int
     base_revision: int
     artifact_id: UUID
-    artifact_ids: tuple[UUID, ...] = ()
+    artifact_ids: tuple[UUID, ...] = Field(
+        min_length=1,
+        max_length=6,
+        description=(
+            "대표 artifact_id가 첫 번째인 중복 없는 결속 목록. 최초 선택 최대 5개와 "
+            "새 데이터 결과 1개를 포함할 수 있습니다."
+        ),
+        json_schema_extra={"uniqueItems": True},
+    )
     turn_history: tuple[ReportAssistantTurnMessage, ...] = Field(default=(), max_length=12)
     analysis_plan: ReportAssistantAnalysisPlan | None = None
     patch_request_id: UUID | None = None
@@ -607,6 +707,8 @@ class ReportAssistantSessionResponse(ReportContractModel):
     patch_evidence_refs: tuple[str, ...] = ()
     patch_preview: tuple[ReportAssistantPatchPreviewItem, ...] = ()
     approved_operation_indexes: tuple[int, ...] = ()
+    exact_page_count: int | None = Field(default=None, ge=1, le=20)
+    verified_page_count: int | None = Field(default=None, ge=1)
     result_artifact_id: UUID | None = None
     result_revision: int | None = None
     error_code: str | None = None
@@ -626,6 +728,10 @@ class ReportAssistantSessionResponse(ReportContractModel):
             message.role for message in self.turn_history
         ) != expected_roles:
             raise ValueError("Assistant 대화 이력은 user·assistant 순서의 완전한 turn이어야 합니다.")
+        if self.artifact_ids[0] != self.artifact_id or len(set(self.artifact_ids)) != len(
+            self.artifact_ids
+        ):
+            raise ValueError("Assistant Artifact 목록은 대표 근거부터 중복 없이 제공해야 합니다.")
         if self.phase in {
             "waiting_approval",
             "running_data_agent",
@@ -639,8 +745,16 @@ class ReportAssistantSessionResponse(ReportContractModel):
             self.patch_operations
         ):
             raise ValueError("patch 승인 대기 phase에는 operation별 미리보기가 필요합니다.")
+        if self.phase == "waiting_patch_approval" and self.verified_page_count is None:
+            raise ValueError("patch 승인 대기 phase에는 renderer 페이지 검증값이 필요합니다.")
         if self.phase == "saving_revision" and self.analysis_plan is None and not has_patch:
             raise ValueError("revision 저장 phase에는 분석 계획 또는 patch 미리보기가 필요합니다.")
+        if (
+            self.phase in {"saving_revision", "completed"}
+            and self.exact_page_count is not None
+            and self.exact_page_count != self.verified_page_count
+        ):
+            raise ValueError("승인된 revision은 요청 페이지 수와 renderer 검증값이 일치해야 합니다.")
         if self.approved_operation_indexes and (
             tuple(sorted(set(self.approved_operation_indexes)))
             != self.approved_operation_indexes

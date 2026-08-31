@@ -107,7 +107,7 @@ class ReportDefinitionRepositoryMixin:
                   AND r.user_id = :owner_id
                   AND (CAST(:query_id AS text) IS NULL
                        OR q.trino_query_id = CAST(:query_id AS text))
-                FOR KEY SHARE OF a
+                FOR KEY SHARE OF r
                 """
             ),
             {
@@ -119,8 +119,9 @@ class ReportDefinitionRepositoryMixin:
         if locked is None:
             raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
 
-        # 위 lock 이후 별도 statement로 lifecycle을 읽어 archive가 먼저 commit된
-        # 경우의 이전 snapshot으로 새 Report 결속이 통과하지 않게 한다.
+        # Artifact 원본은 runtime에 SELECT/INSERT만 허용된 불변 row다. 변경 가능한
+        # owner request row의 key-share lock을 archive의 exclusive lock과 공유한 뒤
+        # lifecycle을 별도 statement로 읽어 이전 snapshot 결속을 막는다.
         owned = (await session.execute(
             text(
                 """

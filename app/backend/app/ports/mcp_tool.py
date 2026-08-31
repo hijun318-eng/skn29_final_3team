@@ -125,8 +125,37 @@ def _deep_thaw(value: Any) -> Any:
     return deepcopy(value)
 
 
+def _assert_closed_object_schemas(value: Any, *, label: str) -> None:
+    """중첩된 모든 명시적 object schema가 추가 속성을 닫았는지 검증한다."""
+
+    if isinstance(value, dict):
+        declared_type = value.get("type")
+        is_object = declared_type == "object" or (
+            isinstance(declared_type, list) and "object" in declared_type
+        )
+        if is_object:
+            properties = value.get("properties")
+            required = value.get("required")
+            if (
+                value.get("additionalProperties") is not False
+                or not isinstance(properties, dict)
+                or not isinstance(required, list)
+                or len(required) != len(set(required))
+                or any(
+                    not isinstance(item, str) or item not in properties
+                    for item in required
+                )
+            ):
+                raise ValueError(f"MCP Tool {label} schema must be a closed object")
+        for nested in value.values():
+            _assert_closed_object_schemas(nested, label=label)
+    elif isinstance(value, list):
+        for nested in value:
+            _assert_closed_object_schemas(nested, label=label)
+
+
 def _closed_object_schema(schema: Mapping[str, Any], *, label: str) -> Mapping[str, Any]:
-    """Descriptor schema를 JSON 복사하고 closed object 최소 계약을 검증한다."""
+    """Descriptor schema를 JSON 복사하고 재귀 closed object 계약을 검증한다."""
 
     try:
         normalized = json.loads(
@@ -134,17 +163,9 @@ def _closed_object_schema(schema: Mapping[str, Any], *, label: str) -> Mapping[s
         )
     except (TypeError, ValueError) as error:
         raise ValueError(f"MCP Tool {label} schema is not JSON serializable") from error
-    properties = normalized.get("properties")
-    required = normalized.get("required")
-    if (
-        normalized.get("type") != "object"
-        or normalized.get("additionalProperties") is not False
-        or not isinstance(properties, dict)
-        or not isinstance(required, list)
-        or len(required) != len(set(required))
-        or any(not isinstance(item, str) or item not in properties for item in required)
-    ):
+    if normalized.get("type") != "object":
         raise ValueError(f"MCP Tool {label} schema must be a closed object")
+    _assert_closed_object_schemas(normalized, label=label)
     try:
         Draft202012Validator.check_schema(normalized)
     except SchemaError as error:
@@ -269,9 +290,11 @@ class MCPToolDescriptor:
                 UUID(str(row["tool_id"])) == self.tool_id
                 and row["tool_code"] == self.name
                 and row["semantic_version"] == self.semantic_version
+                and row["title"] == self.title
                 and row["description"] == self.description
                 and row["input_schema_json"] == _deep_thaw(self.input_schema)
                 and row["output_schema_json"] == _deep_thaw(self.output_schema)
+                and row["annotations_json"] == _deep_thaw(self.annotations)
                 and row["transport"] == self.transport
                 and type(row["timeout_seconds"]) is int
                 and row["timeout_seconds"] == self.timeout_seconds

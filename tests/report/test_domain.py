@@ -7,6 +7,13 @@ from src.report.domain import (
     BlockRunStatus,
     BlockType,
     DefinitionStatus,
+    MAX_REPORT_BLOCK_CONTENT_LENGTH,
+    MAX_REPORT_BLOCK_HEIGHT,
+    MAX_REPORT_BLOCK_ID_LENGTH,
+    MAX_REPORT_BLOCK_REFERENCE_ID_LENGTH,
+    MAX_REPORT_BLOCK_TITLE_LENGTH,
+    MAX_REPORT_BLOCKS,
+    MAX_REPORT_LAYOUT_ROWS,
     ReportBlock,
     ReportBlockRun,
     ReportDefinitionVersion,
@@ -153,6 +160,36 @@ class ReportDomainTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "artifact_id"):
             ReportBlock("bad-artifact", "Artifact", None, 12, None, BlockType.ARTIFACT)
+
+    def test_legacy_oversized_blocks_remain_readable_outside_new_write_contract(self):
+        """과거 DB에서 합법이던 긴 block은 조회 domain에서 손실 없이 복원한다."""
+
+        legacy = ReportBlock(
+            "b" * (MAX_REPORT_BLOCK_ID_LENGTH + 1),
+            "제" * (MAX_REPORT_BLOCK_TITLE_LENGTH + 1),
+            "artifact",
+            12,
+            "q" * (MAX_REPORT_BLOCK_REFERENCE_ID_LENGTH + 1),
+            BlockType.TABLE,
+            0,
+            MAX_REPORT_LAYOUT_ROWS,
+            12,
+            MAX_REPORT_BLOCK_HEIGHT + 1,
+            "x" * (MAX_REPORT_BLOCK_CONTENT_LENGTH + 1),
+        )
+        self.assertGreater(legacy.h, MAX_REPORT_BLOCK_HEIGHT)
+
+        blocks = tuple(
+            ReportBlock(
+                f"block-{index}", "본문", None, 12, None,
+                BlockType.TEXT, 0, index, 12, 1, "본문",
+            )
+            for index in range(MAX_REPORT_BLOCKS + 1)
+        )
+        definition = ReportDefinitionVersion(
+            "oversized", 1, DefinitionStatus.DRAFT, "과대 보고서", blocks,
+        )
+        self.assertEqual(MAX_REPORT_BLOCKS + 1, len(definition.blocks))
 
     def test_only_draft_can_replace_the_complete_block_layout(self):
         text = ReportBlock(

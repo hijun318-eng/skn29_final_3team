@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-import hashlib
 import json
 import math
 import os
@@ -16,10 +15,7 @@ from fastapi.responses import HTMLResponse
 from app.authorization import has_capability, permission_snapshot_id
 from app.context import analysis_context
 from app.contracts import Capability, RequestContext
-from app.report_contracts import (
-    CreateReportAssistantDraftRequest,
-    CreateReportFromArtifactRequest,
-)
+from app.report_contracts import CreateReportFromArtifactRequest
 
 
 RepositoryCall = Callable[[Callable[[], Any]], Awaitable[Any]]
@@ -359,7 +355,6 @@ def final_html_response(document: Mapping[str, Any]) -> HTMLResponse:
         },
     )
 
-
 def final_pdf_response(
     document: Mapping[str, Any],
     definition_id: str,
@@ -376,127 +371,3 @@ def final_pdf_response(
             "X-Content-Type-Options": "nosniff",
         },
     )
-
-
-async def create_assistant_report_draft(
-    router: Any,
-    payload: CreateReportAssistantDraftRequest,
-    repository_call: RepositoryCall,
-) -> dict[str, Any]:
-    """승인 artifact와 사용자 지시를 model에 전달해 근거 연결된 보고서 초안을 저장한다.
-
-    호출 전 prompt·지시 hash로 assistant request를 시작하고 성공 시 definition·model trace·
-    output hash를 기록한다. model transport, 제안 계약, 내부 저장 실패를 서로 다른 실패 code와
-    HTTP 상태로 영속화하며 artifact 값 외의 분석 결과를 보정하거나 생성하지 않는다.
-    """
-    from app.adapters.report_assistant import (
-        ReportAssistantModelError,
-        generate_report_draft,
-    )
-    from src.ai.prompt_registry import get_prompt
-    from src.report.domain import (
-        BlockType,
-        DefinitionStatus,
-        ReportBlock,
-        ReportDefinitionVersion,
-    )
-
-    repository = router.repository
-    artifact = await repository_call(
-        lambda: repository.get_assistant_artifact(str(payload.artifact_id))
-    )
-    assistant_request_id = str(uuid4())
-    definition_id = str(uuid4())
-    prompt = get_prompt("report.assistant")
-    instruction_hash = hashlib.sha256(payload.instruction.encode("utf-8")).hexdigest()
-    await repository_call(
-        lambda: repository.start_assistant_request(
-            assistant_request_id,
-            str(payload.artifact_id),
-            instruction_hash,
-            prompt.prompt_id,
-            prompt.version,
-            str(prompt.metadata()["hash"]),
-        )
-    )
-    model_payload = {
-        "instruction": payload.instruction,
-        "artifact": {
-            "artifact_id": str(artifact["artifact_id"]),
-            "query_id": artifact["trino_query_id"],
-            "title": artifact["title"],
-            "narrative": artifact["narrative_markdown"],
-            "evidence": artifact["evidence_json"],
-            "chart_spec": artifact["chart_spec_json"],
-            "checksum": artifact["artifact_checksum"],
-        },
-    }
-    try:
-        proposal, trace = await generate_report_draft(model_payload)
-        draft = ReportDefinitionVersion(
-            definition_id,
-            1,
-            DefinitionStatus.DRAFT,
-            proposal["title"],
-            (
-                ReportBlock(
-                    str(uuid4()), proposal["executive_summary"][:120] or "요약",
-                    None, 12, None, BlockType.TEXT, 0, 0, 12, 2,
-                    proposal["executive_summary"],
-                ),
-                ReportBlock(
-                    str(uuid4()), proposal["table_title"],
-                    str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.TABLE, 0, 2, 12, 4, '{"visibleViews":["table"]}',
-                ),
-                ReportBlock(
-                    str(uuid4()), proposal["chart_title"],
-                    str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.CHART, 0, 6, 12, 4, '{"visibleViews":["chart"]}',
-                ),
-            ),
-        )
-        await repository.add_draft(draft)
-        output_hash = hashlib.sha256(
-            json.dumps(proposal, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        ).hexdigest()
-        await repository.complete_assistant_request(
-            assistant_request_id,
-            definition_id,
-            1,
-            str(trace["model_version"]),
-            output_hash,
-        )
-    except ReportAssistantModelError as error:
-        await repository.fail_assistant_request(assistant_request_id, "MODEL_FAILED")
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "code": "REPORT_ASSISTANT_MODEL_FAILED",
-                "assistant_request_id": assistant_request_id,
-            },
-        ) from error
-    except (ValueError, KeyError) as error:
-        await repository.fail_assistant_request(assistant_request_id, "DRAFT_INVALID")
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "REPORT_ASSISTANT_DRAFT_INVALID",
-                "assistant_request_id": assistant_request_id,
-            },
-        ) from error
-    except Exception as error:
-        await repository.fail_assistant_request(assistant_request_id, "INTERNAL_FAILED")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "code": "REPORT_ASSISTANT_INTERNAL_FAILED",
-                "assistant_request_id": assistant_request_id,
-            },
-        ) from error
-    return {
-        "assistant_request_id": assistant_request_id,
-        "status": "success",
-        "definition": router._response(draft),
-        "trace": trace,
-    }

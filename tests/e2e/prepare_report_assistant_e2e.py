@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from base64 import urlsafe_b64decode
 from pathlib import Path
+import sys
 from urllib.parse import quote
 from uuid import UUID, uuid5
 
@@ -15,12 +17,21 @@ from alembic.script import ScriptDirectory
 import psycopg
 
 
+_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND = _ROOT / "app" / "backend"
+for _source_root in (_ROOT, _BACKEND):
+    if str(_source_root) not in sys.path:
+        sys.path.insert(0, str(_source_root))
+
+from app.authorization import permission_snapshot_id
+from app.contracts import Role
+
+
 E2E_DATABASE = "app_db_report_assistant_e2e"
 NAMESPACE = UUID("6b711229-e54e-4f3a-8d0e-525ef9101cf5")
 E2E_FIXTURE_VERSION = "atomic-v2"
 E2E_ATOMIC_CHART_CONTENT = '{"visibleViews":["chart"]}'
 E2E_PRODUCT_RELEASE_ID = "ANSWERVICE-E2E-REPORT-ASSISTANT-v1:" + "1" * 64
-E2E_PERMISSION_SNAPSHOT_ID = "permission:e2e-report-assistant-v1"
 E2E_SEMANTIC_RELEASE_ID = "semantic:e2e-report-assistant-v1"
 _E2E_RELEASE_CREATED_AT = "2026-08-28T00:00:00+00:00"
 
@@ -38,8 +49,8 @@ def _canonical_sha256(payload: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _release_fixture() -> dict[str, object]:
-    """실제 release로 가장하지 않는 결정론적 E2E 전용 complete receipt를 만든다."""
+def _release_fixture(owner: UUID) -> dict[str, object]:
+    """실제 admission과 같은 analyst 권한 hash를 가진 결정론적 E2E release를 만든다."""
 
     images = [{
         "component": "report-assistant-e2e",
@@ -84,13 +95,31 @@ def _release_fixture() -> dict[str, object]:
         **checksum_payload,
         "manifest_sha256": _canonical_sha256(checksum_payload),
     }
+    projection_sha256 = evidence["catalog"]["projection_sha256"]
+    projection_id = f"runtime-catalog:{projection_sha256}"
+    projection = {
+        "schema_version": "RuntimeCatalogProjection.v1",
+        "projection_id": projection_id,
+        "projection_sha256": projection_sha256,
+        "catalog_release_id": E2E_SEMANTIC_RELEASE_ID,
+        "catalog_sha256": evidence["catalog"]["manifest_sha256"],
+        "canonical_sha256": "8" * 64,
+        "manifest_sha256": evidence["catalog"]["manifest_sha256"],
+        "membership_sha256": "9" * 64,
+        "source_selection_sha256": "a" * 64,
+        "trino_fingerprint_sha256": "b" * 64,
+        "source_selection": {"authority_mode": "NATIVE_PRIORITY"},
+        "trino_fingerprints": [],
+        "snapshot": {"synthetic": True},
+    }
     return {
         "product_release_id": E2E_PRODUCT_RELEASE_ID,
-        "permission_snapshot_id": E2E_PERMISSION_SNAPSHOT_ID,
+        "permission_snapshot_id": permission_snapshot_id(owner, Role.ANALYST),
         "semantic_release_id": E2E_SEMANTIC_RELEASE_ID,
         "manifest": manifest,
         "images": images,
         "release_vector": release_vector,
+        "projection": projection,
     }
 
 
@@ -114,7 +143,8 @@ def _deployment_values() -> dict[str, str]:
         values[key.strip()] = value.strip()
     required = {
         "APP_ADMIN_USER", "APP_ADMIN_PASSWORD", "APP_MIGRATION_USER",
-        "APP_MIGRATION_PASSWORD", "APP_DB_USER", "APP_CATALOG_PUBLISHER_USER",
+        "APP_MIGRATION_PASSWORD", "APP_DB_USER", "APP_DB_PASSWORD",
+        "APP_CATALOG_PUBLISHER_USER",
         "AUTH_PRINCIPALS_HOST_FILE",
     }
     missing = sorted(key for key in required if not values.get(key))
@@ -123,18 +153,75 @@ def _deployment_values() -> dict[str, str]:
     return values
 
 
-def _analyst_subject(values: dict[str, str]) -> UUID:
-    """외부 principal 파일에서 활성 analyst subject 하나만 선택한다."""
+def _analyst_account(values: dict[str, str]) -> dict[str, object]:
+    """외부 principal store에서 E2E용 활성 analyst verifier 하나를 검증해 반환한다."""
 
-    records = json.loads(Path(values["AUTH_PRINCIPALS_HOST_FILE"]).read_text(encoding="utf-8"))
-    subjects = [
-        UUID(record["subject"])
+    principal_path = Path(values["AUTH_PRINCIPALS_HOST_FILE"])
+    try:
+        if principal_path.stat().st_size > 1_048_576:
+            raise ValueError("principal file is too large")
+        records = json.loads(principal_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise RuntimeError("analyst principal store를 검증할 수 없습니다.") from error
+    if not isinstance(records, list) or not records:
+        raise RuntimeError("analyst principal store는 비어 있지 않은 목록이어야 합니다.")
+    accounts = [
+        record
         for record in records
-        if record.get("active") is True and record.get("role") == "analyst"
+        if isinstance(record, dict)
+        and record.get("active") is True
+        and record.get("role") == "analyst"
     ]
-    if len(subjects) != 1:
+    if len(accounts) != 1:
         raise RuntimeError("활성 analyst principal은 정확히 하나여야 합니다.")
-    return subjects[0]
+    account = accounts[0]
+    required = {
+        "username", "password_salt", "password_hash", "password_iterations",
+        "subject", "role", "active",
+    }
+    if not isinstance(account, dict) or set(account) != required:
+        raise RuntimeError("analyst principal verifier 계약이 불완전합니다.")
+    try:
+        subject = UUID(str(account["subject"]))
+        iterations = int(account["password_iterations"])
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("analyst principal verifier 형식이 올바르지 않습니다.") from error
+    username = account["username"]
+    salt = account["password_salt"]
+    digest = account["password_hash"]
+    try:
+        decoded_salt = urlsafe_b64decode(
+            str(salt) + "=" * (-len(str(salt)) % 4)
+        )
+        bytes.fromhex(str(digest))
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("analyst principal verifier 형식이 올바르지 않습니다.") from error
+    if (
+        not isinstance(username, str)
+        or not 3 <= len(username) <= 64
+        or username != username.strip().lower()
+        or not isinstance(salt, str)
+        or len(decoded_salt) < 16
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or digest != digest.lower()
+        or type(account["password_iterations"]) is not int
+        or iterations < 200_000
+    ):
+        raise RuntimeError("analyst principal verifier 형식이 올바르지 않습니다.")
+    return {
+        "username": username,
+        "password_salt": salt,
+        "password_hash": digest,
+        "password_iterations": iterations,
+        "subject": subject,
+    }
+
+
+def _analyst_subject(values: dict[str, str]) -> UUID:
+    """검증된 활성 analyst account의 subject를 반환한다."""
+
+    return UUID(str(_analyst_account(values)["subject"]))
 
 
 def _dsn(user: str, password: str, database: str) -> str:
@@ -215,7 +302,7 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
         )
     }
     query_id = "e2e_query_report_assistant_atomic_v2"
-    release = _release_fixture()
+    release = _release_fixture(owner)
     receipt = (
         str(release["product_release_id"]),
         str(release["permission_snapshot_id"]),
@@ -260,6 +347,31 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
     ) as connection:
         _require_e2e_connection(connection)
         with connection.cursor() as cursor:
+            analyst = _analyst_account(values)
+            if analyst["subject"] != owner:
+                raise RuntimeError("E2E owner와 analyst principal subject가 일치하지 않습니다.")
+            cursor.execute(
+                """
+                INSERT INTO security.auth_accounts (
+                    username, password_salt, password_hash,
+                    password_iterations, subject, role, active
+                ) VALUES (%s, %s, %s, %s, %s, 'analyst', true)
+                ON CONFLICT (username) DO UPDATE SET
+                    password_salt = EXCLUDED.password_salt,
+                    password_hash = EXCLUDED.password_hash,
+                    password_iterations = EXCLUDED.password_iterations,
+                    subject = EXCLUDED.subject,
+                    role = 'analyst',
+                    active = true,
+                    deactivated_at = NULL,
+                    deleted_at = NULL,
+                    updated_at = now()
+                """,
+                (
+                    analyst["username"], analyst["password_salt"],
+                    analyst["password_hash"], analyst["password_iterations"], owner,
+                ),
+            )
             manifest = release["manifest"]
             if not isinstance(manifest, dict):
                 raise RuntimeError("E2E product release manifest 형식이 올바르지 않습니다.")
@@ -295,6 +407,56 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                     json.dumps(release["release_vector"], ensure_ascii=False),
                     manifest["created_at"],
                 ),
+            )
+            projection = release["projection"]
+            if not isinstance(projection, dict):
+                raise RuntimeError("E2E runtime catalog projection 형식이 올바르지 않습니다.")
+            cursor.execute(
+                """
+                INSERT INTO governance.runtime_catalog_projections (
+                    projection_id, contract_version, projection_sha256,
+                    catalog_release_id, catalog_sha256, canonical_sha256,
+                    manifest_sha256, membership_sha256,
+                    source_selection_sha256, trino_fingerprint_sha256,
+                    authority_mode, projection_json
+                ) VALUES (
+                    %s, 'RuntimeCatalogProjection.v1', %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    'NATIVE_PRIORITY', %s::jsonb
+                )
+                ON CONFLICT (projection_id) DO NOTHING
+                """,
+                (
+                    projection["projection_id"], projection["projection_sha256"],
+                    projection["catalog_release_id"], projection["catalog_sha256"],
+                    projection["canonical_sha256"], projection["manifest_sha256"],
+                    projection["membership_sha256"],
+                    projection["source_selection_sha256"],
+                    projection["trino_fingerprint_sha256"],
+                    json.dumps(projection, ensure_ascii=False, sort_keys=True),
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO governance.runtime_catalog_active_pointer (
+                    pointer_name, projection_id, product_release_id,
+                    generation, activated_by
+                ) VALUES ('analysis', %s, %s, 1, 'report-assistant-e2e-fixture')
+                ON CONFLICT (pointer_name) DO UPDATE SET
+                    projection_id = EXCLUDED.projection_id,
+                    product_release_id = EXCLUDED.product_release_id,
+                    generation = CASE
+                        WHEN governance.runtime_catalog_active_pointer.projection_id
+                                 = EXCLUDED.projection_id
+                         AND governance.runtime_catalog_active_pointer.product_release_id
+                                 = EXCLUDED.product_release_id
+                        THEN governance.runtime_catalog_active_pointer.generation
+                        ELSE governance.runtime_catalog_active_pointer.generation + 1
+                    END,
+                    activated_by = EXCLUDED.activated_by,
+                    activated_at = now()
+                """,
+                (projection["projection_id"], receipt[0]),
             )
             cursor.execute(
                 """
@@ -386,16 +548,43 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                 (ids["report_definition"], owner),
             )
             cursor.execute(
+                "ALTER TABLE report_v1.report_definition_versions "
+                "DISABLE TRIGGER report_definition_release_receipt_immutable"
+            )
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO report_v1.report_definition_versions
+                        (definition_id, version, status, title, orientation,
+                         currency_display_unit, product_release_id,
+                         permission_snapshot_id, semantic_release_id)
+                    VALUES (%s, 1, 'draft', 'Report Assistant Atomic v2 E2E 보고서',
+                            'portrait', 'auto', %s, %s, %s)
+                    ON CONFLICT (definition_id, version) DO UPDATE SET
+                        status = 'draft',
+                        title = EXCLUDED.title,
+                        approved_at = NULL,
+                        orientation = EXCLUDED.orientation,
+                        currency_display_unit = EXCLUDED.currency_display_unit,
+                        product_release_id = EXCLUDED.product_release_id,
+                        permission_snapshot_id = EXCLUDED.permission_snapshot_id,
+                        semantic_release_id = EXCLUDED.semantic_release_id,
+                        revision = 1
+                    """,
+                    (ids["report_definition"], *receipt),
+                )
+            finally:
+                cursor.execute(
+                    "ALTER TABLE report_v1.report_definition_versions "
+                    "ENABLE TRIGGER report_definition_release_receipt_immutable"
+                )
+            cursor.execute(
                 """
-                INSERT INTO report_v1.report_definition_versions
-                    (definition_id, version, status, title, orientation,
-                     currency_display_unit, product_release_id,
-                     permission_snapshot_id, semantic_release_id)
-                VALUES (%s, 1, 'draft', 'Report Assistant Atomic v2 E2E 보고서',
-                        'portrait', 'auto', %s, %s, %s)
-                ON CONFLICT (definition_id, version) DO NOTHING
+                DELETE FROM report_v1.report_blocks
+                WHERE definition_id = %s AND definition_version = 1
+                  AND block_id <> %s
                 """,
-                (ids["report_definition"], *receipt),
+                (ids["report_definition"], ids["report_block"]),
             )
             cursor.execute(
                 """
@@ -405,13 +594,48 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                      analysis_definition_id, analysis_definition_version)
                 VALUES (%s, 1, %s, '승인 매출 차트', %s, %s, 12, 'chart',
                         0, 0, 12, 7, %s, %s, 1)
-                ON CONFLICT (definition_id, definition_version, block_id) DO NOTHING
+                ON CONFLICT (definition_id, definition_version, block_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    artifact_id = EXCLUDED.artifact_id,
+                    query_id = EXCLUDED.query_id,
+                    view_spec_id = NULL,
+                    columns = EXCLUDED.columns,
+                    block_type = EXCLUDED.block_type,
+                    x = EXCLUDED.x,
+                    y = EXCLUDED.y,
+                    w = EXCLUDED.w,
+                    h = EXCLUDED.h,
+                    content = EXCLUDED.content,
+                    evidence_refs = '{}'::text[],
+                    analysis_definition_id = EXCLUDED.analysis_definition_id,
+                    analysis_definition_version = EXCLUDED.analysis_definition_version
                 """,
                 (
                     ids["report_definition"], ids["report_block"], ids["artifact"],
                     query_id, E2E_ATOMIC_CHART_CONTENT, ids["analysis_definition"],
                 ),
             )
+            cursor.execute(
+                "ALTER TABLE governance.product_release_bindings "
+                "DISABLE TRIGGER product_release_bindings_immutable"
+            )
+            try:
+                cursor.execute(
+                    """
+                    DELETE FROM governance.product_release_bindings
+                    WHERE (object_kind = 'ARTIFACT' AND object_id = %s)
+                       OR (object_kind = 'REPORT' AND object_id = %s)
+                    """,
+                    (
+                        str(ids["artifact"]),
+                        f"definition:{ids['report_definition']}:v1",
+                    ),
+                )
+            finally:
+                cursor.execute(
+                    "ALTER TABLE governance.product_release_bindings "
+                    "ENABLE TRIGGER product_release_bindings_immutable"
+                )
             for object_kind, object_id, capability in (
                 ("ARTIFACT", str(ids["artifact"]), '{"analysis.run":"1.0.0"}'),
                 (
@@ -463,7 +687,7 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                   AND binding.permission_snapshot_id = %s
                   AND binding.semantic_release_id = %s
                 GROUP BY a.product_release_id, a.permission_snapshot_id,
-                         a.semantic_release_id, v.product_release_id,
+                         a.semantic_release_id, a.artifact_id, v.product_release_id,
                          v.permission_snapshot_id, v.semantic_release_id,
                          b.block_type, b.artifact_id, b.query_id, b.content
                 """,

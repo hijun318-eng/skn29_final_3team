@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from functools import lru_cache
+import hashlib
 from html import escape
+from importlib.metadata import PackageNotFoundError, version as distribution_version
 from inspect import isawaitable
+from pathlib import Path
 from typing import Any, Mapping
 
 from app.services.report.chart import _chart_svg
@@ -58,6 +62,50 @@ from app.services.report.values import (
     _table_html,
     _unit_label,
 )
+
+
+_REPORT_RENDERER_CONTRACT_FILES = (
+    "chart.py",
+    "document.py",
+    "layout.py",
+    "types.py",
+    "values.py",
+)
+
+
+def _renderer_contract_fingerprint(
+    renderer_version: str,
+    contract_sources: tuple[tuple[str, bytes], ...],
+) -> str:
+    """renderer runtime과 canonical HTML/CSS source를 한 SHA-256 계약으로 묶는다."""
+
+    digest = hashlib.sha256()
+    digest.update(b"answervice-report-renderer-contract\0")
+    digest.update(renderer_version.encode("utf-8"))
+    for source_name, source_bytes in contract_sources:
+        digest.update(b"\0")
+        digest.update(source_name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source_bytes)
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=1)
+def report_renderer_contract_fingerprint() -> str:
+    """설치 renderer 버전과 실제 Report layout/template bytes의 안정된 64hex receipt다."""
+
+    try:
+        renderer_version = distribution_version("weasyprint")
+        source_directory = Path(__file__).resolve().parent
+        contract_sources = tuple(
+            (filename, (source_directory / filename).read_bytes())
+            for filename in _REPORT_RENDERER_CONTRACT_FILES
+        )
+    except (OSError, PackageNotFoundError) as error:
+        raise ReportDocumentRenderError(
+            "Report renderer contract fingerprint를 계산할 수 없습니다."
+        ) from error
+    return _renderer_contract_fingerprint(renderer_version, contract_sources)
 
 
 def build_report_html(
@@ -127,6 +175,40 @@ def _deny_external_url(url: str, *args: object, **kwargs: object) -> object:
     raise ReportDocumentRenderError(f"Report PDF 렌더링 중 외부 리소스 접근이 차단되었습니다: {url}")
 
 
+def _render_weasyprint_document(html: str) -> object:
+    """외부 fetch를 차단한 WeasyPrint layout 결과를 한 번 생성한다."""
+
+    from weasyprint import HTML
+
+    return HTML(string=html, url_fetcher=_deny_external_url).render()
+
+
+def rendered_document_page_count(document: object) -> int:
+    """WeasyPrint가 layout한 문서의 실제 페이지 수만 안전하게 읽는다."""
+
+    pages = getattr(document, "pages", None)
+    if not isinstance(pages, (list, tuple)) or not pages:
+        raise ReportDocumentRenderError("Report 렌더러가 유효한 페이지 정보를 반환하지 않았습니다.")
+    return len(pages)
+
+
+def render_report_page_count(
+    source: Mapping[str, Any],
+    orientation: str,
+    approved_at: datetime,
+) -> int:
+    """후보 보고서를 PDF 생성 없이 layout해 실제 페이지 수를 반환한다."""
+
+    checksum = canonical_source_checksum(source, orientation)
+    html = build_report_html(source, orientation, approved_at, checksum)
+    try:
+        return rendered_document_page_count(_render_weasyprint_document(html))
+    except ReportDocumentRenderError:
+        raise
+    except Exception as error:
+        raise ReportDocumentRenderError("Report 페이지 수 렌더링에 실패했습니다.") from error
+
+
 def render_report_document(
     source: Mapping[str, Any],
     orientation: str,
@@ -136,9 +218,8 @@ def render_report_document(
     checksum = canonical_source_checksum(source, orientation)
     html = build_report_html(source, orientation, approved_at, checksum)
     try:
-        from weasyprint import HTML
-
-        pdf = HTML(string=html, url_fetcher=_deny_external_url).write_pdf(
+        document = _render_weasyprint_document(html)
+        pdf = document.write_pdf(
             pdf_identifier=bytes.fromhex(checksum),
             pdf_variant="pdf/a-3u",
             pdf_tags=True,

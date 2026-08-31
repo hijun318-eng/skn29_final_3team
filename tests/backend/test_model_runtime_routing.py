@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from sys import path
 from unittest.mock import patch
@@ -13,6 +14,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.api.analysis_router_runtime import model
+from src.modelops.runtime_config import load_model_runtime_manifest
 
 
 PRIMARY = {
@@ -27,6 +29,32 @@ NODE2 = {
     "NODE2_MODEL_API_TOKEN": "node2-token",
     "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
 }
+
+
+@pytest.fixture(autouse=True)
+def approved_test_model_origins():
+    """운영 manifest를 바꾸지 않고 test-only endpoint 경계만 주입한다."""
+
+    manifest = load_model_runtime_manifest()
+    test_manifest = replace(
+        manifest,
+        route_profiles=tuple(
+            replace(
+                route,
+                approved_endpoint_origins=(
+                    "https://primary.model.invalid",
+                ) if route.route_id == "primary" else (
+                    "https://node2.model.invalid",
+                ),
+            )
+            for route in manifest.route_profiles
+        ),
+    )
+    with patch(
+        "src.modelops.runtime_config.load_model_runtime_manifest",
+        return_value=test_manifest,
+    ):
+        yield
 
 
 def test_primary_route_is_shared_only_when_node2_configuration_is_empty() -> None:

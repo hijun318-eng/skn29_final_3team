@@ -36,6 +36,8 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section) or {},
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        # Lock-then-recheck migrations require a fresh snapshot after lock waits.
+        isolation_level="READ COMMITTED",
     )
     with connectable.connect() as connection:
         connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS governance")

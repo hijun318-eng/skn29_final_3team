@@ -6,6 +6,7 @@ import os
 import runpy
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -1055,6 +1056,294 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         replayed = alembic("upgrade", "20260831_61", database_url=url)
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
         self.assertFalse(registry_receipt()[5]["additionalProperties"])
+
+    def test_mcp_candidate_upgrade_waits_for_concurrent_rag_run_and_fails_closed(
+        self,
+    ) -> None:
+        """64는 registry lock 뒤 새 historical run을 보고 63에서 원자 중단한다."""
+
+        database = self.create_database("migration_mcp_candidate_race")
+        admin = create_engine(
+            self.base_url.set(database="postgres"),
+            isolation_level="AUTOCOMMIT",
+        )
+        try:
+            with admin.connect() as connection:
+                connection.exec_driver_sql(
+                    f'ALTER DATABASE "{database}" '
+                    "SET default_transaction_isolation TO 'repeatable read'"
+                )
+        finally:
+            admin.dispose()
+
+        database_url = self.base_url.set(database=database)
+        probe = create_engine(database_url)
+        try:
+            with probe.connect() as connection:
+                isolation = connection.execute(
+                    text("SHOW transaction_isolation")
+                ).scalar_one()
+            self.assertEqual("repeatable read", isolation)
+        finally:
+            probe.dispose()
+
+        url = database_url.render_as_string(hide_password=False)
+        previous = alembic("upgrade", "20260831_63", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+        self.assertEqual("20260831_63", self.revision(database))
+
+        rag_tool_id = "8edce655-e454-5b76-b56f-5e49aa2884d4"
+        tool_run_id = uuid4()
+        application_name = f"migration-rag-race-{uuid4().hex}"
+        session_engine = create_engine(database_url)
+        observer = create_engine(database_url, isolation_level="AUTOCOMMIT")
+        session_a = session_engine.connect()
+        session_a_transaction = session_a.begin()
+        process: subprocess.Popen[str] | None = None
+        try:
+            session_a.execute(
+                text(
+                    "INSERT INTO tooling.tool_runs "
+                    "(tool_run_id, tool_id, caller_user_id, caller_role, trace_id, "
+                    "input_hash, status, latency_ms, output_ref_json) "
+                    "VALUES (:run_id, CAST(:tool_id AS uuid), :caller_id, 'analyst', "
+                    "'migration-rag-race', :input_hash, 'SUCCEEDED', 0, '{}'::jsonb)"
+                ),
+                {
+                    "run_id": tool_run_id,
+                    "tool_id": rag_tool_id,
+                    "caller_id": uuid4(),
+                    "input_hash": "b" * 64,
+                },
+            )
+
+            environment = os.environ.copy()
+            migration_url = database_url.update_query_dict(
+                {
+                    "application_name": application_name,
+                    "options": "-c lock_timeout=12s -c statement_timeout=20s",
+                }
+            ).render_as_string(hide_password=False)
+            environment["APP_DATABASE_URL"] = migration_url
+            environment["APP_DB_USER"] = (
+                make_url(migration_url).username or "migration_test"
+            )
+            environment["APP_CATALOG_PUBLISHER_USER"] = environment["APP_DB_USER"]
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "alembic",
+                    "upgrade",
+                    "20260831_64",
+                ],
+                cwd=BACKEND,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            deadline = time.monotonic() + 8
+            blocked = None
+            last_state = None
+            premature_output = None
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    premature_output = process.communicate()
+                    break
+                with observer.connect() as connection:
+                    last_state = connection.execute(
+                        text(
+                            """
+                            SELECT activity.pid,
+                                   activity.wait_event_type,
+                                   activity.wait_event
+                            FROM pg_stat_activity activity
+                            WHERE activity.datname = current_database()
+                              AND activity.application_name = :application_name
+                            """
+                        ),
+                        {"application_name": application_name},
+                    ).mappings().one_or_none()
+                if (
+                    last_state is not None
+                    and last_state["wait_event_type"] == "Lock"
+                ):
+                    blocked = last_state
+                    break
+                time.sleep(0.05)
+
+            self.assertIsNone(
+                premature_output,
+                f"migration exited before registry lock wait: {premature_output}",
+            )
+            self.assertIsNotNone(
+                blocked,
+                f"migration did not reach the bounded registry lock wait: {last_state}",
+            )
+            self.assertIsNone(process.poll())
+
+            session_a_transaction.commit()
+            stdout, stderr = process.communicate(timeout=12)
+            self.assertNotEqual(0, process.returncode, stdout + stderr)
+            self.assertIn(
+                "rag.answer historical runs must be preserved",
+                stdout + stderr,
+            )
+        finally:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate(timeout=5)
+            if session_a_transaction.is_active:
+                session_a_transaction.rollback()
+            session_a.close()
+            observer.dispose()
+            session_engine.dispose()
+
+        self.assertEqual("20260831_63", self.revision(database))
+        verification = create_engine(database_url)
+        try:
+            with verification.connect() as connection:
+                preserved = connection.execute(
+                    text(
+                        """
+                        SELECT (
+                                   SELECT semantic_version
+                                   FROM tooling.tool_registry
+                                   WHERE tool_id = CAST(:rag_tool_id AS uuid)
+                               ),
+                               EXISTS (
+                                   SELECT 1 FROM tooling.tool_runs
+                                   WHERE tool_run_id = :tool_run_id
+                               ),
+                               EXISTS (
+                                   SELECT 1 FROM tooling.tool_registry
+                                   WHERE tool_code = 'analysis.run'
+                               ),
+                               EXISTS (
+                                   SELECT 1 FROM tooling.tool_registry
+                                   WHERE tool_code = 'ml.predict'
+                               )
+                        """
+                    ),
+                    {"rag_tool_id": rag_tool_id, "tool_run_id": tool_run_id},
+                ).one()
+        finally:
+            verification.dispose()
+        self.assertEqual(("1.1.0", True, False, False), tuple(preserved))
+
+    def test_mcp_candidate_downgrade_refuses_child_rows_atomically(self) -> None:
+        """64 downgrade 거부 시 revision, registry receipt, child row를 보존한다."""
+
+        database = self.create_database("migration_mcp_candidate_children")
+        url = self.base_url.set(database=database).render_as_string(
+            hide_password=False
+        )
+        upgraded = alembic("upgrade", "20260831_64", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+
+        analysis_tool_id = "399e1d6e-54d9-5061-b3ee-555dc3666c45"
+        rag_tool_id = "8edce655-e454-5b76-b56f-5e49aa2884d4"
+        ml_tool_id = "3002d1d6-f681-5b5d-b0b6-0de795fb4c5c"
+        engine = create_engine(self.base_url.set(database=database))
+
+        def registry_receipt() -> tuple[tuple[object, ...], ...]:
+            with engine.connect() as connection:
+                rows = connection.execute(
+                    text(
+                        "SELECT tool_id::text, tool_code, semantic_version, description, "
+                        "input_schema_json::text, output_schema_json::text, transport, "
+                        "timeout_seconds, required_roles_json::text, is_enabled "
+                        "FROM tooling.tool_registry "
+                        "WHERE tool_id IN (CAST(:analysis AS uuid), CAST(:rag AS uuid), "
+                        "CAST(:ml AS uuid)) ORDER BY tool_id"
+                    ),
+                    {
+                        "analysis": analysis_tool_id,
+                        "rag": rag_tool_id,
+                        "ml": ml_tool_id,
+                    },
+                ).all()
+            return tuple(tuple(row) for row in rows)
+
+        before = registry_receipt()
+        self.assertEqual(3, len(before))
+        tool_run_id = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO tooling.tool_runs "
+                    "(tool_run_id, tool_id, caller_user_id, caller_role, trace_id, "
+                    "input_hash, status, latency_ms, output_ref_json) "
+                    "VALUES (:run_id, CAST(:tool_id AS uuid), :caller_id, 'analyst', "
+                    "'migration-child-run', :input_hash, 'SUCCEEDED', 0, '{}'::jsonb)"
+                ),
+                {
+                    "run_id": tool_run_id,
+                    "tool_id": analysis_tool_id,
+                    "caller_id": uuid4(),
+                    "input_hash": "a" * 64,
+                },
+            )
+
+        refused_run = alembic("downgrade", "20260831_63", database_url=url)
+        self.assertNotEqual(0, refused_run.returncode)
+        self.assertIn(
+            "analysis.run candidate runs must be preserved",
+            refused_run.stdout + refused_run.stderr,
+        )
+        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual(before, registry_receipt())
+        with engine.connect() as connection:
+            preserved_run = connection.execute(
+                text(
+                    "SELECT count(*) FROM tooling.tool_runs "
+                    "WHERE tool_run_id = :run_id"
+                ),
+                {"run_id": tool_run_id},
+            ).scalar_one()
+        self.assertEqual(1, preserved_run)
+
+        principal_subject = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM tooling.tool_runs WHERE tool_run_id = :run_id"),
+                {"run_id": tool_run_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO tooling.tool_rate_limit_windows "
+                    "(principal_subject, tool_id, window_start, request_count, expires_at) "
+                    "VALUES (:subject, CAST(:tool_id AS uuid), date_trunc('minute', now()), "
+                    "1, date_trunc('minute', now()) + interval '10 minutes')"
+                ),
+                {"subject": principal_subject, "tool_id": ml_tool_id},
+            )
+
+        refused_quota = alembic("downgrade", "20260831_63", database_url=url)
+        self.assertNotEqual(0, refused_quota.returncode)
+        self.assertIn(
+            "ml.predict candidate quota state must be preserved",
+            refused_quota.stdout + refused_quota.stderr,
+        )
+        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual(before, registry_receipt())
+        with engine.connect() as connection:
+            preserved_quota = connection.execute(
+                text(
+                    "SELECT count(*) FROM tooling.tool_rate_limit_windows "
+                    "WHERE principal_subject = :subject "
+                    "AND tool_id = CAST(:tool_id AS uuid)"
+                ),
+                {"subject": principal_subject, "tool_id": ml_tool_id},
+            ).scalar_one()
+        engine.dispose()
+        self.assertEqual(1, preserved_quota)
 
     def test_phase1_downgrade_preserves_preexisting_manual_conversation_objects(self) -> None:
         database = self.create_database("migration_conversation_legacy")

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from types import ModuleType
 import unittest
+from unittest.mock import patch
 
 from jsonschema import Draft202012Validator, FormatChecker
 
@@ -24,6 +26,50 @@ def _load_migration() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _normalized_sql(statement: str) -> str:
+    return " ".join(statement.upper().split())
+
+
+def _capture_sql(module: ModuleType, direction: str) -> tuple[str, ...]:
+    statements: list[str] = []
+    with patch.object(module.op, "execute", side_effect=statements.append):
+        getattr(module, direction)()
+    return tuple(_normalized_sql(statement) for statement in statements)
+
+
+def _registry_lock_predicate(statement: str) -> str:
+    match = re.search(
+        r"PERFORM 1 FROM TOOLING\.TOOL_REGISTRY WHERE (.*?) FOR UPDATE;",
+        statement,
+    )
+    if match is None:
+        raise AssertionError("exact tooling.tool_registry row lock is missing")
+    return match.group(1)
+
+
+def _registry_mutation_predicate(statement: str, verb: str) -> str:
+    if verb == "UPDATE":
+        pattern = (
+            r"UPDATE TOOLING\.TOOL_REGISTRY SET .*? WHERE (.*?); "
+            r"GET DIAGNOSTICS"
+        )
+    elif verb == "DELETE":
+        pattern = (
+            r"DELETE FROM TOOLING\.TOOL_REGISTRY WHERE (.*?); "
+            r"GET DIAGNOSTICS"
+        )
+    else:
+        raise ValueError(f"unsupported registry mutation: {verb}")
+    match = re.search(pattern, statement)
+    if match is None:
+        raise AssertionError(f"tooling.tool_registry {verb.lower()} is missing")
+    return match.group(1)
+
+
+def _predicate_terms(predicate: str) -> set[str]:
+    return {term.strip(" ()") for term in predicate.split(" AND ")}
 
 
 def _assert_nested_objects_are_closed(test: unittest.TestCase, value: object) -> None:
@@ -66,6 +112,89 @@ class MCPCandidateDescriptorMigrationTest(unittest.TestCase):
             descriptor.name for descriptor in _tool_registry()._descriptors
         )
         self.assertEqual(("analysis.get_run",), active_code_descriptors)
+
+    def test_upgrade_locks_exact_rag_predecessor_before_run_check(self) -> None:
+        statements = _capture_sql(self.migration, "upgrade")
+        rag_update = next(
+            statement
+            for statement in statements
+            if "UPDATE TOOLING.TOOL_REGISTRY" in statement
+            and "TOOL_CODE = 'RAG.ANSWER'" in statement
+        )
+
+        lock_terms = _predicate_terms(_registry_lock_predicate(rag_update))
+        update_terms = _predicate_terms(
+            _registry_mutation_predicate(rag_update, "UPDATE")
+        )
+        self.assertEqual(update_terms, lock_terms)
+        self.assertIn(
+            f"TOOL_ID = '{self.migration.RAG_ANSWER_TOOL_ID.upper()}'",
+            lock_terms,
+        )
+        self.assertIn("TOOL_CODE = 'RAG.ANSWER'", lock_terms)
+        self.assertIn("SEMANTIC_VERSION = '1.1.0'", lock_terms)
+
+        lock_at = rag_update.index("FOR UPDATE;")
+        run_check_at = rag_update.index(
+            "FROM TOOLING.TOOL_RUNS "
+            f"WHERE TOOL_ID = '{self.migration.RAG_ANSWER_TOOL_ID.upper()}'"
+        )
+        update_at = rag_update.index("UPDATE TOOLING.TOOL_REGISTRY")
+        self.assertLess(lock_at, run_check_at)
+        self.assertLess(run_check_at, update_at)
+
+    def test_downgrade_locks_exact_receipts_and_checks_candidate_children(self) -> None:
+        statements = _capture_sql(self.migration, "downgrade")
+        rag_update = next(
+            statement
+            for statement in statements
+            if "UPDATE TOOLING.TOOL_REGISTRY" in statement
+            and "TOOL_CODE = 'RAG.ANSWER'" in statement
+        )
+        self.assertEqual(
+            _predicate_terms(_registry_mutation_predicate(rag_update, "UPDATE")),
+            _predicate_terms(_registry_lock_predicate(rag_update)),
+        )
+
+        for tool_id, tool_code in (
+            (self.migration.ANALYSIS_RUN_TOOL_ID, "analysis.run"),
+            (self.migration.ML_PREDICT_TOOL_ID, "ml.predict"),
+        ):
+            with self.subTest(tool_code=tool_code):
+                normalized_tool_id = tool_id.upper()
+                candidate_delete = next(
+                    statement
+                    for statement in statements
+                    if "DELETE FROM TOOLING.TOOL_REGISTRY" in statement
+                    and f"TOOL_ID = '{normalized_tool_id}'" in statement
+                )
+                lock_terms = _predicate_terms(
+                    _registry_lock_predicate(candidate_delete)
+                )
+                delete_terms = _predicate_terms(
+                    _registry_mutation_predicate(candidate_delete, "DELETE")
+                )
+                self.assertEqual(delete_terms, lock_terms)
+                self.assertIn(f"TOOL_ID = '{normalized_tool_id}'", lock_terms)
+                self.assertIn(f"TOOL_CODE = '{tool_code.upper()}'", lock_terms)
+                self.assertIn("SEMANTIC_VERSION = '0.1.0-CANDIDATE'", lock_terms)
+
+                lock_at = candidate_delete.index("FOR UPDATE;")
+                run_check_at = candidate_delete.index(
+                    "FROM TOOLING.TOOL_RUNS "
+                    f"WHERE TOOL_ID = '{normalized_tool_id}'"
+                )
+                quota_check_at = candidate_delete.index(
+                    "FROM TOOLING.TOOL_RATE_LIMIT_WINDOWS "
+                    f"WHERE TOOL_ID = '{normalized_tool_id}'"
+                )
+                delete_at = candidate_delete.index(
+                    "DELETE FROM TOOLING.TOOL_REGISTRY"
+                )
+                self.assertLess(lock_at, run_check_at)
+                self.assertLess(lock_at, quota_check_at)
+                self.assertLess(run_check_at, delete_at)
+                self.assertLess(quota_check_at, delete_at)
 
     def test_candidate_schemas_are_valid_and_recursively_closed(self) -> None:
         """Candidate input/output은 Draft 2020-12와 nested closed 계약을 만족한다."""

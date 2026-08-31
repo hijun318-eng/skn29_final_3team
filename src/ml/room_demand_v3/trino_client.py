@@ -1,3 +1,5 @@
+"""TLS와 origin 고정을 강제하는 최소 Trino statement protocol client를 제공한다."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,11 +11,15 @@ import httpx
 
 @dataclass(frozen=True)
 class TrinoResult:
+    """완료된 Trino query ID와 column 이름으로 매핑된 행 목록을 담는다."""
+
     query_id: str
     rows: list[dict[str, Any]]
 
 
 class TrinoClient:
+    """HTTPS·CA·basic auth로 Trino를 호출하고 nextUri origin 변경을 차단한다."""
+
     def __init__(
         self,
         base_url: str,
@@ -45,6 +51,12 @@ class TrinoClient:
         return absolute
 
     def query(self, sql: str) -> TrinoResult:
+        """SQL statement를 제출·끝까지 page 처리해 query ID와 행 mapping을 반환한다.
+
+        HTTP 실패, Trino error payload, 외부 origin nextUri 또는 열·행 길이
+        불일치는 예외로 전달해 부분 결과를 성공으로 반환하지 않는다.
+        """
+
         rows: list[list[Any]] = []
         columns: list[str] = []
         query_id = ""

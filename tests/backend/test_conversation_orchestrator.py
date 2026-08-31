@@ -2004,7 +2004,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 nonlocal capability_calls
                 capability_calls += 1
                 return {
-                    "schema_version": "MLRuntimeCapability.v1",
+                    "schema_version": "MLRuntimeCapability.v2",
                     "prediction_contract_version": "MLRoomDemandPrediction.v1",
                     "model_version": "approved-demand-release",
                     "model_hash": "a" * 64,
@@ -2012,6 +2012,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                     "model_type": "daily-demand-forecast",
                     "estimator_type": "ApprovedRegressor",
                     "approval": "APPROVED",
+                    "approval_status": "APPROVED",
                     "min_horizon_days": 1,
                     "max_horizon_days": 90,
                     "model_max_horizon_days": 90,
@@ -2045,7 +2046,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 return AgentPortReadiness(
                     agent=AgentKind.ML_PREDICTION,
                     status="ready",
-                    capability_version="MLRuntimeCapability.v1",
+                    capability_version="MLRuntimeCapability.v2",
                     release_refs=("ml-model:sha256:" + "a" * 64,),
                 )
 

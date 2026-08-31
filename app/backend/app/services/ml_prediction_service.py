@@ -11,7 +11,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 import httpx
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, StrictBool, StrictStr, ValidationError, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,8 +24,17 @@ from app.ports.agent import (
 )
 
 
-ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v1"
+ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v2"
 ML_PREDICTION_RESULT_VERSION = "MLRoomDemandPrediction.v1"
+
+
+class MLDeploymentPolicyError(RuntimeError):
+    """유효한 후보 release가 운영 노출 정책을 통과하지 못했음을 나타낸다."""
+
+    def __init__(self, code: str, reason: str) -> None:
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
 
 
 class MLApprovedRelease(ContractModel):
@@ -89,7 +98,7 @@ class MLHistorySourceCapability(ContractModel):
     series_count: int = Field(ge=1)
     min_date: date
     max_date: date
-    synthetic_only: bool
+    synthetic_only: StrictBool
     summary_query_id: str = Field(min_length=1, max_length=256)
     continuity_query_id: str = Field(min_length=1, max_length=256)
 
@@ -105,7 +114,7 @@ class MLHistorySourceCapability(ContractModel):
 class MLRuntimeCapability(ContractModel):
     """Backend가 호출할 수 있는 객실 수요 Runtime의 release receipt다."""
 
-    schema_version: Literal["MLRuntimeCapability.v1"]
+    schema_version: Literal["MLRuntimeCapability.v2"]
     prediction_contract_version: Literal["MLRoomDemandPrediction.v1"]
     model_version: str = Field(min_length=1, max_length=160)
     model_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -113,11 +122,16 @@ class MLRuntimeCapability(ContractModel):
     model_type: str = Field(min_length=1, max_length=160)
     estimator_type: str = Field(min_length=1, max_length=160)
     approval: Literal["APPROVED", "CONDITIONAL_PASS"]
+    approval_status: StrictStr = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Z][A-Z0-9_]*$",
+    )
     min_horizon_days: int = Field(ge=1, le=ML_ABSOLUTE_MAX_HORIZON_DAYS)
     max_horizon_days: int = Field(ge=1, le=ML_ABSOLUTE_MAX_HORIZON_DAYS)
     model_max_horizon_days: int = Field(ge=1, le=ML_ABSOLUTE_MAX_HORIZON_DAYS)
     properties: tuple[MLPropertyCapability, ...] = Field(min_length=1)
-    synthetic_training_data: bool
+    synthetic_training_data: StrictBool
     history_source: MLHistorySourceCapability
     query_id: str = Field(min_length=1, max_length=256)
 
@@ -137,6 +151,27 @@ class MLRuntimeCapability(ContractModel):
         if self.synthetic_training_data != self.history_source.synthetic_only:
             raise ValueError("ML release and history source synthetic mode differ")
         return self
+
+
+def require_production_ml_capability(
+    capability: MLRuntimeCapability,
+) -> MLRuntimeCapability:
+    """후보 검증과 분리해 운영에 노출 가능한 ML release만 반환한다."""
+
+    if (
+        capability.approval != "APPROVED"
+        or capability.approval_status != "APPROVED"
+    ):
+        raise MLDeploymentPolicyError(
+            "ML_RELEASE_NOT_PRODUCTION_APPROVED",
+            "ML 모델 release가 운영 승인을 완료하지 않았습니다.",
+        )
+    if capability.synthetic_training_data:
+        raise MLDeploymentPolicyError(
+            "ML_SYNTHETIC_TRAINING_DATA_BLOCKED",
+            "합성 학습 데이터로 검증된 ML release는 운영에 노출할 수 없습니다.",
+        )
+    return capability
 
 
 class MLPredictionRequest(ContractModel):
@@ -322,9 +357,9 @@ class MLPredictionService:
         return self._client
 
     async def capabilities(self) -> dict[str, Any]:
-        """모델·승인·기간·호텔 범위가 완전한 Runtime receipt만 반환한다."""
+        """배포 정책까지 통과한 운영 Runtime receipt만 반환한다."""
 
-        return (await self._validated_capabilities()).model_dump(mode="json")
+        return (await self._production_capabilities()).model_dump(mode="json")
 
     async def _validated_capabilities(self) -> MLRuntimeCapability:
         """원시 runtime 응답을 versioned capability 계약으로 한 번 검증한다."""
@@ -345,11 +380,25 @@ class MLPredictionService:
             raise RuntimeError("ML runtime capability does not match approved release pins")
         return capabilities
 
+    async def _production_capabilities(self) -> MLRuntimeCapability:
+        """정확한 release pin과 운영 승인·실데이터 정책을 함께 검사한다."""
+
+        return require_production_ml_capability(
+            await self._validated_capabilities()
+        )
+
     async def readiness(self) -> AgentPortReadiness:
         """현재 모델 release와 capability payload가 함께 유효할 때만 ready다."""
 
         try:
-            capability = await self._validated_capabilities()
+            capability = await self._production_capabilities()
+        except MLDeploymentPolicyError as error:
+            return AgentPortReadiness(
+                agent=AgentKind.ML_PREDICTION,
+                status="not_ready",
+                capability_version=ML_RUNTIME_CAPABILITY_VERSION,
+                reason=f"{error.code}: {error.reason}",
+            )
         except (httpx.HTTPError, RuntimeError, ValueError):
             return AgentPortReadiness(
                 agent=AgentKind.ML_PREDICTION,
@@ -394,7 +443,7 @@ class MLPredictionService:
             prediction_request = MLPredictionRequest.model_validate(payload)
         except ValidationError as error:
             raise ValueError("ML prediction request is invalid") from error
-        capability = await self._validated_capabilities()
+        capability = await self._production_capabilities()
         supported = {
             item.property_id.upper(): item
             for item in capability.properties

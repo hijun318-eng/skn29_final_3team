@@ -26,10 +26,18 @@ test("ML 예측 결과는 KPI와 차트를 먼저 보여주고 상세 데이터�
     server: { middlewareMode: true, hmr: false },
   });
   try {
-    const { default: MLPredictionWorkspace, MLPredictionResult } = await server.ssrLoadModule(
+    const {
+      default: MLPredictionWorkspace,
+      MLPredictionResult,
+      mlResponseErrorMessage,
+    } = await server.ssrLoadModule(
       "/src/components/ml/MLPredictionWorkspace.jsx",
     );
     assert.equal(renderToStaticMarkup(createElement(MLPredictionWorkspace)), "");
+    assert.equal(mlResponseErrorMessage({
+      detail: { code: "ML_RELEASE_NOT_PRODUCTION_APPROVED", reason: "운영 승인 전 모델입니다." },
+    }), "운영 승인 전 모델입니다.");
+    assert.equal(mlResponseErrorMessage({ detail: { code: "UNKNOWN" } }), "ML 요청을 처리하지 못했습니다.");
     const html = renderToStaticMarkup(createElement(MLPredictionResult, {
       result: {
         property_id: "HOTEL-SEOUL",

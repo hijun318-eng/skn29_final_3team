@@ -1,3 +1,5 @@
+"""감사된 일별 실적 CSV를 변경 불가 PostgreSQL history table로 적재한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -27,6 +29,8 @@ HISTORY_COLUMNS = [
 
 
 def sha256(path: Path) -> str:
+    """원본 history CSV를 스트리밍해 내용 식별용 SHA-256을 반환한다."""
+
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -35,12 +39,16 @@ def sha256(path: Path) -> str:
 
 
 def identifier(value: str) -> str:
+    """SQL identifier 형식만 허용하고 안전하지 않은 schema·table·role을 거부한다."""
+
     if not IDENTIFIER.fullmatch(value):
         raise ValueError(f"unsafe SQL identifier: {value}")
     return value
 
 
 class HistoricalFactsLoader:
+    """일별 실적 무결성과 기존 DB 내용 hash를 검증한 뒤 최초 한 번만 적재한다."""
+
     def load(
         self,
         source: Path,
@@ -48,6 +56,12 @@ class HistoricalFactsLoader:
         table: str,
         grant_select_to: str | None = None,
     ) -> dict[str, object]:
+        """CSV를 검증·적재하거나 동일 immutable table을 재사용하고 receipt를 반환한다.
+
+        중복·수용량 위반, DB 환경 누락, 기존 행 수·source hash 불일치는
+        예외로 실패하며 기존 table을 덮어쓰지 않는다.
+        """
+
         source_hash = sha256(source)
         frame = pd.read_csv(source, usecols=HISTORY_COLUMNS)
         frame["business_date"] = pd.to_datetime(frame["business_date"])
@@ -148,6 +162,8 @@ class HistoricalFactsLoader:
 
 
 def main() -> None:
+    """CLI 식별자를 검증해 history를 적재하고 JSON receipt 파일을 기록한다."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--daily-facts", type=Path, required=True)
     parser.add_argument("--schema", default="ml_evaluation")

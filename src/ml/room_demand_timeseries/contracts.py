@@ -1,3 +1,5 @@
+"""객실 수요 모델의 version, feature 순서, 식별자와 dataset 분할 계약을 고정한다."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -69,6 +71,8 @@ LABEL_COLUMNS = ["target_rooms_sold", "target_occupancy_rate"]
 
 @dataclass(frozen=True)
 class SplitWindow:
+    """한 dataset 분할의 이름과 포함되는 cutoff 시작·종료일을 표현한다."""
+
     name: str
     cutoff_start: str
     cutoff_end: str

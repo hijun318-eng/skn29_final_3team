@@ -1,3 +1,5 @@
+"""시계열 후보를 학습·선택하고 최종 모델과 재현 manifest를 저장한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -69,6 +71,8 @@ BLEND_WEIGHTS = (0.5, 0.75, 1.0)
 
 
 def sha256(path: Path) -> str:
+    """직렬화 모델 파일의 release pin에 사용할 SHA-256 digest를 반환한다."""
+
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -77,8 +81,12 @@ def sha256(path: Path) -> str:
 
 
 class TimeSeriesTrainer:
+    """후보 scope와 target mode를 학습하고 validation 점수로 최종 구성을 고른다."""
+
     @staticmethod
     def target_values(frame: pd.DataFrame, target_mode: str) -> np.ndarray:
+        """학습표 target을 점유율·로그값·seasonal 잔차 또는 객실 수 배열로 변환한다."""
+
         target = frame["target_rooms_sold"].astype(float).to_numpy()
         if target_mode == "occupancy_rate":
             return frame["target_occupancy_rate"].astype(float).to_numpy()
@@ -99,6 +107,12 @@ class TimeSeriesTrainer:
     def validation_halves(
         validation: pd.DataFrame,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """시간 순서를 보존해 validation을 calibration과 selection 절반으로 나눈다.
+
+        어느 한쪽이라도 비면 ``ValueError``를 발생시켜 같은 표본에서 보정과
+        선택을 동시에 수행하지 않게 한다.
+        """
+
         calibration = validation.loc[
             validation["cutoff_date"] <= pd.Timestamp("2024-06-30")
         ].copy()
@@ -114,6 +128,8 @@ class TimeSeriesTrainer:
         model: TimeSeriesDemandModel,
         frame: pd.DataFrame,
     ) -> dict[str, float]:
+        """property·room type별 실측과 raw 예측의 중앙 잔차를 offset으로 반환한다."""
+
         prediction = model.predict_raw(frame)
         residuals = frame[["property_id", "room_type_code"]].copy()
         residuals["residual"] = (
@@ -132,6 +148,12 @@ class TimeSeriesTrainer:
         frame: pd.DataFrame,
         config: dict[str, Any],
     ) -> TimeSeriesDemandModel:
+        """config scope별 sklearn pipeline을 학습해 예측 가능한 후보 wrapper를 반환한다.
+
+        지원하지 않는 scope, 누락 feature 또는 estimator 학습 실패는 예외로
+        전달하며 일부 그룹만 학습된 후보를 반환하지 않는다.
+        """
+
         target = self.target_values(frame, str(config["target_mode"]))
         if config["scope"] == "global":
             pipeline = build_pipeline(config)
@@ -168,6 +190,8 @@ class TimeSeriesTrainer:
         train: pd.DataFrame,
         validation: pd.DataFrame,
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """모든 후보와 blend weight를 validation에서 평가해 최저 점수와 trials를 반환한다."""
+
         trials: list[dict[str, Any]] = []
         for config in CANDIDATES:
             candidate = self.fit_candidate(train, config)
@@ -198,6 +222,8 @@ class TimeSeriesTrainer:
         validation: pd.DataFrame,
         selected: dict[str, Any],
     ) -> TimeSeriesDemandModel:
+        """train·validation 전체로 선택 구성을 재학습하고 선택된 blend를 적용한다."""
+
         combined = pd.concat([train, validation], ignore_index=True)
         model = self.fit_candidate(combined, selected["config"])
         model.blend_weight = float(selected["blend_weight"])
@@ -205,6 +231,8 @@ class TimeSeriesTrainer:
 
 
 def main() -> None:
+    """학습 CSV에서 후보를 선택·직렬화하고 model manifest와 trials를 기록한다."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--trainer-dir", type=Path, required=True)
     parser.add_argument("--artifact-dir", type=Path, required=True)

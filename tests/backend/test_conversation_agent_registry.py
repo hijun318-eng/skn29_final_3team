@@ -31,16 +31,23 @@ from app.services.conversation_agent_registry import (
 from app.services.execution_control import ConcurrentExecutionGate
 
 
-def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
+def _ml_capability(
+    *,
+    max_horizon_days: int = 90,
+    approval: str = "APPROVED",
+    approval_status: str = "APPROVED",
+    synthetic_training_data: bool = False,
+) -> dict[str, object]:
     return {
-        "schema_version": "MLRuntimeCapability.v1",
+        "schema_version": "MLRuntimeCapability.v2",
         "prediction_contract_version": "MLRoomDemandPrediction.v1",
         "model_version": "approved-demand-release",
         "model_hash": "a" * 64,
         "feature_contract_sha256": "b" * 64,
         "model_type": "daily-demand-forecast",
         "estimator_type": "ApprovedRegressor",
-        "approval": "APPROVED",
+        "approval": approval,
+        "approval_status": approval_status,
         "min_horizon_days": 1,
         "max_horizon_days": max_horizon_days,
         "model_max_horizon_days": max_horizon_days,
@@ -53,7 +60,7 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
                 "history_rows": 500,
             }
         ],
-        "synthetic_training_data": False,
+        "synthetic_training_data": synthetic_training_data,
         "history_source": {
             "table": "pms.ml_evaluation.approved_history",
             "row_count": 500,
@@ -61,7 +68,7 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
             "series_count": 1,
             "min_date": "2024-01-01",
             "max_date": "2026-08-28",
-            "synthetic_only": False,
+            "synthetic_only": synthetic_training_data,
             "summary_query_id": "summary-query",
             "continuity_query_id": "continuity-query",
         },
@@ -70,8 +77,20 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
 
 
 class _MLService:
-    def __init__(self, *, max_horizon_days: int = 90) -> None:
-        self._capability = _ml_capability(max_horizon_days=max_horizon_days)
+    def __init__(
+        self,
+        *,
+        max_horizon_days: int = 90,
+        approval: str = "APPROVED",
+        approval_status: str = "APPROVED",
+        synthetic_training_data: bool = False,
+    ) -> None:
+        self._capability = _ml_capability(
+            max_horizon_days=max_horizon_days,
+            approval=approval,
+            approval_status=approval_status,
+            synthetic_training_data=synthetic_training_data,
+        )
         self.capability_calls = 0
 
     async def capabilities(self) -> dict[str, object]:
@@ -220,6 +239,68 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
         with patch.dict(
             "os.environ",
             {"RAG_FEATURE_ENABLED": "0", "ML_FEATURE_ENABLED": "1"},
+        ):
+            supervisor = build_conversation_agent_supervisor(
+                orchestrator=object(),
+                execution_gate=ConcurrentExecutionGate(),
+                internal_manual_query_service_factory=lambda: None,
+                ml_prediction_service_factory=lambda: service,
+            )
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await supervisor.route_with_state(request)
+
+        self.assertEqual(raised.exception.code, "AGENT_ROUTE_NOT_RESOLVED")
+        self.assertEqual(service.capability_calls, 1)
+
+    async def test_explicit_ml_route_rejects_conditional_candidate_registry(self) -> None:
+        service = _MLService(
+            approval="CONDITIONAL_PASS",
+            approval_status="VALIDATED_SYNTHETIC",
+            synthetic_training_data=True,
+        )
+        conversation_id = uuid4()
+        user_id = uuid4()
+        invocation = MLPredictionInvocation(
+            property_id="GRAND",
+            as_of="2026-08-28",
+            horizon_days=7,
+        )
+        request = AgentRequest(
+            conversation_id=conversation_id,
+            command=ConversationCommandRequest(
+                user_message="7일 객실 수요를 예측해줘",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=None,
+                requested_route="ML_PREDICTION",
+                ml_prediction={
+                    "property_id": invocation.property_id,
+                    "as_of": invocation.as_of,
+                    "horizon_days": invocation.horizon_days,
+                },
+            ),
+            context=RequestContext(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                role=Role.ANALYST,
+                command_id=uuid4(),
+                permission_snapshot_id=permission_snapshot_id(
+                    user_id,
+                    Role.ANALYST,
+                ),
+                product_release_id="product-release-v1",
+                semantic_release_id="semantic-release-v1",
+            ),
+            target_agent=AgentKind.ML_PREDICTION,
+            invocation=invocation,
+        )
+        with patch.dict(
+            "os.environ",
+            {
+                "RAG_FEATURE_ENABLED": "0",
+                "ML_FEATURE_ENABLED": "1",
+                "ML_ALLOW_CONDITIONAL": "true",
+            },
         ):
             supervisor = build_conversation_agent_supervisor(
                 orchestrator=object(),

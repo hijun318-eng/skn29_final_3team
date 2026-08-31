@@ -1,3 +1,5 @@
+"""일별 실적에서 cutoff 이전 정보만 사용한 학습·추론 feature를 구성한다."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,6 +34,8 @@ RAW_REQUIRED_COLUMNS = {
 
 @dataclass(frozen=True)
 class DataAudit:
+    """원시 일별 실적의 범위, 연속성, 중복, target 유효성과 합성 여부를 기록한다."""
+
     rows: int
     min_date: str
     max_date: str
@@ -44,9 +48,15 @@ class DataAudit:
 
 
 class TimeSeriesFeatureBuilder:
-    """Build point-in-time samples using observations at or before cutoff."""
+    """각 cutoff 시점까지 관측된 값만 사용해 누수 없는 시계열 표본을 만든다."""
 
     def load_daily_facts(self, path: Path) -> tuple[pd.DataFrame, DataAudit]:
+        """일별 CSV의 schema·연속성·중복·수용량 범위를 감사해 표와 증거를 반환한다.
+
+        필수 열 누락이나 날짜 간격·중복·target 범위 위반이 하나라도 있으면
+        ``ValueError``로 학습 입력 사용을 거부한다.
+        """
+
         frame = pd.read_csv(path)
         missing = sorted(RAW_REQUIRED_COLUMNS - set(frame.columns))
         if missing:
@@ -87,6 +97,12 @@ class TimeSeriesFeatureBuilder:
         facts: pd.DataFrame,
         window: SplitWindow,
     ) -> pd.DataFrame:
+        """분할 cutoff 범위마다 D+1~최대 horizon label과 과거 feature를 만든다.
+
+        생성된 식별자·horizon·수용량 계약이 어긋나거나 유효 행이 없으면
+        검증 단계에서 ``ValueError``가 발생한다.
+        """
+
         samples: list[pd.DataFrame] = []
         for _, group in facts.groupby(
             ["property_id", "room_type_code"], sort=False
@@ -131,6 +147,12 @@ class TimeSeriesFeatureBuilder:
         forecast_start: str,
         forecast_end: str,
     ) -> pd.DataFrame:
+        """한 cutoff와 미래 날짜 범위에 label 없는 추론 feature를 생성한다.
+
+        예측 범위가 cutoff 이전이거나 모델 최대 horizon을 넘거나 series별
+        cutoff 행이 정확히 하나가 아니면 ``ValueError``로 실패한다.
+        """
+
         cutoff = pd.Timestamp(cutoff_date)
         start = pd.Timestamp(forecast_start)
         end = pd.Timestamp(forecast_end)
@@ -173,6 +195,12 @@ class TimeSeriesFeatureBuilder:
         *,
         require_labels: bool,
     ) -> None:
+        """표본의 비어 있음, 식별자 중복, horizon 및 label 범위 계약을 검사한다.
+
+        추론 표에 label이 섞이거나 학습 label이 물리 객실 수를 벗어나면
+        ``ValueError``로 해당 dataset을 거부한다.
+        """
+
         if frame.empty:
             raise ValueError("generated dataset is empty")
         expected_horizon = (
@@ -273,4 +301,6 @@ class TimeSeriesFeatureBuilder:
 
 
 def sample_hash_columns() -> Iterable[str]:
+    """dataset 내용 hash에 포함할 식별자·feature·label 열의 안정된 순서를 반환한다."""
+
     return IDENTITY_COLUMNS + FEATURE_COLUMNS + LABEL_COLUMNS

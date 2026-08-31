@@ -21,10 +21,16 @@ BACKEND = ROOT / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.api.ml_router import RoomDemandRequest, _require_ml_access
-from app.contracts import RequestContext, Role
+from app.api.ml_router import RoomDemandRequest, _require_ml_access, ml_capabilities
+from app.contracts import RequestContext, Role, RuntimeFeature
 from app.adapters.ml_prediction_client import MLPredictionClient
-from app.services.ml_prediction_service import MLPredictionService
+from app.services.ml_prediction_service import (
+    MLDeploymentPolicyError,
+    MLRuntimeCapability,
+    MLPredictionService,
+    require_production_ml_capability,
+)
+from app.services.runtime_feature_availability import RuntimeFeatureAvailability
 from src.ml.room_demand_timeseries import runtime_api
 from src.ml.room_demand_timeseries.contracts import FEATURE_COLUMNS
 from src.ml.room_demand_timeseries.runtime_api import (
@@ -70,16 +76,22 @@ def approved_ml_release_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ML_APPROVED_FEATURE_CONTRACT_SHA256", "b" * 64)
 
 
-def _runtime_capabilities() -> dict[str, object]:
+def _runtime_capabilities(
+    *,
+    approval: str = "APPROVED",
+    approval_status: str = "APPROVED",
+    synthetic_training_data: bool = False,
+) -> dict[str, object]:
     return {
-        "schema_version": "MLRuntimeCapability.v1",
+        "schema_version": "MLRuntimeCapability.v2",
         "prediction_contract_version": "MLRoomDemandPrediction.v1",
         "model_version": "room-demand-timeseries-hgbr-v2.2.0",
         "model_hash": "a" * 64,
         "feature_contract_sha256": "b" * 64,
         "model_type": "historical-only-direct-multi-horizon-hgbr",
         "estimator_type": "HistGradientBoostingRegressor",
-        "approval": "CONDITIONAL_PASS",
+        "approval": approval,
+        "approval_status": approval_status,
         "min_horizon_days": 1,
         "max_horizon_days": 7,
         "model_max_horizon_days": 10,
@@ -92,7 +104,7 @@ def _runtime_capabilities() -> dict[str, object]:
                 "history_rows": 1234,
             }
         ],
-        "synthetic_training_data": True,
+        "synthetic_training_data": synthetic_training_data,
         "history_source": {
             "table": "pms.ml_evaluation.approved_history",
             "row_count": 8766,
@@ -100,7 +112,7 @@ def _runtime_capabilities() -> dict[str, object]:
             "series_count": 9,
             "min_date": "2024-01-01",
             "max_date": "2026-08-31",
-            "synthetic_only": True,
+            "synthetic_only": synthetic_training_data,
             "summary_query_id": "trino-history-summary-1",
             "continuity_query_id": "trino-history-continuity-1",
         },
@@ -374,6 +386,260 @@ def test_backend_accepts_only_a_complete_hgbr_runtime_capability() -> None:
 
     assert capabilities["estimator_type"] == "HistGradientBoostingRegressor"
     assert capabilities["properties"][0]["property_id"] == "GRAND"
+
+
+@pytest.mark.parametrize(
+    ("capability", "code"),
+    [
+        (
+            _runtime_capabilities(
+                approval="CONDITIONAL_PASS",
+                approval_status="VALIDATED",
+            ),
+            "ML_RELEASE_NOT_PRODUCTION_APPROVED",
+        ),
+        (
+            _runtime_capabilities(approval_status="REVIEWED"),
+            "ML_RELEASE_NOT_PRODUCTION_APPROVED",
+        ),
+        (
+            _runtime_capabilities(synthetic_training_data=True),
+            "ML_SYNTHETIC_TRAINING_DATA_BLOCKED",
+        ),
+    ],
+)
+def test_backend_blocks_nonproduction_ml_capability_even_when_runtime_allows_it(
+    monkeypatch: pytest.MonkeyPatch,
+    capability: dict[str, object],
+    code: str,
+) -> None:
+    monkeypatch.setenv("ML_ALLOW_CONDITIONAL", "true")
+    client = _StubMLClient(capability)
+    service = MLPredictionService(client)  # type: ignore[arg-type]
+
+    with pytest.raises(MLDeploymentPolicyError) as captured:
+        asyncio.run(service.capabilities())
+
+    assert captured.value.code == code
+    readiness = asyncio.run(service.readiness())
+    assert readiness.status == "not_ready"
+    assert readiness.reason is not None and readiness.reason.startswith(f"{code}:")
+    session = _RecordingSession()
+    with pytest.raises(MLDeploymentPolicyError) as prediction_error:
+        asyncio.run(
+            service.predict(  # type: ignore[arg-type]
+                session,
+                {
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-28",
+                    "horizon_days": 7,
+                },
+            )
+        )
+    assert prediction_error.value.code == code
+    assert client.prediction_calls == 0
+    assert session.execute_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("approval", None),
+        ("approval_status", None),
+        ("approval_status", 1),
+        ("synthetic_training_data", None),
+        ("synthetic_training_data", "false"),
+    ],
+)
+def test_backend_ml_capability_approval_and_synthetic_fields_fail_closed(
+    field: str,
+    invalid_value: object,
+) -> None:
+    capability = _runtime_capabilities()
+    if invalid_value is None:
+        capability.pop(field)
+    else:
+        capability[field] = invalid_value
+        if field == "synthetic_training_data":
+            history_source = capability["history_source"]
+            assert isinstance(history_source, dict)
+            history_source["synthetic_only"] = invalid_value
+    service = MLPredictionService(_StubMLClient(capability))  # type: ignore[arg-type]
+
+    readiness = asyncio.run(service.readiness())
+
+    assert readiness.status == "not_ready"
+    assert readiness.reason == "ML runtime capability를 확인하지 못했습니다."
+
+
+def test_backend_ml_capability_rejects_inconsistent_synthetic_receipt() -> None:
+    capability = _runtime_capabilities(synthetic_training_data=True)
+    history_source = capability["history_source"]
+    assert isinstance(history_source, dict)
+    history_source["synthetic_only"] = False
+    service = MLPredictionService(_StubMLClient(capability))  # type: ignore[arg-type]
+
+    readiness = asyncio.run(service.readiness())
+
+    assert readiness.status == "not_ready"
+    assert readiness.reason == "ML runtime capability를 확인하지 못했습니다."
+
+
+@pytest.mark.parametrize("invalid_value", [None, 0, "", "false"])
+def test_runtime_rejects_malformed_synthetic_training_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid_value: object,
+) -> None:
+    manifest = json.loads(
+        (ARTIFACT_DIR / "model_manifest.json").read_text(encoding="utf-8")
+    )
+    manifest["synthetic_training_data"] = invalid_value
+    manifest_path = tmp_path / "model_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setenv("ML_MODEL_ARTIFACT", str(ARTIFACT_DIR / "model.joblib"))
+    monkeypatch.setenv("ML_MODEL_MANIFEST", str(manifest_path))
+    monkeypatch.setenv(
+        "ML_MODEL_APPROVAL",
+        str(ARTIFACT_DIR / "model.approval.json"),
+    )
+    monkeypatch.setenv(
+        "ML_FEATURE_CONTRACT",
+        str(ARTIFACT_DIR / "feature_contract.json"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="synthetic_training_data contract is invalid",
+    ):
+        TimeSeriesRuntime()
+
+
+@pytest.mark.parametrize("invalid_value", [None, 0, "", "false"])
+def test_runtime_rejects_malformed_approval_synthetic_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid_value: object,
+) -> None:
+    approval = json.loads(
+        (ARTIFACT_DIR / "model.approval.json").read_text(encoding="utf-8")
+    )
+    if invalid_value is None:
+        approval.pop("data_is_synthetic")
+    else:
+        approval["data_is_synthetic"] = invalid_value
+    approval_path = tmp_path / "model.approval.json"
+    approval_path.write_text(json.dumps(approval), encoding="utf-8")
+    monkeypatch.setenv("ML_MODEL_ARTIFACT", str(ARTIFACT_DIR / "model.joblib"))
+    monkeypatch.setenv(
+        "ML_MODEL_MANIFEST",
+        str(ARTIFACT_DIR / "model_manifest.json"),
+    )
+    monkeypatch.setenv("ML_MODEL_APPROVAL", str(approval_path))
+    monkeypatch.setenv(
+        "ML_FEATURE_CONTRACT",
+        str(ARTIFACT_DIR / "feature_contract.json"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="approval data_is_synthetic contract is invalid",
+    ):
+        TimeSeriesRuntime()
+
+
+def test_runtime_rejects_approval_and_manifest_synthetic_mode_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manifest = json.loads(
+        (ARTIFACT_DIR / "model_manifest.json").read_text(encoding="utf-8")
+    )
+    manifest["synthetic_training_data"] = False
+    manifest_path = tmp_path / "model_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setenv("ML_MODEL_ARTIFACT", str(ARTIFACT_DIR / "model.joblib"))
+    monkeypatch.setenv("ML_MODEL_MANIFEST", str(manifest_path))
+    monkeypatch.setenv(
+        "ML_MODEL_APPROVAL",
+        str(ARTIFACT_DIR / "model.approval.json"),
+    )
+    monkeypatch.setenv(
+        "ML_FEATURE_CONTRACT",
+        str(ARTIFACT_DIR / "feature_contract.json"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="approval and manifest synthetic modes do not match",
+    ):
+        TimeSeriesRuntime()
+
+
+def test_ml_capability_api_returns_typed_deployment_policy_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ML_FEATURE_ENABLED", "1")
+    monkeypatch.setenv("ML_ALLOW_CONDITIONAL", "true")
+    service = MLPredictionService(
+        _StubMLClient(
+            _runtime_capabilities(
+                approval="CONDITIONAL_PASS",
+                approval_status="VALIDATED_SYNTHETIC",
+                synthetic_training_data=True,
+            )
+        )
+    )
+    monkeypatch.setattr("app.api.ml_router.service", service)
+
+    with pytest.raises(HTTPException) as captured:
+        asyncio.run(ml_capabilities(RequestContext(role=Role.ANALYST)))
+
+    assert captured.value.status_code == 503
+    assert captured.value.detail == {
+        "code": "ML_RELEASE_NOT_PRODUCTION_APPROVED",
+        "reason": "ML 모델 release가 운영 승인을 완료하지 않았습니다.",
+    }
+
+
+@pytest.mark.parametrize(
+    ("capability", "expected_features"),
+    [
+        (_runtime_capabilities(), (RuntimeFeature.ML_PREDICTION,)),
+        (
+            _runtime_capabilities(
+                approval="CONDITIONAL_PASS",
+                approval_status="VALIDATED",
+            ),
+            (),
+        ),
+        (_runtime_capabilities(synthetic_training_data=True), ()),
+    ],
+)
+def test_session_ml_availability_requires_production_deployment_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    capability: dict[str, object],
+    expected_features: tuple[RuntimeFeature, ...],
+) -> None:
+    monkeypatch.setenv("RAG_FEATURE_ENABLED", "0")
+    monkeypatch.setenv("ML_FEATURE_ENABLED", "1")
+    monkeypatch.setenv("ML_ALLOW_CONDITIONAL", "true")
+    ml_service = MLPredictionService(_StubMLClient(capability))  # type: ignore[arg-type]
+
+    async def ml_probe(_role: Role | None) -> str:
+        return (await ml_service.readiness()).status
+
+    async def rag_probe(_role: Role | None) -> str:
+        return "not_ready"
+
+    availability = RuntimeFeatureAvailability(
+        rag_probe=rag_probe,
+        ml_probe=ml_probe,
+    )
+
+    features = asyncio.run(availability.available_features(Role.ANALYST))
+
+    assert features == expected_features
 
 
 def test_backend_rejects_an_incomplete_ml_runtime_capability() -> None:
@@ -721,6 +987,14 @@ def test_runtime_capability_uses_actual_model_and_feature_artifact_hashes(
     assert capability["feature_contract_sha256"] == hashlib.sha256(
         (ARTIFACT_DIR / "feature_contract.json").read_bytes()
     ).hexdigest()
+    assert capability["approval"] == "CONDITIONAL_PASS"
+    assert capability["approval_status"] == "VALIDATED_SYNTHETIC"
+    assert capability["synthetic_training_data"] is True
+    with pytest.raises(MLDeploymentPolicyError) as blocked:
+        require_production_ml_capability(
+            MLRuntimeCapability.model_validate(capability)
+        )
+    assert blocked.value.code == "ML_RELEASE_NOT_PRODUCTION_APPROVED"
 
 
 def test_prediction_release_drift_is_blocked_before_audit_storage() -> None:
@@ -980,6 +1254,10 @@ def test_ml_candidate_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) ->
         _require_ml_access(RequestContext(role=Role.ANALYST))
 
     assert captured.value.status_code == 503
+    assert captured.value.detail == {
+        "code": "ML_FEATURE_DISABLED",
+        "reason": "ML 예측 기능이 비활성화되었습니다.",
+    }
     assert candidate._client is None
 
 

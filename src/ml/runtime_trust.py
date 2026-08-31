@@ -40,6 +40,12 @@ class MLRuntimeNonceGuard:
         self._seen_at: dict[str, int] = {}
 
     def consume(self, nonce: str, *, now: int | None = None) -> None:
+        """nonce 형식·만료·재사용·용량을 검사한 뒤 현재 인증 창에 한 번 등록한다.
+
+        유효하지 않거나 이미 소비된 nonce와 안전 용량을 넘는 요청은
+        ``MLRuntimeTrustError``로 거부한다.
+        """
+
         if not _NONCE.fullmatch(nonce):
             raise MLRuntimeTrustError("ML runtime request nonce is invalid")
         current = int(time.time()) if now is None else now

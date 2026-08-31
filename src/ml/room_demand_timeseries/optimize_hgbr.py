@@ -1,3 +1,5 @@
+"""HGBR 후보를 교차검증하고 독립 holdout에서 boosting 계열과 통계 비교한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -30,6 +32,8 @@ from .hgbr_optimization_support import (
 
 
 class HgbrOptimizer:
+    """feature 계약, CV, 두 holdout과 bootstrap 증거로 운영 후보 family를 선택한다."""
+
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.features = self._features()
@@ -204,6 +208,12 @@ class HgbrOptimizer:
         return merged
 
     def run(self) -> dict[str, Any]:
+        """HGBR 탐색·경쟁 모델 비교를 실행하고 후보 artifact와 selection JSON을 쓴다.
+
+        resume 증거, feature·label join 또는 estimator 학습이 불완전하면 예외를
+        전파하며 ``production_approved``는 이 최적화 단계에서 부여하지 않는다.
+        """
+
         train, validation = self._read(self.args.train), self._read(self.args.validation)
         maps = self._category_maps(train)
         if self.args.resume:
@@ -280,6 +290,8 @@ class HgbrOptimizer:
 
 
 def parse_args() -> argparse.Namespace:
+    """학습·validation·독립 holdout 경로와 seed·resume CLI 옵션을 파싱한다."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", type=Path, required=True)
     parser.add_argument("--validation", type=Path, required=True)
@@ -293,6 +305,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """CLI 최적화를 실행하고 선택 근거 JSON을 표준 출력에 기록한다."""
+
     print(json.dumps(HgbrOptimizer(parse_args()).run(), indent=2))
 
 

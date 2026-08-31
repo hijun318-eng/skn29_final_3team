@@ -1,3 +1,5 @@
+"""객실 수요 estimator pipeline과 다중 scope 예측 wrapper를 구현한다."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,6 +24,12 @@ def _encoder() -> OneHotEncoder:
 
 
 def build_pipeline(config: dict[str, Any]) -> Pipeline:
+    """범주형 encoding과 지정 HGBR 또는 ExtraTrees estimator를 한 pipeline으로 만든다.
+
+    필요한 hyperparameter가 누락되거나 sklearn이 값을 거부하면 예외를
+    그대로 전달하며 아직 학습되지 않은 pipeline을 반환한다.
+    """
+
     transformer = ColumnTransformer(
         [
             ("categorical", _encoder(), CATEGORICAL_FEATURES),
@@ -53,6 +61,8 @@ def build_pipeline(config: dict[str, Any]) -> Pipeline:
 
 @dataclass
 class TimeSeriesDemandModel:
+    """global 또는 그룹별 pipeline의 target 복원·blend·수용량 제한을 담당한다."""
+
     pipeline: Pipeline | None
     blend_weight: float
     model_version: str
@@ -63,10 +73,14 @@ class TimeSeriesDemandModel:
 
     @staticmethod
     def series_key(property_id: object, room_type_code: object) -> str:
+        """property와 room type을 offset 조회에 쓰는 안정된 문자열 key로 결합한다."""
+
         return f"{property_id}|{room_type_code}"
 
     @staticmethod
     def group_key(values: object) -> str:
+        """단일값이나 tuple 그룹 값을 pipeline mapping용 문자열 key로 정규화한다."""
+
         normalized = values if isinstance(values, tuple) else (values,)
         return "|".join(str(value) for value in normalized)
 
@@ -96,6 +110,12 @@ class TimeSeriesDemandModel:
         return np.asarray(pipeline.predict(frame[FEATURE_COLUMNS]), dtype=float)
 
     def predict_raw(self, frame: pd.DataFrame) -> np.ndarray:
+        """학습 target mode를 객실 수로 복원하고 seasonal blend·segment offset을 적용한다.
+
+        필요한 feature, pipeline group 또는 지원 target mode가 없으면
+        ``KeyError``나 ``ValueError``로 추론을 중단하며 수용량 clipping 전 값을 반환한다.
+        """
+
         model_prediction = self._model_prediction(frame)
         capacity = frame["physical_rooms"].astype(float).to_numpy()
         target_mode = getattr(self, "target_mode", "occupancy_rate")
@@ -138,5 +158,7 @@ class TimeSeriesDemandModel:
         return prediction
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        """raw 객실 수 예측을 0 이상 각 행의 물리 수용량 이하로 제한해 반환한다."""
+
         capacity = frame["physical_rooms"].astype(float).to_numpy()
         return np.clip(self.predict_raw(frame), 0.0, capacity)

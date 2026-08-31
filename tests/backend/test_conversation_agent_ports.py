@@ -263,7 +263,7 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
                 return AgentPortReadiness(
                     agent=AgentKind.ML_PREDICTION,
                     status="ready",
-                    capability_version="MLRuntimeCapability.v1",
+                    capability_version="MLRuntimeCapability.v2",
                     release_refs=("ml-model:sha256:" + "a" * 64,),
                 )
 

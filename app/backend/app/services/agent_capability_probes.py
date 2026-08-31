@@ -27,7 +27,11 @@ from app.services.agent_supervisor import (
     AgentCapabilityEvidence,
     AgentDispatchError,
 )
-from app.services.ml_prediction_service import MLRuntimeCapability
+from app.services.ml_prediction_service import (
+    MLDeploymentPolicyError,
+    MLRuntimeCapability,
+    require_production_ml_capability,
+)
 from app.services.rag_gateway import RAG_MAX_EMBEDDING_DIMENSION
 
 
@@ -439,8 +443,16 @@ class MLPredictionCapabilityProbe:
                 ),
             )
         try:
-            capability = MLRuntimeCapability.model_validate(
-                await self._reader.capabilities()
+            capability = require_production_ml_capability(
+                MLRuntimeCapability.model_validate(
+                    await self._reader.capabilities()
+                )
+            )
+        except MLDeploymentPolicyError as error:
+            return self._evidence(
+                request,
+                matched=False,
+                outcome=error.code,
             )
         except Exception as error:
             raise AgentDispatchError(
@@ -546,7 +558,11 @@ class MLPredictionCapabilityProbe:
             reason=(
                 "ML_CAPABILITY_MATCH"
                 if matched
-                else "ML_CAPABILITY_NOT_MATCHED"
+                else (
+                    outcome
+                    if outcome.startswith("ML_")
+                    else "ML_CAPABILITY_NOT_MATCHED"
+                )
             ),
             evidence_refs=(f"{_ML_EVIDENCE_REFERENCE_PREFIX}{digest}",),
         )

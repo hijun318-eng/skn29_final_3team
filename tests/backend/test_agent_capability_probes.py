@@ -171,16 +171,23 @@ def _rag_candidate(*, matched: bool = True) -> dict[str, object]:
     }
 
 
-def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
+def _ml_capability(
+    *,
+    max_horizon_days: int = 90,
+    approval: str = "APPROVED",
+    approval_status: str = "APPROVED",
+    synthetic_training_data: bool = False,
+) -> dict[str, object]:
     return {
-        "schema_version": "MLRuntimeCapability.v1",
+        "schema_version": "MLRuntimeCapability.v2",
         "prediction_contract_version": "MLRoomDemandPrediction.v1",
         "model_version": "approved-demand-release",
         "model_hash": "a" * 64,
         "feature_contract_sha256": "b" * 64,
         "model_type": "daily-demand-forecast",
         "estimator_type": "ApprovedRegressor",
-        "approval": "APPROVED",
+        "approval": approval,
+        "approval_status": approval_status,
         "min_horizon_days": 1,
         "max_horizon_days": max_horizon_days,
         "model_max_horizon_days": max_horizon_days,
@@ -193,7 +200,7 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
                 "history_rows": 500,
             }
         ],
-        "synthetic_training_data": False,
+        "synthetic_training_data": synthetic_training_data,
         "history_source": {
             "table": "pms.ml_evaluation.approved_history",
             "row_count": 500,
@@ -201,7 +208,7 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
             "series_count": 1,
             "min_date": "2024-01-01",
             "max_date": "2026-08-28",
-            "synthetic_only": False,
+            "synthetic_only": synthetic_training_data,
             "summary_query_id": "summary-query",
             "continuity_query_id": "continuity-query",
         },
@@ -410,6 +417,58 @@ class MLPredictionCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(evidence.matched)
         self.assertEqual(reader.calls, 1)
+
+    async def test_nonproduction_runtime_receipt_never_matches_registry_probe(self) -> None:
+        request = _request(
+            invocation=MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=7,
+            )
+        )
+        candidates = (
+            (
+                _ml_capability(
+                    approval="CONDITIONAL_PASS",
+                    approval_status="VALIDATED",
+                ),
+                "ML_RELEASE_NOT_PRODUCTION_APPROVED",
+            ),
+            (
+                _ml_capability(synthetic_training_data=True),
+                "ML_SYNTHETIC_TRAINING_DATA_BLOCKED",
+            ),
+        )
+
+        for capability, expected_reason in candidates:
+            with self.subTest(expected_reason=expected_reason):
+                reader = _MLCapabilityReader(capability)
+                evidence = await MLPredictionCapabilityProbe(reader).probe(request)
+
+                self.assertFalse(evidence.matched)
+                self.assertEqual(evidence.reason, expected_reason)
+                self.assertEqual(reader.calls, 1)
+
+    async def test_missing_deployment_approval_field_is_invalid_evidence(self) -> None:
+        capability = _ml_capability()
+        capability.pop("approval_status")
+        request = _request(
+            invocation=MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=7,
+            )
+        )
+
+        with self.assertRaises(AgentDispatchError) as raised:
+            await MLPredictionCapabilityProbe(
+                _MLCapabilityReader(capability)
+            ).probe(request)
+
+        self.assertEqual(
+            raised.exception.code,
+            "AGENT_CAPABILITY_EVIDENCE_INVALID",
+        )
 
 if __name__ == "__main__":
     unittest.main()

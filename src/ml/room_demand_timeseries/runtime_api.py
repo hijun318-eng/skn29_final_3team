@@ -1,3 +1,5 @@
+"""승인 artifact와 감사된 Trino history만 사용하는 객실 수요 추론 HTTP runtime이다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -47,7 +49,7 @@ HISTORY_COLUMNS = [
 ]
 DEFAULT_RUNTIME_MAX_HORIZON_DAYS = 7
 ABSOLUTE_MAX_HORIZON_DAYS = 366
-ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v1"
+ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v2"
 ML_PREDICTION_RESULT_VERSION = "MLRoomDemandPrediction.v1"
 
 
@@ -174,6 +176,8 @@ FROM (
 
 
 def sha256(path: Path) -> str:
+    """배포 artifact를 스트리밍해 release pin 검증용 SHA-256을 반환한다."""
+
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -182,7 +186,11 @@ def sha256(path: Path) -> str:
 
 
 def load_model_artifact(artifact: Path) -> Any:
-    """Load a serving artifact only when its sklearn serialization is compatible."""
+    """sklearn 직렬화 version이 runtime과 호환되는 artifact만 역직렬화한다.
+
+    version 경고는 ``RuntimeError``로 승격하며 파일 손상·class 누락 등 다른
+    joblib 오류도 호출자에게 전달해 대체 모델로 우회하지 않는다.
+    """
 
     try:
         with warnings.catch_warnings():
@@ -195,6 +203,8 @@ def load_model_artifact(artifact: Path) -> Any:
 
 
 def safe_table(value: str) -> str:
+    """Trino history 이름을 정확한 catalog.schema.table 식별자로 검증한다."""
+
     parts = value.split(".")
     if len(parts) != 3 or any(not IDENTIFIER.fullmatch(part) for part in parts):
         raise RuntimeError("ML_HISTORY_TABLE must be catalog.schema.table")
@@ -202,10 +212,14 @@ def safe_table(value: str) -> str:
 
 
 def sql_literal(value: str) -> str:
+    """서버에서 검증한 문자열의 작은따옴표를 SQL 문자열 literal 형식으로 escape한다."""
+
     return "'" + value.replace("'", "''") + "'"
 
 
 class PredictionRequest(BaseModel):
+    """property, feature 기준일과 허용 범위의 예측 horizon을 검증하는 요청 계약이다."""
+
     property_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     as_of: date
     horizon_days: int = Field(
@@ -216,6 +230,12 @@ class PredictionRequest(BaseModel):
 
 
 class TimeSeriesRuntime:
+    """release hash·승인·HGBR·history 계약을 검증한 뒤 추론 상태를 소유한다.
+
+    필수 환경·artifact·Trino 증거가 없거나 서로 불일치하면 초기화가 실패하며
+    준비되지 않은 runtime은 예측 endpoint에 노출되지 않는다.
+    """
+
     def __init__(self) -> None:
         self.hmac_secret = runtime_hmac_secret()
         artifact = Path(os.environ["ML_MODEL_ARTIFACT"])
@@ -226,6 +246,21 @@ class TimeSeriesRuntime:
         self.approval = json.loads(approval_path.read_text(encoding="utf-8"))
         feature_contract_bytes = feature_contract_path.read_bytes()
         feature_contract = json.loads(feature_contract_bytes.decode("utf-8"))
+        synthetic_training_data = self.manifest.get("synthetic_training_data")
+        if type(synthetic_training_data) is not bool:
+            raise RuntimeError(
+                "ML release synthetic_training_data contract is invalid"
+            )
+        approval_data_is_synthetic = self.approval.get("data_is_synthetic")
+        if type(approval_data_is_synthetic) is not bool:
+            raise RuntimeError(
+                "ML approval data_is_synthetic contract is invalid"
+            )
+        if approval_data_is_synthetic != synthetic_training_data:
+            raise RuntimeError(
+                "ML approval and manifest synthetic modes do not match"
+            )
+        self.synthetic_training_data = synthetic_training_data
         self.feature_contract_sha256 = hashlib.sha256(
             feature_contract_bytes
         ).hexdigest()
@@ -290,10 +325,16 @@ class TimeSeriesRuntime:
         self.history_source = validate_history_source(
             self.trino,
             self.history_table,
-            expected_synthetic=bool(self.manifest["synthetic_training_data"]),
+            expected_synthetic=self.synthetic_training_data,
         )
 
     def query_history(self, request: PredictionRequest) -> tuple[pd.DataFrame, str]:
+        """property와 as-of 이하의 Trino 일별 실적을 조회해 DataFrame과 query ID를 반환한다.
+
+        조회 행이 없으면 404로 실패하며 요청 property는 검증 후 대문자로
+        정규화해 SQL literal로 사용한다.
+        """
+
         sql = f"""
 SELECT {', '.join(HISTORY_COLUMNS)}
 FROM {self.history_table}
@@ -309,6 +350,12 @@ ORDER BY room_type_code, business_date
         return frame, result.query_id
 
     def capabilities(self) -> dict[str, Any]:
+        """release pin, 승인 상태, history 범위와 property별 허용 as-of를 반환한다.
+
+        Trino 조회 또는 날짜 변환이 실패하면 capability 생성을 실패시켜 오래된
+        정적 목록을 반환하지 않는다.
+        """
+
         sql = f"""
 SELECT property_id, min(business_date) AS min_date,
        max(business_date) AS max_date, count(*) AS history_rows
@@ -347,16 +394,23 @@ ORDER BY property_id
             "model_type": self.model_type,
             "estimator_type": self.estimator_type,
             "approval": self.approval.get("final_decision"),
+            "approval_status": self.approval.get("approval_status"),
             "min_horizon_days": 1,
             "max_horizon_days": self.runtime_max_horizon_days,
             "model_max_horizon_days": self.model_max_horizon_days,
             "properties": properties,
-            "synthetic_training_data": bool(self.manifest["synthetic_training_data"]),
+            "synthetic_training_data": self.synthetic_training_data,
             "history_source": self.history_source,
             "query_id": result.query_id,
         }
 
     def predict(self, request: PredictionRequest) -> dict[str, Any]:
+        """history를 point-in-time feature로 바꿔 일별·room type별 예측과 provenance를 반환한다.
+
+        runtime 또는 모델 horizon을 넘으면 422, history가 없으면 404로 실패하며
+        응답에는 실제 model·feature hash와 Trino query ID를 포함한다.
+        """
+
         if request.horizon_days > self.runtime_max_horizon_days:
             raise HTTPException(
                 status_code=422,
@@ -564,6 +618,8 @@ async def authenticate_runtime_exchange(request: Request, call_next) -> Response
 
 @app.on_event("startup")
 def startup() -> None:
+    """프로세스 시작 시 모든 release·history 계약을 검증하고 실패하면 미준비 상태로 둔다."""
+
     global state
     try:
         state = TimeSeriesRuntime()
@@ -573,6 +629,8 @@ def startup() -> None:
 
 
 def ready_state() -> TimeSeriesRuntime:
+    """초기화된 runtime을 반환하고 준비 실패 상태는 HTTP 503으로 차단한다."""
+
     if state is None:
         raise HTTPException(status_code=503, detail="runtime not ready")
     return state
@@ -580,11 +638,15 @@ def ready_state() -> TimeSeriesRuntime:
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """프로세스 생존 여부만 반환하며 모델 준비 완료를 주장하지 않는다."""
+
     return {"status": "ok"}
 
 
 @app.get("/readiness")
 def readiness() -> dict[str, Any]:
+    """준비된 모델의 hash·estimator·승인 증거를 반환하고 아니면 503으로 실패한다."""
+
     runtime = ready_state()
     return {
         "status": "ready",
@@ -598,9 +660,13 @@ def readiness() -> dict[str, Any]:
 
 @app.get("/capabilities")
 def capabilities() -> dict[str, Any]:
+    """인증된 호출에 현재 runtime이 동적으로 조회한 ML capability 계약을 반환한다."""
+
     return ready_state().capabilities()
 
 
 @app.post("/predictions/room-demand")
 def predict(request: PredictionRequest) -> dict[str, Any]:
+    """검증된 요청을 준비된 runtime에 위임해 서명 대상 예측 응답을 반환한다."""
+
     return ready_state().predict(request)

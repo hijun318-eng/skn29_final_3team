@@ -1,3 +1,5 @@
+"""예측일에 미리 알려진 한국 휴일·외생 달력 feature만 결합한다."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,6 +34,8 @@ _FIXED_HOLIDAYS = {
 
 
 def known_holiday_dates(start_year: int = 2017, end_year: int = 2027) -> set[pd.Timestamp]:
+    """연도 범위의 고정·이동 공휴일을 정규화된 Timestamp 집합으로 반환한다."""
+
     dates = {pd.Timestamp(value) for value in _MOVABLE_HOLIDAYS}
     for year in range(start_year, end_year + 1):
         dates.update(pd.Timestamp(year=year, month=month, day=day) for month, day in _FIXED_HOLIDAYS)
@@ -51,13 +55,15 @@ EXOGENOUS_COLUMNS = [
 
 
 class KnownExogenousCalendar:
-    """Date-known covariates; never reads room-demand labels."""
+    """수요 label을 읽지 않고 예측일에 알려진 외생 변수만 보관·결합한다."""
 
     def __init__(self, known: pd.DataFrame | None = None) -> None:
         self.known = known if known is not None else pd.DataFrame()
 
     @classmethod
     def from_files(cls, paths: list[Path]) -> "KnownExogenousCalendar":
+        """CSV 달력을 합치며 동일 날짜 값이 충돌하면 ``ValueError``로 거부한다."""
+
         if not paths:
             return cls()
         columns = ["target_date", *EXOGENOUS_COLUMNS]
@@ -73,6 +79,12 @@ class KnownExogenousCalendar:
         return cls(known[["target_date", *EXOGENOUS_COLUMNS]])
 
     def enrich(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """target_date별 외생 값을 결합하고 누락값은 결정론적 달력값으로 채운다.
+
+        입력에 ``target_date``가 없거나 날짜 변환이 실패하면 pandas 예외를
+        그대로 전달하며 원본 DataFrame은 변경하지 않는다.
+        """
+
         result = frame.copy()
         target = pd.to_datetime(result["target_date"])
         day_number = (target - pd.Timestamp("2017-01-01")).dt.days.astype(float)

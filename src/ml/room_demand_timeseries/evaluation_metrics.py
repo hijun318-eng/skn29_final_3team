@@ -1,3 +1,5 @@
+"""객실 수요 예측을 baseline과 비교해 전체·그룹·bootstrap 품질 지표를 계산한다."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -19,6 +21,12 @@ def metric_record(
     prediction: np.ndarray,
     baseline: np.ndarray,
 ) -> dict[str, float | int]:
+    """실측·예측·baseline 배열에서 WAPE, 오차 분위수와 범위별 적중률을 계산한다.
+
+    배열 길이·형상이 맞지 않거나 표본이 비어 있으면 numpy/sklearn 오류를
+    그대로 전달해 유효하지 않은 metric을 만들지 않는다.
+    """
+
     actual = np.asarray(actual, dtype=float)
     prediction = np.asarray(prediction, dtype=float)
     baseline = np.asarray(baseline, dtype=float)
@@ -109,6 +117,12 @@ def evaluate_model(
     frame: pd.DataFrame,
     bootstrap_samples: int = 0,
 ) -> tuple[dict[str, Any], dict[str, pd.DataFrame]]:
+    """모델 예측을 여러 seasonal baseline과 비교해 report와 그룹표를 반환한다.
+
+    필수 feature·label이 없거나 요청한 horizon 그룹이 존재하지 않으면 평가를
+    실패시키며, 선택적으로 target-date block bootstrap 신뢰구간도 계산한다.
+    """
+
     actual = frame["target_rooms_sold"].astype(float).to_numpy()
     baselines = _baseline_predictions(frame)
     baseline_metrics = {
@@ -213,6 +227,8 @@ def evaluate_model(
 
 
 def selection_score(report: dict[str, Any]) -> float:
+    """전체 WAPE와 취약 그룹·장기 horizon 벌점을 합쳐 후보 선택 점수를 만든다."""
+
     return float(
         report["metrics"]["wape"]
         + 0.05 * report["worst_high_volume_room_type_wape"]

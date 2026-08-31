@@ -1024,16 +1024,21 @@ class ConversationOrchestrator:
         internal_manual_query_service_factory: Callable[[], Any],
         *,
         route_resolver: "AgentRouteResolver | None" = None,
-        capability_routing_enabled: bool = False,
+        supervisor_planner_factory: Callable[[], Any] | None = None,
+        supervisor_routing_enabled: bool = False,
+        internal_guideline_capability_searcher_factory: Callable[[], Any]
+        | None = None,
         ml_prediction_service_factory: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
         """공통 admission 후 명시적으로 승인된 Supervisor 결정만 실행한다.
 
-        일반 입력은 기존 governed analysis 기본 route를 유지한다. 선택 기능은 feature
-        flag와 capability/readiness 영수증이 함께 유효한 명시 route에서만 실행한다.
+        Supervisor가 일반 입력을 계획하더라도 선택 Agent의 capability/readiness와
+        원본 command admission은 서버가 다시 검증한다. 명시 route는 모델을 우회한다.
         """
 
         from app.ports.agent import AgentRequest
+        from app.contracts import RuntimeFeature
+        from app.runtime_features import runtime_feature_enabled
         from app.services.agent_supervisor import AgentDispatchError
         from app.services.conversation_agent_ports import (
             analysis_agent_result,
@@ -1044,6 +1049,14 @@ class ConversationOrchestrator:
             build_conversation_agent_supervisor,
         )
         from app.services.langgraph_agent_runtime import LangGraphAgentRuntime
+        from app.services.ml_prediction_service import (
+            MLPredictionService,
+            MLRuntimeCapability,
+        )
+        from app.services.supervisor_planner import (
+            SupervisorCapabilityCatalog,
+            materialize_supervisor_plan,
+        )
 
         if not isinstance(request, AgentRequest):
             raise TypeError("dispatch_agent_command에는 AgentRequest가 필요합니다.")
@@ -1083,6 +1096,61 @@ class ConversationOrchestrator:
 
         admitted_request = request.model_copy(update={"context": admission.context})
         try:
+            shared_ml_service = (
+                (ml_prediction_service_factory or MLPredictionService)()
+                if runtime_feature_enabled(RuntimeFeature.ML_PREDICTION)
+                else None
+            )
+            if (
+                supervisor_routing_enabled
+                and route_resolver is None
+                and request.command.requested_route is None
+            ):
+                if supervisor_planner_factory is None:
+                    raise AgentDispatchError(
+                        "AGENT_SUPERVISOR_CONFIGURATION_INVALID",
+                        "Supervisor planner가 구성되지 않았습니다.",
+                    )
+                ml_capability = None
+                if shared_ml_service is not None:
+                    try:
+                        ml_capability = MLRuntimeCapability.model_validate(
+                            await shared_ml_service.capabilities()
+                        )
+                    except Exception as error:
+                        logger.warning(
+                            "Supervisor ML capability is unavailable: error_type=%s",
+                            type(error).__name__,
+                        )
+                        ml_capability = None
+                catalog = SupervisorCapabilityCatalog.from_runtime(
+                    rag_enabled=runtime_feature_enabled(
+                        RuntimeFeature.INTERNAL_GUIDELINE
+                    ),
+                    ml_enabled=runtime_feature_enabled(
+                        RuntimeFeature.ML_PREDICTION
+                    ),
+                    ml_capability=ml_capability,
+                )
+                previous_turns = await self._repo.list_turns(
+                    request.conversation_id
+                )
+                previous_route = None
+                if previous_turns:
+                    raw_previous_route = previous_turns[-1].get("route")
+                    if isinstance(raw_previous_route, str) and raw_previous_route:
+                        previous_route = raw_previous_route
+                planner = supervisor_planner_factory()
+                planned = await planner.plan(
+                    admitted_request,
+                    catalog,
+                    previous_route=previous_route,
+                )
+                admitted_request = materialize_supervisor_plan(
+                    admitted_request,
+                    planned,
+                    catalog,
+                )
             try:
                 route_timeout_seconds = float(
                     os.getenv("CONVERSATION_AGENT_ROUTE_TIMEOUT_SECONDS", "15")
@@ -1107,8 +1175,16 @@ class ConversationOrchestrator:
                 internal_manual_query_service_factory,
                 route_resolver=route_resolver,
                 admission=admission,
-                capability_routing_enabled=capability_routing_enabled,
-                ml_prediction_service_factory=ml_prediction_service_factory,
+                capability_routing_enabled=supervisor_routing_enabled,
+                data_platform=self._data_platform,
+                internal_guideline_capability_searcher_factory=(
+                    internal_guideline_capability_searcher_factory
+                ),
+                ml_prediction_service_factory=(
+                    (lambda: shared_ml_service)
+                    if shared_ml_service is not None
+                    else None
+                ),
             )
             route_lease_stop = asyncio.Event()
             route_lease_lost = asyncio.Event()
@@ -1188,12 +1264,21 @@ class ConversationOrchestrator:
         executor: Callable[[RequestContext], Awaitable[dict[str, Any]]],
         *,
         admission: _AdmittedConversationCommand | None = None,
+        supervisor_plan_ref: str | None = None,
     ) -> dict[str, Any]:
         """RAG Agent를 기존 command idempotency·CAS·lease·terminal 계약으로 실행한다."""
 
         command = ConversationCommandRequest.model_validate(payload)
-        if command.requested_route != "INTERNAL_GUIDELINE":
-            raise ValueError("내부지침 command는 명시적 INTERNAL_GUIDELINE route가 필요합니다.")
+        explicit_route = command.requested_route == "INTERNAL_GUIDELINE"
+        planned_route = (
+            supervisor_plan_ref is not None
+            and command.requested_route is None
+            and command.ml_prediction is None
+        )
+        if explicit_route == planned_route:
+            raise ValueError(
+                "내부지침 command에는 명시 route 또는 검증된 Supervisor 계획 하나가 필요합니다."
+            )
         early_result: dict[str, Any] | None = None
         if admission is None:
             admission, early_result = await self._admit_command(
@@ -1346,12 +1431,24 @@ class ConversationOrchestrator:
         persister: Callable[[Any, dict[str, Any]], Awaitable[None]],
         *,
         admission: _AdmittedConversationCommand | None = None,
+        supervisor_plan_ref: str | None = None,
     ) -> dict[str, Any]:
         """typed ML 예측과 감사 이벤트·Conversation Turn을 하나의 terminal로 확정한다."""
 
         command = ConversationCommandRequest.model_validate(payload)
-        if command.requested_route != "ML_PREDICTION" or command.ml_prediction is None:
-            raise ValueError("ML command는 명시적 ML_PREDICTION action이 필요합니다.")
+        explicit_route = (
+            command.requested_route == "ML_PREDICTION"
+            and command.ml_prediction is not None
+        )
+        planned_route = (
+            supervisor_plan_ref is not None
+            and command.requested_route is None
+            and command.ml_prediction is None
+        )
+        if explicit_route == planned_route:
+            raise ValueError(
+                "ML command에는 명시 action 또는 검증된 Supervisor 계획 하나가 필요합니다."
+            )
         early_result: dict[str, Any] | None = None
         if admission is None:
             admission, early_result = await self._admit_command(

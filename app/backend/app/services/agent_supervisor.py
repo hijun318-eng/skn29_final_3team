@@ -74,7 +74,10 @@ class SupervisorDecision:
                 "AGENT_ROUTE_EVIDENCE_INVALID",
                 "Agent route 증거 참조가 올바르지 않습니다.",
             )
-        if self.source is AgentDecisionSource.CAPABILITY_EVIDENCE:
+        if self.source in {
+            AgentDecisionSource.CAPABILITY_EVIDENCE,
+            AgentDecisionSource.MODEL_SUPERVISOR,
+        }:
             if not self.evidence_refs:
                 raise AgentDispatchError(
                     "AGENT_ROUTE_EVIDENCE_REQUIRED",
@@ -235,6 +238,27 @@ class CapabilityEvidenceRouteResolver:
                 request,
                 ((explicit.agent, probe),),
             )
+        if request.supervisor_plan_ref is not None:
+            selected_agent = request.target_agent
+            if selected_agent is None:
+                raise AgentDispatchError(
+                    "AGENT_MODEL_PLAN_INVALID",
+                    "Supervisor 계획에 실행 Agent가 없습니다.",
+                )
+            probe = self._probes.get(selected_agent)
+            if probe is None:
+                raise AgentDispatchError(
+                    "AGENT_CAPABILITY_NOT_CONFIGURED",
+                    "Supervisor가 선택한 기능의 capability 검증 경계가 없습니다.",
+                    evidence_refs=(request.supervisor_plan_ref,),
+                )
+            return await self._resolve_probe_entries(
+                request,
+                ((selected_agent, probe),),
+                source=AgentDecisionSource.MODEL_SUPERVISOR,
+                reason=f"MODEL_SUPERVISOR_{selected_agent.value}",
+                additional_evidence_refs=(request.supervisor_plan_ref,),
+            )
         if not self._automatic_routing_enabled:
             return await self._explicit_resolver.resolve(request)
         return await self._resolve_probe_entries(request, tuple(self._probes.items()))
@@ -243,6 +267,10 @@ class CapabilityEvidenceRouteResolver:
         self,
         request: AgentRequest,
         probe_entries: tuple[tuple[AgentKind, AgentCapabilityProbe], ...],
+        *,
+        source: AgentDecisionSource = AgentDecisionSource.CAPABILITY_EVIDENCE,
+        reason: str | None = None,
+        additional_evidence_refs: tuple[str, ...] = (),
     ) -> SupervisorDecision:
         """선택 가능한 probe 집합에서 정확히 한 receipt-backed 결정을 만든다."""
 
@@ -304,7 +332,7 @@ class CapabilityEvidenceRouteResolver:
             evidence.append(result)
 
         matches = [item for item in evidence if item.matched]
-        all_refs = tuple(
+        all_refs = additional_evidence_refs + tuple(
             ref for item in evidence for ref in item.evidence_refs
         )
         if len(all_refs) != len(set(all_refs)):
@@ -329,9 +357,9 @@ class CapabilityEvidenceRouteResolver:
         selected = matches[0]
         return SupervisorDecision(
             agent=selected.agent,
-            reason=selected.reason,
-            source=AgentDecisionSource.CAPABILITY_EVIDENCE,
-            evidence_refs=selected.evidence_refs,
+            reason=reason or selected.reason,
+            source=source,
+            evidence_refs=additional_evidence_refs + selected.evidence_refs,
         )
 
 

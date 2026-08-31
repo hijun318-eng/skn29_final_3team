@@ -19,6 +19,7 @@ from app.authorization import permission_snapshot_id
 from app.contracts import RequestContext, Role
 from app.conversation_contracts import ConversationCommandRequest
 from app.ports.agent import AgentKind, AgentRequest, MLPredictionInvocation
+from app.ports.data_platform import NoEntitledAssetsError
 from app.services.agent_supervisor import (
     AgentDispatchError,
     CallableAgentPort,
@@ -397,6 +398,99 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             routing.decision.source,
             AgentDecisionSource.CAPABILITY_EVIDENCE,
+        )
+
+    async def test_production_probe_registry_routes_unique_rag_match(self) -> None:
+        """자동 opt-in은 분석 미매칭과 승인 RAG 매칭 receipt를 함께 판정한다."""
+
+        class DataPlatform:
+            async def search_asset_candidates(self, *_args, **_kwargs):
+                raise NoEntitledAssetsError("no governed analysis candidate")
+
+        class Searcher:
+            calls = 0
+
+            async def search_capability(self, query: str, app_role: str):
+                self.calls += 1
+                self.assertions = (query, app_role)
+                return {
+                    "schema_version": "RagCapabilityCandidate.v1",
+                    "matched": True,
+                    "retrieval_request_id": str(uuid4()),
+                    "query_hash": "a" * 64,
+                    "tool_code": "internal-manual-search",
+                    "tool_version": "1.0.0-rc1",
+                    "model_revision": "text-embedding-3-large:d1024",
+                    "embedding_dimension": 1024,
+                    "evidence_ids": ["EV-ROOMS-1"],
+                    "document_ids": ["REPORT-2026-08-ROOMS"],
+                    "maximum_score": 0.82,
+                }
+
+        conversation_id = uuid4()
+        user_id = uuid4()
+        request = AgentRequest(
+            conversation_id=conversation_id,
+            command=ConversationCommandRequest(
+                user_message="8월 객실팀 보고서의 취소 사유를 알려줘",
+                idempotency_key="registry-auto-rag",
+                expected_head_turn_id=None,
+            ),
+            context=RequestContext(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                role=Role.ANALYST,
+                command_id=uuid4(),
+                permission_snapshot_id=permission_snapshot_id(
+                    user_id,
+                    Role.ANALYST,
+                ),
+                product_release_id="product-release-v1",
+                semantic_release_id="semantic-release-v1",
+            ),
+        )
+        searcher = Searcher()
+        with patch.dict(
+            "os.environ",
+            {"RAG_FEATURE_ENABLED": "1", "ML_FEATURE_ENABLED": "0"},
+        ):
+            supervisor = build_conversation_agent_supervisor(
+                orchestrator=object(),
+                execution_gate=ConcurrentExecutionGate(),
+                internal_manual_query_service_factory=lambda: None,
+                capability_routing_enabled=True,
+                data_platform=DataPlatform(),
+                internal_guideline_capability_searcher_factory=lambda: searcher,
+            )
+            routing = await supervisor.route_with_state(request)
+
+        self.assertEqual(routing.decision.agent, AgentKind.INTERNAL_GUIDELINE)
+        self.assertEqual(
+            routing.decision.source,
+            AgentDecisionSource.CAPABILITY_EVIDENCE,
+        )
+        self.assertEqual(searcher.calls, 1)
+        self.assertEqual(
+            searcher.assertions,
+            (request.command.user_message, "analyst"),
+        )
+
+    def test_automatic_registry_fails_closed_without_analysis_probe_dependency(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"RAG_FEATURE_ENABLED": "0", "ML_FEATURE_ENABLED": "0"},
+        ):
+            with self.assertRaises(AgentDispatchError) as raised:
+                build_conversation_agent_supervisor(
+                    orchestrator=object(),
+                    execution_gate=ConcurrentExecutionGate(),
+                    internal_manual_query_service_factory=lambda: None,
+                    capability_routing_enabled=True,
+                )
+
+        self.assertEqual(
+            raised.exception.code,
+            "AGENT_CAPABILITY_REGISTRY_INVALID",
         )
 
 

@@ -60,7 +60,11 @@ from app.api.analysis_router_runtime import (
     repository_call as _repository_call,
     routing_service as _routing_service,
 )
-from app.api.rag_router_runtime import internal_manual_query_service
+from app.api.rag_router_runtime import (
+    internal_manual_capability_searcher,
+    internal_manual_query_service,
+)
+from app.adapters.openai_supervisor import openai_supervisor_planner_from_env
 from app.api.analysis_router_support import (
     analysis_support_router,
     archive_analysis_artifact,
@@ -98,6 +102,7 @@ from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
 from app.services.runtime_feature_availability import available_runtime_features
+from app.runtime_features import supervisor_feature_enabled
 from app.user_account_roles import UserAccountRole, public_user_account_role
 
 
@@ -656,6 +661,11 @@ async def execute_conversation_command(
             agent_request,
             execution_gate,
             internal_manual_query_service,
+            internal_guideline_capability_searcher_factory=(
+                internal_manual_capability_searcher
+            ),
+            supervisor_planner_factory=openai_supervisor_planner_from_env,
+            supervisor_routing_enabled=supervisor_feature_enabled(),
         )
     except TimeoutError as error:
         execution_state = getattr(error, "agent_execution_state", None)

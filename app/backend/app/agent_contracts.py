@@ -34,6 +34,7 @@ class AgentDecisionSource(str, Enum):
     EXPLICIT_COMMAND = "EXPLICIT_COMMAND"
     GOVERNED_DEFAULT = "GOVERNED_DEFAULT"
     CAPABILITY_EVIDENCE = "CAPABILITY_EVIDENCE"
+    MODEL_SUPERVISOR = "MODEL_SUPERVISOR"
 
 
 class AgentCheckpointIdentity(ContractModel):
@@ -123,9 +124,12 @@ class AgentExecutionState(ContractModel):
                 value is not None for value in decision_fields
             ):
                 raise ValueError("FAILED 상태의 route 결정은 완전하거나 없어야 합니다.")
-        if self.decision_source is AgentDecisionSource.CAPABILITY_EVIDENCE:
+        if self.decision_source in {
+            AgentDecisionSource.CAPABILITY_EVIDENCE,
+            AgentDecisionSource.MODEL_SUPERVISOR,
+        }:
             if not self.decision_evidence_refs:
-                raise ValueError("Capability 기반 route에는 증거 참조가 필요합니다.")
+                raise ValueError("자동 route에는 증거 참조가 필요합니다.")
         elif self.decision_evidence_refs:
             raise ValueError("Capability route가 아니면 증거 참조를 가질 수 없습니다.")
         if (self.phase is AgentExecutionPhase.FAILED) != bool(self.terminal_code):
@@ -185,9 +189,12 @@ class AgentStateUpdate(ContractModel):
                 or self.code is not None
             ):
                 raise ValueError("ROUTE는 Agent와 결정 근거·출처만 가져야 합니다.")
-            if self.source is AgentDecisionSource.CAPABILITY_EVIDENCE:
+            if self.source in {
+                AgentDecisionSource.CAPABILITY_EVIDENCE,
+                AgentDecisionSource.MODEL_SUPERVISOR,
+            }:
                 if not self.evidence_refs:
-                    raise ValueError("Capability 기반 ROUTE에는 증거 참조가 필요합니다.")
+                    raise ValueError("자동 ROUTE에는 증거 참조가 필요합니다.")
             elif self.evidence_refs:
                 raise ValueError("Capability ROUTE가 아니면 증거 참조를 가질 수 없습니다.")
             return self

@@ -59,6 +59,11 @@ from app.services.conversation.orchestrator import (
     _view_contract,
 )
 from app.services.execution_control import ConcurrentExecutionGate
+from app.services.supervisor_planner import (
+    SupervisorPlanResult,
+    SupervisorPlanRoute,
+    SupervisorRoutePlan,
+)
 
 
 TEST_PRODUCT_RELEASE = "product-release:test"
@@ -1964,6 +1969,105 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(execution_contexts), 1)
         self.assertIsNotNone(execution_contexts[0].command_id)
 
+    async def test_terra_plan_can_route_unmodified_command_to_rag(self) -> None:
+        """원본 멱등 command를 바꾸지 않고 모델 계획과 RAG 검색 receipt를 결속한다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Supervisor RAG dispatch",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="시설 안전 절차를 알려줘",
+                idempotency_key="model-supervisor-rag-route",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+        planner_calls = 0
+        search_calls = 0
+
+        class Planner:
+            async def plan(self, admitted_request, catalog, *, previous_route):
+                nonlocal planner_calls
+                planner_calls += 1
+                return SupervisorPlanResult(
+                    plan=SupervisorRoutePlan(
+                        route=SupervisorPlanRoute.INTERNAL_GUIDELINE,
+                        objective="승인된 시설 안전 문서 검색",
+                    ),
+                    evidence_ref=f"model-supervisor:sha256:{'c' * 64}",
+                    model="gpt-5.6-terra",
+                    response_id="resp_test_rag",
+                )
+
+        class Searcher:
+            async def search_capability(self, query: str, app_role: str):
+                nonlocal search_calls
+                search_calls += 1
+                return {
+                    "schema_version": "RagCapabilityCandidate.v1",
+                    "matched": True,
+                    "retrieval_request_id": str(uuid4()),
+                    "query_hash": "d" * 64,
+                    "tool_code": "internal-manual-search",
+                    "tool_version": "1.0.0",
+                    "model_revision": "text-embedding-3-large:d1024",
+                    "embedding_dimension": 1024,
+                    "evidence_ids": ["EV-SAFETY-1"],
+                    "document_ids": ["MANUAL-SAFETY"],
+                    "maximum_score": 0.9,
+                }
+
+        class Service:
+            async def readiness(self, _context):
+                return AgentPortReadiness(
+                    agent=AgentKind.INTERNAL_GUIDELINE,
+                    status="ready",
+                    capability_version="RagRuntimeReceipt.test.v1",
+                    release_refs=("rag-capability:test",),
+                )
+
+            async def execute(self, query, context, *, persist_turn):
+                return {
+                    "status": "ANSWER",
+                    "routing": {
+                        "snapshot_question": query.question,
+                        "selected_document_ids": ["MANUAL-SAFETY"],
+                    },
+                }
+
+        with patch.dict(
+            os.environ,
+            {"RAG_FEATURE_ENABLED": "1", "ML_FEATURE_ENABLED": "0"},
+        ):
+            first = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: Service(),
+                supervisor_planner_factory=Planner,
+                supervisor_routing_enabled=True,
+                internal_guideline_capability_searcher_factory=Searcher,
+            )
+            replay = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: Service(),
+                supervisor_planner_factory=Planner,
+                supervisor_routing_enabled=True,
+                internal_guideline_capability_searcher_factory=Searcher,
+            )
+
+        self.assertEqual(first["data"]["type"], "INTERNAL_GUIDELINE")
+        self.assertEqual(first["data"]["turn"]["route"], "INTERNAL_GUIDELINE")
+        self.assertEqual(
+            first["data"]["turn"]["turn_id"],
+            replay["data"]["turn"]["turn_id"],
+        )
+        self.assertEqual(planner_calls, 1)
+        self.assertEqual(search_calls, 1)
+
     async def test_agent_dispatch_persists_typed_ml_result_once_and_replays(self) -> None:
         """명시 ML action은 capability·readiness 후 예측·감사 저장을 한 턴으로 확정한다."""
 
@@ -2107,6 +2211,133 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(readiness_calls, 1)
         self.assertEqual(generation_calls, 1)
         self.assertEqual(persisted, [first["data"]["ml_prediction"]])
+
+    async def test_terra_plan_materializes_and_rechecks_ml_invocation(self) -> None:
+        """자연어 ML 계획은 runtime scope와 selected capability를 각각 검증한 뒤 실행한다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Supervisor ML dispatch",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="다음 30일 객실 수요를 예측해줘",
+                idempotency_key="model-supervisor-ml-route",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+        capability_calls = 0
+        generation_payloads: list[dict[str, Any]] = []
+
+        class Planner:
+            async def plan(self, admitted_request, catalog, *, previous_route):
+                self.catalog = catalog
+                return SupervisorPlanResult(
+                    plan=SupervisorRoutePlan(
+                        route=SupervisorPlanRoute.ML_PREDICTION,
+                        objective="지원 property의 30일 객실 수요 예측",
+                        ml_prediction={
+                            "property_id": "GRAND",
+                            "as_of": "2026-08-18",
+                            "horizon_days": 30,
+                        },
+                    ),
+                    evidence_ref=f"model-supervisor:sha256:{'e' * 64}",
+                    model="gpt-5.6-terra",
+                    response_id="resp_test_ml",
+                )
+
+        class Service:
+            async def capabilities(self):
+                nonlocal capability_calls
+                capability_calls += 1
+                return {
+                    "schema_version": "MLRuntimeCapability.v2",
+                    "prediction_contract_version": "MLRoomDemandPrediction.v1",
+                    "model_version": "approved-demand-release",
+                    "model_hash": "a" * 64,
+                    "feature_contract_sha256": "b" * 64,
+                    "model_type": "daily-demand-forecast",
+                    "estimator_type": "ApprovedRegressor",
+                    "approval": "APPROVED",
+                    "approval_status": "APPROVED",
+                    "min_horizon_days": 1,
+                    "max_horizon_days": 90,
+                    "model_max_horizon_days": 90,
+                    "properties": [
+                        {
+                            "property_id": "GRAND",
+                            "min_as_of": "2025-01-01",
+                            "max_as_of": "2026-12-31",
+                            "feature_max_as_of": "2026-08-18",
+                            "history_rows": 500,
+                        }
+                    ],
+                    "synthetic_training_data": False,
+                    "history_source": {
+                        "table": "pms.ml_evaluation.approved_history",
+                        "row_count": 500,
+                        "property_count": 1,
+                        "series_count": 1,
+                        "min_date": "2024-01-01",
+                        "max_date": "2026-08-18",
+                        "synthetic_only": False,
+                        "summary_query_id": "summary-query",
+                        "continuity_query_id": "continuity-query",
+                    },
+                    "query_id": "capability-query",
+                }
+
+            async def readiness(self):
+                return AgentPortReadiness(
+                    agent=AgentKind.ML_PREDICTION,
+                    status="ready",
+                    capability_version="MLRuntimeCapability.v2",
+                    release_refs=("ml-model:sha256:" + "a" * 64,),
+                )
+
+            async def generate_prediction(self, payload):
+                generation_payloads.append(dict(payload))
+                return {
+                    "schema_version": "MLRoomDemandPrediction.v1",
+                    "status": "SUCCEEDED",
+                    **payload,
+                }
+
+            async def persist_prediction(self, _session, _prediction):
+                return None
+
+        service = Service()
+        planner = Planner()
+        with patch.dict(
+            os.environ,
+            {"RAG_FEATURE_ENABLED": "0", "ML_FEATURE_ENABLED": "1"},
+        ):
+            result = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                supervisor_planner_factory=lambda: planner,
+                supervisor_routing_enabled=True,
+                ml_prediction_service_factory=lambda: service,
+            )
+
+        self.assertEqual(result["data"]["type"], "ML_PREDICTION")
+        self.assertEqual(result["data"]["turn"]["route"], "ML_PREDICTION")
+        self.assertEqual(
+            generation_payloads,
+            [
+                {
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-18",
+                    "horizon_days": 30,
+                }
+            ],
+        )
+        self.assertEqual(capability_calls, 2)
+        self.assertIn(AgentKind.ML_PREDICTION, planner.catalog.available_agents)
 
     async def test_ml_audit_failure_does_not_commit_partial_turn(self) -> None:
         """감사 저장 실패를 예측 턴 성공으로 남기지 않는다."""
@@ -2270,11 +2501,81 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             ConcurrentExecutionGate(),
             lambda: None,
             route_resolver=CapabilityResolver(),
-            capability_routing_enabled=True,
+            supervisor_routing_enabled=True,
         )
 
         self.assertEqual(result["data"]["status"], "SUCCESS")
         self.assertEqual(len(self.submitted_requests), 1)
+
+    async def test_terra_plan_is_rechecked_by_selected_analysis_capability(self) -> None:
+        """모델 계획은 admission 뒤 생성되고 선택 Agent의 catalog receipt를 다시 통과한다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Supervisor route 연결",
+        )
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message="2025년 8월 객실 매출",
+                idempotency_key="model-supervisor-analysis-route",
+                expected_head_turn_id=None,
+            ),
+            context=self.context,
+        )
+        self.data_platform.assets = [
+            {
+                "urn": "urn:li:dataset:(serving,room_daily,PROD)",
+                "context_release": TEST_SEMANTIC_RELEASE,
+                "metrics": [
+                    {
+                        "id": "room_revenue_krw",
+                        "visibility": "BUSINESS",
+                        "candidate_selectable": True,
+                    }
+                ],
+            }
+        ]
+        planner_calls: list[tuple[UUID | None, str | None]] = []
+
+        class Planner:
+            async def plan(self, admitted_request, catalog, *, previous_route):
+                planner_calls.append(
+                    (admitted_request.context.command_id, previous_route)
+                )
+                self.catalog = catalog
+                return SupervisorPlanResult(
+                    plan=SupervisorRoutePlan(
+                        route=SupervisorPlanRoute.ANALYSIS_WORKFLOW,
+                        objective="승인된 객실 매출 지표 분석",
+                    ),
+                    evidence_ref=f"model-supervisor:sha256:{'b' * 64}",
+                    model="gpt-5.6-terra",
+                    response_id="resp_test_supervisor",
+                )
+
+        planner = Planner()
+        with patch.dict(
+            "os.environ",
+            {"RAG_FEATURE_ENABLED": "0", "ML_FEATURE_ENABLED": "0"},
+        ):
+            result = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                supervisor_planner_factory=lambda: planner,
+                supervisor_routing_enabled=True,
+            )
+
+        self.assertEqual(result["data"]["status"], "SUCCESS")
+        self.assertEqual(len(self.submitted_requests), 1)
+        self.assertEqual(len(planner_calls), 1)
+        self.assertIsNotNone(planner_calls[0][0])
+        self.assertIsNone(planner_calls[0][1])
+        self.assertIn(
+            AgentKind.ANALYSIS_WORKFLOW,
+            planner.catalog.available_agents,
+        )
 
     async def test_agent_route_renews_lease_before_port_execution(self) -> None:
         """장시간 resolver 구간도 admitted command lease heartbeat로 보호한다."""

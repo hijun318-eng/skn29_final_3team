@@ -294,6 +294,8 @@ class InternalGuidelineAgentPort:
         execution_options = {}
         if self._admission is not None:
             execution_options["admission"] = self._admission
+        if request.supervisor_plan_ref is not None:
+            execution_options["supervisor_plan_ref"] = request.supervisor_plan_ref
         command_result = await self._orchestrator.execute_internal_guideline_command(
             request.conversation_id,
             command.model_dump(mode="python"),
@@ -366,6 +368,8 @@ class MLPredictionAgentPort:
         execution_options = {}
         if self._admission is not None:
             execution_options["admission"] = self._admission
+        if request.supervisor_plan_ref is not None:
+            execution_options["supervisor_plan_ref"] = request.supervisor_plan_ref
         command_result = await self._orchestrator.execute_ml_prediction_command(
             request.conversation_id,
             request.command.model_dump(mode="python"),

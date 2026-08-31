@@ -23,6 +23,7 @@ AGENT_RESULT_VERSION = "AgentResult.v1"
 AGENT_PORT_READINESS_VERSION = "AgentPortReadiness.v1"
 ML_PREDICTION_INVOCATION_VERSION = "MLPredictionInvocation.v1"
 ML_ABSOLUTE_MAX_HORIZON_DAYS = ML_PREDICTION_ABSOLUTE_MAX_HORIZON_DAYS
+SUPERVISOR_PLAN_REFERENCE_PATTERN = r"^model-supervisor:sha256:[0-9a-f]{64}$"
 
 
 class AgentKind(str, Enum):
@@ -64,6 +65,10 @@ class AgentRequest(ContractModel):
     context: RequestContext
     target_agent: AgentKind | None = None
     invocation: MLPredictionInvocation | None = None
+    supervisor_plan_ref: str | None = Field(
+        default=None,
+        pattern=SUPERVISOR_PLAN_REFERENCE_PATTERN,
+    )
 
     @model_validator(mode="after")
     def validate_conversation_identity(self) -> "AgentRequest":
@@ -72,6 +77,14 @@ class AgentRequest(ContractModel):
         if self.context.conversation_id not in {None, self.conversation_id}:
             raise ValueError("AgentRequest conversation identity가 일치하지 않습니다.")
         has_ml_invocation = self.invocation is not None
+        is_model_planned = self.supervisor_plan_ref is not None
+        if is_model_planned:
+            if self.command.requested_route is not None or self.command.ml_prediction is not None:
+                raise ValueError(
+                    "Supervisor 계획은 명시 route 또는 client ML action과 함께 사용할 수 없습니다."
+                )
+            if self.target_agent is None:
+                raise ValueError("Supervisor 계획에는 target Agent가 필요합니다.")
         if (self.target_agent is AgentKind.ML_PREDICTION) != has_ml_invocation:
             raise ValueError(
                 "ML target Agent와 prediction invocation은 함께 지정해야 합니다."
@@ -79,7 +92,7 @@ class AgentRequest(ContractModel):
         if self.invocation is not None and self.invocation.agent is not self.target_agent:
             raise ValueError("AgentRequest invocation 종류가 target Agent와 다릅니다.")
         command_action = self.command.ml_prediction
-        if (command_action is not None) != has_ml_invocation:
+        if not is_model_planned and (command_action is not None) != has_ml_invocation:
             raise ValueError(
                 "AgentRequest ML command action과 invocation은 함께 지정해야 합니다."
             )

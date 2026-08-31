@@ -12,6 +12,7 @@ _FEATURE_ENVIRONMENT = {
     RuntimeFeature.ML_PREDICTION: "ML_FEATURE_ENABLED",
 }
 _ENABLED_VALUES = frozenset({"1", "true", "yes"})
+_SUPERVISOR_FEATURE_ENVIRONMENT = "SUPERVISOR_FEATURE_ENABLED"
 
 
 def runtime_feature_enabled(feature: RuntimeFeature) -> bool:
@@ -25,3 +26,10 @@ def enabled_runtime_features() -> tuple[RuntimeFeature, ...]:
     """현재 서버에서 활성화된 선택 기능을 안정적인 enum 순서로 반환한다."""
 
     return tuple(feature for feature in RuntimeFeature if runtime_feature_enabled(feature))
+
+
+def supervisor_feature_enabled() -> bool:
+    """명시적 opt-in에서만 외부 Supervisor 계획과 capability route를 연다."""
+
+    value = os.getenv(_SUPERVISOR_FEATURE_ENVIRONMENT, "").strip().lower()
+    return value in _ENABLED_VALUES

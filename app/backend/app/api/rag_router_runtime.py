@@ -31,3 +31,12 @@ def internal_manual_query_service() -> InternalManualQueryService:
         executor_factory,
         enabled=runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE),
     )
+
+
+def internal_manual_capability_searcher() -> InternalManualAgent:
+    """자동 route probe가 답변 생성 없이 RAG 검색 receipt만 읽는 adapter를 만든다."""
+
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+    if not database_url:
+        raise RuntimeError("APP_RUNTIME_DATABASE_URL is required for RAG capability routing")
+    return InternalManualAgent(database_url)

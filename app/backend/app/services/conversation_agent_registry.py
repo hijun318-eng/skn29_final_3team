@@ -9,7 +9,13 @@ from app.agent_contracts import AgentDecisionSource
 from app.contracts import RuntimeFeature
 from app.ports.agent import AgentKind
 from app.runtime_features import runtime_feature_enabled
-from app.services.agent_capability_probes import MLPredictionCapabilityProbe
+from app.ports.data_platform import DataPlatformAdapter
+from app.services.agent_capability_probes import (
+    GovernedAnalysisCapabilityProbe,
+    InternalGuidelineCapabilityProbe,
+    InternalGuidelineCapabilitySearcher,
+    MLPredictionCapabilityProbe,
+)
 from app.services.agent_supervisor import (
     AgentDispatchError,
     AgentRouteResolver,
@@ -37,6 +43,11 @@ def build_conversation_agent_supervisor(
     route_resolver: AgentRouteResolver | None = None,
     admission: Any | None = None,
     capability_routing_enabled: bool = False,
+    data_platform: DataPlatformAdapter | None = None,
+    internal_guideline_capability_searcher_factory: Callable[
+        [], InternalGuidelineCapabilitySearcher
+    ]
+    | None = None,
     ml_prediction_service_factory: Callable[[], MLPredictionService] | None = None,
 ) -> DeterministicAgentSupervisor:
     """필수 분석 Port와 명시적으로 활성화된 선택 Port만 production에 등록한다."""
@@ -46,6 +57,7 @@ def build_conversation_agent_supervisor(
             "AGENT_CAPABILITY_ROUTING_FLAG_INVALID",
             "자동 capability route 활성화 설정이 올바르지 않습니다.",
         )
+    rag_enabled = runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE)
     ml_enabled = runtime_feature_enabled(RuntimeFeature.ML_PREDICTION)
     ml_service = (
         (ml_prediction_service_factory or MLPredictionService)()
@@ -54,14 +66,44 @@ def build_conversation_agent_supervisor(
     )
     effective_route_resolver = route_resolver
     effective_capability_routing = capability_routing_enabled
-    if effective_route_resolver is None and ml_service is not None:
-        effective_route_resolver = CapabilityEvidenceRouteResolver(
-            {
-                AgentKind.ML_PREDICTION: MLPredictionCapabilityProbe(
-                    ml_service
+    probes = {}
+    if effective_route_resolver is None and capability_routing_enabled:
+        if data_platform is None or not callable(
+            getattr(data_platform, "search_asset_candidates", None)
+        ):
+            raise AgentDispatchError(
+                "AGENT_CAPABILITY_REGISTRY_INVALID",
+                "분석 capability probe 의존성이 구성되지 않았습니다.",
+            )
+        probes[AgentKind.ANALYSIS_WORKFLOW] = GovernedAnalysisCapabilityProbe(
+            data_platform
+        )
+        if rag_enabled:
+            if internal_guideline_capability_searcher_factory is None:
+                raise AgentDispatchError(
+                    "AGENT_CAPABILITY_REGISTRY_INVALID",
+                    "RAG capability probe 의존성이 구성되지 않았습니다.",
                 )
-            },
-            automatic_routing_enabled=False,
+            searcher = internal_guideline_capability_searcher_factory()
+            if not callable(getattr(searcher, "search_capability", None)):
+                raise AgentDispatchError(
+                    "AGENT_CAPABILITY_REGISTRY_INVALID",
+                    "RAG capability searcher 계약이 올바르지 않습니다.",
+                )
+            probes[AgentKind.INTERNAL_GUIDELINE] = (
+                InternalGuidelineCapabilityProbe(searcher)
+            )
+        if ml_service is not None:
+            probes[AgentKind.ML_PREDICTION] = MLPredictionCapabilityProbe(
+                ml_service
+            )
+    elif effective_route_resolver is None and ml_service is not None:
+        probes[AgentKind.ML_PREDICTION] = MLPredictionCapabilityProbe(ml_service)
+
+    if effective_route_resolver is None and probes:
+        effective_route_resolver = CapabilityEvidenceRouteResolver(
+            probes,
+            automatic_routing_enabled=capability_routing_enabled,
         )
         effective_capability_routing = True
 
@@ -71,6 +113,7 @@ def build_conversation_agent_supervisor(
     }
     if effective_capability_routing:
         allowed_decision_sources.add(AgentDecisionSource.CAPABILITY_EVIDENCE)
+        allowed_decision_sources.add(AgentDecisionSource.MODEL_SUPERVISOR)
     if effective_route_resolver is not None:
         declared_sources = getattr(
             effective_route_resolver,
@@ -104,7 +147,7 @@ def build_conversation_agent_supervisor(
             )
         ),
     }
-    if runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE):
+    if rag_enabled:
         ports[AgentKind.INTERNAL_GUIDELINE] = ReadinessGuardedAgentPort(
             InternalGuidelineAgentPort(
                 orchestrator,

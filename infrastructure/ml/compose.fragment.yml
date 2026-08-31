@@ -36,6 +36,7 @@ services:
       ML_MODEL_MANIFEST: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model_manifest.json
       ML_MODEL_APPROVAL: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/model.approval.json
       ML_FEATURE_CONTRACT: /app/src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/feature_contract.json
+      ML_RUNTIME_HMAC_SECRET: ${ML_RUNTIME_HMAC_SECRET:-}
       ML_HISTORY_TABLE: ${ML_HISTORY_TABLE:-pms.ml_evaluation.room_demand_daily_facts_v43_20260830}
       ML_ALLOW_CONDITIONAL: ${ML_ALLOW_CONDITIONAL:-false}
       ML_RUNTIME_MAX_HORIZON_DAYS: ${ML_RUNTIME_MAX_HORIZON_DAYS:-7}

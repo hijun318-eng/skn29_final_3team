@@ -9,6 +9,7 @@ import sys
 from types import SimpleNamespace
 
 from fastapi import HTTPException
+import httpx
 import joblib
 from pydantic import ValidationError
 import pytest
@@ -21,12 +22,25 @@ if str(BACKEND) not in sys.path:
 
 from app.api.ml_router import RoomDemandRequest, _require_ml_access
 from app.contracts import RequestContext, Role
+from app.adapters.ml_prediction_client import MLPredictionClient
 from app.services.ml_prediction_service import MLPredictionService
+from src.ml.room_demand_timeseries import runtime_api
 from src.ml.room_demand_timeseries.contracts import FEATURE_COLUMNS
 from src.ml.room_demand_timeseries.runtime_api import (
+    TimeSeriesRuntime,
+    _declared_request_body_size,
     runtime_estimator_types,
     validate_hgbr_runtime,
     validate_history_source,
+)
+from src.ml.runtime_trust import (
+    ML_RUNTIME_AUTH_MAX_BODY_BYTES,
+    MLRuntimeNonceGuard,
+    MLRuntimeTrustError,
+    request_auth_headers,
+    response_auth_headers,
+    verify_request_auth,
+    verify_response_auth,
 )
 
 
@@ -46,12 +60,21 @@ CANDIDATE_DIR = (
 )
 
 
+@pytest.fixture(autouse=True)
+def approved_ml_release_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ML_RUNTIME_HMAC_SECRET", "test-ml-runtime-secret-that-is-at-least-32-bytes")
+    monkeypatch.setenv("ML_APPROVED_MODEL_VERSION", "room-demand-timeseries-hgbr-v2.2.0")
+    monkeypatch.setenv("ML_APPROVED_MODEL_SHA256", "a" * 64)
+    monkeypatch.setenv("ML_APPROVED_FEATURE_CONTRACT_SHA256", "b" * 64)
+
+
 def _runtime_capabilities() -> dict[str, object]:
     return {
         "schema_version": "MLRuntimeCapability.v1",
         "prediction_contract_version": "MLRoomDemandPrediction.v1",
         "model_version": "room-demand-timeseries-hgbr-v2.2.0",
         "model_hash": "a" * 64,
+        "feature_contract_sha256": "b" * 64,
         "model_type": "historical-only-direct-multi-horizon-hgbr",
         "estimator_type": "HistGradientBoostingRegressor",
         "approval": "CONDITIONAL_PASS",
@@ -99,6 +122,7 @@ def _prediction_result(horizon_days: int = 7) -> dict[str, object]:
         "horizon_days": horizon_days,
         "model_version": "room-demand-timeseries-hgbr-v2.2.0",
         "model_hash": "a" * 64,
+        "feature_contract_sha256": "b" * 64,
         "daily_forecasts": [
             {
                 "target_date": target.isoformat(),
@@ -171,6 +195,28 @@ def test_ml_artifact_checksum_manifest_is_current(manifest_name: str) -> None:
 
         assert artifact_path.is_file(), filename
         assert hashlib.sha256(artifact_path.read_bytes()).hexdigest() == expected
+
+
+def test_ml_deployment_example_pins_actual_runtime_artifacts() -> None:
+    env_values = {
+        key: value
+        for line in (
+            ROOT / "infrastructure" / "database" / ".env.example"
+        ).read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#") and "=" in line
+        for key, value in [line.split("=", 1)]
+    }
+    manifest = json.loads(
+        (ARTIFACT_DIR / "model_manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert env_values["ML_APPROVED_MODEL_VERSION"] == manifest["model_version"]
+    assert env_values["ML_APPROVED_MODEL_SHA256"] == hashlib.sha256(
+        (ARTIFACT_DIR / "model.joblib").read_bytes()
+    ).hexdigest()
+    assert env_values["ML_APPROVED_FEATURE_CONTRACT_SHA256"] == hashlib.sha256(
+        (ARTIFACT_DIR / "feature_contract.json").read_bytes()
+    ).hexdigest()
 
 
 def test_ml_release_is_the_integrated_hgbr_runtime() -> None:
@@ -285,9 +331,352 @@ def test_backend_rejects_an_incomplete_ml_runtime_capability() -> None:
         asyncio.run(service.capabilities())
 
 
+def test_backend_rejects_runtime_release_outside_environment_pins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ML_APPROVED_MODEL_SHA256", "c" * 64)
+    service = MLPredictionService(_StubMLClient(_runtime_capabilities()))  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="approved release pins"):
+        asyncio.run(service.capabilities())
+
+
+def test_backend_and_runtime_exchange_is_hmac_authenticated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = b"test-ml-runtime-secret-that-is-at-least-32-bytes"
+
+    class StubRuntime:
+        hmac_secret = secret
+
+        @staticmethod
+        def capabilities() -> dict[str, object]:
+            return _runtime_capabilities()
+
+        @staticmethod
+        def predict(request: object) -> dict[str, object]:
+            return {"property_id": request.property_id}  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(runtime_api, "state", StubRuntime())
+    monkeypatch.setenv("ML_RUNTIME_URL", "http://ml-runtime.test")
+    client = MLPredictionClient(transport=httpx.ASGITransport(app=runtime_api.app))
+
+    result = asyncio.run(client.capabilities())
+    prediction = asyncio.run(
+        client.predict(
+            {"property_id": "GRAND", "as_of": "2026-08-28", "horizon_days": 7}
+        )
+    )
+    with pytest.raises(httpx.HTTPStatusError) as signed_error:
+        asyncio.run(client.predict({"property_id": "GRAND"}))
+
+    assert result["model_version"] == "room-demand-timeseries-hgbr-v2.2.0"
+    assert prediction == {"property_id": "GRAND"}
+    assert signed_error.value.response.status_code == 422
+
+
+def test_runtime_rejects_a_replayed_authenticated_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = b"test-ml-runtime-secret-that-is-at-least-32-bytes"
+
+    class StubRuntime:
+        hmac_secret = secret
+
+        @staticmethod
+        def capabilities() -> dict[str, object]:
+            return _runtime_capabilities()
+
+    async def send_twice() -> tuple[httpx.Response, httpx.Response]:
+        headers = request_auth_headers(secret, "GET", "/capabilities", b"")
+        transport = httpx.ASGITransport(app=runtime_api.app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://ml-runtime.test",
+        ) as client:
+            first = await client.get("/capabilities", headers=headers)
+            second = await client.get("/capabilities", headers=headers)
+        return first, second
+
+    monkeypatch.setattr(runtime_api, "state", StubRuntime())
+    monkeypatch.setattr(runtime_api, "_request_nonce_guard", MLRuntimeNonceGuard())
+
+    first, second = asyncio.run(send_twice())
+
+    assert first.status_code == 200
+    assert second.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"content-length": str(ML_RUNTIME_AUTH_MAX_BODY_BYTES + 1)},
+        {"transfer-encoding": "chunked"},
+        {},
+    ],
+)
+def test_runtime_rejects_unbounded_post_bodies_before_reading(headers: dict[str, str]) -> None:
+    request = SimpleNamespace(headers=headers, method="POST")
+
+    with pytest.raises(MLRuntimeTrustError):
+        _declared_request_body_size(request)  # type: ignore[arg-type]
+
+
+def test_runtime_not_ready_is_a_signed_generic_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime_api, "state", None)
+    monkeypatch.setattr(runtime_api, "_request_nonce_guard", MLRuntimeNonceGuard())
+    monkeypatch.setenv("ML_RUNTIME_URL", "http://ml-runtime.test")
+    client = MLPredictionClient(transport=httpx.ASGITransport(app=runtime_api.app))
+
+    with pytest.raises(httpx.HTTPStatusError) as captured:
+        asyncio.run(client.capabilities())
+
+    assert captured.value.response.status_code == 503
+    assert captured.value.response.json() == {"detail": "ML runtime is not ready"}
+
+
+def test_runtime_unhandled_failure_is_a_signed_generic_500(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = b"test-ml-runtime-secret-that-is-at-least-32-bytes"
+
+    class FailingRuntime:
+        hmac_secret = secret
+
+        @staticmethod
+        def capabilities() -> dict[str, object]:
+            raise RuntimeError("sensitive trino failure")
+
+    monkeypatch.setattr(runtime_api, "state", FailingRuntime())
+    monkeypatch.setattr(runtime_api, "_request_nonce_guard", MLRuntimeNonceGuard())
+    monkeypatch.setenv("ML_RUNTIME_URL", "http://ml-runtime.test")
+    client = MLPredictionClient(transport=httpx.ASGITransport(app=runtime_api.app))
+
+    with pytest.raises(httpx.HTTPStatusError) as captured:
+        asyncio.run(client.capabilities())
+
+    assert captured.value.response.status_code == 500
+    assert captured.value.response.json() == {"detail": "ML runtime request failed"}
+    assert "sensitive trino failure" not in captured.value.response.text
+
+
+@pytest.mark.parametrize("now", [69, 131])
+def test_runtime_rejects_request_signature_outside_clock_window(now: int) -> None:
+    secret = b"test-ml-runtime-secret-that-is-at-least-32-bytes"
+    headers = request_auth_headers(
+        secret,
+        "GET",
+        "/capabilities",
+        b"",
+        timestamp=100,
+        nonce="a" * 32,
+    )
+
+    with pytest.raises(MLRuntimeTrustError, match="outside the allowed window"):
+        verify_request_auth(
+            secret,
+            headers,
+            "GET",
+            "/capabilities",
+            b"",
+            now=now,
+        )
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "signature"),
+    [
+        ("/capabilities", b'{"tampered":true}', None),
+        ("/predictions/room-demand", b"", None),
+        ("/capabilities", b"", "0" * 64),
+    ],
+)
+def test_runtime_rejects_tampered_request_binding(
+    path: str,
+    body: bytes,
+    signature: str | None,
+) -> None:
+    secret = b"test-ml-runtime-secret-that-is-at-least-32-bytes"
+    headers = request_auth_headers(
+        secret,
+        "GET",
+        "/capabilities",
+        b"",
+        timestamp=100,
+        nonce="a" * 32,
+    )
+    if signature is not None:
+        headers["X-Answervice-ML-Signature"] = signature
+
+    with pytest.raises(MLRuntimeTrustError, match="signature is invalid"):
+        verify_request_auth(
+            secret,
+            headers,
+            "GET",
+            path,
+            body,
+            now=100,
+        )
+
+
+def test_runtime_response_binds_nonce_status_path_and_error_body() -> None:
+    secret = b"test-ml-runtime-secret-that-is-at-least-32-bytes"
+    nonce = "a" * 32
+    body = b'{"detail":"invalid prediction"}'
+    headers = response_auth_headers(
+        secret,
+        "/predictions/room-demand",
+        422,
+        nonce,
+        body,
+    )
+
+    verify_response_auth(
+        secret,
+        headers,
+        "/predictions/room-demand",
+        422,
+        nonce,
+        body,
+    )
+    with pytest.raises(MLRuntimeTrustError, match="another request"):
+        verify_response_auth(
+            secret,
+            headers,
+            "/predictions/room-demand",
+            422,
+            "b" * 32,
+            body,
+        )
+    with pytest.raises(MLRuntimeTrustError, match="signature is invalid"):
+        verify_response_auth(
+            secret,
+            headers,
+            "/predictions/room-demand",
+            422,
+            nonce,
+            body + b"!",
+        )
+
+
+def test_runtime_oversized_authenticated_response_is_a_signed_bounded_502(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = b"test-ml-runtime-secret-that-is-at-least-32-bytes"
+
+    class OversizedRuntime:
+        hmac_secret = secret
+
+        @staticmethod
+        def capabilities() -> dict[str, str]:
+            return {"oversized": "x" * (ML_RUNTIME_AUTH_MAX_BODY_BYTES + 1)}
+
+    monkeypatch.setattr(runtime_api, "state", OversizedRuntime())
+    monkeypatch.setenv("ML_RUNTIME_URL", "http://ml-runtime.test")
+    client = MLPredictionClient(transport=httpx.ASGITransport(app=runtime_api.app))
+
+    with pytest.raises(httpx.HTTPStatusError) as captured:
+        asyncio.run(client.capabilities())
+
+    assert captured.value.response.status_code == 502
+    assert len(captured.value.response.content) < ML_RUNTIME_AUTH_MAX_BODY_BYTES
+    assert captured.value.response.json() == {
+        "detail": "Authenticated ML runtime response is too large"
+    }
+
+
+def test_backend_rejects_unsigned_runtime_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def unsigned(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_runtime_capabilities())
+
+    monkeypatch.setenv("ML_RUNTIME_URL", "http://ml-runtime.test")
+    client = MLPredictionClient(transport=httpx.MockTransport(unsigned))
+
+    with pytest.raises(MLRuntimeTrustError, match="missing ML runtime authentication"):
+        asyncio.run(client.capabilities())
+
+
+def test_runtime_capability_uses_actual_model_and_feature_artifact_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubTrino:
+        def query(self, _sql: str) -> SimpleNamespace:
+            return SimpleNamespace(
+                rows=[
+                    {
+                        "property_id": "GRAND",
+                        "min_date": "2024-01-01",
+                        "max_date": "2026-08-31",
+                        "history_rows": 974,
+                    }
+                ],
+                query_id="trino-capability-test",
+            )
+
+    history_source = {
+        "table": "pms.ml_evaluation.approved_history",
+        "row_count": 8766,
+        "property_count": 3,
+        "series_count": 9,
+        "min_date": "2024-01-01",
+        "max_date": "2026-08-31",
+        "synthetic_only": True,
+        "summary_query_id": "summary",
+        "continuity_query_id": "continuity",
+    }
+    monkeypatch.setenv("ML_MODEL_ARTIFACT", str(ARTIFACT_DIR / "model.joblib"))
+    monkeypatch.setenv("ML_MODEL_MANIFEST", str(ARTIFACT_DIR / "model_manifest.json"))
+    monkeypatch.setenv("ML_MODEL_APPROVAL", str(ARTIFACT_DIR / "model.approval.json"))
+    monkeypatch.setenv("ML_FEATURE_CONTRACT", str(ARTIFACT_DIR / "feature_contract.json"))
+    monkeypatch.setenv("ML_HISTORY_TABLE", "pms.ml_evaluation.approved_history")
+    monkeypatch.setenv("ML_ALLOW_CONDITIONAL", "true")
+    monkeypatch.setenv("TRINO_URL", "https://trino.test")
+    monkeypatch.setenv("TRINO_RUNTIME_USER", "runtime")
+    monkeypatch.setenv("TRINO_RUNTIME_PASSWORD", "secret")
+    monkeypatch.setenv("TRINO_TLS_CA_FILE", "ca.pem")
+    monkeypatch.setattr(runtime_api, "TrinoClient", lambda **_kwargs: StubTrino())
+    monkeypatch.setattr(
+        runtime_api,
+        "validate_history_source",
+        lambda *_args, **_kwargs: history_source,
+    )
+
+    capability = TimeSeriesRuntime().capabilities()
+
+    assert capability["model_hash"] == hashlib.sha256(
+        (ARTIFACT_DIR / "model.joblib").read_bytes()
+    ).hexdigest()
+    assert capability["feature_contract_sha256"] == hashlib.sha256(
+        (ARTIFACT_DIR / "feature_contract.json").read_bytes()
+    ).hexdigest()
+
+
 def test_prediction_release_drift_is_blocked_before_audit_storage() -> None:
     changed = _prediction_result()
     changed["model_hash"] = "b" * 64
+    client = _StubMLClient(_runtime_capabilities(), changed)
+    session = _RecordingSession()
+    service = MLPredictionService(client)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="release changed"):
+        asyncio.run(
+            service.predict(  # type: ignore[arg-type]
+                session,
+                {"property_id": "GRAND", "as_of": "2026-08-28", "horizon_days": 7},
+            )
+        )
+
+    assert client.prediction_calls == 1
+    assert session.execute_calls == 0
+
+
+def test_prediction_feature_contract_drift_is_blocked_before_audit_storage() -> None:
+    changed = _prediction_result()
+    changed["feature_contract_sha256"] = "c" * 64
     client = _StubMLClient(_runtime_capabilities(), changed)
     session = _RecordingSession()
     service = MLPredictionService(client)  # type: ignore[arg-type]
@@ -377,6 +766,7 @@ def test_ml_runtime_has_an_explicit_profile_without_joining_full_by_default() ->
     assert "ml-history-bootstrap:" in compose
     assert "condition: service_completed_successfully" in compose
     assert "../ml/sql/01_room_demand_history_v43_synthetic.sql" in compose
+    assert "ML_RUNTIME_HMAC_SECRET" in compose
 
 
 def _history_summary(**overrides: object) -> dict[str, object]:
@@ -509,11 +899,20 @@ def test_ml_history_view_is_derived_from_v43_sources_without_fixed_results() -> 
 
 def test_ml_candidate_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ML_FEATURE_ENABLED", raising=False)
+    for name in (
+        "ML_RUNTIME_HMAC_SECRET",
+        "ML_APPROVED_MODEL_VERSION",
+        "ML_APPROVED_MODEL_SHA256",
+        "ML_APPROVED_FEATURE_CONTRACT_SHA256",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    candidate = MLPredictionService()
 
     with pytest.raises(HTTPException) as captured:
         _require_ml_access(RequestContext(role=Role.ANALYST))
 
     assert captured.value.status_code == 503
+    assert candidate._client is None
 
 
 def test_ml_candidate_requires_analysis_capability(
@@ -574,7 +973,9 @@ def test_backend_uses_runtime_capability_as_the_effective_horizon_limit() -> Non
     assert client.prediction_calls == 0
 
 
-def test_backend_accepts_a_ninety_day_replacement_model_without_code_changes() -> None:
+def test_backend_accepts_a_ninety_day_replacement_model_without_code_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     capability = _runtime_capabilities()
     capability.update(
         {
@@ -587,6 +988,7 @@ def test_backend_accepts_a_ninety_day_replacement_model_without_code_changes() -
     )
     prediction = _prediction_result(horizon_days=90)
     prediction["model_version"] = capability["model_version"]
+    monkeypatch.setenv("ML_APPROVED_MODEL_VERSION", str(capability["model_version"]))
     client = _StubMLClient(capability, prediction)
     session = _RecordingSession()
 

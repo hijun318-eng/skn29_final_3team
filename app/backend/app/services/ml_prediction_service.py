@@ -6,6 +6,7 @@ from datetime import date, timedelta
 import hashlib
 import json
 import math
+import os
 from typing import Any, Literal
 from uuid import UUID
 
@@ -25,6 +26,32 @@ from app.ports.agent import (
 
 ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v1"
 ML_PREDICTION_RESULT_VERSION = "MLRoomDemandPrediction.v1"
+
+
+class MLApprovedRelease(ContractModel):
+    """Backend 배포 환경이 독립적으로 고정한 승인 ML release다."""
+
+    model_version: str = Field(min_length=1, max_length=160)
+    model_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def from_env(cls) -> "MLApprovedRelease":
+        """Backend가 독립적으로 고정한 승인 release pin 세 개를 검증한다."""
+
+        try:
+            return cls.model_validate(
+                {
+                    "model_version": os.getenv("ML_APPROVED_MODEL_VERSION", ""),
+                    "model_hash": os.getenv("ML_APPROVED_MODEL_SHA256", ""),
+                    "feature_contract_sha256": os.getenv(
+                        "ML_APPROVED_FEATURE_CONTRACT_SHA256",
+                        "",
+                    ),
+                }
+            )
+        except ValidationError as error:
+            raise RuntimeError("ML approved release pins are invalid") from error
 
 
 class MLPropertyCapability(ContractModel):
@@ -82,6 +109,7 @@ class MLRuntimeCapability(ContractModel):
     prediction_contract_version: Literal["MLRoomDemandPrediction.v1"]
     model_version: str = Field(min_length=1, max_length=160)
     model_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     model_type: str = Field(min_length=1, max_length=160)
     estimator_type: str = Field(min_length=1, max_length=160)
     approval: Literal["APPROVED", "CONDITIONAL_PASS"]
@@ -225,6 +253,7 @@ class MLRoomDemandPrediction(ContractModel):
     horizon_days: int = Field(ge=1, le=ML_ABSOLUTE_MAX_HORIZON_DAYS)
     model_version: str = Field(min_length=1, max_length=160)
     model_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feature_contract_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     daily_forecasts: tuple[MLDailyForecast, ...] = Field(min_length=1)
     room_type_forecasts: tuple[MLRoomTypeForecast, ...] = Field(min_length=1)
     provenance: MLPredictionProvenance
@@ -300,12 +329,20 @@ class MLPredictionService:
     async def _validated_capabilities(self) -> MLRuntimeCapability:
         """원시 runtime 응답을 versioned capability 계약으로 한 번 검증한다."""
 
+        approved = MLApprovedRelease.from_env()
         try:
             capabilities = MLRuntimeCapability.model_validate(
                 await self._runtime_client().capabilities()
             )
         except ValidationError as error:
             raise RuntimeError("ML capability response is invalid") from error
+        if (
+            capabilities.model_version != approved.model_version
+            or capabilities.model_hash != approved.model_hash
+            or capabilities.feature_contract_sha256
+            != approved.feature_contract_sha256
+        ):
+            raise RuntimeError("ML runtime capability does not match approved release pins")
         return capabilities
 
     async def readiness(self) -> AgentPortReadiness:
@@ -334,6 +371,7 @@ class MLPredictionService:
             capability_version=capability.schema_version,
             release_refs=(
                 f"ml-model:sha256:{capability.model_hash}",
+                f"ml-feature-contract:sha256:{capability.feature_contract_sha256}",
                 f"ml-capability:sha256:{digest}",
             ),
         )
@@ -390,6 +428,8 @@ class MLPredictionService:
         if (
             prediction.model_version != capability.model_version
             or prediction.model_hash != capability.model_hash
+            or prediction.feature_contract_sha256
+            != capability.feature_contract_sha256
         ):
             raise RuntimeError("ML prediction release changed after capability check")
         if (

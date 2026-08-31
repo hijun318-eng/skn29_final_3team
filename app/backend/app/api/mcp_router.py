@@ -6,11 +6,12 @@ import base64
 import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC
-from typing import Annotated, Any
-from uuid import UUID, uuid4
+from typing import Annotated, Any, Literal
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, Response
@@ -37,6 +38,7 @@ from app.services.mcp_tool_registry import (
     ANALYSIS_GET_RUN_SEMANTIC_VERSION,
     ANALYSIS_GET_RUN_TIMEOUT_SECONDS,
     ANALYSIS_GET_RUN_TOOL_ID,
+    MCPToolAccess,
     MCPToolDispatcher,
     MCPToolRegistry,
     _analysis_get_run_output,
@@ -70,6 +72,17 @@ TOOL_ANNOTATIONS = ANALYSIS_GET_RUN_ANNOTATIONS
 
 mcp_router = APIRouter()
 MCPInfrastructureError = MCPToolInfrastructureError
+MCP_REJECTED_TOOL_ACTION = "MCP_TOOL_CALL_REJECTED"
+_SAFE_AUDIT_TOOL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+MCPRejectedCallReason = Literal[
+    "UNKNOWN_TOOL",
+    "DISABLED_TOOL",
+    "REGISTRY_CONTRACT_DRIFT",
+]
+_REJECTED_CALL_REASONS = frozenset(
+    {"UNKNOWN_TOOL", "DISABLED_TOOL", "REGISTRY_CONTRACT_DRIFT"}
+)
+_REJECTED_CALL_BUCKET_PREFIX = "answervice:mcp:rejected-call:"
 
 
 def _database_url() -> str:
@@ -139,6 +152,33 @@ def _rpc_infrastructure_error(
         "Internal error",
         503,
         {"code": error.code},
+    )
+
+
+def _rpc_rate_limited(
+    request_id: str | int,
+    quota: McpToolRateLimitDecision,
+) -> JSONResponse:
+    """Tool 종류를 노출하지 않는 공통 quota 거부 응답을 만든다."""
+
+    return _rpc_error(
+        request_id,
+        TOOL_RATE_LIMITED,
+        "Rate limit exceeded",
+        429,
+        {
+            "code": "RATE_LIMITED",
+            "limit": quota.limit,
+            "remaining": 0,
+            "retryAfterSeconds": quota.retry_after_seconds,
+            "resetAt": quota.window_end.astimezone(UTC)
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },
+        headers={
+            "Retry-After": str(quota.retry_after_seconds),
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -283,6 +323,36 @@ def _tool_registry() -> MCPToolRegistry:
     )
 
 
+async def _tool_call_access(
+    tool_name: str,
+    principal: Principal,
+) -> tuple[MCPToolAccess, MCPRejectedCallReason | None, str | None]:
+    """한 registry snapshot으로 호출 허용 여부와 내부 거부 원인을 판정한다."""
+
+    descriptor = analysis_get_run_descriptor(_database_url)
+    if tool_name != descriptor.name:
+        return MCPToolAccess(False, False, None), "UNKNOWN_TOOL", None
+
+    rows = tuple(await _registry_rows())
+
+    async def cached_rows() -> Sequence[Mapping[str, Any]]:
+        return rows
+
+    access = await MCPToolRegistry((descriptor,), cached_rows).resolve(
+        tool_name,
+        principal.role,
+    )
+    if access.known:
+        return access, None, None
+    row = next(
+        (item for item in rows if item.get("tool_code") == descriptor.name),
+        None,
+    )
+    if row is not None and row.get("is_enabled") is False:
+        return access, "DISABLED_TOOL", descriptor.name
+    return access, "REGISTRY_CONTRACT_DRIFT", None
+
+
 async def _tool_access(principal: Principal) -> tuple[bool, bool]:
     """기존 내부 검증 helper를 generic registry access 위에 유지한다."""
 
@@ -310,6 +380,39 @@ async def _consume_tool_quota(
         return await McpToolRateLimitService.from_env(repository).consume(
             principal_subject=principal.subject,
             tool_id=tool_id,
+        )
+    except (
+        MCPInfrastructureError,
+        DatabaseConfigurationError,
+        McpToolRateLimitConfigurationError,
+        McpToolRateLimitUnavailable,
+    ) as error:
+        raise MCPInfrastructureError("MCP_RATE_LIMIT_UNAVAILABLE") from error
+
+
+def _rejected_call_quota_subject(principal_subject: UUID) -> UUID:
+    """실제 subject와 분리된 결정론적 pseudonymous 거부 호출 key를 만든다."""
+
+    return uuid5(
+        NAMESPACE_URL,
+        f"{_REJECTED_CALL_BUCKET_PREFIX}{principal_subject}",
+    )
+
+
+async def _consume_rejected_call_quota(
+    principal: Principal,
+) -> McpToolRateLimitDecision:
+    """동일 limit/window 정책의 별도 pseudonymous counter로 감사 증폭만 제한한다."""
+
+    try:
+        repository = PostgresMcpToolRateLimitRepository(
+            get_sessionmaker(_database_url())
+        )
+        return await McpToolRateLimitService.from_env(repository).consume(
+            principal_subject=_rejected_call_quota_subject(principal.subject),
+            # Table FK는 등록 Tool을 요구한다. principal keyspace를 분리했으므로
+            # 정상 analysis.get_run quota row는 절대로 함께 소비되지 않는다.
+            tool_id=TOOL_ID,
         )
     except (
         MCPInfrastructureError,
@@ -354,6 +457,90 @@ async def _record_run(
     except MCPInfrastructureError as error:
         raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
     except (DatabaseConfigurationError, SQLAlchemyError) as error:
+        raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
+
+
+def _canonical_input_hash(arguments: Any) -> str:
+    """원문을 보존하지 않고 결정론적 JSON 입력 영수증만 만든다."""
+
+    canonical = json.dumps(
+        arguments,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+async def _record_protocol_security_event(
+    principal: Principal,
+    trace_id: str,
+    tool_name: str,
+    arguments: Any,
+    rejection_reason: MCPRejectedCallReason,
+    canonical_disabled_name: str | None = None,
+) -> None:
+    """FK가 없는 governance 감사에 unknown·disabled 호출 시도만 기록한다."""
+
+    try:
+        if rejection_reason not in _REJECTED_CALL_REASONS:
+            raise ValueError("MCP rejection reason is invalid")
+        if rejection_reason == "DISABLED_TOOL":
+            if canonical_disabled_name is None or not _SAFE_AUDIT_TOOL_NAME.fullmatch(
+                canonical_disabled_name
+            ):
+                raise ValueError("disabled MCP canonical name is invalid")
+            safe_name = canonical_disabled_name
+        else:
+            if canonical_disabled_name is not None:
+                raise ValueError("MCP canonical name is not allowed for this rejection")
+            safe_name = None
+        name_hash = hashlib.sha256(tool_name.encode("utf-8")).hexdigest()
+        details = json.dumps(
+            {
+                "tool_name": safe_name,
+                "tool_name_sha256": name_hash,
+                "tool_name_length": len(tool_name),
+                "canonical_input_sha256": _canonical_input_hash(arguments),
+                "rejection_reason": rejection_reason,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        async with session_scope(_database_url()) as session:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO governance.audit_events
+                        (audit_event_id, actor_user_id, actor_role, action_code,
+                         object_type, object_id, details_json_redacted, trace_id)
+                    VALUES (:event_id, :actor_user_id, :actor_role, :action_code,
+                            :object_type, :object_id,
+                            CAST(:details_json_redacted AS jsonb), :trace_id)
+                    """
+                ),
+                {
+                    "event_id": uuid4(),
+                    "actor_user_id": principal.subject,
+                    "actor_role": principal.role.value,
+                    "action_code": MCP_REJECTED_TOOL_ACTION,
+                    "object_type": "MCP_TOOL",
+                    "object_id": f"sha256:{name_hash}",
+                    "details_json_redacted": details,
+                    "trace_id": trace_id,
+                },
+            )
+    except MCPInfrastructureError as error:
+        raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
+    except (
+        DatabaseConfigurationError,
+        SQLAlchemyError,
+        TypeError,
+        ValueError,
+        UnicodeError,
+    ) as error:
         raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
 
 
@@ -572,13 +759,38 @@ async def mcp_post(
         return _rpc_error(request_id, -32602, "Invalid tools/call params", 400)
     started = time.perf_counter()
     trace_id = request.state.trace_id
+    arguments = params.get("arguments", {})
     try:
-        access = await _tool_registry().resolve(str(params.get("name")), principal.role)
+        access, rejection_reason, canonical_disabled_name = await _tool_call_access(
+            str(params.get("name")),
+            principal,
+        )
     except MCPInfrastructureError as error:
         return _rpc_infrastructure_error(request_id, error)
     if not access.known or access.descriptor is None:
+        if rejection_reason is None:
+            return _rpc_infrastructure_error(
+                request_id,
+                MCPInfrastructureError("MCP_REGISTRY_INVALID"),
+            )
+        try:
+            rejected_quota = await _consume_rejected_call_quota(principal)
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
+        if not rejected_quota.allowed:
+            return _rpc_rate_limited(request_id, rejected_quota)
+        try:
+            await _record_protocol_security_event(
+                principal,
+                trace_id,
+                str(params.get("name")),
+                arguments,
+                rejection_reason,
+                canonical_disabled_name,
+            )
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
         return _rpc_error(request_id, -32602, "Unknown or disabled tool")
-    arguments = params.get("arguments", {})
     descriptor = access.descriptor
     if not access.authorized:
         return await _audited_tool_error(
@@ -624,25 +836,7 @@ async def mcp_post(
         )
         if audit_error is not None:
             return audit_error
-        return _rpc_error(
-            request_id,
-            TOOL_RATE_LIMITED,
-            "Rate limit exceeded",
-            429,
-            {
-                "code": "RATE_LIMITED",
-                "limit": quota.limit,
-                "remaining": 0,
-                "retryAfterSeconds": quota.retry_after_seconds,
-                "resetAt": quota.window_end.astimezone(UTC)
-                .isoformat()
-                .replace("+00:00", "Z"),
-            },
-            headers={
-                "Retry-After": str(quota.retry_after_seconds),
-                "Cache-Control": "no-store",
-            },
-        )
+        return _rpc_rate_limited(request_id, quota)
     try:
         result = await MCPToolDispatcher().dispatch(
             descriptor,

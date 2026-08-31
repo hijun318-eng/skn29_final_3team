@@ -2008,6 +2008,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                     "prediction_contract_version": "MLRoomDemandPrediction.v1",
                     "model_version": "approved-demand-release",
                     "model_hash": "a" * 64,
+                    "feature_contract_sha256": "b" * 64,
                     "model_type": "daily-demand-forecast",
                     "estimator_type": "ApprovedRegressor",
                     "approval": "APPROVED",

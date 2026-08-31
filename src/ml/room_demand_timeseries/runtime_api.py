@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import uuid
@@ -12,14 +13,24 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from ..room_demand_v3.trino_client import TrinoClient
+from ..runtime_trust import (
+    ML_RUNTIME_AUTH_MAX_BODY_BYTES,
+    MLRuntimeNonceGuard,
+    MLRuntimeTrustError,
+    response_auth_headers,
+    runtime_hmac_secret,
+    verify_request_auth,
+)
 from .contracts import FEATURE_COLUMNS
 from .features import TimeSeriesFeatureBuilder
 
 
+logger = logging.getLogger(__name__)
 IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 HISTORY_COLUMNS = [
     "property_id",
@@ -191,13 +202,18 @@ class PredictionRequest(BaseModel):
 
 class TimeSeriesRuntime:
     def __init__(self) -> None:
+        self.hmac_secret = runtime_hmac_secret()
         artifact = Path(os.environ["ML_MODEL_ARTIFACT"])
         manifest_path = Path(os.environ["ML_MODEL_MANIFEST"])
         approval_path = Path(os.environ["ML_MODEL_APPROVAL"])
         feature_contract_path = Path(os.environ["ML_FEATURE_CONTRACT"])
         self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.approval = json.loads(approval_path.read_text(encoding="utf-8"))
-        feature_contract = json.loads(feature_contract_path.read_text(encoding="utf-8"))
+        feature_contract_bytes = feature_contract_path.read_bytes()
+        feature_contract = json.loads(feature_contract_bytes.decode("utf-8"))
+        self.feature_contract_sha256 = hashlib.sha256(
+            feature_contract_bytes
+        ).hexdigest()
         model_versions = {
             self.manifest.get("model_version"),
             self.approval.get("model_version"),
@@ -312,6 +328,7 @@ ORDER BY property_id
             "prediction_contract_version": ML_PREDICTION_RESULT_VERSION,
             "model_version": self.manifest["model_version"],
             "model_hash": self.model_hash,
+            "feature_contract_sha256": self.feature_contract_sha256,
             "model_type": self.model_type,
             "estimator_type": self.estimator_type,
             "approval": self.approval.get("final_decision"),
@@ -385,6 +402,7 @@ ORDER BY property_id
             "horizon_days": request.horizon_days,
             "model_version": self.manifest["model_version"],
             "model_hash": self.model_hash,
+            "feature_contract_sha256": self.feature_contract_sha256,
             "daily_forecasts": daily,
             "room_type_forecasts": details,
             "provenance": {
@@ -400,23 +418,148 @@ ORDER BY property_id
 
 app = FastAPI(title="Answervice Historical Room Demand Runtime", version="4.0.0")
 state: TimeSeriesRuntime | None = None
-startup_error: str | None = None
+_AUTHENTICATED_PATHS = frozenset({"/capabilities", "/predictions/room-demand"})
+_request_nonce_guard = MLRuntimeNonceGuard()
+
+
+def _declared_request_body_size(request: Request) -> int:
+    """본문을 읽기 전에 chunked·과대 인증 요청을 거부한다."""
+
+    if request.headers.get("transfer-encoding"):
+        raise MLRuntimeTrustError("chunked ML runtime requests are not allowed")
+    content_length = request.headers.get("content-length")
+    if content_length is None:
+        if request.method.upper() in {"GET", "HEAD"}:
+            return 0
+        raise MLRuntimeTrustError("ML runtime request Content-Length is required")
+    if not content_length.isdigit() or len(content_length) > 10:
+        raise MLRuntimeTrustError("ML runtime request Content-Length is invalid")
+    size = int(content_length)
+    if size > ML_RUNTIME_AUTH_MAX_BODY_BYTES:
+        raise MLRuntimeTrustError("ML runtime authenticated body is too large")
+    return size
+
+
+def _signed_runtime_error(
+    secret: bytes,
+    path: str,
+    status_code: int,
+    nonce: str,
+    detail: str,
+) -> Response:
+    """인증된 Backend에만 bounded generic runtime 오류를 서명해 반환한다."""
+
+    body = json.dumps(
+        {"detail": detail},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return Response(
+        content=body,
+        status_code=status_code,
+        headers=response_auth_headers(secret, path, status_code, nonce, body),
+        media_type="application/json",
+    )
+
+
+@app.middleware("http")
+async def authenticate_runtime_exchange(request: Request, call_next) -> Response:
+    """Backend 전용 endpoint의 요청을 검증하고 모든 응답을 같은 nonce에 서명한다."""
+
+    if request.url.path not in _AUTHENTICATED_PATHS:
+        return await call_next(request)
+    runtime = state
+    try:
+        declared_size = _declared_request_body_size(request)
+    except MLRuntimeTrustError:
+        return JSONResponse(status_code=413, content={"detail": "Request rejected"})
+    try:
+        secret = runtime.hmac_secret if runtime is not None else runtime_hmac_secret()
+    except MLRuntimeTrustError:
+        return JSONResponse(status_code=503, content={"detail": "Runtime unavailable"})
+    body = await request.body()
+    if len(body) != declared_size or len(body) > ML_RUNTIME_AUTH_MAX_BODY_BYTES:
+        return JSONResponse(status_code=413, content={"detail": "Request rejected"})
+    try:
+        nonce = verify_request_auth(
+            secret,
+            request.headers,
+            request.method,
+            request.url.path,
+            body,
+        )
+        _request_nonce_guard.consume(nonce)
+    except MLRuntimeTrustError:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    if runtime is None:
+        return _signed_runtime_error(
+            secret,
+            request.url.path,
+            503,
+            nonce,
+            "ML runtime is not ready",
+        )
+    try:
+        response = await call_next(request)
+        response_chunks: list[bytes] = []
+        response_size = 0
+        async for chunk in response.body_iterator:
+            encoded_chunk = chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+            response_size += len(encoded_chunk)
+            if response_size > ML_RUNTIME_AUTH_MAX_BODY_BYTES:
+                close_iterator = getattr(response.body_iterator, "aclose", None)
+                if callable(close_iterator):
+                    await close_iterator()
+                return _signed_runtime_error(
+                    secret,
+                    request.url.path,
+                    502,
+                    nonce,
+                    "Authenticated ML runtime response is too large",
+                )
+            response_chunks.append(encoded_chunk)
+    except Exception:
+        return _signed_runtime_error(
+            secret,
+            request.url.path,
+            500,
+            nonce,
+            "ML runtime request failed",
+        )
+    response_body = b"".join(response_chunks)
+    signed_headers = dict(response.headers)
+    signed_headers.pop("content-length", None)
+    signed_headers.update(
+        response_auth_headers(
+            secret,
+            request.url.path,
+            response.status_code,
+            nonce,
+            response_body,
+        )
+    )
+    return Response(
+        content=response_body,
+        status_code=response.status_code,
+        headers=signed_headers,
+        media_type=response.media_type,
+        background=response.background,
+    )
 
 
 @app.on_event("startup")
 def startup() -> None:
-    global state, startup_error
+    global state
     try:
         state = TimeSeriesRuntime()
-        startup_error = None
-    except Exception as exc:
+    except Exception:
         state = None
-        startup_error = str(exc)
+        logger.exception("ML runtime startup failed")
 
 
 def ready_state() -> TimeSeriesRuntime:
     if state is None:
-        raise HTTPException(status_code=503, detail=startup_error or "runtime not loaded")
+        raise HTTPException(status_code=503, detail="runtime not ready")
     return state
 
 
@@ -431,6 +574,7 @@ def readiness() -> dict[str, Any]:
     return {
         "status": "ready",
         "model_hash": runtime.model_hash,
+        "feature_contract_sha256": runtime.feature_contract_sha256,
         "model_type": runtime.model_type,
         "estimator_type": runtime.estimator_type,
         "approval": runtime.approval.get("final_decision"),

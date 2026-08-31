@@ -103,9 +103,11 @@ import type {
   readonly dirty?: boolean;
 }
 
-/** 한 번의 사용자 편집을 되돌릴 때 함께 복원할 제목·블록 snapshot이다. */ export interface ReportDraftHistorySnapshot {
+/** 한 번의 사용자 편집을 되돌릴 때 함께 복원할 draft 전체 snapshot이다. */ export interface ReportDraftHistorySnapshot {
   readonly title: string;
   readonly blocks: readonly DraftReportBlock[];
+  readonly orientation: ReportOrientation;
+  readonly currencyPolicy: DraftCurrencyPolicy;
 }
 
 /** undo/redo 가능 여부와 안정된 명령 callback 계약이다. */ export interface ReportDraftHistory {

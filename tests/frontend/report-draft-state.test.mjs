@@ -121,7 +121,38 @@ assert.deepEqual(
 );
 
 const draftStateSource = readFileSync(new URL("../../app/frontend/src/features/reports/useReportDraftState.ts", import.meta.url), "utf8");
+const draftStateTypesSource = readFileSync(new URL("../../app/frontend/src/features/reports/reportDraftStateTypes.ts", import.meta.url), "utf8");
 assert.match(draftStateSource, /window\.addEventListener\("beforeunload", warnBeforeUnload\)/);
 assert.match(draftStateSource, /window\.removeEventListener\("beforeunload", warnBeforeUnload\)/);
+assert.match(
+  draftStateTypesSource,
+  /interface ReportDraftHistorySnapshot\s*\{[\s\S]*title: string;[\s\S]*blocks:[\s\S]*orientation: ReportOrientation;[\s\S]*currencyPolicy: DraftCurrencyPolicy;/,
+  "history contract must include every persisted report layout field",
+);
+assert.match(
+  draftStateSource,
+  /function createHistorySnapshot\([\s\S]*orientation,[\s\S]*currencyPolicy: \{ \.\.\.currencyPolicy \}/,
+  "history snapshots must copy orientation and currency policy with title and blocks",
+);
+assert.match(
+  draftStateSource,
+  /orientationRef\.current = previous\.orientation;[\s\S]*currencyPolicyRef\.current = previousPolicy;[\s\S]*setReportOrientation\(previous\.orientation\);[\s\S]*setReportCurrencyPolicy\(previousPolicy\);/,
+  "undo must restore orientation and currency policy atomically",
+);
+assert.match(
+  draftStateSource,
+  /orientationRef\.current = nextSnapshot\.orientation;[\s\S]*currencyPolicyRef\.current = nextPolicy;[\s\S]*setReportOrientation\(nextSnapshot\.orientation\);[\s\S]*setReportCurrencyPolicy\(nextPolicy\);/,
+  "redo must restore orientation and currency policy atomically",
+);
+assert.match(
+  draftStateSource,
+  /changeCurrencyDisplayUnit[\s\S]*setHistory\([\s\S]*previousSnapshot[\s\S]*currencyPolicyRef\.current = next;/,
+  "currency unit changes must create an undo boundary before mutation",
+);
+assert.match(
+  draftStateSource,
+  /changeOrientation[\s\S]*setHistory\([\s\S]*previousSnapshot[\s\S]*orientationRef\.current = orientation;[\s\S]*commitBlocks\([\s\S]*, false\);/,
+  "orientation changes must record exactly one complete snapshot before reflow",
+);
 
 console.log("frontend report draft state tests passed");

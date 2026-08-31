@@ -8,6 +8,7 @@ import json
 import os
 import time
 from collections.abc import Mapping, Sequence
+from datetime import UTC
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -17,9 +18,12 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.adapters.mcp_tool_rate_limit_repository import (
+    PostgresMcpToolRateLimitRepository,
+)
 from app.auth import AuthenticationError, Principal
 from app.context import TokenAuthenticator, bearer_auth, token_authenticator
-from app.database import DatabaseConfigurationError, session_scope
+from app.database import DatabaseConfigurationError, get_sessionmaker, session_scope
 from app.ports.mcp_tool import (
     MCPToolDispatchError,
     MCPToolInfrastructureError,
@@ -38,6 +42,12 @@ from app.services.mcp_tool_registry import (
     _analysis_get_run_output,
     analysis_get_run_descriptor,
 )
+from app.services.mcp_tool_rate_limit import (
+    McpToolRateLimitConfigurationError,
+    McpToolRateLimitDecision,
+    McpToolRateLimitService,
+    McpToolRateLimitUnavailable,
+)
 
 
 # 날짜처럼 보이는 값은 질문 기준일이 아니라 MCP wire protocol의 공개 version이다.
@@ -46,6 +56,7 @@ MCP_PROTOCOL_VERSION = "2026-07-28"
 MCP_SERVER_INFO = {"name": "answervice-mcp", "version": "1.0.0"}
 HEADER_MISMATCH = -32020
 UNSUPPORTED_PROTOCOL_VERSION = -32022
+TOOL_RATE_LIMITED = 42900
 TOOL_ID = ANALYSIS_GET_RUN_TOOL_ID
 TOOL_NAME = ANALYSIS_GET_RUN_NAME
 TOOL_SEMANTIC_VERSION = ANALYSIS_GET_RUN_SEMANTIC_VERSION
@@ -101,13 +112,18 @@ def _rpc_error(
     message: str,
     status: int = 200,
     data: Any | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     error: dict[str, Any] = {"code": code, "message": message}
     if data is not None:
         error["data"] = data
+    payload: dict[str, Any] = {"jsonrpc": "2.0", "error": error}
+    if request_id is not None:
+        payload["id"] = request_id
     return JSONResponse(
-        {"jsonrpc": "2.0", "id": request_id, "error": error},
+        payload,
         status_code=status,
+        headers=dict(headers) if headers is not None else None,
     )
 
 
@@ -281,6 +297,29 @@ async def _authorized_tool(principal: Principal) -> bool:
     return authorized
 
 
+async def _consume_tool_quota(
+    principal: Principal,
+    tool_id: UUID,
+) -> McpToolRateLimitDecision:
+    """독립 DB transaction의 strict 환경 quota를 known·authorized Tool에 소비한다."""
+
+    try:
+        repository = PostgresMcpToolRateLimitRepository(
+            get_sessionmaker(_database_url())
+        )
+        return await McpToolRateLimitService.from_env(repository).consume(
+            principal_subject=principal.subject,
+            tool_id=tool_id,
+        )
+    except (
+        MCPInfrastructureError,
+        DatabaseConfigurationError,
+        McpToolRateLimitConfigurationError,
+        McpToolRateLimitUnavailable,
+    ) as error:
+        raise MCPInfrastructureError("MCP_RATE_LIMIT_UNAVAILABLE") from error
+
+
 async def _record_run(
     principal: Principal,
     trace_id: str,
@@ -312,8 +351,8 @@ async def _record_run(
                     "output_ref": json.dumps(output_ref, default=str), "error_code": error_code,
                 },
             )
-    except MCPInfrastructureError:
-        raise
+    except MCPInfrastructureError as error:
+        raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
     except (DatabaseConfigurationError, SQLAlchemyError) as error:
         raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
 
@@ -419,8 +458,13 @@ async def mcp_post(
         or not isinstance(payload.get("method"), str)
         or not payload["method"]
     ):
+        invalid_request_id = (
+            payload.get("id")
+            if isinstance(payload, dict) and _valid_request_id(payload.get("id"))
+            else None
+        )
         return _rpc_error(
-            payload.get("id") if isinstance(payload, dict) else None,
+            invalid_request_id,
             -32600,
             "Invalid Request",
             400,
@@ -550,6 +594,56 @@ async def mcp_post(
             tool_id=descriptor.tool_id,
         )
     try:
+        quota = await _consume_tool_quota(principal, descriptor.tool_id)
+    except MCPInfrastructureError as error:
+        audit_error = await _audit_or_error(
+            request_id,
+            principal,
+            trace_id,
+            arguments,
+            "FAILED",
+            started,
+            {},
+            error.code,
+            tool_id=descriptor.tool_id,
+        )
+        if audit_error is not None:
+            return audit_error
+        return _rpc_infrastructure_error(request_id, error)
+    if not quota.allowed:
+        audit_error = await _audit_or_error(
+            request_id,
+            principal,
+            trace_id,
+            arguments,
+            "DENIED",
+            started,
+            {},
+            "RATE_LIMITED",
+            tool_id=descriptor.tool_id,
+        )
+        if audit_error is not None:
+            return audit_error
+        return _rpc_error(
+            request_id,
+            TOOL_RATE_LIMITED,
+            "Rate limit exceeded",
+            429,
+            {
+                "code": "RATE_LIMITED",
+                "limit": quota.limit,
+                "remaining": 0,
+                "retryAfterSeconds": quota.retry_after_seconds,
+                "resetAt": quota.window_end.astimezone(UTC)
+                .isoformat()
+                .replace("+00:00", "Z"),
+            },
+            headers={
+                "Retry-After": str(quota.retry_after_seconds),
+                "Cache-Control": "no-store",
+            },
+        )
+    try:
         result = await MCPToolDispatcher().dispatch(
             descriptor,
             subject_id=principal.subject,
@@ -558,6 +652,19 @@ async def mcp_post(
             arguments=arguments,
         )
     except MCPInfrastructureError as error:
+        audit_error = await _audit_or_error(
+            request_id,
+            principal,
+            trace_id,
+            arguments,
+            "FAILED",
+            started,
+            {},
+            error.code,
+            tool_id=descriptor.tool_id,
+        )
+        if audit_error is not None:
+            return audit_error
         return _rpc_infrastructure_error(request_id, error)
     except MCPToolDispatchError as error:
         return await _audited_tool_error(

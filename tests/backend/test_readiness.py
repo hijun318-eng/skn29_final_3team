@@ -37,6 +37,50 @@ class _Session:
 
 
 class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
+    def test_mcp_rate_limit_probe_rejects_missing_settings(self) -> None:
+        for environment in (
+            {},
+            {"MCP_TOOL_RATE_LIMIT_QUOTA": "30"},
+            {"MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS": "60"},
+        ):
+            with self.subTest(environment=environment), patch.dict(
+                "os.environ", environment, clear=True
+            ):
+                self.assertEqual(
+                    "not_ready", AppDatabaseReadiness._mcp_rate_limit_probe()
+                )
+
+    def test_mcp_rate_limit_probe_rejects_invalid_settings(self) -> None:
+        for quota, window_seconds in (
+            ("invalid", "60"),
+            ("0", "60"),
+            ("30", "0"),
+        ):
+            with self.subTest(
+                quota=quota, window_seconds=window_seconds
+            ), patch.dict(
+                "os.environ",
+                {
+                    "MCP_TOOL_RATE_LIMIT_QUOTA": quota,
+                    "MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS": window_seconds,
+                },
+                clear=True,
+            ):
+                self.assertEqual(
+                    "not_ready", AppDatabaseReadiness._mcp_rate_limit_probe()
+                )
+
+    def test_mcp_rate_limit_probe_accepts_explicit_valid_settings(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "MCP_TOOL_RATE_LIMIT_QUOTA": "30",
+                "MCP_TOOL_RATE_LIMIT_WINDOW_SECONDS": "60",
+            },
+            clear=True,
+        ):
+            self.assertEqual("ready", AppDatabaseReadiness._mcp_rate_limit_probe())
+
     def test_probe_timeout_uses_bounded_two_second_production_budget(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(2.0, AppDatabaseReadiness._probe_timeout())
@@ -297,6 +341,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(probe, "_model_probe", AsyncMock(return_value="ready")),
             patch.object(probe, "_auth_probe", AsyncMock(return_value="ready")),
+            patch.object(probe, "_mcp_rate_limit_probe", return_value="ready"),
             patch.object(probe, "_report_scheduler_probe", return_value="ready"),
         ):
             result = await probe.check()
@@ -306,6 +351,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("ready", result["trino"])
         self.assertEqual("ready", result["datahub_transport"])
         self.assertEqual("ready", result["catalog_manifest"])
+        self.assertEqual("ready", result["mcp_rate_limit"])
 
     async def test_datahub_probe_uses_canonical_environment_client(self) -> None:
         class Catalog:

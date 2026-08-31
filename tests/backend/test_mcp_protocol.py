@@ -6,6 +6,7 @@ import base64
 import json
 import unittest
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -19,14 +20,17 @@ from app.api.mcp_router import (
     MCP_PROTOCOL_VERSION,
     MCP_SERVER_INFO,
     TOOL_INPUT_SCHEMA,
+    TOOL_ID,
     TOOL_NAME,
     TOOL_OUTPUT_SCHEMA,
     TOOL_REQUIRED_ROLES,
     TOOL_SEMANTIC_VERSION,
     TOOL_TIMEOUT_SECONDS,
     TOOL_TRANSPORT,
+    TOOL_RATE_LIMITED,
     UNSUPPORTED_PROTOCOL_VERSION,
     _decode_mcp_header,
+    _consume_tool_quota,
     _discovery_result,
     _has_request_metadata,
     _origin_allowed,
@@ -39,6 +43,8 @@ from app.api.mcp_router import (
 )
 from app.auth import Principal
 from app.contracts import Role
+from app.ports.mcp_tool import MCPToolInfrastructureError
+from app.services.mcp_tool_rate_limit import McpToolRateLimitDecision
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -102,6 +108,8 @@ class McpProtocolTest(unittest.TestCase):
         self.assertFalse(TOOL_INPUT_SCHEMA["additionalProperties"])
         self.assertFalse(TOOL_OUTPUT_SCHEMA["additionalProperties"])
         self.assertIn("artifact_id", TOOL_OUTPUT_SCHEMA["required"])
+        self.assertEqual(42900, TOOL_RATE_LIMITED)
+        self.assertFalse(-32099 <= TOOL_RATE_LIMITED <= -32020)
 
     def test_latest_stateless_request_metadata_is_self_contained(self) -> None:
         metadata = {
@@ -232,6 +240,20 @@ class McpProtocolTest(unittest.TestCase):
         self.assertTrue(required["MCP-Protocol-Version"])
         self.assertTrue(required["Mcp-Method"])
 
+    def test_cors_exposes_only_retry_after_for_rate_limit_response(self) -> None:
+        source = (ROOT / "app/backend/app/main.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'expose_headers=["X-Request-Id", "X-Trace-Id", "Retry-After"]',
+            source,
+        )
+        for legacy_header in (
+            "RateLimit-Limit",
+            "RateLimit-Remaining",
+            "RateLimit-Reset",
+        ):
+            self.assertNotIn(legacy_header, source)
+
     def test_migration_is_additive_and_does_not_create_rag_or_ml(self) -> None:
         source = (ROOT / "app/backend/migrations/versions/20260812_12_mcp_tool.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -258,6 +280,25 @@ class McpProtocolTest(unittest.TestCase):
 
 
 class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+        self.quota_patcher = patch(
+            "app.api.mcp_router._consume_tool_quota",
+            new_callable=AsyncMock,
+            return_value=McpToolRateLimitDecision(
+                allowed=True,
+                limit=30,
+                remaining=29,
+                retry_after_seconds=60,
+                window_start=window_start,
+                window_end=window_start + timedelta(seconds=60),
+            ),
+        )
+        self.consume_quota = self.quota_patcher.start()
+
+    async def asyncTearDown(self) -> None:
+        self.quota_patcher.stop()
+
     async def _post(
         self,
         payload: object,
@@ -274,6 +315,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             method_header,
             name_header,
         )
+        self.last_response = response
         return response.status_code, json.loads(response.body)
 
     async def _call_tool(
@@ -318,6 +360,14 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(400, response.status_code)
         self.assertEqual(HEADER_MISMATCH, body["error"]["code"])
+        self.assertNotIn("id", body)
+
+    async def test_unidentified_invalid_request_omits_json_rpc_id(self) -> None:
+        status, body = await self._post(_request_payload(request_id=True))
+
+        self.assertEqual(400, status)
+        self.assertEqual(-32600, body["error"]["code"])
+        self.assertNotIn("id", body)
 
     async def test_missing_metadata_is_invalid_params_with_http_400(self) -> None:
         payload = _request_payload()
@@ -411,6 +461,24 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(200, call_status)
         self.assertEqual(-32602, called["error"]["code"])
         self.assertEqual(2, registry_rows.await_count)
+        self.consume_quota.assert_not_awaited()
+
+    async def test_unknown_tool_is_hidden_without_consuming_quota(self) -> None:
+        payload = _request_payload(
+            method="tools/call",
+            extra_params={"name": "rag.answer", "arguments": {}},
+        )
+
+        status, body = await self._post(
+            payload,
+            method_header="tools/call",
+            name_header="rag.answer",
+        )
+
+        self.assertEqual(200, status)
+        self.assertEqual(-32602, body["error"]["code"])
+        self.assertEqual("Unknown or disabled tool", body["error"]["message"])
+        self.consume_quota.assert_not_awaited()
 
     async def test_registry_failure_uses_json_rpc_server_error(self) -> None:
         """Registry 장애가 FastAPI detail 응답으로 wire 계약을 이탈하지 않는다."""
@@ -442,8 +510,8 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             body["error"]["data"]["code"],
         )
 
-    async def test_storage_configuration_failure_uses_json_rpc_server_error(self) -> None:
-        """Tool 저장소 설정 장애도 같은 MCP server error envelope를 사용한다."""
+    async def test_storage_failure_with_unavailable_audit_prioritizes_audit(self) -> None:
+        """Tool·감사 저장소가 함께 없으면 감사 불가를 우선해 실패로 닫는다."""
 
         with (
             patch(
@@ -457,7 +525,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(503, status)
         self.assertEqual(-32603, body["error"]["code"])
         self.assertEqual(
-            "MCP_STORAGE_UNAVAILABLE",
+            "MCP_AUDIT_UNAVAILABLE",
             body["error"]["data"]["code"],
         )
 
@@ -483,6 +551,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(-32602, body["error"]["code"])
         self.assertEqual("DENIED", record_run.await_args.args[3])
         self.assertEqual("ACCESS_DENIED", record_run.await_args.args[6])
+        self.consume_quota.assert_not_awaited()
 
     async def test_invalid_tool_arguments_are_audited(self) -> None:
         """활성·허용 Tool의 schema 오류를 실행 실패 감사로 남긴다."""
@@ -500,9 +569,174 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             status, body = await self._call_tool({"request_id": "not-a-uuid"})
 
         self.assertEqual(200, status)
-        self.assertTrue(body["result"]["isError"])
+        self.assertEqual(-32602, body["error"]["code"])
         self.assertEqual("FAILED", record_run.await_args.args[3])
         self.assertEqual("INVALID_ARGUMENT", record_run.await_args.args[6])
+        self.consume_quota.assert_awaited_once()
+
+    async def test_allowed_quota_dispatches_and_audits_success(self) -> None:
+        request_id = str(uuid4())
+        persisted = {
+            "request_id": request_id,
+            "status": "SUCCEEDED",
+            "trace_id": "trace-success",
+            "query_id": "query-success",
+            "artifact_id": "artifact-success",
+        }
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.services.mcp_tool_registry.PostgresAnalysisRepository.get_run",
+                AsyncMock(return_value=persisted),
+            ) as get_run,
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": request_id})
+
+        self.assertEqual(200, status)
+        self.assertEqual(persisted, body["result"]["structuredContent"])
+        self.consume_quota.assert_awaited_once()
+        get_run.assert_awaited_once_with(request_id)
+        self.assertEqual("SUCCEEDED", record_run.await_args.args[3])
+
+    async def test_quota_denial_is_audited_then_returns_429_without_dispatch(self) -> None:
+        window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+        self.consume_quota.return_value = McpToolRateLimitDecision(
+            allowed=False,
+            limit=30,
+            remaining=0,
+            retry_after_seconds=17,
+            window_start=window_start,
+            window_end=window_start + timedelta(seconds=60),
+        )
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch(
+                "app.services.mcp_tool_registry.PostgresAnalysisRepository.get_run",
+                AsyncMock(),
+            ) as get_run,
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": str(uuid4())})
+
+        self.assertEqual(429, status)
+        self.assertEqual(TOOL_RATE_LIMITED, body["error"]["code"])
+        self.assertEqual(
+            {
+                "code": "RATE_LIMITED",
+                "limit": 30,
+                "remaining": 0,
+                "retryAfterSeconds": 17,
+                "resetAt": "2026-08-31T00:01:00Z",
+            },
+            body["error"]["data"],
+        )
+        self.assertEqual("17", self.last_response.headers["Retry-After"])
+        self.assertEqual("no-store", self.last_response.headers["Cache-Control"])
+        self.assertNotIn("RateLimit-Limit", self.last_response.headers)
+        get_run.assert_not_awaited()
+        self.assertEqual("DENIED", record_run.await_args.args[3])
+        self.assertEqual("RATE_LIMITED", record_run.await_args.args[6])
+
+    async def test_quota_denial_audit_failure_has_503_priority(self) -> None:
+        window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+        self.consume_quota.return_value = McpToolRateLimitDecision(
+            allowed=False,
+            limit=30,
+            remaining=0,
+            retry_after_seconds=17,
+            window_start=window_start,
+            window_end=window_start + timedelta(seconds=60),
+        )
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(
+                    side_effect=MCPToolInfrastructureError(
+                        "MCP_AUDIT_UNAVAILABLE"
+                    )
+                ),
+            ),
+        ):
+            status, body = await self._call_tool({"request_id": str(uuid4())})
+
+        self.assertEqual(503, status)
+        self.assertEqual(-32603, body["error"]["code"])
+        self.assertEqual("MCP_AUDIT_UNAVAILABLE", body["error"]["data"]["code"])
+        self.assertNotIn("Retry-After", self.last_response.headers)
+
+    async def test_quota_storage_failure_is_audited_before_503(self) -> None:
+        self.consume_quota.side_effect = MCPToolInfrastructureError(
+            "MCP_RATE_LIMIT_UNAVAILABLE"
+        )
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": str(uuid4())})
+
+        self.assertEqual(503, status)
+        self.assertEqual(-32603, body["error"]["code"])
+        self.assertEqual(
+            "MCP_RATE_LIMIT_UNAVAILABLE",
+            body["error"]["data"]["code"],
+        )
+        self.assertEqual("FAILED", record_run.await_args.args[3])
+        self.assertEqual(
+            "MCP_RATE_LIMIT_UNAVAILABLE",
+            record_run.await_args.args[6],
+        )
+
+    async def test_dispatcher_infrastructure_failure_is_audited_before_503(self) -> None:
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch(
+                "app.api.mcp_router.MCPToolDispatcher.dispatch",
+                AsyncMock(
+                    side_effect=MCPToolInfrastructureError("MCP_TOOL_UNAVAILABLE")
+                ),
+            ),
+            patch(
+                "app.api.mcp_router._record_run",
+                AsyncMock(),
+            ) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": str(uuid4())})
+
+        self.assertEqual(503, status)
+        self.assertEqual(-32603, body["error"]["code"])
+        self.assertEqual("MCP_TOOL_UNAVAILABLE", body["error"]["data"]["code"])
+        self.assertEqual("FAILED", record_run.await_args.args[3])
+        self.assertEqual("MCP_TOOL_UNAVAILABLE", record_run.await_args.args[6])
 
     async def test_audit_failure_uses_json_rpc_server_error(self) -> None:
         """감사 저장 실패 시 Tool 오류를 성공처럼 반환하지 않는다."""
@@ -605,7 +839,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("TOOL_EXECUTION_FAILED", record_run.await_args.args[6])
 
     async def test_tool_cancellation_is_not_converted_to_a_failure(self) -> None:
-        """요청 취소는 일반 실행 실패로 소비하거나 감사하지 않고 상위로 전파한다."""
+        """quota 소비 뒤 요청 취소는 실행 실패로 감사하지 않고 상위로 전파한다."""
 
         with (
             patch(
@@ -629,6 +863,26 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
                 await self._call_tool({"request_id": str(uuid4())})
 
         record_run.assert_not_awaited()
+        self.consume_quota.assert_awaited_once()
+
+
+class McpRateLimitWiringTest(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_quota_configuration_is_normalized_fail_closed(self) -> None:
+        with (
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch("app.api.mcp_router.get_sessionmaker", return_value=object()),
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            with self.assertRaises(MCPToolInfrastructureError) as raised:
+                await _consume_tool_quota(
+                    Principal(uuid4(), Role.ANALYST),
+                    TOOL_ID,
+                )
+
+        self.assertEqual("MCP_RATE_LIMIT_UNAVAILABLE", raised.exception.code)
 
 
 if __name__ == "__main__":

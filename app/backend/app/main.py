@@ -162,7 +162,7 @@ app.add_middleware(
         "Mcp-Method",
         "Mcp-Name",
     ],
-    expose_headers=["X-Request-Id", "X-Trace-Id"],
+    expose_headers=["X-Request-Id", "X-Trace-Id", "Retry-After"],
 )
 app.include_router(router)
 app.include_router(report_router)
@@ -214,7 +214,6 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
             status_code=400,
             content={
                 "jsonrpc": "2.0",
-                "id": None,
                 "error": {
                     "code": HEADER_MISMATCH,
                     "message": "Required MCP request header is missing or malformed",

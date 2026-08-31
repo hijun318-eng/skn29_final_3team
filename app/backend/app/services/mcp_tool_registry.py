@@ -265,6 +265,7 @@ def _analysis_get_run_input(arguments: Any) -> Mapping[str, Any]:
         raise MCPToolDispatchError(
             "INVALID_ARGUMENT",
             "request_id는 UUID 형식이어야 합니다.",
+            protocol_error=True,
         ) from error
     return dict(arguments)
 

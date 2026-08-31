@@ -22,6 +22,10 @@ from app.services.analysis.sql_generation_mode import (
     SqlGenerationMode,
     configured_sql_generation_mode,
 )
+from app.services.mcp_tool_rate_limit import (
+    McpToolRateLimitConfigurationError,
+    McpToolRateLimitSettings,
+)
 from app.services.runtime_feature_availability import runtime_feature_availability
 from src.modelops.runtime_config import ActiveModelRoute, resolve_active_model_routes
 
@@ -65,6 +69,7 @@ class AppDatabaseReadiness:
         probe["model"] = model
         probe["auth_session_store"] = auth
         probe.update(optional)
+        probe["mcp_rate_limit"] = self._mcp_rate_limit_probe()
         probe["report_scheduler"] = self._report_scheduler_probe()
         probe["conversation_recovery"] = self._conversation_recovery_probe()
         return probe
@@ -130,6 +135,14 @@ class AppDatabaseReadiness:
         from app.services.conversation.reconciler import conversation_recovery_worker
 
         return conversation_recovery_worker.status
+
+    @staticmethod
+    def _mcp_rate_limit_probe() -> str:
+        try:
+            McpToolRateLimitSettings.from_env()
+        except McpToolRateLimitConfigurationError:
+            return "not_ready"
+        return "ready"
 
     @staticmethod
     async def _database_probe() -> dict[str, str]:

@@ -26,6 +26,7 @@ from app.ports.agent import (
 
 ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v2"
 ML_PREDICTION_RESULT_VERSION = "MLRoomDemandPrediction.v1"
+_ENABLED_VALUES = frozenset({"1", "true", "yes"})
 
 
 class MLDeploymentPolicyError(RuntimeError):
@@ -172,6 +173,29 @@ def require_production_ml_capability(
             "합성 학습 데이터로 검증된 ML release는 운영에 노출할 수 없습니다.",
         )
     return capability
+
+
+def require_deployed_ml_capability(
+    capability: MLRuntimeCapability,
+) -> MLRuntimeCapability:
+    """운영 승인 release 또는 명시적으로 연 로컬 합성 후보만 반환한다."""
+
+    try:
+        return require_production_ml_capability(capability)
+    except MLDeploymentPolicyError:
+        allow_conditional = (
+            os.getenv("ML_ALLOW_CONDITIONAL", "").strip().lower()
+            in _ENABLED_VALUES
+        )
+        if (
+            allow_conditional
+            and capability.approval == "CONDITIONAL_PASS"
+            and capability.approval_status == "VALIDATED_SYNTHETIC"
+            and capability.synthetic_training_data is True
+            and capability.history_source.synthetic_only is True
+        ):
+            return capability
+        raise
 
 
 class MLPredictionRequest(ContractModel):
@@ -381,9 +405,9 @@ class MLPredictionService:
         return capabilities
 
     async def _production_capabilities(self) -> MLRuntimeCapability:
-        """정확한 release pin과 운영 승인·실데이터 정책을 함께 검사한다."""
+        """정확한 release pin과 현재 배포의 운영·후보 정책을 함께 검사한다."""
 
-        return require_production_ml_capability(
+        return require_deployed_ml_capability(
             await self._validated_capabilities()
         )
 

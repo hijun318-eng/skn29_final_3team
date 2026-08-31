@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 
@@ -448,6 +449,29 @@ class MLPredictionCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(evidence.matched)
                 self.assertEqual(evidence.reason, expected_reason)
                 self.assertEqual(reader.calls, 1)
+
+    async def test_explicitly_allowed_synthetic_candidate_matches_registry_probe(self) -> None:
+        request = _request(
+            invocation=MLPredictionInvocation(
+                property_id="GRAND",
+                as_of="2026-08-28",
+                horizon_days=7,
+            )
+        )
+        reader = _MLCapabilityReader(
+            _ml_capability(
+                approval="CONDITIONAL_PASS",
+                approval_status="VALIDATED_SYNTHETIC",
+                synthetic_training_data=True,
+            )
+        )
+
+        with patch.dict("os.environ", {"ML_ALLOW_CONDITIONAL": "true"}):
+            evidence = await MLPredictionCapabilityProbe(reader).probe(request)
+
+        self.assertTrue(evidence.matched)
+        self.assertEqual(evidence.agent, AgentKind.ML_PREDICTION)
+        self.assertEqual(reader.calls, 1)
 
     async def test_missing_deployment_approval_field_is_invalid_evidence(self) -> None:
         capability = _ml_capability()

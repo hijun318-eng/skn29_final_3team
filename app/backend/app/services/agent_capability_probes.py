@@ -30,7 +30,7 @@ from app.services.agent_supervisor import (
 from app.services.ml_prediction_service import (
     MLDeploymentPolicyError,
     MLRuntimeCapability,
-    require_production_ml_capability,
+    require_deployed_ml_capability,
 )
 from app.services.rag_gateway import RAG_MAX_EMBEDDING_DIMENSION
 
@@ -443,7 +443,7 @@ class MLPredictionCapabilityProbe:
                 ),
             )
         try:
-            capability = require_production_ml_capability(
+            capability = require_deployed_ml_capability(
                 MLRuntimeCapability.model_validate(
                     await self._reader.capabilities()
                 )

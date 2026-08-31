@@ -436,15 +436,16 @@ ORDER BY property_id
         capacity = features["physical_rooms"].astype(float).to_numpy()
         details = []
         for index, row in features.reset_index(drop=True).iterrows():
-            available = float(capacity[index])
+            available = round(float(capacity[index]), 2)
+            predicted_rooms = round(float(final[index]), 2)
             details.append(
                 {
                     "target_date": pd.Timestamp(row["target_date"]).date().isoformat(),
                     "room_type_code": str(row["room_type_code"]),
-                    "available_rooms": round(available, 2),
+                    "available_rooms": available,
                     "predicted_rooms_raw": round(float(raw[index]), 4),
-                    "predicted_rooms": round(float(final[index]), 2),
-                    "occupancy_rate": round(float(final[index] / available), 6),
+                    "predicted_rooms": predicted_rooms,
+                    "occupancy_rate": round(predicted_rooms / available, 6),
                 }
             )
         daily = []

@@ -26,6 +26,7 @@ from app.contracts import RequestContext, Role, RuntimeFeature
 from app.adapters.ml_prediction_client import MLPredictionClient
 from app.services.ml_prediction_service import (
     MLDeploymentPolicyError,
+    MLRoomDemandPrediction,
     MLRuntimeCapability,
     MLPredictionService,
     require_production_ml_capability,
@@ -388,6 +389,46 @@ def test_backend_accepts_only_a_complete_hgbr_runtime_capability() -> None:
     assert capabilities["properties"][0]["property_id"] == "GRAND"
 
 
+def test_runtime_serializes_occupancy_from_the_wire_level_room_count() -> None:
+    runtime = object.__new__(TimeSeriesRuntime)
+    runtime.runtime_max_horizon_days = 7
+    runtime.model_max_horizon_days = 10
+    runtime.manifest = {"model_version": "room-demand-timeseries-hgbr-v2.2.0"}
+    runtime.model_hash = "a" * 64
+    runtime.feature_contract_sha256 = "b" * 64
+    runtime.history_table = "pms.ml_evaluation.approved_history"
+    runtime.query_history = lambda _request: (  # type: ignore[method-assign]
+        runtime_api.pd.DataFrame({"business_date": ["2026-08-31"]}),
+        "trino-prediction-query-1",
+    )
+    runtime.builder = SimpleNamespace(
+        build_inference=lambda *_args, **_kwargs: runtime_api.pd.DataFrame(
+            {
+                "target_date": ["2026-09-01"],
+                "room_type_code": ["STANDARD"],
+                "physical_rooms": [100.0],
+            }
+        )
+    )
+    runtime.model = SimpleNamespace(
+        predict_raw=lambda _features: [62.8546],
+        predict=lambda _features: [62.8546],
+    )
+
+    payload = runtime.predict(
+        runtime_api.PredictionRequest(
+            property_id="GRAND",
+            as_of="2026-08-31",
+            horizon_days=1,
+        )
+    )
+
+    validated = MLRoomDemandPrediction.model_validate(payload)
+    room_type = validated.room_type_forecasts[0]
+    assert room_type.predicted_rooms == 62.85
+    assert room_type.occupancy_rate == 0.6285
+
+
 @pytest.mark.parametrize(
     ("capability", "code"),
     [
@@ -576,7 +617,7 @@ def test_runtime_rejects_approval_and_manifest_synthetic_mode_mismatch(
         TimeSeriesRuntime()
 
 
-def test_ml_capability_api_returns_typed_deployment_policy_reason(
+def test_ml_capability_api_exposes_explicitly_allowed_synthetic_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ML_FEATURE_ENABLED", "1")
@@ -592,14 +633,33 @@ def test_ml_capability_api_returns_typed_deployment_policy_reason(
     )
     monkeypatch.setattr("app.api.ml_router.service", service)
 
-    with pytest.raises(HTTPException) as captured:
-        asyncio.run(ml_capabilities(RequestContext(role=Role.ANALYST)))
+    capability = asyncio.run(
+        ml_capabilities(RequestContext(role=Role.ANALYST))
+    )
 
-    assert captured.value.status_code == 503
-    assert captured.value.detail == {
-        "code": "ML_RELEASE_NOT_PRODUCTION_APPROVED",
-        "reason": "ML 모델 release가 운영 승인을 완료하지 않았습니다.",
-    }
+    assert capability["approval"] == "CONDITIONAL_PASS"
+    assert capability["approval_status"] == "VALIDATED_SYNTHETIC"
+    assert capability["synthetic_training_data"] is True
+
+
+def test_synthetic_candidate_remains_blocked_without_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ML_ALLOW_CONDITIONAL", raising=False)
+    service = MLPredictionService(
+        _StubMLClient(
+            _runtime_capabilities(
+                approval="CONDITIONAL_PASS",
+                approval_status="VALIDATED_SYNTHETIC",
+                synthetic_training_data=True,
+            )
+        )
+    )
+
+    with pytest.raises(MLDeploymentPolicyError) as captured:
+        asyncio.run(service.capabilities())
+
+    assert captured.value.code == "ML_RELEASE_NOT_PRODUCTION_APPROVED"
 
 
 @pytest.mark.parametrize(
@@ -612,6 +672,14 @@ def test_ml_capability_api_returns_typed_deployment_policy_reason(
                 approval_status="VALIDATED",
             ),
             (),
+        ),
+        (
+            _runtime_capabilities(
+                approval="CONDITIONAL_PASS",
+                approval_status="VALIDATED_SYNTHETIC",
+                synthetic_training_data=True,
+            ),
+            (RuntimeFeature.ML_PREDICTION,),
         ),
         (_runtime_capabilities(synthetic_training_data=True), ()),
     ],

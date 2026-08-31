@@ -253,7 +253,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.code, "AGENT_ROUTE_NOT_RESOLVED")
         self.assertEqual(service.capability_calls, 1)
 
-    async def test_explicit_ml_route_rejects_conditional_candidate_registry(self) -> None:
+    async def test_explicit_ml_route_accepts_opted_in_synthetic_candidate(self) -> None:
         service = _MLService(
             approval="CONDITIONAL_PASS",
             approval_status="VALIDATED_SYNTHETIC",
@@ -308,11 +308,13 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=lambda: service,
             )
+            routing = await supervisor.route_with_state(request)
 
-        with self.assertRaises(AgentDispatchError) as raised:
-            await supervisor.route_with_state(request)
-
-        self.assertEqual(raised.exception.code, "AGENT_ROUTE_NOT_RESOLVED")
+        self.assertEqual(routing.decision.agent, AgentKind.ML_PREDICTION)
+        self.assertEqual(
+            routing.decision.source,
+            AgentDecisionSource.CAPABILITY_EVIDENCE,
+        )
         self.assertEqual(service.capability_calls, 1)
 
     def test_registry_keeps_capability_routing_disabled_by_default(self) -> None:

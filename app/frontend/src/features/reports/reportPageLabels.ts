@@ -1,9 +1,20 @@
 /** 보고서 API·상태·시각 값을 사용자 표시 문자열로 안전하게 변환하는 모듈이다. */
-import { ReportApiError } from "../../api/reportClient";
+import { ReportApiError } from "../../api/reportClient.ts";
 
 /** 보고서 오류를 민감한 내부 정보 없이 사용자 메시지로 축약한다. */
 export function reportApiError(error: unknown): string {
-  if (error instanceof ReportApiError) return error.message;
+  if (error instanceof ReportApiError) {
+    if (error.code === "REPORT_ASSISTANT_PAGE_CONSTRAINT_UNSATISFIED") {
+      return "요청한 페이지 수와 실제 렌더 결과가 일치하지 않아 저장하지 않았습니다. 변경안을 조정한 뒤 다시 검토해 주세요.";
+    }
+    if (error.code === "EXTERNAL_TRANSFER_DISCLOSURE_STALE") {
+      return "외부 전송 동의 요청이 만료되었거나 전송 범위가 변경되었습니다. 요청을 다시 실행해 새 범위를 확인해 주세요.";
+    }
+    if (error.code === "EXTERNAL_TRANSFER_DISCLOSURE_NOT_FOUND") {
+      return "확인할 외부 전송 동의 요청을 찾지 못했습니다. Assistant 요청을 다시 실행해 주세요.";
+    }
+    return error.message;
+  }
   if (error instanceof TypeError) {
     return "서버에 연결할 수 없습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.";
   }

@@ -194,9 +194,7 @@ export type LoginSession = SessionInfo;
 
 const SESSION_ROLES = new Set<ServiceRole>([
   "analyst",
-  "report_admin",
-  "data_admin",
-  "platform_admin",
+  "admin",
 ]);
 const SESSION_CAPABILITIES = new Set<ServiceCapability>(Object.values(CAPABILITY));
 /** 인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 이름이다. */

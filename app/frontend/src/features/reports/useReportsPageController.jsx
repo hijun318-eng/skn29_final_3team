@@ -42,7 +42,7 @@ const ASSISTANT_SAVE_FIRST_MESSAGE = "AI로 보고서를 변경하기 전에 현
 
 /** 보고서 lifecycle·artifact·draft·DND를 화면 계약으로 합성하고 stale open generation을 폐기한다. */
 export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEditorMode }) {
-  const isAdmin = suppliedIsAdmin ?? ["report_admin", "platform_admin"].includes(role);
+  const isAdmin = suppliedIsAdmin ?? role === "admin";
   const lifecycle = useReportLifecycleState({ role, isAdmin });
   const [view, setView] = useState("list");
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
@@ -319,13 +319,14 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       )?.focus());
       return;
     }
+    const persistedBlocks = compactDraftLayout(draft.orderedBlocks);
     const snapshot = createFrontendDraftSnapshot({
       definitionId: definition.definitionId,
       version: definition.version,
       title,
       orientation: draft.reportOrientation,
       currencyPolicy: draft.reportCurrencyPolicy,
-      blocks: draft.orderedBlocks,
+      blocks: persistedBlocks,
     });
     if (!snapshot.ok) {
       draft.markSaveFailed();
@@ -333,7 +334,6 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       return;
     }
     draft.beginSave();
-    const persistedBlocks = compactDraftLayout(draft.orderedBlocks);
     const saved = await lifecycle.mutate("save", () => lifecycle.reportClient.replaceDraftBlocks(
       definition.definitionId,
       definition.version,
@@ -526,8 +526,9 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     openRequestRef.current += 1;
     artifacts.invalidateLoads();
     void lifecycle.loadFinalDocument(null);
+    lifecycle.clearFeedback();
     setView("list");
-  }, [artifacts.invalidateLoads, draft.isDirty, lifecycle.loadFinalDocument]);
+  }, [artifacts.invalidateLoads, draft.isDirty, lifecycle.clearFeedback, lifecycle.loadFinalDocument]);
   const previewEditor = useCallback(() => {
     if (draft.isDirty) {
       lifecycle.setError("변경사항을 저장한 뒤 HTML 초안을 확인해 주세요.");

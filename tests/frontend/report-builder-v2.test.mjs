@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { matchesAssistantExternalTransferAcceptance } from "../../app/frontend/src/features/reports/useReportLifecycleState.ts";
 
 function source(relativePath) {
   return readFileSync(new URL(`../../${relativePath}`, import.meta.url), "utf8");
@@ -170,13 +171,19 @@ assert.match(builderStyles, /\.answer-report-page \.notion-markdown-input\{min-h
 assert.match(builderStyles, /\.answer-report-page__block>\.notion-block\{padding:4\.2mm 3\.8mm 3\.2mm!important/);
 assert.match(builderStyles, /\.answer-report-canvas--editor \.answer-report-page__grid\{overflow:visible\}/);
 assert.match(builderStyles, /\.notion-block>\.report-block-chrome\{[^}]*right:auto!important;[^}]*left:calc\(-42px \* var\(--report-editor-inverse-scale,1\)\)!important[^}]*transform:scale\(var\(--report-editor-inverse-scale,1\)\)/);
+assert.match(builderStyles, /\.report-block-actions\{[^}]*flex-direction:column/);
 assert.match(builderStyles, /\.report-block-actions \.report-drag-handle,[^\n]*width:34px;height:34px/);
 assert.match(builderStyles, /\.report-resize-handle\{[^}]*width:44px!important;[^}]*height:44px!important/);
 assert.match(builderStyles, /\.report-resize-handle::after\{[^}]*width:18px;height:18px/);
 assert.match(viewport, /REPORT_EDITOR_MIN_READABLE_SCALE = 0\.9/);
 assert.match(canvas, /"--report-editor-inverse-scale": 1 \/ frame\.scale/);
 assert.match(builderStyles, /\.answer-report-page \.notion-block-title\{min-height:0;margin-block-end:1\.2mm/);
-assert.match(builderStyles, /\.notion-editor-notice\{width:fit-content;max-width:min\(720px,calc\(100% - 44px\)\)/);
+assert.match(appStyles, /\.report-notice-shell\{width:fit-content;max-width:min\(720px,calc\(100% - 32px\)\);margin:16px auto 0;overflow-wrap:anywhere\}/);
+assert.match(builderStyles, /\.report-notice-shell\{width:fit-content;max-width:min\(720px,calc\(100% - 44px\)\)/);
+assert.match(page, /className="report-api-state report-notice-shell error" role="alert"/);
+assert.match(page, /className="report-api-state report-notice-shell notion-editor-notice" role="status"/);
+assert.match(documentView, /className="report-api-state report-notice-shell error" role="alert"/);
+assert.match(documentView, /className="report-api-state report-notice-shell notion-editor-notice" role="status"/);
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.notion-editor-notice\{[^}]*background:rgba\(255,255,255,\.98\)/);
 assert.match(builderStyles, /\.answer-report-page \.report-markdown-toolbar\{min-height:32px/);
 assert.match(builderStyles, /\.answer-report-page \.report-markdown-hint\{display:none\}/);
@@ -278,7 +285,7 @@ assert.match(assistant, /!onSuggestTitle \|\| hasUnsavedChanges\) return/);
 assert.match(assistant, /workflowActive \|\| hasUnsavedChanges\}>제목 제안/);
 assert.match(assistant, /mutationBlocked=\{hasUnsavedChanges\}/);
 assert.match(assistant, /disabled=\{pending \|\| mutationBlocked\}/);
-assert.match(assistant, /disabled=\{pending \|\| mutationBlocked \|\| !selectedIndexes\.length\}/);
+assert.match(assistant, /disabled=\{pending \|\| mutationBlocked \|\| !selectedIndexes\.length \|\| pageConstraintMismatched\}/);
 assert.match(page, /artifactTitle=\{page\.assistantArtifactSource\?\.title\}/);
 assert.match(page, /artifactOptions=\{page\.assistantArtifactOptions\}/);
 assert.match(page, /artifact=\{page\.assistantArtifact\}/);
@@ -351,6 +358,20 @@ assert.match(assistant, /필요한 선행 작업 \{item\.depends_on_indexes\.len
 assert.match(builderStyles, /\.report-assistant-patch-page\{[^}]*overflow:hidden;[^}]*border-radius:7px/);
 assert.match(builderStyles, /\.report-assistant-patch-page>header\{[^}]*justify-content:space-between/);
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-assistant-patch-page/);
+assert.match(assistant, /PAGE_CONSTRAINT_ERROR/);
+assert.match(assistant, /요청한 페이지 수와 실제 렌더 결과가 일치하지 않아 저장하지 않았습니다/);
+assert.match(assistant, /pageConstraintErrorReceipt/);
+assert.match(assistant, /선택한 변경안을 렌더한 결과가 요청/);
+assert.match(assistant, /errorSelectionKey === selectedIndexes\.join\(","\)/);
+assert.match(assistant, /preview\.exactPageCount/);
+assert.match(assistant, /preview\.verifiedPageCount/);
+assert.match(assistant, /pageConstraintNeedsRevalidation/);
+assert.match(assistant, /allOperationsSelected/);
+assert.match(assistant, /선택 항목은 승인 시 다시 검증/);
+assert.match(assistant, /분량 조정 필요/);
+assert.match(builderStyles, /\.report-assistant-page-check\{[^}]*grid-template-columns:minmax\(0,1fr\) auto minmax\(0,1fr\) auto/);
+assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-assistant-page-check/);
+assert.match(builderStyles, /@media\(max-width:480px\)\{[\s\S]*\.report-assistant-page-check\{grid-template-columns:minmax\(0,1fr\) auto minmax\(0,1fr\)/);
 assert.match(builderStyles, /:focus-visible/);
 assert.match(builderStyles, /@media\(prefers-reduced-motion:reduce\)/);
 assert.match(builderStyles, /@media\(max-width:480px\)/);
@@ -359,6 +380,53 @@ assert.match(builderStyles, /\.report-assistant-quick button\{[^}]*white-space:n
 assert.match(builderStyles, /\.report-assistant-processing-note\{[^}]*overflow-wrap:anywhere/);
 assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-assistant-technical-detail/);
 assert.match(page, /approvedIndexes: lifecycle\.assistantSession\.approved_operation_indexes/);
+assert.match(page, /exactPageCount: lifecycle\.assistantSession\.exact_page_count/);
+assert.match(page, /verifiedPageCount: lifecycle\.assistantSession\.verified_page_count/);
+assert.match(page, /approvalRequest=\{\["waiting_approval", "running_data_agent", "waiting_artifact"\]/);
+assert.match(page, /workflowError=\{lifecycle\.assistantActionError \|\| lifecycle\.assistantSession\?\.error_code/);
+assert.match(page, /workflowErrorPageCounts=\{lifecycle\.assistantActionPageCounts\}/);
+assert.match(page, /externalTransferDisclosure=\{lifecycle\.assistantExternalTransferDisclosure\}/);
+assert.match(page, /externalTransferConsentPending=\{lifecycle\.assistantExternalTransferConsentPending\}/);
+assert.match(page, /onAcceptExternalTransfer=\{lifecycle\.acceptAssistantExternalTransferConsent\}/);
+assert.match(page, /onDeclineExternalTransfer=\{lifecycle\.declineAssistantExternalTransferConsent\}/);
+assert.match(lifecycle, /EXTERNAL_TRANSFER_CONSENT_REQUIRED/);
+assert.match(lifecycle, /runWithExternalTransferConsent/);
+assert.match(lifecycle, /assistantExternalTransferPendingRef\.current = null;[\s\S]*pendingAction\.resume\(\)/);
+assert.equal((lifecycle.match(/pendingAction\.resume\(\)/g) || []).length, 1);
+const externalTransferAttemptA = { disclosureId: "disclosure-a", generation: 7 };
+assert.equal(
+  matchesAssistantExternalTransferAcceptance({ disclosure_id: "disclosure-a" }, 7, externalTransferAttemptA),
+  true,
+  "the response for disclosure A must remain current while A and its generation are still displayed",
+);
+assert.equal(
+  matchesAssistantExternalTransferAcceptance({ disclosure_id: "disclosure-b" }, 7, externalTransferAttemptA),
+  false,
+  "a late response for disclosure A must not clear or resume the newly installed disclosure B",
+);
+assert.equal(
+  matchesAssistantExternalTransferAcceptance({ disclosure_id: "disclosure-a" }, 8, externalTransferAttemptA),
+  false,
+  "a late response for disclosure A must not mutate a newer Assistant generation",
+);
+assert.match(lifecycle, /if \(!isCurrentAcceptance\(\)\) return receipt/);
+assert.match(lifecycle, /assistantExternalTransferAcceptingRef\.current === acceptanceAttempt/);
+assert.match(lifecycle, /\[404, 409\]\.includes\(nextError\.status\)/);
+assert.match(lifecycle, /recoverAssistantExternalTransferDisclosure\([\s\S]*acceptanceAttempt\.generation,[\s\S]*null/);
+const declineExternalTransferSource = lifecycle.slice(
+  lifecycle.indexOf("const declineAssistantExternalTransferConsent"),
+  lifecycle.indexOf("const acceptAssistantExternalTransferConsent"),
+);
+assert.doesNotMatch(declineExternalTransferSource, /reportClient|\.resume\(/);
+assert.match(lifecycle, /acceptAssistantExternalTransferConsent\([\s\S]*disclosure\.assistant_request_id,[\s\S]*disclosure\.disclosure_id,[\s\S]*disclosure\.disclosure_hash/);
+assert.match(lifecycle, /recoverAssistantExternalTransferDisclosure\(session\.assistant_request_id, request\)/);
+assert.match(assistant, /requestAnimationFrame\(\(\) => checkboxRef\.current\?\.focus\(\)\)/);
+assert.match(assistant, /const returnFocus = document\.activeElement/);
+assert.match(assistant, /returnFocus instanceof HTMLElement && returnFocus\.isConnected/);
+assert.match(assistant, /onCancel=\{\(event\) => \{[\s\S]*event\.preventDefault\(\);[\s\S]*onDecline\(\)/);
+assert.match(builderStyles, /\.report-assistant-consent-scopes\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+assert.match(builderStyles, /\.theme-light \[data-report-builder="v2"\] \.report-assistant-consent-dialog/);
+assert.match(builderStyles, /@media\(max-width:480px\)\{[\s\S]*\.report-assistant-consent-scopes\{grid-template-columns:minmax\(0,1fr\)/);
 assert.match(assistant, /Assistant 실행 실패/);
 assert.match(assistant, /workflowError/);
 assert.match(assistant, /요청 취소/);
@@ -376,6 +444,8 @@ assert.match(controller, /artifacts\.setAssistantArtifacts\([\s\S]*assistantArti
 assert.doesNotMatch(controller, /submitAssistantInstruction\([\s\S]{0,180}selectedArtifactSource\.artifactId/);
 assert.match(controller, /createAssistantDraft\(instruction, "report_title"\)/);
 assert.match(lifecycle, /operationScope: ReportAssistantOperationScope = "full_report"/);
+assert.match(lifecycle, /새 분석 결과를 반영한 변경안을 준비했습니다\. 적용할 내용을 검토해 주세요/);
+assert.doesNotMatch(lifecycle, /AI가 검증된 Artifact를 반영한 v\$\{definition\.version\} 초안을 만들었습니다/);
 assert.match(lifecycle, /selectedBlockId,[\s\S]*operationScope,/);
 assert.doesNotMatch(lifecycle, /if \(operationScope === "full_report"\) setAssistantInstruction\(""\)/);
 assert.match(lifecycle, /setAssistantSuggestionSet\(\{ selectedBlockId, suggestions: proposal\.suggestions \}\);\s+setAssistantInstruction\(""\)/);

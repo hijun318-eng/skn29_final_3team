@@ -252,6 +252,16 @@ assert.doesNotMatch(
 );
 const saveSource = sourceSection(reportSources.controller, "const saveDraft", "const approveDefinition");
 assert.ok(
+  saveSource.indexOf("const persistedBlocks = compactDraftLayout(draft.orderedBlocks)")
+    < saveSource.indexOf("const snapshot = createFrontendDraftSnapshot"),
+  "the recovery snapshot must be built from the exact compacted layout sent to the server",
+);
+assert.match(
+  saveSource,
+  /const snapshot = createFrontendDraftSnapshot\(\{[\s\S]*blocks: persistedBlocks,/,
+  "the browser recovery snapshot and server request must share the persisted block layout",
+);
+assert.ok(
   saveSource.indexOf("replaceDraftBlocks") < saveSource.indexOf("saveFrontendDraft"),
   "the browser recovery snapshot must only advance after the server accepts the draft",
 );
@@ -278,6 +288,7 @@ const leaveSource = sourceSection(reportSources.controller, "const leaveEditor",
 assert.match(leaveSource, /openRequestRef\.current \+= 1/);
 assert.match(leaveSource, /artifacts\.invalidateLoads\(\)/);
 assert.match(leaveSource, /lifecycle\.loadFinalDocument\(null\)/);
+assert.match(leaveSource, /lifecycle\.clearFeedback\(\)/);
 assert.doesNotMatch(
   [reportSources.documentView, reportSources.lifecycle].join("\n"),
   /loadFrontendDraft|saveFrontendDraft|sessionStorage/,

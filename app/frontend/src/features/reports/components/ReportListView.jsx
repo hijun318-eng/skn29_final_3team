@@ -99,11 +99,11 @@ export const ReportListView = memo(function ReportListView({
           <footer><button type="button" onClick={() => setCreateOpen(false)} disabled={Boolean(pending)}>취소</button><button className="primary" disabled={Boolean(pending) || !newTitle.trim()}>{pending === "create" ? <LoaderCircle className="spin" size={14} /> : <FilePlus2 size={14} />}{pending === "create" ? "만드는 중" : "편집 시작"}</button></footer>
         </form>
       </section>}
-      {error && <p ref={errorRef} tabIndex={-1} className="report-api-state error" role="alert">{/^40[13]/.test(error) ? <ShieldAlert size={17} /> : <AlertTriangle size={17} />}{error}</p>}
-      {notice && <p className="report-api-state notion-editor-notice" role="status">{archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}{notice}</p>}
+      {error && <p ref={errorRef} tabIndex={-1} className="report-api-state report-notice-shell error" role="alert">{/^40[13]/.test(error) ? <ShieldAlert size={17} /> : <AlertTriangle size={17} />}{error}</p>}
+      {notice && <p className="report-api-state report-notice-shell notion-editor-notice" role="status">{archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}{notice}</p>}
       {definitionState === "loading" && <p className="report-api-state"><LoaderCircle className="spin" size={17} />{archived ? "보관한 보고서를 불러오는 중입니다." : "보고서를 불러오는 중입니다."}</p>}
       {definitionState === "empty" && !createOpen && <section className="report-empty-state"><span>{archived ? <Archive size={24} /> : <FilePlus2 size={24} />}</span><small>{archived ? "보관함" : "첫 보고서"}</small><h2>{archived ? "보관한 보고서가 없습니다" : "아직 작성한 보고서가 없습니다"}</h2><p>{archived ? "더 이상 사용하지 않는 보고서를 보관하면 여기에서 확정본을 열람하거나 복원할 수 있습니다." : "새 초안을 만들면 서버에 저장되고 편집 화면으로 바로 이동합니다."}</p>{!archived && <button type="button" className="primary" onClick={() => setCreateOpen(true)}><FilePlus2 size={15} />첫 보고서 만들기</button>}</section>}
-      {definitionState === "error" && <p className="report-api-state error"><ShieldAlert size={17} />{archived ? "보관함을 불러오지 못했습니다." : "보고서 목록을 불러오지 못했습니다."}</p>}
+      {definitionState === "error" && <p className="report-api-state report-notice-shell error" role="alert"><ShieldAlert size={17} />{archived ? "보관함을 불러오지 못했습니다." : "보고서 목록을 불러오지 못했습니다."}</p>}
       {definitionState === "ready" && <section className="card legacy-report-list"><div className="legacy-report-row legacy-report-head"><span>상태</span><span>버전·제목</span><span>구성</span><span>{archived ? "보관 시각" : "최근 변경"}</span><span>동작</span></div>{visibleDefinitions.map((definition) => {
         const actionPending = pending === `${archived ? "restore" : "archive"}:${definition.definitionId}`;
         const canOpenArchived = !archived || definition.status === "approved";

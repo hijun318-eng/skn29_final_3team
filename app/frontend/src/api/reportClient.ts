@@ -24,7 +24,6 @@ import {
   type ReportScheduleListResponse,
   type ReportScheduleResponse,
   type RunDueReportScheduleResponse,
-  type ReportAssistantDraftResponse,
   type ReportAssistantPhase,
   type ReportAssistantOperationScope,
   type ReportAssistantProposalResponse,
@@ -33,6 +32,10 @@ import {
   type ReportAssistantEvaluationResponse,
   type ReportAssistantFailureListResponse,
   type ReportAssistantOperationsSummaryResponse,
+  type ReportAssistantExternalProviderRoute,
+  type ReportAssistantExternalTransferDisclosure,
+  type ReportAssistantExternalTransferConsentResponse,
+  type ReportAssistantExternalTransferScope,
 } from "../contracts/report.ts";
 import { createUuid } from "../utils/createUuid.ts";
 
@@ -44,9 +47,25 @@ const ASSISTANT_PHASES: readonly ReportAssistantPhase[] = [
 ];
 const ASSISTANT_REQUIRED_ACTIONS = [
   "NONE", "RETRY", "REFRESH", "REAUTHENTICATE", "REOPEN_LATEST_REPORT", "CONTACT_ADMIN",
+  "REVIEW_EXTERNAL_TRANSFER",
 ] as const;
 const ASSISTANT_OPERATION_SCOPES: readonly ReportAssistantOperationScope[] = ["full_report", "report_title"];
 const ASSISTANT_PATCH_IMPACT_CATEGORIES = ["CONTENT", "LAYOUT", "DESTRUCTIVE"] as const;
+
+function assertNullableAssistantPageCount(
+  value: unknown,
+  label: string,
+  maximum?: number,
+): asserts value is number | null {
+  if (value !== null && (
+    !Number.isSafeInteger(value)
+    || Number(value) < 1
+    || (maximum !== undefined && Number(value) > maximum)
+  )) {
+    const range = maximum === undefined ? "1 이상의 안전한 정수" : `1~${maximum} 사이의 정수`;
+    throw new Error(`Report Assistant ${label}는 ${range} 또는 null이어야 합니다.`);
+  }
+}
 
 function assertAssistantSession(
   session: ReportAssistantSessionResponse,
@@ -74,10 +93,24 @@ function assertAssistantSession(
   }
   if (!Array.isArray(session.artifact_ids)
     || session.artifact_ids.length < 1
-    || session.artifact_ids.length > 5
+    || session.artifact_ids.length > 6
     || session.artifact_ids[0] !== session.artifact_id
     || new Set(session.artifact_ids).size !== session.artifact_ids.length) {
     throw new Error("Report Assistant Artifact 결속 계약이 올바르지 않습니다.");
+  }
+  assertNullableAssistantPageCount(session.exact_page_count, "요청 페이지 수", 20);
+  assertNullableAssistantPageCount(session.verified_page_count, "검증 페이지 수");
+  if (session.phase === "waiting_patch_approval" && session.verified_page_count === null) {
+    throw new Error("patch 승인 대기 세션에는 렌더 페이지 검증 결과가 필요합니다.");
+  }
+  if (["ready", "waiting_approval", "running_data_agent", "waiting_artifact"].includes(session.phase)
+    && session.verified_page_count !== null) {
+    throw new Error("변경안 생성 전에는 렌더 페이지 검증 결과가 없어야 합니다.");
+  }
+  if (["saving_revision", "completed"].includes(session.phase)
+    && session.exact_page_count !== null
+    && session.verified_page_count !== session.exact_page_count) {
+    throw new Error("저장 phase의 실제 페이지 수가 요청한 페이지 수와 일치하지 않습니다.");
   }
   if (["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(session.phase)
     && !session.analysis_plan && !session.patch_request_id) {
@@ -168,6 +201,122 @@ function assertAssistantSuggestions(value: unknown): asserts value is readonly s
   }
 }
 
+function isNonEmptyString(value: unknown, maximum = 500): value is string {
+  return typeof value === "string" && Boolean(value.trim()) && value.length <= maximum;
+}
+
+const EXTERNAL_TRANSFER_NODES = ["report_assistant", "report_assistant_turn", "report_assistant_review"] as const;
+const EXTERNAL_TRANSFER_SCOPES: readonly ReportAssistantExternalTransferScope[] = [
+  "user_instruction", "assistant_turn_history", "report_metadata_layout", "report_block_content",
+  "selected_artifact_metadata", "selected_artifact_narrative", "selected_artifact_metrics", "selected_artifact_chart_spec",
+  "selected_artifact_table_snapshot", "pending_patch", "approved_new_analysis_artifact",
+];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+function isCanonicalHttpsOrigin(value: unknown): value is string {
+  if (!isNonEmptyString(value, 255)) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:"
+      && !parsed.username
+      && !parsed.password
+      && parsed.pathname === "/"
+      && !parsed.search
+      && !parsed.hash
+      && parsed.origin === value;
+  } catch {
+    return false;
+  }
+}
+
+function assertExternalProviderRoutes(value: unknown): asserts value is readonly ReportAssistantExternalProviderRoute[] {
+  if (!Array.isArray(value)
+    || value.length < 1
+    || value.length > 3
+    || value.some((route) => (
+      !route
+      || !EXTERNAL_TRANSFER_NODES.includes(route.node)
+      || !isNonEmptyString(route.route_id, 64)
+      || !isNonEmptyString(route.route_label, 120)
+      || !isNonEmptyString(route.provider, 64)
+      || !isNonEmptyString(route.model, 255)
+      || !["external", "internal"].includes(route.data_boundary)
+      || !isCanonicalHttpsOrigin(route.destination_origin)
+    ))) {
+    throw new Error("Report Assistant 외부 처리 경로 공개 계약이 올바르지 않습니다.");
+  }
+}
+
+function assertExternalDataScope(
+  value: unknown,
+  label: string,
+  allowedValues?: readonly string[],
+): asserts value is readonly string[] {
+  if (!Array.isArray(value)
+    || value.length < 1
+    || value.length > 11
+    || new Set(value).size !== value.length
+    || value.some((item) => !isNonEmptyString(item, 300) || (allowedValues && !allowedValues.includes(item)))) {
+    throw new Error(`Report Assistant ${label} 공개 계약이 올바르지 않습니다.`);
+  }
+}
+
+function assertExternalTransferDisclosure(
+  value: unknown,
+  assistantRequestId?: string,
+): ReportAssistantExternalTransferDisclosure {
+  const disclosure = value as ReportAssistantExternalTransferDisclosure;
+  if (!disclosure
+    || !isUuid(disclosure.disclosure_id)
+    || !isUuid(disclosure.assistant_request_id)
+    || (assistantRequestId !== undefined && disclosure.assistant_request_id !== assistantRequestId)
+    || !isNonEmptyString(disclosure.policy_version, 96)
+    || !/^[0-9a-f]{64}$/.test(disclosure.disclosure_hash)
+    || !isNonEmptyString(disclosure.expires_at, 100)
+    || !Number.isFinite(Date.parse(disclosure.expires_at))
+    || !isNonEmptyString(disclosure.content_warning, 500)
+    || disclosure.consent_required !== true) {
+    throw new Error("Report Assistant 외부 전송 공개문 계약이 올바르지 않습니다.");
+  }
+  assertExternalProviderRoutes(disclosure.provider_routes);
+  if (!disclosure.provider_routes.some((route) => route.data_boundary === "external")) {
+    throw new Error("Report Assistant 외부 전송 공개문에 외부 처리 경로가 없습니다.");
+  }
+  assertExternalDataScope(disclosure.data_scopes, "전송 범위", EXTERNAL_TRANSFER_SCOPES);
+  assertExternalDataScope(disclosure.excluded_data, "비전송 범위");
+  return disclosure;
+}
+
+function safeExternalTransferDisclosure(value: unknown): ReportAssistantExternalTransferDisclosure | null {
+  try {
+    return assertExternalTransferDisclosure(value);
+  } catch {
+    return null;
+  }
+}
+
+function assertExternalTransferConsent(
+  value: unknown,
+  assistantRequestId: string,
+): ReportAssistantExternalTransferConsentResponse {
+  const receipt = value as ReportAssistantExternalTransferConsentResponse;
+  if (!receipt
+    || !isUuid(receipt.consent_id)
+    || receipt.assistant_request_id !== assistantRequestId
+    || !isNonEmptyString(receipt.policy_version, 96)
+    || !isNonEmptyString(receipt.consented_at, 100)
+    || !Number.isFinite(Date.parse(receipt.consented_at))) {
+    throw new Error("Report Assistant 외부 전송 동의 receipt 계약이 올바르지 않습니다.");
+  }
+  assertExternalProviderRoutes(receipt.provider_routes);
+  assertExternalDataScope(receipt.data_scopes, "동의 범위", EXTERNAL_TRANSFER_SCOPES);
+  return receipt;
+}
+
 /** 초안 블록 교체와 함께 원자적으로 저장할 문서 표시 옵션이다. */
 export interface ReplaceDraftBlocksOptions {
   readonly title?: string;
@@ -185,6 +334,10 @@ export class ReportApiError extends Error {
   readonly suggestions: string[];
   readonly missingRequirements: string[];
   readonly traceId: string;
+  readonly exactPageCount: number | null;
+  readonly verifiedPageCount: number | null;
+  readonly assistantRequestId: string;
+  readonly externalTransferDisclosure: ReportAssistantExternalTransferDisclosure | null;
 
   constructor(status: number, code: string, message: string, options: {
     retryable?: boolean;
@@ -192,6 +345,10 @@ export class ReportApiError extends Error {
     suggestions?: string[];
     missingRequirements?: string[];
     traceId?: string;
+    exactPageCount?: number | null;
+    verifiedPageCount?: number | null;
+    assistantRequestId?: string;
+    externalTransferDisclosure?: ReportAssistantExternalTransferDisclosure | null;
   } = {}) {
     super(message);
     this.status = status;
@@ -201,7 +358,19 @@ export class ReportApiError extends Error {
     this.suggestions = options.suggestions ?? [];
     this.missingRequirements = options.missingRequirements ?? [];
     this.traceId = options.traceId ?? "";
+    this.exactPageCount = options.exactPageCount ?? null;
+    this.verifiedPageCount = options.verifiedPageCount ?? null;
+    this.assistantRequestId = options.assistantRequestId ?? "";
+    this.externalTransferDisclosure = options.externalTransferDisclosure ?? null;
   }
+}
+
+function safeErrorPageCount(value: unknown, maximum?: number): number | null {
+  return Number.isSafeInteger(value)
+    && Number(value) >= 1
+    && (maximum === undefined || Number(value) <= maximum)
+    ? Number(value)
+    : null;
 }
 
 function contextHeaders(hasBody = false, explicitToken = ""): Record<string, string> {
@@ -219,15 +388,27 @@ async function parse<T>(response: Response): Promise<T> {
   // body가 손상된 오류에서도 상태 코드는 보존하되, 성공 데이터는 normalization/assertion을 우회하지 않는다.
   const payload: any = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const code = payload?.error?.code || `HTTP_${response.status}`;
-    const message = payload?.error?.message || "Report API 요청에 실패했습니다.";
+    const detail = payload?.error && typeof payload.error === "object" && !Array.isArray(payload.error)
+      ? payload.error
+      : payload?.detail && typeof payload.detail === "object" && !Array.isArray(payload.detail)
+        ? payload.detail
+        : {};
+    const disclosure = safeExternalTransferDisclosure(detail.disclosure);
+    const code = detail.code || `HTTP_${response.status}`;
+    const message = detail.message || "Report API 요청에 실패했습니다.";
     if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("answervice:session-expired"));
     throw new ReportApiError(response.status, code, message, {
-      retryable: Boolean(payload?.error?.retryable),
-      requiredAction: payload?.error?.required_action,
-      suggestions: payload?.error?.suggestions,
-      missingRequirements: payload?.error?.missing_requirements,
-      traceId: payload?.error?.trace_id,
+      retryable: Boolean(detail.retryable),
+      requiredAction: detail.required_action,
+      suggestions: detail.suggestions,
+      missingRequirements: detail.missing_requirements,
+      traceId: detail.trace_id,
+      exactPageCount: safeErrorPageCount(detail.exact_page_count, 20),
+      verifiedPageCount: safeErrorPageCount(detail.verified_page_count),
+      assistantRequestId: isNonEmptyString(detail.assistant_request_id, 200)
+        ? detail.assistant_request_id
+        : disclosure?.assistant_request_id,
+      externalTransferDisclosure: disclosure,
     });
   }
   return payload as T;
@@ -415,18 +596,6 @@ export function createReportClient(
         "POST",
       ));
     },
-    async createAssistantDraft(artifactId: string, instruction: string) {
-      const response = await parse<ReportAssistantDraftResponse>(await send(
-        "/reports/assistant/drafts",
-        "POST",
-        { artifact_id: artifactId, instruction },
-      ));
-      return {
-        requestId: response.assistant_request_id,
-        definition: normalizeReportDefinition(response.definition),
-        trace: response.trace,
-      };
-    },
     async createAssistantSession(
       definitionId: string,
       definitionVersion: number,
@@ -447,6 +616,25 @@ export function createReportClient(
     async getAssistantSession(assistantRequestId: string) {
       return assertAssistantSessionRequest(await parse<ReportAssistantSessionResponse>(await send(
         `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}`,
+      )), assistantRequestId);
+    },
+    async getAssistantExternalTransferDisclosure(assistantRequestId: string) {
+      return assertExternalTransferDisclosure(await parse<ReportAssistantExternalTransferDisclosure>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/external-transfer-disclosure`,
+      )), assistantRequestId);
+    },
+    async acceptAssistantExternalTransferConsent(
+      assistantRequestId: string,
+      disclosureId: string,
+      disclosureHash: string,
+    ) {
+      if (!isUuid(disclosureId) || !/^[0-9a-f]{64}$/.test(disclosureHash)) {
+        throw new Error("Report Assistant 외부 전송 공개문 식별자가 올바르지 않습니다.");
+      }
+      return assertExternalTransferConsent(await parse<ReportAssistantExternalTransferConsentResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/external-transfer-consent`,
+        "POST",
+        { disclosure_id: disclosureId, disclosure_hash: disclosureHash, accepted: true },
       )), assistantRequestId);
     },
     async cancelAssistantSession(assistantRequestId: string) {
@@ -561,8 +749,8 @@ export function createReportClient(
         "POST",
         { request_id: requestId, approved: true },
       )), assistantRequestId);
-      if (["ready", "waiting_approval"].includes(session.phase)) {
-        throw new Error("승인된 Report Assistant 계획이 실행 phase로 전이되지 않았습니다.");
+      if (session.phase !== "waiting_patch_approval") {
+        throw new Error("승인된 새 데이터 분석은 저장 전 patch 승인 대기로 전이되어야 합니다.");
       }
       return session;
     },

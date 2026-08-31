@@ -4,6 +4,7 @@ import { Columns2, FileBarChart, Heading2, List, Quote, Sparkles, Table2, Type }
 import { compactDraftLayout, restoreDraftLayout } from "../../../contracts/report";
 import {
   artifactMetricCards,
+  canonicalDraftBlockContent,
   frontendTextBlockLayout,
 } from "../reportDraftV2";
 import { isCurrencyMetricUnit } from "../reportCurrency";
@@ -274,7 +275,7 @@ export function draftLayoutSignature(blocks) {
       artifactId: block.artifactId,
       queryId: block.queryId,
       type: block.type,
-      content: block.content ?? "",
+      content: canonicalDraftBlockContent(block),
       x: block.x,
       y: block.y,
       w: block.w,

@@ -17,6 +17,7 @@ import {
   artifactViewBlockSettings,
   artifactMetricCards,
   availableArtifactViews,
+  canonicalDraftBlockContent,
   createFrontendDraftSnapshot,
   deleteFrontendBlock,
   estimateArtifactBlockLayout,
@@ -46,6 +47,19 @@ const textBlock = {
   id: "summary", title: "경영진 요약", type: "text", content: "핵심 변화", columns: 12,
   x: 0, y: 0, w: 12, h: 4,
 };
+const chartContentA = { ...textBlock, id: "chart-a", type: "chart", artifactId: "artifact-a", content: '{"visibleViews":["chart"],"sizeMode":"auto"}' };
+const chartContentB = { ...chartContentA, content: '{"sizeMode":"auto","visibleViews":["chart"]}' };
+assert.equal(
+  canonicalDraftBlockContent(chartContentA),
+  canonicalDraftBlockContent(chartContentB),
+  "server JSON key ordering must not create a false unsaved recovery state",
+);
+assert.notEqual(
+  canonicalDraftBlockContent(chartContentA),
+  canonicalDraftBlockContent({ ...chartContentB, content: '{"sizeMode":"manual","visibleViews":["chart"]}' }),
+  "a meaningful artifact setting change must remain dirty",
+);
+assert.match(reportSources.presentation, /content: canonicalDraftBlockContent\(block\)/);
 const sourceA = {
   artifactId: "artifact-a", queryId: "query-a", title: "객실 매출 분석",
   artifactChecksum: "sha256:a", sourceUrns: ["urn:rooms"],

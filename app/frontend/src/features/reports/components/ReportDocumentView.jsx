@@ -75,8 +75,8 @@ export const ReportDocumentView = memo(function ReportDocumentView({
         <button className="secondary" onClick={onLeave} disabled={Boolean(pending)}><ArrowLeft size={14} />보고서 목록</button>
         <div>{currencyControl}<div className="report-orientation-switch" role="group" aria-label="읽기 전용 A4 용지 방향"><button type="button" aria-pressed={orientation === "landscape"} disabled><Maximize2 size={14} />가로</button><button type="button" aria-pressed={orientation === "portrait"} disabled><Minimize2 size={14} />세로</button></div>{presentation}{fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}{!archived && <button onClick={onReturnToEditor} disabled={Boolean(pending)}><ArrowLeft size={14} />{approved ? "새 버전으로 편집" : "편집으로 돌아가기"}</button>}{!archived && isAdmin && approved && <button onClick={onRun} disabled={Boolean(pending)}><Send size={14} />보고서 실행</button>}</div>
       </div>
-      {error && <p ref={errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{error}</p>}
-      {notice && <p className="report-api-state" role="status"><Check size={17} />{notice}</p>}
+      {error && <p ref={errorRef} tabIndex={-1} className="report-api-state report-notice-shell error" role="alert"><AlertTriangle size={17} />{error}</p>}
+      {notice && <p className="report-api-state report-notice-shell notion-editor-notice" role="status"><Check size={17} />{notice}</p>}
       {archived && <section className="report-archive-readonly" role="status"><Archive size={17} aria-hidden="true" /><div><b>보관된 보고서 · 읽기 전용</b><span>확정 문서는 계속 열람할 수 있습니다. 변경하거나 다시 실행하려면 목록에서 먼저 복원해 주세요.</span></div></section>}
       {!approved ? <section className="report-finalization-panel" aria-labelledby="report-finalization-title">
         <div className="report-finalization-copy"><span><Eye size={18} aria-hidden="true" /></span><div><small>HTML 초안 · 검토 단계</small><h2 id="report-finalization-title">저장된 HTML 초안을 확인하세요</h2><p>내용과 A4 방향을 검토한 뒤 PDF 확정본을 생성합니다.</p></div></div>

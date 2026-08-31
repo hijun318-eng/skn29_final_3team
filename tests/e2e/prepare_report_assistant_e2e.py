@@ -17,6 +17,8 @@ import psycopg
 
 E2E_DATABASE = "app_db_report_assistant_e2e"
 NAMESPACE = UUID("6b711229-e54e-4f3a-8d0e-525ef9101cf5")
+E2E_FIXTURE_VERSION = "atomic-v2"
+E2E_ATOMIC_CHART_CONTENT = '{"visibleViews":["chart"]}'
 E2E_PRODUCT_RELEASE_ID = "ANSWERVICE-E2E-REPORT-ASSISTANT-v1:" + "1" * 64
 E2E_PERMISSION_SNAPSHOT_ID = "permission:e2e-report-assistant-v1"
 E2E_SEMANTIC_RELEASE_ID = "semantic:e2e-report-assistant-v1"
@@ -206,13 +208,13 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
     """승인 Artifact lineage와 이를 참조하는 draft 한 건만 test DB에 멱등 저장한다."""
 
     ids = {
-        name: uuid5(NAMESPACE, f"complete-receipt-v1:{name}")
+        name: uuid5(NAMESPACE, f"{E2E_FIXTURE_VERSION}:{name}")
         for name in (
             "analysis_definition", "analysis_request", "query_execution",
             "artifact", "report_definition", "report_block",
         )
     }
-    query_id = "e2e_query_report_assistant_complete_receipt_v1"
+    query_id = "e2e_query_report_assistant_atomic_v2"
     release = _release_fixture()
     receipt = (
         str(release["product_release_id"]),
@@ -323,7 +325,7 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                 """,
                 (
                     ids["analysis_request"], owner, "b" * 64,
-                    uuid5(NAMESPACE, "complete-receipt-v1:trace").hex, *receipt,
+                    uuid5(NAMESPACE, f"{E2E_FIXTURE_VERSION}:trace").hex, *receipt,
                 ),
             )
             cursor.execute(
@@ -389,7 +391,7 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                     (definition_id, version, status, title, orientation,
                      currency_display_unit, product_release_id,
                      permission_snapshot_id, semantic_release_id)
-                VALUES (%s, 1, 'draft', 'Report Assistant E2E 보고서',
+                VALUES (%s, 1, 'draft', 'Report Assistant Atomic v2 E2E 보고서',
                         'portrait', 'auto', %s, %s, %s)
                 ON CONFLICT (definition_id, version) DO NOTHING
                 """,
@@ -402,12 +404,12 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                      query_id, columns, block_type, x, y, w, h, content,
                      analysis_definition_id, analysis_definition_version)
                 VALUES (%s, 1, %s, '승인 매출 차트', %s, %s, 12, 'chart',
-                        0, 0, 12, 7, '', %s, 1)
+                        0, 0, 12, 7, %s, %s, 1)
                 ON CONFLICT (definition_id, definition_version, block_id) DO NOTHING
                 """,
                 (
                     ids["report_definition"], ids["report_block"], ids["artifact"],
-                    query_id, ids["analysis_definition"],
+                    query_id, E2E_ATOMIC_CHART_CONTENT, ids["analysis_definition"],
                 ),
             )
             for object_kind, object_id, capability in (
@@ -436,10 +438,18 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                      a.semantic_release_id) = (%s, %s, %s),
                     (v.product_release_id, v.permission_snapshot_id,
                      v.semantic_release_id) = (%s, %s, %s),
+                    b.block_type = 'chart'
+                      AND b.artifact_id = a.artifact_id
+                      AND b.query_id = %s
+                      AND b.content::jsonb = %s::jsonb,
                     count(binding.binding_id) = 2
                 FROM artifact.analysis_artifacts a
                 JOIN report_v1.report_definition_versions v
                   ON v.definition_id = %s AND v.version = 1
+                JOIN report_v1.report_blocks b
+                  ON b.definition_id = v.definition_id
+                 AND b.definition_version = v.version
+                 AND b.block_id = %s
                 JOIN governance.product_release_bindings binding
                   ON (
                     binding.object_kind = 'ARTIFACT'
@@ -454,17 +464,21 @@ def _seed(values: dict[str, str], owner: UUID) -> dict[str, str]:
                   AND binding.semantic_release_id = %s
                 GROUP BY a.product_release_id, a.permission_snapshot_id,
                          a.semantic_release_id, v.product_release_id,
-                         v.permission_snapshot_id, v.semantic_release_id
+                         v.permission_snapshot_id, v.semantic_release_id,
+                         b.block_type, b.artifact_id, b.query_id, b.content
                 """,
                 (
-                    *receipt, *receipt, ids["report_definition"],
+                    *receipt, *receipt, query_id, E2E_ATOMIC_CHART_CONTENT,
+                    ids["report_definition"], ids["report_block"],
                     str(ids["artifact"]),
                     f"definition:{ids['report_definition']}:v1",
                     ids["artifact"], *receipt,
                 ),
             ).fetchone()
-            if verified != (True, True, True):
-                raise RuntimeError("E2E Artifact·Report release receipt 결속 검증에 실패했습니다.")
+            if verified != (True, True, True, True):
+                raise RuntimeError(
+                    "E2E Artifact·Report atomic block·release receipt 결속 검증에 실패했습니다."
+                )
     return {name: str(value) for name, value in ids.items()}
 
 

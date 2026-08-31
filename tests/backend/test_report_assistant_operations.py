@@ -31,7 +31,21 @@ from app.report_contracts import (
 )
 from fastapi import HTTPException
 from evals.report_assistant_quality import evaluate_report_assistant_quality
-from src.report.domain import DefinitionStatus, ReportDefinitionVersion
+from src.report.domain import (
+    BlockType,
+    DefinitionStatus,
+    ReportDefinitionVersion,
+    normalize_report_block_content,
+)
+from tests.e2e.prepare_report_assistant_e2e import (
+    E2E_ATOMIC_CHART_CONTENT,
+    E2E_DATABASE,
+    E2E_FIXTURE_VERSION,
+)
+from tests.e2e.run_local_backend import (
+    E2E_DATABASE as RUNNER_E2E_DATABASE,
+    _require_read_only_environment,
+)
 
 
 class ReportAssistantOperationsTest(unittest.TestCase):
@@ -206,6 +220,58 @@ class ReportAssistantOperationsTest(unittest.TestCase):
         self.assertIn("ScriptDirectory.from_config(config).get_current_head()", source)
         self.assertIn('print(f"E2E_MIGRATION_HEAD={head}")', source)
         self.assertNotIn('E2E_MIGRATION_HEAD=20260825_34', source)
+
+    def test_e2e_fixture_pins_atomic_v2_chart_content_and_readback(self):
+        source = Path("tests/e2e/prepare_report_assistant_e2e.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual("atomic-v2", E2E_FIXTURE_VERSION)
+        self.assertEqual(
+            E2E_ATOMIC_CHART_CONTENT,
+            normalize_report_block_content(BlockType.CHART, E2E_ATOMIC_CHART_CONTENT),
+        )
+        for contract in (
+            'uuid5(NAMESPACE, f"{E2E_FIXTURE_VERSION}:{name}")',
+            "e2e_query_report_assistant_atomic_v2",
+            "E2E_ATOMIC_CHART_CONTENT",
+            "b.block_type = 'chart'",
+            "b.artifact_id = a.artifact_id",
+            "b.content::jsonb = %s::jsonb",
+        ):
+            self.assertIn(contract, source)
+        self.assertNotIn("complete-receipt-v1", source)
+        concurrency_fixture = Path(
+            "tests/backend/test_report_assistant_postgres_concurrency.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("E2E_ATOMIC_CHART_CONTENT", concurrency_fixture)
+
+    def test_read_only_e2e_backend_requires_isolated_db_without_model_credentials(self):
+        valid = f"postgresql://local:local@127.0.0.1:15432/{E2E_DATABASE}"
+        self.assertEqual(E2E_DATABASE, RUNNER_E2E_DATABASE)
+        with patch.dict(os.environ, {"APP_RUNTIME_DATABASE_URL": valid}, clear=True):
+            _require_read_only_environment()
+
+        for invalid in (
+            "",
+            "postgresql://local:local@127.0.0.1:15432/app_db",
+            f"postgresql://local:local@database.internal:5432/{E2E_DATABASE}",
+            f"sqlite:///{E2E_DATABASE}",
+        ):
+            with self.subTest(database_url=invalid), patch.dict(
+                os.environ, {"APP_RUNTIME_DATABASE_URL": invalid}, clear=True
+            ), self.assertRaisesRegex(RuntimeError, E2E_DATABASE):
+                _require_read_only_environment()
+
+        for credential in ("OPENAI_API_KEY", "NODE2_MODEL_API_TOKEN"):
+            with self.subTest(credential=credential), patch.dict(os.environ, {
+                "APP_RUNTIME_DATABASE_URL": valid,
+                credential: "configured-forbidden-secret",
+            }, clear=True), self.assertRaisesRegex(RuntimeError, credential):
+                _require_read_only_environment()
+
+        runner = Path("tests/e2e/run_local_backend.py").read_text(encoding="utf-8")
+        self.assertIn('lifespan="off"', runner)
 
 
 class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.main import app as _app  # noqa: F401
 from app.adapters.report_repository import PostgresReportRepository
 from tests.e2e.prepare_report_assistant_e2e import (
+    E2E_ATOMIC_CHART_CONTENT,
     E2E_DATABASE,
     E2E_PERMISSION_SNAPSHOT_ID,
     E2E_PRODUCT_RELEASE_ID,
@@ -171,11 +172,12 @@ class ReportAssistantPostgresConcurrencyTest(unittest.IsolatedAsyncioTestCase):
                     (definition_id, definition_version, block_id, title, artifact_id,
                      query_id, columns, block_type, x, y, w, h, content,
                      analysis_definition_id, analysis_definition_version)
-                VALUES (%s, 1, %s, '승인 Artifact', %s, %s, 12, 'chart', 0, 0, 12, 7, '', %s, %s)
+                VALUES (%s, 1, %s, '승인 Artifact', %s, %s, 12, 'chart',
+                        0, 0, 12, 7, %s, %s, %s)
                 """,
                 (
                     self.definition_id, self.block_id, artifact_uuid, query_id,
-                    analysis_id, analysis_version,
+                    E2E_ATOMIC_CHART_CONTENT, analysis_id, analysis_version,
                 ),
             )
             connection.execute(

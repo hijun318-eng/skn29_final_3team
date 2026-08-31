@@ -39,6 +39,8 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
         "infrastructure/database/datahub/metadata/semantics.yml"
     ) == "runtime-contract"
     assert _classify("app/backend/app/main.py") == "production"
+    assert _classify("src/rag/api.py") == "production"
+    assert _classify("src/ml/room_demand_timeseries/runtime_api.py") == "production"
 
 
 def test_rejects_demo_archive_and_request_context_from_runtime_config() -> None:

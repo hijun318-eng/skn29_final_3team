@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -39,7 +41,22 @@ jobs:
       # Public APIs and non-obvious invariants must remain documented as the
       # architecture is split into smaller domain modules.
       - run: python scripts/check_code_documentation.py
+      - run: python app/backend/scripts/export_openapi.py --check
       - run: python -m compileall -q app/backend src infrastructure/database/datahub tests
+      - name: Reject whitespace errors in the submitted commit range
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+            if [[ "$base" =~ ^0+$ ]]; then
+              base="$(git merge-base HEAD "origin/${{ github.event.repository.default_branch }}")"
+            fi
+          fi
+          git diff --check "$base...$head"
       # Optional RAG and Node2 worker runtimes own separate dependency sets and
       # gates below. The core gate must not depend on GPU/model packages.
       - run: >-
@@ -49,6 +66,7 @@ jobs:
           --ignore=tests/ai/test_training_dataset.py
           --ignore=tests/backend/test_ml_prediction_integration.py
           --ignore=tests/ml
+          --basetemp=.tmp/pytest-core-ci-${{ github.run_id }}-${{ github.run_attempt }}
 
   ml-runtime-tests:
     runs-on: ubuntu-latest
@@ -94,7 +112,9 @@ jobs:
           cache-dependency-path: infrastructure/rag/requirements.txt
       # CPU 계약 검증에는 실제 embedding model weight와 torch가 필요하지 않다.
       - run: python -m pip install pytest -r infrastructure/rag/requirements.txt
-      - run: python -m pytest -p no:cacheprovider tests/rag -q
+      - run: >-
+          python -m pytest -p no:cacheprovider tests/rag -q
+          --basetemp=.tmp/pytest-rag-ci-${{ github.run_id }}-${{ github.run_attempt }}
 
   node2-serverless-tests:
     runs-on: ubuntu-latest
@@ -117,6 +137,7 @@ jobs:
           python -m pytest -p no:cacheprovider
           tests/ai/test_node2_serverless_worker.py -q
           -k "not test_local_image_receipt_is_source_bound_and_not_a_gpu_pass"
+          --basetemp=.tmp/pytest-node2-contract-ci-${{ github.run_id }}-${{ github.run_attempt }}
       # compiler_only App 경로를 막지는 않되, 별도 sLLM 작업이 갱신해야 할
       # candidate evidence를 CI summary에서 계속 보이게 한다.
       - name: Check inactive Node2 image receipt
@@ -126,12 +147,14 @@ jobs:
           python -m pytest -p no:cacheprovider
           tests/ai/test_node2_serverless_worker.py::test_local_image_receipt_is_source_bound_and_not_a_gpu_pass
           -q
+          --basetemp=.tmp/pytest-node2-image-ci-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Check inactive Node2 training contract
         id: training-contract
         continue-on-error: true
         run: >-
           python -m pytest -p no:cacheprovider
           tests/ai/test_training_dataset.py -q
+          --basetemp=.tmp/pytest-node2-training-ci-${{ github.run_id }}-${{ github.run_attempt }}
 
   frontend:
     runs-on: ubuntu-latest
@@ -164,6 +187,36 @@ jobs:
       - run: docker compose -f compose.yml --env-file infrastructure/database/.env.example --profile dev config --quiet
       - run: docker compose -f compose.yml --env-file infrastructure/database/.env.example --profile full config --quiet
       - run: docker compose -f compose.yml --env-file infrastructure/database/.env.example --profile split-host config --quiet
+      - name: Validate approved ML runtime profile
+        run: >-
+          docker compose -f compose.yml
+          --env-file infrastructure/database/.env.example
+          --profile full --profile ml
+          config --quiet
+      - name: Validate ML candidate split-host profile
+        run: >-
+          docker compose -f compose.yml
+          --env-file infrastructure/database/.env.example
+          --profile split-host --profile ml-candidate
+          config --quiet
+      - name: Validate approved RAG runtime profile
+        run: >-
+          docker compose -f compose.yml
+          --env-file infrastructure/database/.env.example
+          --profile full --profile rag
+          config --quiet
+      - name: Validate RAG candidate split-host profile
+        run: >-
+          docker compose -f compose.yml
+          --env-file infrastructure/database/.env.example
+          --profile split-host --profile rag-candidate
+          config --quiet
+      - name: Validate isolated RAG E2E profile
+        run: >-
+          docker compose -f compose.yml
+          --env-file infrastructure/database/.env.example
+          --profile full --profile rag-e2e
+          config --quiet
       - name: Validate production semantic-search merge
         run: >-
           docker compose

@@ -10,6 +10,7 @@ ACTION_PINS = {
 }
 JOB_TIMEOUTS = {
     "python-tests": 25,
+    "ml-runtime-tests": 15,
     "rag-tests": 15,
     "node2-serverless-tests": 10,
     "frontend": 20,
@@ -24,7 +25,7 @@ def _workflow() -> str:
 
 def test_actions_use_immutable_official_pins_with_exact_version_comments():
     uses = re.findall(r"(?m)^\s*- uses: ([^\s#]+)\s+#\s+(v\d+\.\d+\.\d+)\s*$", _workflow())
-    assert len(uses) == 9
+    assert len(uses) == 11
     for reference, comment in uses:
         action, separator, sha = reference.partition("@")
         assert separator and action in ACTION_PINS
@@ -74,6 +75,7 @@ def test_workflow_keeps_read_only_permission_and_common_quality_gate():
     assert "--constraint app/backend/requirements.lock.txt" in source
     for required_job in (
         "python-tests",
+        "ml-runtime-tests",
         "rag-tests",
         "node2-serverless-tests",
         "frontend",
@@ -81,6 +83,21 @@ def test_workflow_keeps_read_only_permission_and_common_quality_gate():
     ):
         assert required_job in source
     assert 'if [[ "$result" != "success" ]]; then' in source
+
+
+def test_ml_runtime_has_an_isolated_exact_pin_gate():
+    source = _workflow()
+
+    assert "--ignore=tests/backend/test_ml_prediction_integration.py" in source
+    assert "--ignore=tests/ml" in source
+    assert source.count("src/ml/room_demand_v3/requirements.txt") == 2
+    assert "pytest==9.1.0" in source
+    assert "SQLAlchemy==2.0.52" in source
+    assert "tests/backend/test_ml_prediction_integration.py" in source
+    assert "tests/ml -q" in source
+    assert "--basetemp=.tmp/pytest-ml-runtime-ci" in source
+    assert "ML_RUNTIME_TESTS: ${{ needs.ml-runtime-tests.result }}" in source
+    assert '"$ML_RUNTIME_TESTS" \\' in source
 
 
 def test_inactive_node2_candidate_evidence_is_visible_but_not_a_core_gate():

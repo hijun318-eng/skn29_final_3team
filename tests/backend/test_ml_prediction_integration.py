@@ -224,7 +224,7 @@ def test_ml_deployment_example_pins_actual_runtime_artifacts() -> None:
 def test_ml_release_is_the_integrated_hgbr_runtime() -> None:
     manifest = json.loads((ARTIFACT_DIR / "model_manifest.json").read_text(encoding="utf-8"))
     approval = json.loads((ARTIFACT_DIR / "model.approval.json").read_text(encoding="utf-8"))
-    model = joblib.load(ARTIFACT_DIR / "model.joblib")
+    model = load_model_artifact(ARTIFACT_DIR / "model.joblib")
 
     assert manifest["model_type"].endswith("hgbr")
     assert runtime_estimator_types(model) == ("HistGradientBoostingRegressor",)
@@ -313,14 +313,16 @@ def test_hgbr_v33_candidate_matches_features_but_is_not_a_serving_release() -> N
     feature_contract = json.loads(
         (CANDIDATE_DIR / "feature_contract.json").read_text(encoding="utf-8")
     )
-    package = joblib.load(CANDIDATE_DIR / manifest["artifact_file"])
 
+    # 비승인 후보는 별도 sklearn 1.7.1 산출물이다. Serving 1.9 gate에서는
+    # 역직렬화하지 않고 공개 계약·원본 checksum·비활성 상태만 검증한다.
     assert feature_contract["feature_columns_ordered"] == FEATURE_COLUMNS
-    assert package["feature_columns"] == FEATURE_COLUMNS
-    assert package["target_mode"] == manifest["target_mode"] == "occupancy_rate"
-    assert type(package["model"]).__name__ == "HistGradientBoostingRegressor"
-    assert package["model"].n_features_in_ == len(FEATURE_COLUMNS)
-    assert set(package["category_maps"]) == {"property_id", "room_type_code"}
+    assert feature_contract["categorical_features"] == [
+        "property_id",
+        "room_type_code",
+    ]
+    assert manifest["target_mode"] == "occupancy_rate"
+    assert manifest["algorithm"] == "HistGradientBoostingRegressor"
     assert manifest["artifact_sha256"] == hashlib.sha256(
         (CANDIDATE_DIR / manifest["artifact_file"]).read_bytes()
     ).hexdigest()
@@ -331,8 +333,6 @@ def test_hgbr_v33_candidate_matches_features_but_is_not_a_serving_release() -> N
     assert manifest["runtime_integrated"] is False
     assert manifest["production_approved"] is False
     assert not (CANDIDATE_DIR / "model.approval.json").exists()
-    assert not hasattr(package, "predict_raw")
-    assert not hasattr(package, "predict")
 
     runtime_sklearn = next(
         line

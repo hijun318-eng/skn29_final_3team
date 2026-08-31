@@ -24,8 +24,13 @@ class ReportEvidenceFormatter:
     _STRUCTURE_ONLY = re.compile(
         r"^\[/?(?:TABLE|TABLE_SEGMENT)(?:\s+[^\]]*)?\]$"
     )
-    _STRUCTURE_PREFIX = re.compile(
-        r"^\[(?:TABLE_HEADER_CONTEXT|TABLE_SEGMENT)(?:\s+[^\]]*)?\]\s*"
+    _STRUCTURE_MARKER = re.compile(
+        r"\[(?:"
+        r"DOCX\s+[^\]]+"
+        r"|/?(?:TABLE|TABLE_SEGMENT)(?:\s+[^\]]*)?"
+        r"|(?:TABLE_HEADER_CONTEXT|PARAGRAPH|HEADING|EXPLICIT_PAGE_BREAK|HEADER|FOOTER|FIELD_SIMPLE)"
+        r"(?:\s+[^\]]*)?"
+        r")\]\s*"
     )
     _CELL_MARKER = re.compile(r"\[r\d+c\d+\b[^\]]*\]\s*")
     _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。])\s+")
@@ -87,7 +92,7 @@ class ReportEvidenceFormatter:
             line = " ".join(raw_line.split()).strip()
             if not line or cls._STRUCTURE_ONLY.fullmatch(line):
                 continue
-            line = cls._STRUCTURE_PREFIX.sub("", line)
+            line = cls._STRUCTURE_MARKER.sub("", line)
             line = cls._CELL_MARKER.sub("", line).strip(" |-:")
             if not line:
                 continue

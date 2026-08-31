@@ -20,7 +20,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminApiError } from "../api/adminClient.ts";
 import {
   AUTH_ACCOUNT_ROLE_OPTIONS,
-  isAssignableAuthAccountRole,
   roleLabel,
 } from "../authorization.ts";
 import { AuditTrailPanel } from "../features/admin/audit/AuditTrailPanel.tsx";
@@ -71,7 +70,7 @@ function AccountDialog({ account, form, mode, pending, error, onChange, onClose,
       <div className="admin-account-dialog__fields">
         {!passwordMode && <>
           <label><span>사용자 아이디</span><input required minLength={3} maxLength={64} pattern="[a-z0-9._-]+" autoComplete="off" value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value.toLowerCase() })} /></label>
-          <label><span>역할</span><select value={form.role} onChange={(event) => onChange({ ...form, role: event.target.value })}>{!isAssignableAuthAccountRole(form.role) && <option value={form.role} disabled>기존 역할 유지: {roleLabel(form.role)} ({form.role})</option>}{AUTH_ACCOUNT_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} ({option.value})</option>)}</select></label>
+          <label><span>역할</span><select value={form.role} onChange={(event) => onChange({ ...form, role: event.target.value })}>{AUTH_ACCOUNT_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} ({option.value})</option>)}</select></label>
         </>}
         {(mode === "create" || passwordMode) && <label><span>{passwordMode ? "새 비밀번호" : "초기 비밀번호"}</span><input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={form.password} onChange={(event) => onChange({ ...form, password: event.target.value })} /></label>}
         {mode === "edit" && <label className="admin-account-dialog__check"><input type="checkbox" checked={form.active} onChange={(event) => onChange({ ...form, active: event.target.checked })} /><span>활성 계정</span></label>}

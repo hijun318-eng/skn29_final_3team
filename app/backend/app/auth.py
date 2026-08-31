@@ -24,6 +24,7 @@ from app.auth_principal_store import (
 from app.database import DatabaseConfigurationError, session_scope
 from app.authorization import has_capability
 from app.contracts import Capability, Role
+from app.user_account_roles import is_internal_user_account_role
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,7 +101,10 @@ async def _load_active_principal(subject: UUID) -> Principal | None:
                     """
                     SELECT subject, role
                     FROM security.auth_accounts
-                    WHERE subject = :subject AND active AND deleted_at IS NULL
+                    WHERE subject = :subject
+                      AND active
+                      AND deleted_at IS NULL
+                      AND role IN ('analyst', 'platform_admin')
                     """
                 ),
                 {"subject": subject},
@@ -126,7 +130,8 @@ async def auth_account_store_ready(database_url: str) -> bool:
             result = await session.execute(
                 text(
                     "SELECT EXISTS (SELECT 1 FROM security.auth_accounts "
-                    "WHERE active AND deleted_at IS NULL)"
+                    "WHERE active AND deleted_at IS NULL "
+                    "AND role IN ('analyst', 'platform_admin'))"
                 )
             )
             return bool(result.scalar_one())
@@ -187,6 +192,7 @@ async def _authenticate_credentials_in_session(
         matched is None
         or not matched.active
         or row["deleted_at"] is not None
+        or not is_internal_user_account_role(matched.principal.role)
         or not hmac.compare_digest(expected_hash, supplied_hash)
     ):
         raise _authentication_error()
@@ -211,7 +217,12 @@ async def authenticate_credentials(username: str, password: str) -> Principal:
         _derive_password_hash, password, salt, iterations
     )
     expected_hash = matched.password_hash if matched else "0" * 64
-    if matched is None or not matched.active or not hmac.compare_digest(expected_hash, supplied_hash):
+    if (
+        matched is None
+        or not matched.active
+        or not is_internal_user_account_role(matched.principal.role)
+        or not hmac.compare_digest(expected_hash, supplied_hash)
+    ):
         raise _authentication_error()
     return matched.principal
 
@@ -351,6 +362,8 @@ async def revoke_session(token: str | None) -> None:
 
 
 async def _assert_session_active(token: str, principal: Principal, now: datetime) -> None:
+    if not is_internal_user_account_role(principal.role):
+        raise _authentication_error()
     database_url = _required_session_store_url()
     if not database_url:
         return
@@ -358,13 +371,19 @@ async def _assert_session_active(token: str, principal: Principal, now: datetime
         async with session_scope(database_url) as session:
             result = await session.execute(text("""
                 SELECT 1
-                FROM security.auth_sessions
-                WHERE token_sha256 = :token_sha256
-                  AND subject = :subject
-                  AND role = :role
-                  AND revoked_at IS NULL
-                  AND issued_at <= :now
-                  AND expires_at > :now
+                FROM security.auth_sessions AS sessions
+                JOIN security.auth_accounts AS accounts
+                  ON accounts.subject = sessions.subject
+                 AND accounts.role = sessions.role
+                WHERE sessions.token_sha256 = :token_sha256
+                  AND sessions.subject = :subject
+                  AND sessions.role = :role
+                  AND sessions.revoked_at IS NULL
+                  AND sessions.issued_at <= :now
+                  AND sessions.expires_at > :now
+                  AND accounts.active
+                  AND accounts.deleted_at IS NULL
+                  AND accounts.role IN ('analyst', 'platform_admin')
             """), {
                 "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
                 "subject": principal.subject,
@@ -390,7 +409,12 @@ async def _release_principal(token: str, now: datetime) -> Principal:
     for record in records:
         if hmac.compare_digest(record.token_sha256, supplied_digest):
             matched = record
-    if matched is None or now < matched.not_before or now >= matched.expires_at:
+    if (
+        matched is None
+        or now < matched.not_before
+        or now >= matched.expires_at
+        or not is_internal_user_account_role(matched.principal.role)
+    ):
         raise _authentication_error()
     return matched.principal
 

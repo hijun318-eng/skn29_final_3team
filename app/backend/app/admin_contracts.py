@@ -10,12 +10,10 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 
 from app.contracts import ResponseContractModel, ResponseMeta, Role
 from app.contract_core import ContractModel
+from app.user_account_roles import UserAccountRole, public_user_account_role
 
 
-AssignableAccountRole: TypeAlias = Literal[
-    Role.ANALYST,
-    Role.PLATFORM_ADMIN,
-]
+AssignableAccountRole: TypeAlias = UserAccountRole
 ASSIGNABLE_ACCOUNT_ROLES: tuple[Role, ...] = (
     Role.ANALYST,
     Role.PLATFORM_ADMIN,
@@ -35,7 +33,7 @@ class CreateAccountRequest(ContractModel):
 
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9._-]+$")
     password: SecretStr = Field(min_length=12, max_length=128)
-    role: AssignableAccountRole = Role.ANALYST
+    role: AssignableAccountRole = "analyst"
 
     @field_validator("username", mode="before")
     @classmethod
@@ -86,12 +84,21 @@ class AccountData(ContractModel):
 
     subject: UUID
     username: str
-    role: Role
+    role: UserAccountRole
     active: bool
     created_at: datetime
     updated_at: datetime
     deactivated_at: datetime | None = None
     deleted_at: datetime | None = None
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_public_role(cls, value: object) -> object:
+        """저장용 platform_admin을 공개 admin으로 바꾸고 legacy Role은 거부한다."""
+
+        if not isinstance(value, (Role, str)):
+            raise ValueError("지원하지 않는 사용자 계정 역할입니다.")
+        return public_user_account_role(value)
 
 
 class AccountListData(ContractModel):

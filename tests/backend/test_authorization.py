@@ -46,9 +46,9 @@ def test_platform_admin_satisfies_existing_external_role_contracts() -> None:
 
 def test_session_data_exposes_server_owned_capabilities() -> None:
     session = SessionData(
-        role=Role.PLATFORM_ADMIN,
+        role="admin",
         capabilities=capabilities_for(Role.PLATFORM_ADMIN),
     )
 
-    assert session.role is Role.PLATFORM_ADMIN
+    assert session.role == "admin"
     assert set(session.capabilities) == set(Capability)

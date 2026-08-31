@@ -138,7 +138,10 @@ class AdminAccountRepository:
         """삭제되지 않은 계정을 login ID 순서로 검색하고 정확한 전체 건수를 반환한다."""
 
         normalized_search = search.strip().lower()
-        predicate = "(:search = '' OR strpos(username, :search) > 0)"
+        predicate = (
+            "role IN ('analyst', 'platform_admin') "
+            "AND (:search = '' OR strpos(username, :search) > 0)"
+        )
         parameters = {
             "search": normalized_search,
             "limit": page_size,
@@ -232,6 +235,16 @@ class AdminAccountRepository:
             require_assignable_account_role(role)
         await self._serialize_account_mutation()
         current = await self._locked_account(subject)
+        try:
+            current_role = Role(str(current["role"]))
+        except ValueError as error:
+            raise AdminAccountConflict(
+                "지원하지 않는 기존 역할 계정은 변경할 수 없습니다."
+            ) from error
+        if current_role not in {Role.ANALYST, Role.PLATFORM_ADMIN}:
+            raise AdminAccountConflict(
+                "지원하지 않는 기존 역할 계정은 변경할 수 없습니다."
+            )
         username = changes.get("username")
         active = changes.get("active")
         next_role = role.value if isinstance(role, Role) else str(current["role"])

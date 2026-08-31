@@ -29,7 +29,6 @@ from app.adapters.admin_account_repository import (  # noqa: E402
     LastActiveAdminConflict,
 )
 from app.admin_contracts import (  # noqa: E402
-    ASSIGNABLE_ACCOUNT_ROLES,
     AccountData,
     CreateAccountRequest,
     UpdateAccountRequest,
@@ -125,25 +124,21 @@ def test_system_manage_dependency_rejects_analyst_and_accepts_platform_admin() -
 
 def test_admin_contract_accepts_only_assignable_roles_and_masks_password_repr() -> None:
     request = CreateAccountRequest(
-        username="new-user", password="new-password", role="platform_admin"
+        username="new-user", password="new-password", role="admin"
     )
     assert "new-password" not in repr(request)
-    for role in (Role.ANALYST, Role.PLATFORM_ADMIN):
+    for role in ("analyst", "admin"):
         assert CreateAccountRequest(
-            username="new-user", password="new-password", role=role.value
-        ).role is role
-        assert UpdateAccountRequest(role=role.value).role is role
-    for role in (Role.REPORT_ADMIN, Role.DATA_ADMIN):
+            username="new-user", password="new-password", role=role
+        ).role == role
+        assert UpdateAccountRequest(role=role).role == role
+    for role in ("report_admin", "data_admin", "platform_admin"):
         with pytest.raises(ValidationError):
             CreateAccountRequest(
-                username="new-user", password="new-password", role=role.value
+                username="new-user", password="new-password", role=role
             )
         with pytest.raises(ValidationError):
-            UpdateAccountRequest(role=role.value)
-    with pytest.raises(ValidationError):
-        CreateAccountRequest(
-            username="new-user", password="new-password", role="admin"
-        )
+            UpdateAccountRequest(role=role)
     with pytest.raises(ValidationError):
         UpdateAccountRequest()
     with pytest.raises(ValidationError):
@@ -152,26 +147,30 @@ def test_admin_contract_accepts_only_assignable_roles_and_masks_password_repr() 
         )
 
 
-def test_admin_response_preserves_legacy_roles_without_making_them_assignable() -> None:
-    account = AccountData.model_validate(_account(UUID(int=9), "report_admin"))
+def test_admin_response_maps_storage_role_without_exposing_legacy_roles() -> None:
+    account = AccountData.model_validate(_account(UUID(int=9), "platform_admin"))
 
-    assert account.role is Role.REPORT_ADMIN
+    assert account.role == "admin"
+    for role in ("report_admin", "data_admin"):
+        with pytest.raises(ValidationError):
+            AccountData.model_validate(_account(UUID(int=9), role))
     assert set(
         CreateAccountRequest.model_json_schema()["properties"]["role"]["enum"]
-    ) == {role.value for role in ASSIGNABLE_ACCOUNT_ROLES}
+    ) == {"analyst", "admin"}
     assert set(
         UpdateAccountRequest.model_json_schema()["properties"]["role"]["anyOf"][0][
             "enum"
         ]
-    ) == {role.value for role in ASSIGNABLE_ACCOUNT_ROLES}
+    ) == {"analyst", "admin"}
 
 
 def test_provisioning_writers_accept_only_assignable_roles() -> None:
     assert _parse_account("analyst:analyst").role is Role.ANALYST
-    assert _parse_account("admin:platform_admin").role is Role.PLATFORM_ADMIN
-    for role in (Role.REPORT_ADMIN, Role.DATA_ADMIN):
+    assert _parse_account("admin:admin").role is Role.PLATFORM_ADMIN
+    for role in (Role.REPORT_ADMIN, Role.DATA_ADMIN, Role.PLATFORM_ADMIN):
         with pytest.raises(ArgumentTypeError, match="role or subject is invalid"):
             _parse_account(f"legacy:{role.value}")
+    for role in (Role.REPORT_ADMIN, Role.DATA_ADMIN):
         with patch("app.provision_auth_accounts.create_engine") as create_engine:
             with pytest.raises(ValueError, match="analyst 또는 platform_admin"):
                 _provision(

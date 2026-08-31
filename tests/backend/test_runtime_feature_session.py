@@ -19,6 +19,7 @@ if str(BACKEND) not in sys.path:
 
 from app.api.router import authenticated_session, login
 from app.auth_principal_store import Principal
+from app.context import ContextValidationError
 from app.contracts import LoginRequest, RequestContext, Role, RuntimeFeature
 
 
@@ -76,12 +77,13 @@ def test_authenticated_session_uses_actual_role_aware_availability() -> None:
             result = await authenticated_session(request, context)
 
         assert result.data.enabled_features == (RuntimeFeature.INTERNAL_GUIDELINE,)
+        assert result.data.role == "analyst"
         availability.assert_awaited_once_with(Role.ANALYST)
 
     asyncio.run(scenario())
 
 
-def test_session_role_without_analysis_capability_skips_runtime_probe() -> None:
+def test_legacy_user_role_is_rejected_before_runtime_probe() -> None:
     async def scenario() -> None:
         request = _request()
         context = RequestContext(
@@ -93,9 +95,13 @@ def test_session_role_without_analysis_capability_skips_runtime_probe() -> None:
         availability = AsyncMock()
 
         with patch("app.api.router.available_runtime_features", availability):
-            result = await authenticated_session(request, context)
+            try:
+                await authenticated_session(request, context)
+            except ContextValidationError as error:
+                assert error.status_code == 401
+            else:
+                raise AssertionError("legacy 사용자 Role 세션이 허용되었습니다.")
 
-        assert result.data.enabled_features == ()
         availability.assert_not_awaited()
 
     asyncio.run(scenario())
@@ -120,6 +126,7 @@ def test_login_uses_authenticated_principal_role_availability() -> None:
             )
 
         assert result.data.enabled_features == (RuntimeFeature.ML_PREDICTION,)
+        assert result.data.role == "admin"
         availability.assert_awaited_once_with(Role.PLATFORM_ADMIN)
 
     asyncio.run(scenario())

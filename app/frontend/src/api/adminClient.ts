@@ -106,7 +106,7 @@ function normalizeAccount(value: unknown): AdminAccount {
   if (!isRecord(value)
     || typeof value.subject !== "string"
     || typeof value.username !== "string"
-    || !["analyst", "report_admin", "data_admin", "platform_admin"].includes(value.role)
+    || !["analyst", "admin"].includes(value.role)
     || typeof value.active !== "boolean"
     || typeof value.created_at !== "string"
     || typeof value.updated_at !== "string"
@@ -143,7 +143,7 @@ function normalizeConnection(value: unknown): AdminConnection {
 
 function requireAssignableAccountRole(role: unknown): asserts role is AssignableAuthAccountRole {
   if (!isAssignableAuthAccountRole(role)) {
-    throw new Error("계정 역할은 analyst 또는 platform_admin이어야 합니다.");
+    throw new Error("계정 역할은 analyst 또는 admin이어야 합니다.");
   }
 }
 

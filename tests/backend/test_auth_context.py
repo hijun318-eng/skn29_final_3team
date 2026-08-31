@@ -113,6 +113,15 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(UUID("00000000-0000-0000-0000-000000000011"), principal.subject)
         self.assertEqual(Role.ANALYST, principal.role)
 
+    async def test_release_legacy_roles_fail_closed(self) -> None:
+        for role in (Role.REPORT_ADMIN, Role.DATA_ADMIN):
+            with self.subTest(role=role.value):
+                self.write([self.record(role=role.value)])
+                with patch.dict(os.environ, self.release_environment(), clear=False):
+                    with self.assertRaises(AuthenticationError) as denied:
+                        await authenticate_token("release-token", now=self.now)
+                self.assertEqual(401, denied.exception.status_code)
+
     async def test_background_subject_reloads_platform_capability_from_account_store(self) -> None:
         stored_principal = Principal(UUID(int=11), Role.PLATFORM_ADMIN)
         with patch(

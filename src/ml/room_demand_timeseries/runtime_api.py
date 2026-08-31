@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import uuid
+import warnings
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
+from sklearn.exceptions import InconsistentVersionWarning
 
 from ..room_demand_v3.trino_client import TrinoClient
 from ..runtime_trust import (
@@ -179,6 +181,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def load_model_artifact(artifact: Path) -> Any:
+    """Load a serving artifact only when its sklearn serialization is compatible."""
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", InconsistentVersionWarning)
+            return joblib.load(artifact)
+    except InconsistentVersionWarning as error:
+        raise RuntimeError(
+            "model artifact scikit-learn version is incompatible with ML runtime"
+        ) from error
+
+
 def safe_table(value: str) -> str:
     parts = value.split(".")
     if len(parts) != 3 or any(not IDENTIFIER.fullmatch(part) for part in parts):
@@ -255,7 +270,7 @@ class TimeSeriesRuntime:
             decision == "CONDITIONAL_PASS" and allow_conditional
         ):
             raise RuntimeError(f"model is not approved for serving: {decision}")
-        self.model = joblib.load(artifact)
+        self.model = load_model_artifact(artifact)
         if not hasattr(self.model, "predict_raw") or not hasattr(self.model, "predict"):
             raise RuntimeError("artifact is not a time-series demand model")
         self.model_type = str(self.manifest.get("model_type") or "").strip()

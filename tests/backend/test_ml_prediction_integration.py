@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+import warnings
 
 from fastapi import HTTPException
 import httpx
@@ -29,6 +30,7 @@ from src.ml.room_demand_timeseries.contracts import FEATURE_COLUMNS
 from src.ml.room_demand_timeseries.runtime_api import (
     TimeSeriesRuntime,
     _declared_request_body_size,
+    load_model_artifact,
     runtime_estimator_types,
     validate_hgbr_runtime,
     validate_history_source,
@@ -231,6 +233,58 @@ def test_ml_release_is_the_integrated_hgbr_runtime() -> None:
     assert validate_hgbr_runtime(manifest["model_type"], model) == (
         "HistGradientBoostingRegressor"
     )
+
+
+def test_ml_artifact_loader_returns_a_compatible_joblib_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "model.joblib"
+    sentinel = object()
+    monkeypatch.setattr(runtime_api.joblib, "load", lambda path: sentinel)
+
+    assert load_model_artifact(artifact) is sentinel
+
+
+def test_ml_artifact_loader_rejects_a_sklearn_version_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "model.joblib"
+
+    def incompatible_load(_path: Path) -> object:
+        warnings.warn(
+            runtime_api.InconsistentVersionWarning(
+                estimator_name="HistGradientBoostingRegressor",
+                current_sklearn_version="1.8.0",
+                original_sklearn_version="1.9.0",
+            )
+        )
+        return object()
+
+    monkeypatch.setattr(runtime_api.joblib, "load", incompatible_load)
+
+    with pytest.raises(RuntimeError, match="scikit-learn version is incompatible"):
+        load_model_artifact(artifact)
+
+
+def test_ml_artifact_loader_preserves_unrelated_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "model.joblib"
+    sentinel = object()
+
+    def load_with_unrelated_warning(_path: Path) -> object:
+        warnings.warn("unrelated model warning", UserWarning)
+        return sentinel
+
+    monkeypatch.setattr(runtime_api.joblib, "load", load_with_unrelated_warning)
+
+    with pytest.warns(UserWarning, match="unrelated model warning"):
+        result = load_model_artifact(artifact)
+
+    assert result is sentinel
 
 
 def test_hgbr_v33_candidate_release_files_match_declared_checksums() -> None:
@@ -643,6 +697,20 @@ def test_runtime_capability_uses_actual_model_and_feature_artifact_hashes(
         runtime_api,
         "validate_history_source",
         lambda *_args, **_kwargs: history_source,
+    )
+    compatible_model = SimpleNamespace(
+        predict_raw=lambda *_args, **_kwargs: None,
+        predict=lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runtime_api,
+        "load_model_artifact",
+        lambda _artifact: compatible_model,
+    )
+    monkeypatch.setattr(
+        runtime_api,
+        "validate_hgbr_runtime",
+        lambda _model_type, _model: "HistGradientBoostingRegressor",
     )
 
     capability = TimeSeriesRuntime().capabilities()

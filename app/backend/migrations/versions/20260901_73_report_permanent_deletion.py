@@ -123,52 +123,27 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE OR REPLACE FUNCTION chat.enforce_conversation_history_immutability()
+        CREATE OR REPLACE FUNCTION chat.enforce_report_turn_history_immutability()
         RETURNS trigger AS $$
         BEGIN
-            IF TG_TABLE_NAME = 'turns' THEN
-                IF TG_OP = 'UPDATE'
-                   AND OLD.report_draft_definition_id IS NOT NULL
-                   AND current_setting('report_v1.permanent_delete_definition_id', true)
-                       = OLD.report_draft_definition_id::text
-                   AND NEW.report_draft_definition_id IS NULL
-                   AND (to_jsonb(NEW) - 'report_draft_definition_id')
-                       IS NOT DISTINCT FROM
-                       (to_jsonb(OLD) - 'report_draft_definition_id') THEN
-                    RETURN NEW;
-                END IF;
-                RAISE EXCEPTION 'conversation turns are immutable';
+            IF TG_OP = 'UPDATE'
+               AND OLD.report_draft_definition_id IS NOT NULL
+               AND current_setting('report_v1.permanent_delete_definition_id', true)
+                   = OLD.report_draft_definition_id::text
+               AND NEW.report_draft_definition_id IS NULL
+               AND (to_jsonb(NEW) - 'report_draft_definition_id')
+                   IS NOT DISTINCT FROM
+                   (to_jsonb(OLD) - 'report_draft_definition_id') THEN
+                RETURN NEW;
             END IF;
-            IF TG_TABLE_NAME = 'turn_commands' THEN
-                IF TG_OP = 'DELETE' THEN
-                    RAISE EXCEPTION 'conversation commands are immutable';
-                END IF;
-                IF (
-                    NEW.command_id, NEW.conversation_id, NEW.idempotency_key,
-                    NEW.canonical_input_hash, NEW.expected_head_turn_id,
-                    NEW.effective_subject_id, NEW.product_release_id,
-                    NEW.permission_snapshot_id, NEW.semantic_release_id, NEW.created_at
-                ) IS DISTINCT FROM (
-                    OLD.command_id, OLD.conversation_id, OLD.idempotency_key,
-                    OLD.canonical_input_hash, OLD.expected_head_turn_id,
-                    OLD.effective_subject_id, OLD.product_release_id,
-                    OLD.permission_snapshot_id, OLD.semantic_release_id, OLD.created_at
-                ) THEN
-                    RAISE EXCEPTION 'conversation command admission is immutable';
-                END IF;
-                IF (OLD.status, NEW.status) NOT IN (
-                    ('RUNNING','RUNNING'), ('RUNNING','COMPLETED'),
-                    ('RUNNING','FAILED'), ('COMPLETED','COMPLETED'), ('FAILED','FAILED')
-                ) THEN
-                    RAISE EXCEPTION 'invalid conversation command terminal transition';
-                END IF;
-                IF OLD.status <> 'RUNNING' AND NEW IS DISTINCT FROM OLD THEN
-                    RAISE EXCEPTION 'terminal conversation command is immutable';
-                END IF;
-            END IF;
-            RETURN NEW;
+            RAISE EXCEPTION 'conversation turns are immutable';
         END;
-        $$ LANGUAGE plpgsql
+        $$ LANGUAGE plpgsql;
+
+        DROP TRIGGER turns_immutable ON chat.turns;
+        CREATE TRIGGER turns_immutable
+        BEFORE UPDATE OR DELETE ON chat.turns
+        FOR EACH ROW EXECUTE FUNCTION chat.enforce_report_turn_history_immutability()
         """
     )
     op.execute(
@@ -384,35 +359,10 @@ def downgrade() -> None:
     )
     op.execute(
         """
-        CREATE OR REPLACE FUNCTION chat.enforce_conversation_history_immutability()
-        RETURNS trigger AS $$
-        BEGIN
-            IF TG_TABLE_NAME IN ('turns') THEN
-                RAISE EXCEPTION 'conversation turns are immutable';
-            END IF;
-            IF TG_TABLE_NAME = 'turn_commands' THEN
-                IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'conversation commands are immutable'; END IF;
-                IF (
-                    NEW.command_id, NEW.conversation_id, NEW.idempotency_key,
-                    NEW.canonical_input_hash, NEW.expected_head_turn_id,
-                    NEW.effective_subject_id, NEW.product_release_id,
-                    NEW.permission_snapshot_id, NEW.semantic_release_id, NEW.created_at
-                ) IS DISTINCT FROM (
-                    OLD.command_id, OLD.conversation_id, OLD.idempotency_key,
-                    OLD.canonical_input_hash, OLD.expected_head_turn_id,
-                    OLD.effective_subject_id, OLD.product_release_id,
-                    OLD.permission_snapshot_id, OLD.semantic_release_id, OLD.created_at
-                ) THEN RAISE EXCEPTION 'conversation command admission is immutable'; END IF;
-                IF (OLD.status, NEW.status) NOT IN (
-                    ('RUNNING','RUNNING'), ('RUNNING','COMPLETED'),
-                    ('RUNNING','FAILED'), ('COMPLETED','COMPLETED'), ('FAILED','FAILED')
-                ) THEN RAISE EXCEPTION 'invalid conversation command terminal transition'; END IF;
-                IF OLD.status <> 'RUNNING' AND NEW IS DISTINCT FROM OLD THEN
-                    RAISE EXCEPTION 'terminal conversation command is immutable';
-                END IF;
-            END IF;
-            RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql
+        DROP TRIGGER turns_immutable ON chat.turns;
+        CREATE TRIGGER turns_immutable
+        BEFORE UPDATE OR DELETE ON chat.turns
+        FOR EACH ROW EXECUTE FUNCTION chat.enforce_conversation_history_immutability();
+        DROP FUNCTION chat.enforce_report_turn_history_immutability()
         """
     )

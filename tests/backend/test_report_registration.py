@@ -76,6 +76,29 @@ def report_assistant_request() -> dict[str, object]:
 
 
 class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
+    def test_permanent_delete_migration_preserves_admin_owned_chat_function(self):
+        """기존 DB의 관리자 소유 함수는 교체하지 않고 turns trigger만 분리한다."""
+
+        migration = (
+            BACKEND
+            / "migrations"
+            / "versions"
+            / "20260901_73_report_permanent_deletion.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn(
+            "CREATE OR REPLACE FUNCTION chat.enforce_conversation_history_immutability()",
+            migration,
+        )
+        self.assertIn(
+            "CREATE OR REPLACE FUNCTION chat.enforce_report_turn_history_immutability()",
+            migration,
+        )
+        self.assertIn("DROP TRIGGER turns_immutable ON chat.turns", migration)
+        self.assertIn(
+            "EXECUTE FUNCTION chat.enforce_report_turn_history_immutability()",
+            migration,
+        )
+
     async def test_manual_report_routes_cannot_forge_or_retain_changed_ai_evidence(self):
         """일반 생성은 AI 근거를 만들 수 없고 근거가 붙은 본문 변경은 명시적 해제를 요구한다."""
 

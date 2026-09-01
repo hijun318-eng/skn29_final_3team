@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "maximum_context_tokens": 4096,
+  "maximum_context_tokens": 8192,
   "reserved_system_tokens": 700,
   "reserved_question_tokens": 512,
   "maximum_output_tokens": 700,

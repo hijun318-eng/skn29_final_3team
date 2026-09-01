@@ -386,6 +386,30 @@ class VectorRagApplication:
             retrieval_mode=retrieval_mode,
             maximum_chunks_per_document=effective_maximum_chunks
         )
+        report_periods = ContextualQueryBuilder.report_periods(effective_query)
+        if results and report_periods and not selected_ids:
+            target_period = max(report_periods)
+            period_candidates = [
+                item
+                for item in results
+                if item.document_type == "INTERNAL_REPORT"
+                and item.version == target_period
+            ]
+            if period_candidates:
+                target_document = max(
+                    period_candidates,
+                    key=lambda item: (item.score, item.vector_score, item.lexical_score),
+                )
+                focused_results = self._retrieval.retrieve(
+                    effective_query,
+                    vector,
+                    decision,
+                    (target_document.manual_id,),
+                    retrieval_mode=retrieval_mode,
+                    maximum_chunks_per_document=min(decision.top_k, 10),
+                )
+                if focused_results:
+                    results = focused_results
         if results:
             answer_type = {
                 "PROCESS": "PROCEDURE",

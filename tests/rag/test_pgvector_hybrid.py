@@ -109,6 +109,8 @@ def test_hybrid_search_uses_bm25_without_weakening_access_filters() -> None:
     assert "d.approval_status = 'APPROVED'" in connection.sql
     assert "%s = ANY(d.role_scope)" in connection.sql
     assert "d.validity_status != 'UNRESOLVED'" in connection.sql
+    assert "c.section_title NOT LIKE '[DOCX HEADER_PART %%'" in connection.sql
+    assert "c.section_title NOT LIKE '[DOCX FOOTER_PART %%'" in connection.sql
     assert connection.params[1:] == [
         "test",
         "test-model",

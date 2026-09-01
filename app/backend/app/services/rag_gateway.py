@@ -509,7 +509,7 @@ class InternalManualAgent:
         ))[:document_limit]
         # 자동 route probe와 실제 실행의 기본 후보 수를 같게 유지해, 승인 시점과
         # 답변 시점의 ANN 후보 집합이 달라지는 순위 변동을 막는다.
-        search_top_k = 10 if selected_ids else 8 if domains else 3
+        search_top_k = 10 if selected_ids else 8
         contextual_query = (
             resolved_question
             or (
@@ -779,7 +779,7 @@ class InternalManualAgent:
             "resolved_question": normalized,
             "domains": [],
             "intent": "REGULATION_CHECK",
-            "top_k": 3,
+            "top_k": 8,
             "recent_utterances": [],
             "selected_document_ids": [],
             "trace_id": trace_id,

@@ -28,6 +28,7 @@ NODE2 = {
     "NODE2_MODEL_ENDPOINT": "https://node2.model.invalid/openai",
     "NODE2_MODEL_API_TOKEN": "node2-token",
     "NODE2_MODEL": "node2-qwen35-2b-full3000-20260825",
+    "NODE2_MODEL_TIMEOUT_SECONDS": "75",
 }
 
 
@@ -92,6 +93,7 @@ def test_dedicated_node2_route_never_substitutes_primary_credentials() -> None:
         node2_model="node2-qwen35-2b-full3000-20260825",
         node2_provider="qwen",
         timeout_seconds=30.0,
+        node2_timeout_seconds=75.0,
     )
 
 

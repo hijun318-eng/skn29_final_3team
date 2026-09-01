@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 from typing import Any
 
 from app.adapters.async_model_client import AsyncProductionModelClient
@@ -58,7 +59,7 @@ class ContractModelAdapter:
         """
         if not endpoint or not token or not model:
             raise ValueError("OPENAI_ENDPOINT, OPENAI_API_KEY, and OPENAI_MODEL are required")
-        if timeout_seconds <= 0:
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("MODEL_TIMEOUT_SECONDS must be positive")
         return cls(
             AsyncProductionModelClient(
@@ -80,6 +81,7 @@ class ContractModelAdapter:
         node2_model: str,
         node2_provider: str,
         timeout_seconds: float = 60.0,
+        node2_timeout_seconds: float | None = None,
     ) -> ContractModelAdapter:
         """primary route와 Node2 전용 route를 분리한 adapter를 생성한다.
 
@@ -88,8 +90,18 @@ class ContractModelAdapter:
         """
         if node2_provider not in {"openai", "qwen"}:
             raise ValueError(f"unsupported NODE2_MODEL_PROVIDER: {node2_provider}")
-        if timeout_seconds <= 0:
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("MODEL_TIMEOUT_SECONDS must be positive")
+        effective_node2_timeout = (
+            timeout_seconds
+            if node2_timeout_seconds is None
+            else node2_timeout_seconds
+        )
+        if (
+            not math.isfinite(effective_node2_timeout)
+            or effective_node2_timeout <= 0
+        ):
+            raise ValueError("NODE2_MODEL_TIMEOUT_SECONDS must be positive")
         required = {
             "OPENAI_ENDPOINT": openai_endpoint,
             "OPENAI_API_KEY": openai_token,
@@ -118,7 +130,7 @@ class ContractModelAdapter:
                 model=node2_model,
                 provider=node2_provider,
             ),
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=effective_node2_timeout,
             max_attempts=3,
             model_name=node2_model,
         )

@@ -230,6 +230,67 @@ def test_available_metric_dimensions_are_not_grouped_without_user_selection() ->
     assert model_input["resolved_request"]["dimensions"] == []
 
 
+def test_node2_input_includes_only_governed_value_free_plan_filters() -> None:
+    contracts = _runtime_contracts()
+    fqn = "orbit.ops.event_fact"
+    contracts["schema_context"]["assets"][0]["columns"].append(
+        {
+            "name": "status",
+            "native_type": "varchar",
+            "nullable": False,
+            "role": "dimension",
+        }
+    )
+    contracts["filter_rules"] = [
+        {
+            "field": {"asset_fqn": fqn, "column": "status"},
+            "operator": "eq",
+            "parameter": "filter_status",
+        }
+    ]
+    contracts["parameter_contract"]["parameters"].append(
+        {"name": "filter_status", "type": "string", "scope": "filter"}
+    )
+    payload = _node2_payload()
+    payload["context_package"] = contracts
+    payload["structured_request"]["filter_fields"] = [
+        {
+            "asset_fqn": fqn,
+            "column": "status",
+            "operator": "eq",
+            "parameter": "filter_status",
+        }
+    ]
+
+    model_input = canonical_model_input("node2", payload)
+
+    assert model_input["resolved_request"]["filters"] == [
+        {
+            "field": {"asset_fqn": fqn, "column": "status"},
+            "operator": "eq",
+            "parameter": "filter_status",
+        }
+    ]
+    assert "filter_rules" not in model_input
+
+
+def test_node2_input_rejects_plan_filter_without_governed_parameter() -> None:
+    contracts = _runtime_contracts()
+    payload = _node2_payload()
+    payload["context_package"] = contracts
+    payload["structured_request"]["filter_fields"] = [
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "amount",
+            "operator": "eq",
+            "parameter": "unapproved_filter",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="differ from governed contracts"):
+        canonical_model_input("node2", payload)
+
+
 def test_node2_rejects_implicit_business_outputs() -> None:
     payload = _node2_payload()
     payload["structured_request"].pop("selected_metric_ids")

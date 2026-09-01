@@ -181,7 +181,7 @@ export function hydrateTurnsFromServer(serverTurns) {
 
       if (isOutOfScope) {
         run = scopeNoticeRun(userMessage, scopeRejection?.message);
-      } else if (ragResult) {
+      } else if (ragResult && !st.data_snapshot_json) {
         run = ragRun(userMessage, ragResult);
       } else if (mlPrediction && st.terminal_status === "SUCCEEDED") {
         run = mlPredictionRun(userMessage, mlPrediction);
@@ -293,6 +293,9 @@ export function hydrateTurnsFromServer(serverTurns) {
             contractVersion: OPENAPI_VERSION,
           },
         };
+        if (ragResult) {
+          run.rag = ragRun(userMessage, ragResult).rag;
+        }
         lastAnalysisRun = run;
       } else {
         run = commandErrorRun(userMessage, {
@@ -312,7 +315,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           ? (st.view_type || "TABLE")
           : isOutOfScope
             ? "CHAT"
-            : ragResult
+            : ragResult && !st.data_snapshot_json
               ? "RAG"
               : mlPrediction
                 ? "ML_PREDICTION"

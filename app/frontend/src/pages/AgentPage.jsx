@@ -402,6 +402,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         });
       } else if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
+        if (responseType === "COMPOSITE" && ragResponse) {
+          finalRun = {
+            ...finalRun,
+            rag: ragRun(normalized, ragResponse).rag,
+          };
+        }
       } else if (data?.status === "PARTIAL") {
         finalRun = commandErrorRun(
           normalized,
@@ -620,7 +626,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         <small>지원 범위 안내</small>
                         <p>{turnItem.run.scopeNotice.message}</p>
                       </div>
-                    ) : turnItem.run.rag ? (
+                    ) : turnItem.run.rag && !turnItem.run.evidence ? (
                       <>
                         <small className="agent-result-type">내부지침</small>
                         <RagAnswerCard
@@ -677,6 +683,18 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         setEvidenceOpen(true);
                       } : undefined}
                     />}
+                    {turnItem.run.rag && turnItem.run.evidence && (
+                      <section className="composite-rag-response" aria-label="내부 문서 근거">
+                        <small className="agent-result-type">내부 문서 근거</small>
+                        <RagAnswerCard
+                          rag={turnItem.run.rag}
+                          pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
+                            label: item.document_name || "근거 문서",
+                            url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
+                          }))}
+                        />
+                      </section>
+                    )}
                     {canDraftReport && turnItem.run.reportDefinitionId && (
                       <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                         <button

@@ -739,6 +739,42 @@ assert.equal(hydratedSuccess[1].run.summary, hydratedSuccess[0].run.summary);
 assert.equal(hydratedSuccess[1].isArtifactReuse, true);
 assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-table");
 
+const hydratedComposite = hydrateTurnsFromServer([{
+  turn_id: "turn-composite",
+  user_message: "7월과 8월 점유율을 분석하고 내부 보고서에서 원인을 찾아줘",
+  route: "ANALYSIS",
+  terminal_status: "SUCCEEDED",
+  request_id: "composite-request",
+  artifact_id: "composite-artifact",
+  narrative_markdown: "8월 점유율이 7월보다 낮습니다.",
+  data_snapshot_json: {
+    columns: ["period", "occupancy_rate"],
+    rows: [{ period: "2026-08", occupancy_rate: 0.6377 }],
+  },
+  chart_spec_json: { chart_type: "line", x_field: "period", y_fields: ["occupancy_rate"] },
+  evidence_json: {
+    artifact_id: "composite-artifact",
+    query_id: "composite-query",
+    metrics: [],
+    sources: [],
+  },
+  resolved_slots: {
+    rag: {
+      status: "ANSWER",
+      answer: { text: "내부 보고서에서 확인한 하락 원인입니다." },
+      evidence_bundle: [{ document_id: "REPORT-2026-08-ROOMS", document_name: "8월 객실 운영보고서" }],
+    },
+    supervisor_composition: {
+      agents: ["ANALYSIS_WORKFLOW", "INTERNAL_GUIDELINE"],
+    },
+  },
+}]);
+assert.equal(hydratedComposite[0].viewType, "SUMMARY");
+assert.equal(hydratedComposite[0].run.requestId, "composite-request");
+assert.equal(hydratedComposite[0].run.rag.answer_text, "내부 보고서에서 확인한 하락 원인입니다.");
+assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE" && ragResponse/);
+assert.match(source("pages/AgentPage.jsx"), /className="composite-rag-response"/);
+
 const mismatchedPresentation = hydrateTurnsFromServer([{
   turn_id: "turn-source",
   user_message: "원본 분석",

@@ -2810,7 +2810,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["turn"]["route"], "ANALYSIS")
         self.assertEqual(data["turn"]["user_message"], original_message)
         self.assertEqual(self.submitted_requests[-1].question, analysis_objective)
-        self.assertEqual(rag_queries, [(rag_objective, False)])
+        self.assertEqual(rag_queries, [(original_message, False)])
         self.assertEqual(len(generated), 1)
         self.assertEqual(persisted, [data["ml_prediction"]])
         self.assertEqual(

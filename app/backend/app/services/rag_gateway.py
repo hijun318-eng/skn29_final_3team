@@ -508,9 +508,19 @@ class InternalManualAgent:
             if document_id.strip()
         ))[:document_limit]
         search_top_k = 10 if selected_ids else 8 if domains else 5
-        contextual_query = (resolved_question or "\n".join(
-            [*(f"이전 질문: {utterance}" for utterance in recent), f"현재 질문: {normalized}"]
-        ))[-500:].strip()
+        contextual_query = (
+            resolved_question
+            or (
+                "\n".join(
+                    [
+                        *(f"이전 질문: {utterance}" for utterance in recent),
+                        f"현재 질문: {normalized}",
+                    ]
+                )
+                if recent
+                else normalized
+            )
+        )[-500:].strip()
         actor_hash = hashlib.sha256(str(actor_id).encode("utf-8")).hexdigest()
         try:
             search = await self._signed_post(
@@ -1481,9 +1491,14 @@ class InternalManualAgent:
             "",
             body,
         )
-        return re.sub(
+        body = re.sub(
             r"(?:^|\n)\s*자세한 내용은 PDF 원문 보기를 확인하세요\.?\s*(?=\n|$)",
             "\n",
+            body,
+        )
+        return re.sub(
+            r"\s*\[[A-Z0-9-]+:[^\]\n]+\]",
+            "",
             body,
         ).strip()
 

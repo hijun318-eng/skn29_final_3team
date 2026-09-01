@@ -187,7 +187,7 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
         "/v1/tools/internal-manual-search",
         "/v1/tools/internal-manual-answer",
     ]
-    assert calls[0][1]["resolved_question"] == "현재 질문: 객실 승인 절차"
+    assert calls[0][1]["resolved_question"] == "객실 승인 절차"
     assert calls[1][1]["query"] == calls[0][1]["resolved_question"]
     assert calls[1][1]["retrieval_request_id"] == retrieval_request_id
     assert calls[0][1]["trace_id"] == calls[1][1]["trace_id"] == trace_id
@@ -196,6 +196,60 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
         == calls[1][1]["actor_hash"]
         == expected_actor_hash
     )
+
+
+def test_gateway_adds_context_labels_only_when_previous_utterances_exist() -> None:
+    agent = object.__new__(InternalManualAgent)
+    calls: list[dict[str, object]] = []
+    trace_id = "trace-rag-follow-up"
+
+    async def signed_post(
+        path: str,
+        payload: dict[str, object],
+        _role: str,
+    ) -> dict[str, object]:
+        calls.append(payload)
+        if path.endswith("internal-manual-search"):
+            return {
+                "request_id": str(uuid4()),
+                "trace_id": trace_id,
+                "answer_query": payload["resolved_question"],
+                "retrieval_release": {
+                    "schema_version": "RagRetrievalRelease.v2",
+                    "release_id": str(uuid4()),
+                    "model_revision": "text-embedding-3-large:d1024",
+                    "embedding_dimension": 1024,
+                    "corpus_manifest_sha256": "b" * 64,
+                    "processing_profile_sha256": "c" * 64,
+                },
+                "no_evidence": True,
+                "results": [],
+                "processing_steps": ["DOCUMENT_SEARCHED"],
+            }
+        raise AssertionError("근거 없음 검색은 answer endpoint를 호출하지 않아야 합니다.")
+
+    agent._signed_post = signed_post  # type: ignore[method-assign]
+
+    asyncio.run(
+        agent._execute_runtime(
+            "원인을 찾아줘",
+            uuid4(),
+            "analyst",
+            trace_id,
+            recent_utterances=("2026년 7월과 8월 객실 점유율 분석",),
+        )
+    )
+
+    assert calls[0]["resolved_question"] == (
+        "이전 질문: 2026년 7월과 8월 객실 점유율 분석\n"
+        "현재 질문: 원인을 찾아줘"
+    )
+
+
+def test_gateway_removes_internal_evidence_ids_from_answer_body() -> None:
+    assert InternalManualAgent._answer_body(
+        "- 원인 설명 [REPORT-2026-08-ROOMS:2026-08:3:chunk-1]"
+    ) == "- 원인 설명"
 
 
 def _runtime_health() -> dict[str, object]:

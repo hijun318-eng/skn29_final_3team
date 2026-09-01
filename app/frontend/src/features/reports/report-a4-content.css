@@ -71,6 +71,111 @@
   background: #edf2f8;
 }
 
+.answer-report-page__block > .notion-block.is-block-preview {
+  padding-block-start: 3.2mm !important;
+}
+
+.answer-report-page .report-markdown-editor.is-preview {
+  position: relative;
+  min-block-size: 0;
+}
+
+.answer-report-page .notion-block-title--preview {
+  margin: 0 0 0.8mm;
+}
+
+.answer-report-page .report-markdown-preview-actions {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+}
+
+.answer-report-page .report-markdown-preview-actions button {
+  min-block-size: 6mm;
+  padding: 0 2.4mm;
+  color: #31557f;
+  border: 0.25mm solid #d5e1ef;
+  border-radius: 1.2mm;
+  background: #f7faff;
+  font-size: 7pt;
+}
+
+.answer-report-page .report-markdown-preview {
+  min-block-size: 0;
+  padding: 1mm 14mm 1mm 0;
+  overflow: visible;
+}
+
+.answer-report-page .report-resize-handles {
+  position: absolute;
+  z-index: 18;
+  inset: 0;
+  pointer-events: none;
+}
+
+.answer-report-page .report-resize-handles .report-resize-handle {
+  right: auto;
+  bottom: auto;
+  margin: 0;
+  pointer-events: auto;
+}
+
+.answer-report-page .report-resize-handles .report-resize-handle--n,
+.answer-report-page .report-resize-handles .report-resize-handle--s {
+  left: 50%;
+  width: 34px;
+  height: 10px;
+  border-radius: 999px;
+  cursor: ns-resize;
+  transform: translateX(-50%);
+}
+
+.answer-report-page .report-resize-handles .report-resize-handle--n { top: -6px; }
+.answer-report-page .report-resize-handles .report-resize-handle--s { bottom: -6px; }
+
+.answer-report-page .report-resize-handles .report-resize-handle--e,
+.answer-report-page .report-resize-handles .report-resize-handle--w {
+  top: 50%;
+  width: 10px;
+  height: 34px;
+  border-radius: 999px;
+  cursor: ew-resize;
+  transform: translateY(-50%);
+}
+
+.answer-report-page .report-resize-handles .report-resize-handle--e { right: -6px; }
+.answer-report-page .report-resize-handles .report-resize-handle--w { left: -6px; }
+
+.answer-report-page .report-resize-handles .report-resize-handle--ne,
+.answer-report-page .report-resize-handles .report-resize-handle--nw,
+.answer-report-page .report-resize-handles .report-resize-handle--se,
+.answer-report-page .report-resize-handles .report-resize-handle--sw {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.answer-report-page .report-resize-handles .report-resize-handle--ne { top: -7px; right: -7px; cursor: nesw-resize; }
+.answer-report-page .report-resize-handles .report-resize-handle--nw { top: -7px; left: -7px; cursor: nwse-resize; }
+.answer-report-page .report-resize-handles .report-resize-handle--se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.answer-report-page .report-resize-handles .report-resize-handle--sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+
+.answer-report-page .report-resize-status {
+  position: absolute;
+  z-index: 24;
+  left: 50%;
+  bottom: 8px;
+  padding: 4px 7px;
+  color: #fff;
+  border-radius: 4px;
+  background: rgba(15, 37, 64, 0.9);
+  font-size: 9px;
+  font-weight: 750;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
 .answer-report-page .notion-data-embed {
   min-block-size: 0;
   margin-block-start: 1.5mm;

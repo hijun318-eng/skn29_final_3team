@@ -74,6 +74,21 @@ try {
   assert.doesNotMatch(fiveSeries, /<em>%<\/em>/);
   assert.match(fiveSeries, /단위: %/);
 
+  const interactiveLegend = render({
+    ...base,
+    data: [{ month: "2026-01", revenue: 10, target: 12 }],
+    series: [
+      ...base.series,
+      { key: "target", label: "목표 매출", unit: "원" },
+    ],
+    type: "line",
+    interactiveLegend: true,
+  });
+  assert.match(interactiveLegend, /enterprise-chart-legend is-interactive/);
+  assert.equal((interactiveLegend.match(/aria-pressed="true"/g) || []).length, 2);
+  assert.match(interactiveLegend, /title="객실 매출 계열 숨기기"/);
+  assert.match(chartSource, /hide=\{hiddenSeries\.has\(item\.key\)\}/);
+
   const longCategory = "온라인 여행사와 공식 홈페이지 직접 예약 채널";
   const donut = render({
     ...base,

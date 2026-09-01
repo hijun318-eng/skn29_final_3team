@@ -438,6 +438,13 @@ class ConversationSlotResolver:
         # -------------------------------------------------------------
         is_followup = (
             cls._is_followup_question(node1_output)
+            # Node 1이 PRESENTATION으로 판정한 요청이 재집계를 요구하면 ANALYSIS로
+            # 승격된다. 이 전환 자체가 선행 결과를 수정하는 후속 의도이므로 모델의
+            # is_elliptical 누락만으로 확정된 지표·기간을 버리지 않는다.
+            or (
+                requested_route == "PRESENTATION"
+                and last_analysis is not None
+            )
             or bool(pending_range_slots)
             and not candidate_metric_ids
             and bool(node1_output.get("period_candidates"))

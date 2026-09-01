@@ -897,6 +897,53 @@ def test_presentation_signal_yields_to_explicit_monthly_reaggregation() -> None:
     assert slots.target_chart_type == "BAR"
 
 
+def test_presentation_reaggregation_inherits_multi_metric_context_when_elliptical_signal_is_missing() -> None:
+    """표현 요청이 재집계로 승격돼도 선행 다중 지표와 기간을 잃지 않는다."""
+
+    previous = _prior_analysis_turn()
+    previous["resolved_slots"].update(
+        {
+            "metric_id": None,
+            "metric_ids": ["room_revenue", "occupancy_rate"],
+            "analysis_operation": "aggregate",
+            "analysis_time_bucket": None,
+            "dimension_fields": [],
+            "user_filters": [],
+            "time_range": {
+                "start": "2026-03-01",
+                "end_exclusive": "2026-09-01",
+                "source_text": "2026년 3월부터 8월까지",
+            },
+        }
+    )
+
+    slots = ConversationSlotResolver.resolve(
+        user_message="표현 방식과 집계 단위를 바꾸는 후속 요청",
+        node1_output={
+            "requested_route": "PRESENTATION",
+            "presentation_type": "BAR",
+            "presentation_explicit": True,
+            "metric_resolution": "missing",
+            "is_elliptical": False,
+            "analysis_operation": "time_trend",
+            "analysis_time_bucket": "month",
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 9, 1),
+    )
+
+    assert slots.route == "ANALYSIS"
+    assert slots.metric_id is None
+    assert slots.metric_ids == ("room_revenue", "occupancy_rate")
+    assert slots.is_inherited_metric is True
+    assert slots.is_inherited_period is True
+    assert slots.time_range.start == date(2026, 3, 1)
+    assert slots.time_range.end_exclusive == date(2026, 9, 1)
+    assert slots.analysis_operation == "time_trend"
+    assert slots.analysis_time_bucket == "month"
+    assert slots.target_chart_type == "BAR"
+
+
 def test_presentation_type_outside_allowlist_is_rejected():
     """허용 목록 밖 표현 타입은 채택하지 않고 순환 기본값으로 닫는지 검증."""
     slots = ConversationSlotResolver.resolve(

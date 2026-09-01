@@ -132,7 +132,8 @@ class FakeAnalysisRepository:
         self.definition.update(title=title)
         return self.definition
 
-    async def list_definitions(self):
+    async def list_definitions(self, *, product_release_id, semantic_release_id):
+        self.list_definition_release = (product_release_id, semantic_release_id)
         return [self.definition]
 
     async def get_definition(self, definition_id, *, replay=False):
@@ -278,6 +279,11 @@ async def test_definition_routes_are_owner_scoped_repository_calls_without_value
     with (
         patch.object(analysis_api, "_analysis_repository", return_value=repository),
         patch.object(analysis_api, "_controller", return_value=replay_controller()),
+        patch.object(
+            analysis_api,
+            "_active_product_release_receipt",
+            return_value=("product-release-current", "semantic-release-current"),
+        ),
     ):
         created = await analysis_api.create_analysis_definition(request, context(owner))
         listed = (await analysis_api.list_analysis_definitions(context(owner)))["items"]
@@ -287,6 +293,10 @@ async def test_definition_routes_are_owner_scoped_repository_calls_without_value
 
     assert created["definition_id"] == repository.definition_id
     assert listed == [created]
+    assert repository.list_definition_release == (
+        "product-release-current",
+        "semantic-release-current",
+    )
     assert fetched == created
     assert "parameters" not in created
     assert created["question"]
@@ -387,6 +397,46 @@ async def test_repository_run_list_filters_approved_artifacts_before_lateral_lim
     assert session.parameters["limit"] == 7
     assert session.parameters["approved_only"] is True
     assert session.parameters["archived"] is False
+
+
+@async_test
+async def test_saved_definition_list_requires_current_release_receipt():
+    class Result:
+        def mappings(self):
+            return []
+
+    class Session:
+        statement = ""
+        parameters = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def execute(self, statement, parameters):
+            self.statement = str(statement)
+            self.parameters = parameters
+            return Result()
+
+    session = Session()
+    repository = PostgresAnalysisRepository(
+        "postgresql+psycopg://unused",
+        uuid4(),
+        session_factory=lambda: session,
+    )
+
+    assert await repository.list_definitions(
+        product_release_id="product-release-current",
+        semantic_release_id="semantic-release-current",
+    ) == []
+
+    assert "approved_semantic_request_snapshots" in session.statement
+    assert "snapshot.product_release_id = :product_release_id" in session.statement
+    assert "snapshot.semantic_release_id = :semantic_release_id" in session.statement
+    assert session.parameters["product_release_id"] == "product-release-current"
+    assert session.parameters["semantic_release_id"] == "semantic-release-current"
 
 
 @async_test

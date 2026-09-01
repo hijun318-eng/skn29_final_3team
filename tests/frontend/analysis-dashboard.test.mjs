@@ -22,9 +22,10 @@ const server = await createServer({
 
 try {
   const { commandClarificationMessage, commandClarificationType, savedRunStatus } = await server.ssrLoadModule("/src/pages/agentPageHelpers.js");
+  const { AgentCapabilityOverview, AgentExecutionBar, agentKindsForRun } = await server.ssrLoadModule("/src/components/agent/AgentIdentity.jsx");
+  const { attachAgentResults, mlPredictionRun, ragRun } = await server.ssrLoadModule("/src/pages/agentResponseMappers.js");
   const { AnalysisStatePanel, analysisResultDensity } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
-  const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
   const { normalizeApiResponse } = await server.ssrLoadModule("/src/contracts/analysis.ts");
   const run = normalizeApiResponse(response, "7월 PLATINUM 장기 투숙 우수 고객 객실 유형별 매출을 분석해줘");
   const html = renderToStaticMarkup(createElement(AnalysisStatePanel, { run }));
@@ -39,13 +40,14 @@ try {
   assert.match(html, /AI 분석 요약/);
   assert.match(html, /analysis-summary-heading/);
   assert.doesNotMatch(html, /근거 검증 완료|analysis-summary-verified/);
-  assert.match(html, /분석 결과/);
+  assert.doesNotMatch(html, />분석 결과</);
   assert.match(html, /analysis-summary-answer/);
-  assert.match(html, /핵심 답변/);
+  assert.doesNotMatch(html, /핵심 답변/);
   assert.match(html, /수치 근거/);
   assert.match(html, />핵심 지표</);
   assert.doesNotMatch(html, /주요 KPI|개 승인 지표/);
   assert.doesNotMatch(html, /상세 데이터 표/);
+  assert.doesNotMatch(html, /취소·무료 제공을 제외한 객실 매출/);
   assert.doesNotMatch(html, /aria-label="차트 표현 방식"/);
   assert.equal(analysisResultDensity({ ...run, metrics: run.metrics.slice(0, 1) }, "SUMMARY"), "compact");
   assert.equal(analysisResultDensity({ ...run, metrics: run.metrics.slice(0, 3) }, "SUMMARY"), "regular");
@@ -77,6 +79,26 @@ try {
   assert.match(localizedSummaryHtml, /analysis-state--compact-width/);
   assert.match(localizedSummaryHtml, /데이터 기준 <\/time>|데이터 기준 2026\./);
   assert.doesNotMatch(localizedSummaryHtml, /Room Revenue|KRW|ADR|RevPAR/);
+
+  const singleMetricTrendHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: {
+      ...run,
+      metrics: [run.metrics[0]],
+      chart: { chartType: "line", xField: "period", yFields: ["room_revenue"] },
+      table: {
+        columns: ["period", "room_revenue"],
+        rows: [
+          { period: "2026-05-01", room_revenue: 5200000000 },
+          { period: "2026-06-01", room_revenue: 5480000000 },
+          { period: "2026-07-01", room_revenue: 5842000000 },
+        ],
+      },
+    },
+  }));
+  assert.match(singleMetricTrendHtml, /analysis-kpi-section is-single-metric/);
+  assert.match(singleMetricTrendHtml, /analysis-metric-card--total is-hero-metric has-sparkline/);
+  assert.match(singleMetricTrendHtml, /class="analysis-kpi-sparkline" role="img" aria-label="객실 매출 최근 3개 시점 추이"/);
+  assert.match(singleMetricTrendHtml, /<polyline points=/);
 
   const twoTurnHtml = renderToStaticMarkup(createElement("div", null,
     createElement(AnalysisStatePanel, { run }),
@@ -131,6 +153,7 @@ try {
     processViewModel: processViewModels.analysisActive,
   }));
   assert.match(runningPanelHtml, /data-process-status="running"/);
+  assert.match(runningPanelHtml, /analysis-state--regular-width/);
   assert.match(runningPanelHtml, /승인된 범위에서 분석하고 있습니다/);
 
   assert.match(html, /analysis-section-meta/);
@@ -201,22 +224,50 @@ try {
   assert.match(commandClarificationMessage({}, "metric"), /분석할 지표/);
   assert.equal(savedRunStatus("CLARIFYING"), "입력 필요");
 
-  const ragCatalogHtml = renderToStaticMarkup(createElement(RagEmptyState, {
-    documents: [{
-      manual_id: "manual-approved",
-      title: "승인 운영 매뉴얼",
-      version: "v3",
-      document_type: "OPERATIONS_MANUAL",
-      owner_team: "운영팀",
-    }],
+  const capabilityHtml = renderToStaticMarkup(createElement(AgentCapabilityOverview, {
+    ragEnabled: true,
+    mlEnabled: true,
   }));
-  assert.match(ragCatalogHtml, /승인 운영 매뉴얼/);
-  assert.match(ragCatalogHtml, /운영 매뉴얼 · v3 · 운영팀/);
-  assert.doesNotMatch(ragCatalogHtml, /OPERATIONS_MANUAL|undefined/);
-  assert.doesNotMatch(ragCatalogHtml, /추천 질문|환불 기준|안전사고 발생 시/);
-  assert.match(agentSource, /ragAvailable &&/);
+  assert.match(capabilityHtml, /분석 Agent/);
+  assert.match(capabilityHtml, /RAG Agent/);
+  assert.match(capabilityHtml, /ML Agent/);
+  assert.match(capabilityHtml, /HGBR 예측 Tool/);
+
+  const ragResult = {
+    status: "ANSWER",
+    answer: { text: "승인 문서 답변" },
+    evidence_bundle: [],
+    citations: [],
+  };
+  const mlResult = {
+    execution_id: "ml-run-1",
+    property_id: "GRAND",
+    as_of: "2026-09-01",
+    daily_forecasts: [{ target_date: "2026-09-02" }],
+  };
+  const compositeRun = attachAgentResults(run, "복합 요청", {
+    ragResult,
+    mlPrediction: mlResult,
+  });
+  assert.deepEqual(agentKindsForRun(compositeRun), ["ANALYSIS", "RAG", "ML"]);
+  assert.equal(compositeRun.rag.answer_text, "승인 문서 답변");
+  assert.equal(compositeRun.mlPrediction, mlResult);
+  const executionHtml = renderToStaticMarkup(createElement(AgentExecutionBar, { run: compositeRun }));
+  assert.match(executionHtml, /전문 Agent 협업/);
+  assert.match(executionHtml, /분석 Agent · RAG Agent · ML Agent/);
+  assert.match(executionHtml, /3개 Agent/);
+  assert.deepEqual(agentKindsForRun(ragRun("질문", ragResult)), ["RAG"]);
+  assert.deepEqual(agentKindsForRun(mlPredictionRun("질문", mlResult)), ["ML"]);
+
+  assert.doesNotMatch(agentSource, /내부 업무지침 찾아보기|rag-documents|RagEmptyState/);
   assert.match(agentSource, /enabledFeatures\.includes\(SERVICE_FEATURE\.mlPrediction\)/);
-  assert.match(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
+  assert.doesNotMatch(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
+  assert.doesNotMatch(agentSource, /import MLPredictionWorkspace/);
+  assert.match(agentSource, /AgentCapabilityOverview/);
+  assert.match(agentSource, /AgentExecutionBar/);
+  assert.match(agentSource, /attachAgentResults/);
+  assert.doesNotMatch(agentSource, /추천 질문|저장 분석 바로 실행|exampleQuestions/);
+  assert.match(agentSource, /이 저장 분석은 현재 데이터 릴리스와 맞지 않아 재실행할 수 없습니다/);
 
   // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));
@@ -398,7 +449,7 @@ try {
   assert.match(stylesSource, /\.analysis-data-section\.is-compact-result \.analysis-table\{overflow-x:auto/);
   assert.match(stylesSource, /\.analysis-data-section\.is-single-value-result \.analysis-table\{overflow-x:hidden/);
   assert.match(stylesSource, /\.analysis-data-section\.is-wide-result \.analysis-table table\{width:100%;min-width:var\(--analysis-table-min-width,760px\)/);
-  assert.match(stylesSource, /\.analysis-summary-heading small,[^\n]*\.analysis-result-section \.analysis-table thead th,[^\n]*\{font-size:12px\}/);
+  assert.match(stylesSource, /\.analysis-kpi-section header small,[^\n]*\.analysis-result-section \.analysis-table thead th,[^\n]*\{font-size:12px\}/);
   assert.match(stylesSource, /\.theme-light \.analysis-state\{--av-ink-3:#5f7085\}/);
   assert.match(stylesSource, /\.analysis-state button:focus-visible/);
   assert.match(stylesSource, /\.analysis-state\{[^}]*--av-paper:#0f1825[^}]*--av-ink:#e8edf5[^}]*--av-chart-grid:#223149/);

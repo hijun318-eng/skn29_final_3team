@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from src.rag.answer_prompt import build_answer_prompt
+from src.rag.answer_safety import AnswerSafetySettings
 from src.rag.local_answer_service import EvidenceBoundAnswerComposer
 
 
@@ -133,6 +134,97 @@ class EvidenceBoundAnswerComposerTest(unittest.TestCase):
         self.assertIn("일정 변경 | 53.95%", answer["answer"])
         for marker in ("[DOCX", "[PARAGRAPH", "[TABLE", "[/TABLE]", "[r1c1"):
             self.assertNotIn(marker, answer["answer"])
+
+    def test_internal_report_hides_section_boundary_and_limits_total_points(self) -> None:
+        composer = EvidenceBoundAnswerComposer(
+            AnswerSafetySettings(maximum_points_per_article=3)
+        )
+        answer = composer.compose(build_answer_prompt(
+            "객실 취소 현황과 후속 조치를 알려줘",
+            [
+                {
+                    "evidence_id": "EV-REPORT-A",
+                    "manual_id": "REPORT-ROOMS",
+                    "title": "객실 운영 보고서",
+                    "version": "2026-08",
+                    "document_type": "INTERNAL_REPORT",
+                    "owner_team": "ROOMS",
+                    "section_title": "취소 현황",
+                    "score": 0.91,
+                    "document_status": "APPROVED",
+                    "approval_status": "APPROVED",
+                    "validity_status": "VALID",
+                    "citation": "[객실 운영 보고서 취소 현황]",
+                    "content": (
+                        "[PARAGRAPH] 전체 취소율은 17.59%입니다.\n"
+                        "[PARAGRAPH] 일정 변경 비중은 53.95%입니다.\n"
+                        "[SECTION_BOUNDARY index=1 type=nextPage]\n"
+                    ),
+                },
+                {
+                    "evidence_id": "EV-REPORT-B",
+                    "manual_id": "REPORT-ROOMS",
+                    "title": "객실 운영 보고서",
+                    "version": "2026-08",
+                    "document_type": "INTERNAL_REPORT",
+                    "owner_team": "ROOMS",
+                    "section_title": "후속 조치",
+                    "score": 0.88,
+                    "document_status": "APPROVED",
+                    "approval_status": "APPROVED",
+                    "validity_status": "VALID",
+                    "citation": "[객실 운영 보고서 후속 조치]",
+                    "content": (
+                        "[PARAGRAPH] 일정 변경 상품을 우선 제안합니다.\n"
+                        "[PARAGRAPH] 취소율을 주간 단위로 관리합니다.\n"
+                    ),
+                },
+            ],
+            "SUMMARY",
+        ))
+
+        claims = [
+            claim
+            for section in answer["sections"]
+            for claim in section["claims"]
+        ]
+        self.assertEqual(len(claims), 3)
+        self.assertNotIn("SECTION_BOUNDARY", answer["answer"])
+
+    def test_internal_report_keeps_retrieval_rank_over_incidental_word_hits(self) -> None:
+        def report(
+            evidence_id: str,
+            month: str,
+            score: float,
+            content: str,
+        ) -> dict[str, object]:
+            return {
+                "evidence_id": evidence_id,
+                "manual_id": f"REPORT-2026-{month}-ROOMS",
+                "title": f"2026년 {int(month)}월 객실 운영보고서",
+                "version": f"2026-{month}",
+                "document_type": "INTERNAL_REPORT",
+                "owner_team": "ROOMS",
+                "section_title": "객실 점유율 변동 원인",
+                "score": score,
+                "document_status": "WORKING_KNOWLEDGE",
+                "approval_status": "APPROVED",
+                "validity_status": "VALID",
+                "citation": f"[2026년 {int(month)}월 객실 운영보고서]",
+                "content": content,
+            }
+
+        answer = EvidenceBoundAnswerComposer().compose(build_answer_prompt(
+            "2026년 7월과 8월 객실 점유율 하락 원인을 알려줘",
+            [
+                report("EV-AUGUST", "08", 0.91, "8월 점유율 하락 원인은 단체 수요 감소다."),
+                report("EV-JULY", "07", 0.82, "7월과 8월 객실 점유율 하락 원인 비교 자료다."),
+            ],
+            "SUMMARY",
+        ))
+
+        self.assertEqual(answer["status"], "ANSWER")
+        self.assertEqual(answer["citations"][0]["evidence_id"], "EV-AUGUST")
 
 
 if __name__ == "__main__":

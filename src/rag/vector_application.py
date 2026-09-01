@@ -55,16 +55,33 @@ class VectorRagApplication:
     def _answer_evidence_from_result(result: object) -> dict[str, str]:
         """서버 소유 검색 결과 하나를 서명 대상 답변 evidence 계약으로 투영한다."""
 
+        def value(name: str) -> str:
+            raw = getattr(result, name, None)
+            return "" if raw is None else str(raw)
+
         return {
-            "evidence_id": str(getattr(result, "evidence_id")),
-            "text": str(getattr(result, "content")),
-            "title": str(getattr(result, "title")),
-            "manual_id": str(getattr(result, "manual_id")),
-            "version": str(getattr(result, "version")),
-            "document_type": str(getattr(result, "document_type")),
-            "owner_team": str(getattr(result, "owner_team")),
-            "section_title": str(getattr(result, "section_title")),
-            "citation": str(getattr(result, "citation")),
+            "evidence_id": value("evidence_id"),
+            "text": value("content"),
+            "document_id": value("manual_id"),
+            "title": value("title"),
+            "manual_id": value("manual_id"),
+            "version": value("version"),
+            "document_type": value("document_type"),
+            "owner_team": value("owner_team"),
+            "section_title": value("section_title"),
+            "article_number": "",
+            "page_start": value("page_start"),
+            "chunk_id": value("chunk_id"),
+            "chunk_index": value("chunk_index"),
+            "score": value("score"),
+            "vector_score": value("vector_score"),
+            "lexical_score": value("lexical_score"),
+            "document_status": value("document_status"),
+            "approval_status": value("approval_status"),
+            "validity_status": value("validity_status"),
+            "effective_from": value("effective_from"),
+            "effective_to": value("expires_at"),
+            "citation": value("citation"),
         }
 
     @staticmethod
@@ -72,14 +89,27 @@ class VectorRagApplication:
         evidence_blocks: list[dict],
     ) -> list[dict[str, str]]:
         fields = {
+            "approval_status",
+            "article_number",
+            "chunk_id",
+            "chunk_index",
+            "document_id",
+            "document_status",
+            "effective_from",
+            "effective_to",
             "evidence_id",
-            "text",
-            "title",
+            "lexical_score",
             "manual_id",
-            "version",
             "document_type",
             "owner_team",
+            "page_start",
+            "score",
             "section_title",
+            "text",
+            "title",
+            "validity_status",
+            "vector_score",
+            "version",
             "citation",
         }
         if (
@@ -356,6 +386,30 @@ class VectorRagApplication:
             retrieval_mode=retrieval_mode,
             maximum_chunks_per_document=effective_maximum_chunks
         )
+        report_periods = ContextualQueryBuilder.report_periods(effective_query)
+        if results and report_periods and not selected_ids:
+            target_period = max(report_periods)
+            period_candidates = [
+                item
+                for item in results
+                if item.document_type == "INTERNAL_REPORT"
+                and item.version == target_period
+            ]
+            if period_candidates:
+                target_document = max(
+                    period_candidates,
+                    key=lambda item: (item.score, item.vector_score, item.lexical_score),
+                )
+                focused_results = self._retrieval.retrieve(
+                    effective_query,
+                    vector,
+                    decision,
+                    (target_document.manual_id,),
+                    retrieval_mode=retrieval_mode,
+                    maximum_chunks_per_document=min(decision.top_k, 10),
+                )
+                if focused_results:
+                    results = focused_results
         if results:
             answer_type = {
                 "PROCESS": "PROCEDURE",

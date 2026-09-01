@@ -259,21 +259,25 @@ class EvidenceBoundAnswerComposer:
         self,
         sections: tuple[ReportSection, ...],
     ) -> tuple[tuple[ReportSection, ...], bool]:
+        """질문 관련성이 높은 보고서 근거를 전체 답변 한도 안에서 선별한다."""
+
         limited: list[ReportSection] = []
         truncated = False
         remaining_chars = self._settings.maximum_answer_chars
+        remaining_points = self._settings.maximum_points_per_article
         for section in sections:
             claims: list[ManualClaim] = []
-            for claim in section.claims[: self._settings.maximum_points_per_article]:
+            for claim in section.claims[:remaining_points]:
                 if len(claim.text) > remaining_chars:
                     truncated = True
                     break
                 claims.append(claim)
                 remaining_chars -= len(claim.text)
+                remaining_points -= 1
             truncated = truncated or len(claims) < len(section.claims)
             if claims:
                 limited.append(ReportSection(section.title, tuple(claims)))
-            if remaining_chars <= 0:
+            if remaining_chars <= 0 or remaining_points <= 0:
                 break
         truncated = truncated or len(limited) < len(sections)
         return tuple(limited), truncated

@@ -42,6 +42,37 @@ PROCESSING_SHA256 = "e" * 64
 EXPECTED_DOCUMENTS = {"MANUAL-ONE": "b" * 64}
 
 
+def _answer_receipt_evidence() -> list[dict[str, str]]:
+    """현재 검색·답변 receipt 계약을 사용하는 단일 근거 fixture를 반환한다."""
+
+    return [
+        {
+            "approval_status": "APPROVED",
+            "article_number": "",
+            "chunk_id": "chunk-1",
+            "chunk_index": "0",
+            "document_id": "MANUAL-ONE",
+            "document_status": "WORKING_KNOWLEDGE",
+            "effective_from": "",
+            "effective_to": "",
+            "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
+            "lexical_score": "0.5",
+            "text": "Approved manual content",
+            "title": "Manual one",
+            "manual_id": "MANUAL-ONE",
+            "version": "1.0",
+            "document_type": "MANUAL",
+            "owner_team": "UNASSIGNED",
+            "page_start": "1",
+            "score": "0.8",
+            "section_title": "Section",
+            "validity_status": "VALID",
+            "vector_score": "0.8",
+            "citation": "[Manual one v1.0 p.1 Section]",
+        }
+    ]
+
+
 class _Result:
     def __init__(
         self,
@@ -1650,19 +1681,7 @@ def test_legacy_document_replacement_and_success_receipts_are_not_exposed() -> N
 def test_search_audit_commits_release_bound_evidence_receipt_atomically() -> None:
     release_id = uuid4()
     request_id = uuid4()
-    evidence = [
-        {
-            "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
-            "text": "Approved manual content",
-            "title": "Manual one",
-            "manual_id": "MANUAL-ONE",
-            "version": "1.0",
-            "document_type": "MANUAL",
-            "owner_team": "UNASSIGNED",
-            "section_title": "Section",
-            "citation": "[Manual one v1.0 p.1 Section]",
-        }
-    ]
+    evidence = _answer_receipt_evidence()
     connection = _Connection(
         [
             _Result(rowcount=0),
@@ -1717,19 +1736,7 @@ def test_search_audit_commits_release_bound_evidence_receipt_atomically() -> Non
 
 def test_answer_uses_only_exact_current_release_receipt_evidence() -> None:
     request_id = uuid4()
-    evidence = [
-        {
-            "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
-            "text": "Approved manual content",
-            "title": "Manual one",
-            "manual_id": "MANUAL-ONE",
-            "version": "1.0",
-            "document_type": "MANUAL",
-            "owner_team": "UNASSIGNED",
-            "section_title": "Section",
-            "citation": "[Manual one v1.0 p.1 Section]",
-        }
-    ]
+    evidence = _answer_receipt_evidence()
     canonical = json.dumps(
         evidence,
         ensure_ascii=False,
@@ -1905,19 +1912,7 @@ def test_answer_rejects_retired_or_mismatched_retrieval_receipt() -> None:
 
 def test_answer_rejects_evidence_that_no_longer_joins_to_authorized_rows() -> None:
     request_id = uuid4()
-    evidence = [
-        {
-            "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
-            "text": "Approved manual content",
-            "title": "Manual one",
-            "manual_id": "MANUAL-ONE",
-            "version": "1.0",
-            "document_type": "MANUAL",
-            "owner_team": "UNASSIGNED",
-            "section_title": "Section",
-            "citation": "[Manual one v1.0 p.1 Section]",
-        }
-    ]
+    evidence = _answer_receipt_evidence()
     canonical = json.dumps(
         evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
@@ -1968,19 +1963,7 @@ def test_answer_rejects_evidence_that_no_longer_joins_to_authorized_rows() -> No
 
 def test_answer_receipt_is_consumed_once_with_compare_and_set() -> None:
     request_id = uuid4()
-    evidence = [
-        {
-            "evidence_id": "MANUAL-ONE:1.0:1:chunk-1",
-            "text": "Approved manual content",
-            "title": "Manual one",
-            "manual_id": "MANUAL-ONE",
-            "version": "1.0",
-            "document_type": "MANUAL",
-            "owner_team": "UNASSIGNED",
-            "section_title": "Section",
-            "citation": "[Manual one v1.0 p.1 Section]",
-        }
-    ]
+    evidence = _answer_receipt_evidence()
     canonical = json.dumps(
         evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )

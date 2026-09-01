@@ -4,16 +4,16 @@ import { AlertTriangle, CheckCircle2, FilePlus2, Info, MessageSquareText, Plus, 
 import { AnalysisApiError, createAnalysisClient, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
+import { AgentCapabilityOverview, AgentExecutionBar } from "../components/agent/AgentIdentity";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
-import RagEmptyState from "../components/rag/RagEmptyState";
-import MLPredictionWorkspace, { MLPredictionResult } from "../components/ml/MLPredictionWorkspace";
+import { MLPredictionResult } from "../components/ml/MLPredictionWorkspace";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { mlPredictionRun, ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
@@ -27,8 +27,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [inputError, setInputError] = useState("");
   const [conversationId, setConversationId] = useState(() => window.sessionStorage.getItem(CONVERSATION_KEY) || "");
   const [turns, setTurns] = useState([]);
-  const [emptyMode, setEmptyMode] = useState("analysis");
-  const [ragCatalog, setRagCatalog] = useState({ status: "idle", documents: [], error: "" });
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
@@ -60,7 +58,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     return definitions.filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
   }, [definitionQuery, definitions]);
 
-  const exampleQuestions = useMemo(() => exampleQuestionsFromDefinitions(definitions), [definitions]);
   const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
   const latestArtifactTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
@@ -68,10 +65,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   );
   const internalGuidelineEnabled = enabledFeatures.includes(SERVICE_FEATURE.internalGuideline);
   const mlPredictionEnabled = enabledFeatures.includes(SERVICE_FEATURE.mlPrediction);
-  const ragAvailable = internalGuidelineEnabled
-    && ragCatalog.status === "ready"
-    && ragCatalog.documents.length > 0;
-
+  const availableChatCapabilities = useMemo(() => [
+    "호텔 운영 데이터 분석",
+    internalGuidelineEnabled ? "승인된 내부 업무지침 확인" : null,
+    mlPredictionEnabled ? "객실 수요 예측" : null,
+    canDraftReport ? "분석 결과의 보고서 작업" : null,
+  ].filter(Boolean), [canDraftReport, internalGuidelineEnabled, mlPredictionEnabled]);
   const refreshSaved = async () => {
     const nextDefs = await analysisClient.listDefinitions();
     setDefinitions(nextDefs);
@@ -97,29 +96,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         });
     }
   }, []);
-
-  useEffect(() => {
-    if (!internalGuidelineEnabled) {
-      setRagCatalog({ status: "idle", documents: [], error: "" });
-      return undefined;
-    }
-    let active = true;
-    setRagCatalog({ status: "loading", documents: [], error: "" });
-    analysisClient.listInternalManuals()
-      .then((documents) => {
-        if (active) setRagCatalog({ status: "ready", documents, error: "" });
-      })
-      .catch((error) => {
-        if (active) {
-          setRagCatalog({
-            status: "error",
-            documents: [],
-            error: error instanceof Error ? error.message : "내부 문서 목록을 불러오지 못했습니다.",
-          });
-        }
-    });
-    return () => { active = false; };
-  }, [analysisClient, internalGuidelineEnabled]);
 
   const handleCancelAnalysis = async (turnId) => {
     const cancelledTraceId = activeTraceId.current;
@@ -185,7 +161,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     setConversationId("");
     window.sessionStorage.removeItem(CONVERSATION_KEY);
     setTurns([]);
-    setEmptyMode("analysis");
     setEvidenceOpen(false);
     setSelectedEvidenceRun(null);
     setReportModal("");
@@ -397,6 +372,20 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         });
       } else if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
+        if (responseType === "COMPOSITE") {
+          finalRun = attachAgentResults(finalRun, normalized, {
+            ragResult: ragResponse,
+            mlPrediction,
+          });
+        }
+      } else if (responseType === "COMPOSITE" && (ragResponse || mlPrediction)) {
+        const primaryRun = ragResponse
+          ? ragRun(normalized, ragResponse)
+          : mlPredictionRun(normalized, mlPrediction);
+        finalRun = attachAgentResults(primaryRun, normalized, {
+          ragResult: ragResponse,
+          mlPrediction,
+        });
       } else if (data?.status === "PARTIAL") {
         finalRun = commandErrorRun(
           normalized,
@@ -471,8 +460,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const submitQuestion = (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const action = emptyMode === "rag-documents" ? { requested_route: "INTERNAL_GUIDELINE" } : null;
-    void analyzeQuestion(String(form.get("question") || question).trim(), action);
+    void analyzeQuestion(String(form.get("question") || question).trim());
   };
 
   const saveAnalysis = async (targetRun) => {
@@ -513,7 +501,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       setFeedback({ tone: "success", message: "저장 분석을 새 실행으로 완료했습니다." });
       await refreshSaved();
     } catch (error) {
-      setFeedback({ tone: "error", message: error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다." });
+      setFeedback({
+        tone: "error",
+        message: error instanceof AnalysisApiError && error.status === 409
+          ? "이 저장 분석은 현재 데이터 릴리스와 맞지 않아 재실행할 수 없습니다. 같은 조건을 새 질문으로 분석해 주세요."
+          : error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다.",
+      });
     } finally {
       requestInFlight.current = false;
       setSavedBusy(false);
@@ -568,32 +561,15 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       <main className="chat-main" inert={Boolean(reportModal)}>
         <div className="chat-scroll-region">
         {turns.length === 0 && !submitting && (
-          emptyMode === "rag-documents" ? (
-            <RagEmptyState
-              documents={ragCatalog.documents}
-              loading={ragCatalog.status === "loading"}
-              error={ragCatalog.error}
-              onBack={() => setEmptyMode("analysis")}
+          <section className="chat-empty-state" aria-labelledby="chat-empty-title">
+            <small>ANSWERVICE AI</small>
+            <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
+            <p>{availableChatCapabilities.join(", ")}을 한 대화에서 이어서 요청할 수 있습니다.</p>
+            <AgentCapabilityOverview
+              ragEnabled={internalGuidelineEnabled}
+              mlEnabled={mlPredictionEnabled}
             />
-          ) : (
-            <section className="chat-empty-state" aria-labelledby="chat-empty-title">
-              <small>ANSWERVICE AI</small>
-              <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
-              <p>{ragAvailable
-                ? "호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."
-                : "호텔 운영 데이터 분석과 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."}</p>
-              {exampleQuestions.length > 0 && (
-                <div aria-label="추천 질문">
-                  {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
-                </div>
-              )}
-              {ragAvailable && (
-                <div className="chat-support-links" aria-label="도움말">
-                  <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부 업무지침 찾아보기</button>
-                </div>
-              )}
-            </section>
-          )
+          </section>
         )}
 
         {turns.length > 0 && (
@@ -612,19 +588,21 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                 <div className="message message--agent" aria-label="AI 응답">
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
+                    {!turnItem.run.scopeNotice && !(turnItem.run.chatPending && !turnItem.processViewModel) && (
+                      <AgentExecutionBar run={turnItem.run} />
+                    )}
                     {turnItem.run.scopeNotice ? (
                       <div className="scope-notice-response" role="status">
                         <small>지원 범위 안내</small>
                         <p>{turnItem.run.scopeNotice.message}</p>
                       </div>
-                    ) : turnItem.run.rag ? (
+                    ) : turnItem.run.rag && !turnItem.run.evidence ? (
                       <>
-                        <small className="agent-result-type">내부지침</small>
                         <RagAnswerCard
                           rag={turnItem.run.rag}
                           pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
                             label: item.document_name || "근거 문서",
-                            url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
+                            url: item.document_id ? analysisClient.manualSourceUrl(item.document_id) : "",
                           }))}
                           onFollowUp={turnItem.turnId === turns.at(-1)?.turnId
                             ? (followUp) => void analyzeQuestion(followUp, {
@@ -633,10 +611,17 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                               })
                             : undefined}
                         />
+                        {turnItem.run.mlPrediction && (
+                          <section className="composite-agent-result" aria-label="객실 수요 예측">
+                            <small className="agent-result-type">객실 수요 예측</small>
+                            <div className="ml-conversation-result">
+                              <MLPredictionResult result={turnItem.run.mlPrediction} />
+                            </div>
+                          </section>
+                        )}
                       </>
-                    ) : turnItem.run.mlPrediction ? (
+                    ) : turnItem.run.mlPrediction && !turnItem.run.evidence ? (
                       <>
-                        <small className="agent-result-type">객실 수요 예측</small>
                         <div className="ml-conversation-result">
                           <MLPredictionResult result={turnItem.run.mlPrediction} />
                         </div>
@@ -674,6 +659,26 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         setEvidenceOpen(true);
                       } : undefined}
                     />}
+                    {turnItem.run.rag && turnItem.run.evidence && (
+                      <section className="composite-agent-result" aria-label="내부 문서 근거">
+                        <small className="agent-result-type">내부 문서 근거</small>
+                        <RagAnswerCard
+                          rag={turnItem.run.rag}
+                          pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
+                            label: item.document_name || "근거 문서",
+                            url: item.document_id ? analysisClient.manualSourceUrl(item.document_id) : "",
+                          }))}
+                        />
+                      </section>
+                    )}
+                    {turnItem.run.mlPrediction && turnItem.run.evidence && (
+                      <section className="composite-agent-result" aria-label="객실 수요 예측">
+                        <small className="agent-result-type">객실 수요 예측</small>
+                        <div className="ml-conversation-result">
+                          <MLPredictionResult result={turnItem.run.mlPrediction} />
+                        </div>
+                      </section>
+                    )}
                     {canDraftReport && turnItem.run.reportDefinitionId && (
                       <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                         <button
@@ -711,7 +716,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
               value={question}
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder={emptyMode === "rag-documents" ? "내부 업무지침에 대해 물어보세요" : "메시지를 입력하세요"}
+              placeholder="메시지를 입력하세요"
               aria-invalid={Boolean(inputError)}
               disabled={submitting}
               required
@@ -721,8 +726,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           {inputError && <p className="analysis-input-error" role="alert">{inputError}</p>}
         </form>
       </main>
-
-      {mlPredictionEnabled && <MLPredictionWorkspace conversationId={conversationId || null} />}
 
       {/* 우측 슬라이드: 분석 근거 서랍 */}
       <TurnEvidenceDrawer

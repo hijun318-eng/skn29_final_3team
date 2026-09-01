@@ -1086,6 +1086,8 @@ class PgVectorRepository(PgVectorObservabilityMixin):
               AND c.embedding_dimensions=release.embedding_dimensions
               AND c.embedding_version=release.embedding_version
               AND c.deleted_at IS NULL AND d.deleted_at IS NULL
+              AND c.section_title NOT LIKE '[DOCX HEADER_PART %%'
+              AND c.section_title NOT LIKE '[DOCX FOOTER_PART %%'
               AND d.document_status = 'WORKING_KNOWLEDGE'
               AND d.approval_status = 'APPROVED'
               AND %s = ANY(d.role_scope)
@@ -1521,14 +1523,27 @@ class PgVectorRepository(PgVectorObservabilityMixin):
         if isinstance(stored, str):
             stored = json.loads(stored)
         fields = {
+            "approval_status",
+            "article_number",
+            "chunk_id",
+            "chunk_index",
+            "document_id",
+            "document_status",
+            "effective_from",
+            "effective_to",
             "evidence_id",
+            "lexical_score",
             "text",
             "title",
             "manual_id",
             "version",
             "document_type",
             "owner_team",
+            "page_start",
+            "score",
             "section_title",
+            "validity_status",
+            "vector_score",
             "citation",
         }
         if (

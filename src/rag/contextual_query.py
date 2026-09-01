@@ -10,6 +10,9 @@ class ContextualQueryBuilder:
 
     MAX_RECENT_UTTERANCES = 3
     MAX_SELECTED_DOCUMENTS = 10
+    _REPORT_PERIOD_PATTERN = re.compile(
+        r"(?:(?P<year>20\d{2})\s*년\s*)?(?P<month>1[0-2]|0?[1-9])\s*월"
+    )
 
     @classmethod
     def build(cls, query: str, recent_utterances: tuple[str, ...] = ()) -> str:
@@ -36,6 +39,24 @@ class ContextualQueryBuilder:
         if any(not re.fullmatch(r"[A-Z][A-Z0-9-]{1,99}", value) for value in normalized):
             raise ValueError("Invalid selected document ID")
         return normalized
+
+    @classmethod
+    def report_periods(cls, value: str) -> tuple[str, ...]:
+        """`2026년 7월과 8월`처럼 연도가 생략된 연속 월도 보고 월로 정규화한다."""
+
+        normalized = cls._normalize(value, "query")
+        current_year: int | None = None
+        periods: list[str] = []
+        for match in cls._REPORT_PERIOD_PATTERN.finditer(normalized):
+            raw_year = match.group("year")
+            if raw_year is not None:
+                current_year = int(raw_year)
+            if current_year is None:
+                continue
+            period = f"{current_year:04d}-{int(match.group('month')):02d}"
+            if period not in periods:
+                periods.append(period)
+        return tuple(periods)
 
     @staticmethod
     def _normalize(value: str, field: str) -> str:

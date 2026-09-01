@@ -6,7 +6,7 @@ import {
   normalizeAnalysisEvidence,
   normalizeAnalysisMetrics,
 } from "../contracts/analysis.ts";
-import { mlPredictionRun, ragRun } from "./agentResponseMappers.js";
+import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers.js";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -181,9 +181,12 @@ export function hydrateTurnsFromServer(serverTurns) {
 
       if (isOutOfScope) {
         run = scopeNoticeRun(userMessage, scopeRejection?.message);
-      } else if (ragResult) {
-        run = ragRun(userMessage, ragResult);
-      } else if (mlPrediction && st.terminal_status === "SUCCEEDED") {
+      } else if (ragResult && !st.data_snapshot_json) {
+        run = attachAgentResults(ragRun(userMessage, ragResult), userMessage, {
+          ragResult,
+          mlPrediction: st.terminal_status === "SUCCEEDED" ? mlPrediction : null,
+        });
+      } else if (mlPrediction && st.terminal_status === "SUCCEEDED" && !st.data_snapshot_json) {
         run = mlPredictionRun(userMessage, mlPrediction);
       } else if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
@@ -293,6 +296,10 @@ export function hydrateTurnsFromServer(serverTurns) {
             contractVersion: OPENAPI_VERSION,
           },
         };
+        run = attachAgentResults(run, userMessage, {
+          ragResult,
+          mlPrediction: st.terminal_status === "SUCCEEDED" ? mlPrediction : null,
+        });
         lastAnalysisRun = run;
       } else {
         run = commandErrorRun(userMessage, {
@@ -312,7 +319,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           ? (st.view_type || "TABLE")
           : isOutOfScope
             ? "CHAT"
-            : ragResult
+            : ragResult && !st.data_snapshot_json
               ? "RAG"
               : mlPrediction
                 ? "ML_PREDICTION"
@@ -328,19 +335,4 @@ export function hydrateTurnsFromServer(serverTurns) {
     console.error("Error hydrating turns:", err);
     return [];
   }
-}
-
-/**
- * 빈 대화 화면에 제시할 예시 질문을 승인된 저장 분석 정의에서 만든다.
- * 화면에 업무 문구를 박아두지 않으며, 저장된 분석이 없으면 예시를 지어내지 않는다.
- * @param {Array<object>} definitions - 서버가 반환한 저장 분석 정의 목록
- * @param {number} [limit=3] - 제시할 최대 개수
- * @returns {Array<{id: string, question: string}>} 예시 질문 목록(없으면 빈 배열)
- */
-export function exampleQuestionsFromDefinitions(definitions, limit = 3) {
-  if (!Array.isArray(definitions)) return [];
-  return definitions
-    .filter((item) => item && typeof item.question === "string" && item.question.trim())
-    .slice(0, limit)
-    .map((item) => ({ id: item.definition_id || item.id || item.question, question: item.question }));
 }

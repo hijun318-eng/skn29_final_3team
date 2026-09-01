@@ -1,5 +1,6 @@
 /** 책임: 인용 가능한 내부 문서 답변과 후속 질문·PDF 근거를 접근 가능한 카드로 표시한다. */
 import { useId } from "react";
+import { FileText } from "lucide-react";
 
 import "./RagAnswerCard.css";
 
@@ -8,6 +9,8 @@ function getAnswerText(rag) {
   const cleaned = String(text)
     .replace(/(?:현장\s*확인내용|객실\s*[·ㆍ]\s*설비)?\s*내부\s*업무지침\s*[·ㆍ]\s*현장\s*실행형\s*[·ㆍ]\s*의미전달\s*검증완료본/g, '')
     .replace(/^\s*자세한 내용은 PDF 원문 보기를 확인하세요\.\s*$/gm, '')
+    .replace(/\[SECTION_BOUNDARY\s+[^\]]*\]/g, '')
+    .replace(/^\s*[-*•]\s*$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   if (cleaned) return cleaned;
@@ -38,6 +41,128 @@ function compareContent(text, answerType) {
   return { sections, prose: blocks.filter((block) => !sections.some((lines) => block === lines.join('\n'))) };
 }
 
+function evidenceItems(rag) {
+  const items = Array.isArray(rag?.evidence_bundle) ? rag.evidence_bundle : [];
+  return Array.from(new Map(items
+    .filter((item) => item && typeof item.evidence_id === 'string' && item.evidence_id)
+    .map((item) => [item.evidence_id, item])).values());
+}
+
+function documentSources(items) {
+  return Array.from(new Map(items.map((item) => [
+      [item.document_id, item.document_version].filter(Boolean).join(':') || item.evidence_id,
+      item,
+    ])).values());
+}
+
+function answerContent(text) {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const points = lines
+    .filter((line) => /^[-*•]\s+/.test(line))
+    .map((line) => line.replace(/^[-*•]\s+/, '').trim())
+    .filter(Boolean);
+  if (points.length && points.length === lines.length) {
+    return { points, paragraphs: [] };
+  }
+  return { points: [], paragraphs: text.split(/\n\s*\n/).filter(Boolean) };
+}
+
+function focusTerms(question) {
+  const ignored = new Set([
+    '내부', '문서', '보고서', '알려줘', '보여줘', '내용', '결과', '전체', '가장',
+    '어떻게', '무엇', '관련', '요약', '분석', '에서', '으로', '까지', '부터',
+  ]);
+  const suffixes = ['으로', '에서', '에게', '까지', '부터', '하고', '과', '와', '을', '를', '은', '는', '이', '가', '의'];
+  return (String(question || '').toLowerCase().match(/[0-9a-z가-힣]{2,}/g) || [])
+    .map((raw) => suffixes.reduce((term, suffix) => (
+      term.endsWith(suffix) && term.length > suffix.length + 1
+        ? term.slice(0, -suffix.length)
+        : term
+    ), raw))
+    .filter((term) => !ignored.has(term) && !/^\d{1,4}(?:년|월|일)?$/.test(term));
+}
+
+function tableCells(point) {
+  const cells = point.split('|').map((cell) => cell.trim()).filter(Boolean);
+  return cells.length >= 2 ? cells : null;
+}
+
+function tablePresentation(points, question) {
+  const terms = focusTerms(question);
+  const candidates = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const columns = tableCells(points[index]);
+    if (!columns || columns.some((cell) => /\d/.test(cell))) continue;
+    const rows = [];
+    let cursor = index + 1;
+    while (cursor < points.length) {
+      const cells = tableCells(points[cursor]);
+      if (!cells || cells.length !== columns.length) break;
+      rows.push({ cells, pointIndex: cursor });
+      cursor += 1;
+    }
+    if (!rows.length) continue;
+    const searchable = [columns, ...rows.map((row) => row.cells)].flat().join(' ').toLowerCase();
+    candidates.push({
+      columns,
+      rows,
+      pointIndexes: new Set([index, ...rows.map((row) => row.pointIndex)]),
+      score: terms.reduce((sum, term) => sum + (searchable.includes(term) ? 1 : 0), 0),
+    });
+  }
+  return candidates.sort((left, right) => (
+    right.score - left.score || right.rows.length - left.rows.length
+  ))[0] || null;
+}
+
+function pointScore(point, terms) {
+  const normalized = point.toLowerCase();
+  const termScore = terms.reduce((sum, term) => sum + (normalized.includes(term) ? 10 : 0), 0);
+  const quantified = /(?:%|\d[\d,.]*\s*(?:원|건|박|명|실))/.test(point) ? 2 : 0;
+  const sentence = /[.!?다요]$/.test(point) ? 1 : 0;
+  return termScore + quantified + sentence;
+}
+
+function answerPresentation(content, question) {
+  if (!content.points.length) {
+    return { lead: '', visiblePoints: [], detailPoints: [], table: null };
+  }
+  const table = tablePresentation(content.points, question);
+  const tableIndexes = table?.pointIndexes || new Set();
+  const candidates = content.points
+    .map((point, index) => ({ point, index }))
+    .filter(({ index }) => !tableIndexes.has(index));
+  const terms = focusTerms(question);
+  const lead = [...candidates].sort((left, right) => (
+    pointScore(right.point, terms) - pointScore(left.point, terms) || left.index - right.index
+  ))[0] || null;
+  const remaining = candidates.filter(({ index }) => index !== lead?.index).map(({ point }) => point);
+  const visibleLimit = table ? 0 : 4;
+  return {
+    lead: lead?.point || '',
+    visiblePoints: remaining.slice(0, visibleLimit),
+    detailPoints: remaining.slice(visibleLimit),
+    table,
+  };
+}
+
+function citationReferences(rag, sources) {
+  const sourceById = new Map(sources.map((item) => [item.evidence_id, item]));
+  const citations = Array.isArray(rag?.citations) ? rag.citations : [];
+  return Array.from(new Map(citations
+    .filter((item) => item && typeof item.evidence_id === 'string' && item.evidence_id)
+    .map((item) => [item.evidence_id, {
+      citation: typeof item.citation === 'string' ? item.citation : '',
+      evidence: sourceById.get(item.evidence_id) || null,
+    }])).values());
+}
+
+function evidenceLabel(item) {
+  return [item?.document_name, item?.document_version, item?.section]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .join(' · ') || '근거 문서';
+}
+
 /** RAG 답변을 비교형 본문, 후속 질문과 중복 제거된 PDF 링크로 렌더링한다. */
 export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp }) {
   const titleId = useId();
@@ -49,7 +174,16 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
       .map((item) => [item.url, item]),
   ).values());
   const comparison = compareContent(answerText, rag?.answer_type);
-  const paragraphs = comparison?.prose || answerText.split(/\n\s*\n/).filter(Boolean);
+  const content = comparison
+    ? { points: [], paragraphs: comparison.prose }
+    : answerContent(answerText);
+  const presentation = answerPresentation(
+    content,
+    rag?.routing?.snapshot_question || rag?.routing?.context_question || '',
+  );
+  const evidence = evidenceItems(rag);
+  const sources = documentSources(evidence);
+  const citationRefs = citationReferences(rag, evidence);
   const responseStatus = String(rag?.status || rag?.response_status || '').toUpperCase();
   const isTerminalFailure = ['NO_EVIDENCE', 'ERROR', 'FAILED', 'GENERATION_FAILED'].includes(responseStatus);
   const candidateFollowUps = rag?.status === 'NEEDS_CLARIFICATION'
@@ -61,9 +195,42 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
 
   return (
     <article aria-labelledby={titleId} className="rag-answer-card">
-      <div id={titleId} className="rag-answer-card__label">답변</div>
+      <div id={titleId} className="rag-answer-card__label">핵심 답변</div>
       <div className="rag-answer-card__body">
-        {paragraphs.map((paragraph, index) => (
+        {presentation.lead && <p className="rag-answer-card__lead">{presentation.lead}</p>}
+        {presentation.table && (
+          <div className="rag-answer-card__table-wrap">
+            <table>
+              <caption className="sr-only">질문 관련 내부 문서 근거 표</caption>
+              <thead>
+                <tr>{presentation.table.columns.map((column, index) => <th key={`${index}-${column}`} scope="col">{column}</th>)}</tr>
+              </thead>
+              <tbody>
+                {presentation.table.rows.map((row, rowIndex) => (
+                  <tr key={`${rowIndex}-${row.cells.join('|')}`}>
+                    {row.cells.map((cell, cellIndex) => (
+                      cellIndex === 0
+                        ? <th key={`${cellIndex}-${cell}`} scope="row">{cell}</th>
+                        : <td key={`${cellIndex}-${cell}`}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {presentation.visiblePoints.length > 0 && (
+          <ul className="rag-answer-card__points">
+            {presentation.visiblePoints.map((point) => <li key={point}>{point}</li>)}
+          </ul>
+        )}
+        {presentation.detailPoints.length > 0 && (
+          <details className="rag-answer-card__details">
+            <summary>상세 근거 {presentation.detailPoints.length}건</summary>
+            <ul>{presentation.detailPoints.map((point) => <li key={point}>{point}</li>)}</ul>
+          </details>
+        )}
+        {content.paragraphs.map((paragraph, index) => (
           <p key={`${index}-${paragraph.slice(0, 20)}`}>
             {paragraph}
           </p>
@@ -80,6 +247,23 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
             ))}
           </div>
         )}
+        {citationRefs.length > 0 && (
+          <div className="rag-answer-card__citations" aria-label="본문 인용">
+            <span>근거 인용</span>
+            <div>
+              {citationRefs.map((reference, index) => (
+                <details key={reference.evidence?.evidence_id || `${reference.citation}-${index}`}>
+                  <summary aria-label={`${index + 1}번 인용 근거 보기`}>[{index + 1}]</summary>
+                  <div className="rag-answer-card__citation-preview">
+                    <strong>{evidenceLabel(reference.evidence)}</strong>
+                    {reference.citation && <small>{reference.citation}</small>}
+                    {reference.evidence?.snippet && <p>{reference.evidence.snippet}</p>}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {onFollowUp && followUpQuestions.length > 0 && (
         <section className="rag-answer-card__followups" aria-label="후속 질문">
@@ -93,11 +277,25 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
           </div>
         </section>
       )}
+      {sources.length > 0 && (
+        <section className="rag-answer-card__source-strip" aria-label="출처">
+          <p>출처</p>
+          <div>
+            {sources.map((item) => (
+              <span key={item.evidence_id} title={item.snippet || undefined}>
+                <FileText size={14} aria-hidden="true" />
+                <b>{item.document_name || '근거 문서'}</b>
+                {item.section && <small>{item.section}</small>}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
       {pdfLinks.length > 0 && (
         <nav className="rag-answer-card__sources" aria-label="근거 문서">
           {pdfLinks.map((item) => (
             <a key={item.url} href={item.url} target="_blank" rel="noreferrer noopener">
-              PDF 원문 보기 · {item.label}
+              원문 보기 · {item.label}
             </a>
           ))}
         </nav>

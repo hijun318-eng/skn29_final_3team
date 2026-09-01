@@ -334,7 +334,8 @@ assert.match(reportA4Styles, /\.answer-report-page \.report-data-provenance/);
 assert.match(reportSources.page, /onDragMove=\{dnd\.handleDragMove\}/);
 assert.match(reportSources.editorToolbar, /저장되지 않은 변경/);
 assert.match(reportSources.editorToolbar, /저장 실패/);
-assert.match(reportSources.draftMutations, /resizeRow && block\.y === source\.y/);
+assert.doesNotMatch(reportSources.draftMutations, /resizeRow && block\.y === source\.y/);
+assert.doesNotMatch(reportSources.presentation, /h: height, sourceBlock/);
 assert.match(reportSources.editorBlock, /event\.buttons & 1/);
 assert.match(reportSources.controller, /await artifacts\.loadArtifacts\(current\)/);
 assert.match(reportSources.editorBlock, /<ReportArtifactContent/);
@@ -421,7 +422,7 @@ const movedOutOfPair = placeDraftBlock([
 assert.deepEqual(
   movedOutOfPair.map(({ id, x, y, w }) => ({ id, x, y, w })),
   [
-    { id: "pair-left", x: 0, y: 0, w: 12 },
+    { id: "pair-left", x: 0, y: 0, w: 6 },
     { id: "pair-right", x: 0, y: 4, w: 6 },
     { id: "full-target", x: 6, y: 4, w: 6 },
   ],
@@ -431,7 +432,7 @@ const splitFullRow = placeDraftBlock([
   { id: "table", title: "표", columns: 12, type: "table", x: 0, y: 0, w: 12, h: 5 },
   { id: "chart", title: "차트", columns: 12, type: "chart", x: 0, y: 0, w: 12, h: 6 },
 ], "chart", 6, 2);
-assert.deepEqual(splitFullRow.map((block) => [block.x, block.y, block.w, block.h]), [[0, 0, 6, 6], [6, 0, 6, 6]]);
+assert.deepEqual(splitFullRow.map((block) => [block.x, block.y, block.w, block.h]), [[0, 0, 6, 5], [6, 0, 6, 6]]);
 
 const gaplessRows = compactDraftLayout([
   { id: "summary", title: "요약", columns: 12, type: "text", x: 0, y: 9, w: 12, h: 4 },
@@ -738,6 +739,43 @@ assert.equal(hydratedSuccess[1].run.summary, hydratedSuccess[0].run.summary);
 assert.equal(hydratedSuccess[1].isArtifactReuse, true);
 assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-table");
 
+const hydratedComposite = hydrateTurnsFromServer([{
+  turn_id: "turn-composite",
+  user_message: "7월과 8월 점유율을 분석하고 내부 보고서에서 원인을 찾아줘",
+  route: "ANALYSIS",
+  terminal_status: "SUCCEEDED",
+  request_id: "composite-request",
+  artifact_id: "composite-artifact",
+  narrative_markdown: "8월 점유율이 7월보다 낮습니다.",
+  data_snapshot_json: {
+    columns: ["period", "occupancy_rate"],
+    rows: [{ period: "2026-08", occupancy_rate: 0.6377 }],
+  },
+  chart_spec_json: { chart_type: "line", x_field: "period", y_fields: ["occupancy_rate"] },
+  evidence_json: {
+    artifact_id: "composite-artifact",
+    query_id: "composite-query",
+    metrics: [],
+    sources: [],
+  },
+  resolved_slots: {
+    rag: {
+      status: "ANSWER",
+      answer: { text: "내부 보고서에서 확인한 하락 원인입니다." },
+      evidence_bundle: [{ document_id: "REPORT-2026-08-ROOMS", document_name: "8월 객실 운영보고서" }],
+    },
+    supervisor_composition: {
+      agents: ["ANALYSIS_WORKFLOW", "INTERNAL_GUIDELINE"],
+    },
+  },
+}]);
+assert.equal(hydratedComposite[0].viewType, "SUMMARY");
+assert.equal(hydratedComposite[0].run.requestId, "composite-request");
+assert.equal(hydratedComposite[0].run.rag.answer_text, "내부 보고서에서 확인한 하락 원인입니다.");
+assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE"/);
+assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction/);
+assert.match(source("pages/AgentPage.jsx"), /className="composite-agent-result"/);
+
 const mismatchedPresentation = hydrateTurnsFromServer([{
   turn_id: "turn-source",
   user_message: "원본 분석",
@@ -1002,6 +1040,10 @@ assert.deepEqual(await ragCatalogClient.listInternalManuals(), [{
 }]);
 assert.equal(ragCatalogRequest.url, "http://backend.test/rag/documents");
 assert.equal(ragCatalogRequest.init.headers.Authorization, "Bearer runtime-token");
+assert.equal(
+  ragCatalogClient.manualSourceUrl("REPORT-2026-08-ROOMS"),
+  "http://backend.test/rag/documents/REPORT-2026-08-ROOMS/source",
+);
 
 const invalidRagCatalogClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
   data: { documents: [{ manual_id: "manual-missing-approved-metadata" }] },

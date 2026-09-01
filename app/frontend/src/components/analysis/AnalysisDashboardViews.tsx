@@ -4,7 +4,10 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BarChart3, Eye, FilePlu
 import { EnterpriseChart } from "../charts/EnterpriseChart";
 import { type AnalysisRun } from "../../contracts/analysis";
 import { type AnalysisValueScale, userFacingAnalysisSummary } from "./analysisValueScale";
-import { analysisTitle, formatCompactNumber, formatMetricValue, isNumericValue, localizeMetricDefinition, metricDisplayLabel, metricUnitLabel } from "../../utils/presentation";
+import { analysisTitle, formatCompactNumber, formatMetricValue, isNumericValue, metricDisplayLabel, metricUnitLabel } from "../../utils/presentation";
+
+const KPI_SPARKLINE_PERIOD = /^\d{4}-\d{2}(?:-\d{2})?$/;
+const KPI_SPARKLINE_MAX_POINTS = 30;
 
 /**
  * KPI 카드의 숫자 표기를 결정한다. 1억 이상은 단위 문자열과 무관하게 축약해 카드 안에서 한 줄로 읽히게 하며,
@@ -23,6 +26,54 @@ function analysisAsOfLabel(asOf?: string | null) {
     return `${year}.${month}.${day}.`;
   }
   return asOf;
+}
+
+/** 승인된 차트·표 계약에 같은 KPI의 시계열이 있을 때만 미니 추이를 만든다. */
+function kpiSparkline(run: AnalysisRun, resultField: string) {
+  const table = run.table;
+  const chart = run.chart;
+  if (!table?.rows?.length || !chart?.xField || !chart.yFields.includes(resultField)) return null;
+  const values = table.rows
+    .filter((row) => KPI_SPARKLINE_PERIOD.test(String(row[chart.xField] ?? "")) && isNumericValue(row[resultField]))
+    .sort((left, right) => String(left[chart.xField]).localeCompare(String(right[chart.xField])))
+    .slice(-KPI_SPARKLINE_MAX_POINTS)
+    .map((row) => Number(row[resultField]));
+  if (values.length < 3) return null;
+
+  const width = 240;
+  const height = 54;
+  const padding = 3;
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const range = maximum - minimum;
+  const points = values.map((value, index) => {
+    const x = padding + (index * (width - padding * 2)) / (values.length - 1);
+    const y = range === 0
+      ? height / 2
+      : padding + ((maximum - value) * (height - padding * 2)) / range;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  return {
+    count: values.length,
+    line: points,
+    area: `${padding},${height - padding} ${points} ${width - padding},${height - padding}`,
+    viewBox: `0 0 ${width} ${height}`,
+  };
+}
+
+/** KPI 카드에는 축·레이블 없이 검증된 최근 시계열의 방향만 보조적으로 표시한다. */
+function AnalysisKpiSparkline({ label, sparkline }: {
+  label: string;
+  sparkline: NonNullable<ReturnType<typeof kpiSparkline>>;
+}) {
+  return (
+    <div className="analysis-kpi-sparkline" role="img" aria-label={`${label} 최근 ${sparkline.count}개 시점 추이`}>
+      <svg viewBox={sparkline.viewBox} preserveAspectRatio="none" aria-hidden="true">
+        <polygon points={sparkline.area} />
+        <polyline points={sparkline.line} />
+      </svg>
+    </div>
+  );
 }
 
 /** 결과 섹션의 수량과 데이터 기준일을 제목 옆 보조정보로 묶는다. */
@@ -45,13 +96,11 @@ export function AnalysisConversationalSummary({ run, valueScale }: { run: Analys
     <div className="agent-conversational-bubble" aria-label="AI 분석 요약">
       <header className="analysis-summary-heading">
         <div>
-          <small>분석 결과</small>
           <h3>{analysisTitle(run)}</h3>
         </div>
         <AnalysisSectionMeta run={run} />
       </header>
       <div className="analysis-summary-answer">
-        <small>핵심 답변</small>
         <p className="agent-narrative-text">{userFacingAnalysisSummary(run, valueScale)}</p>
       </div>
     </div>
@@ -82,17 +131,20 @@ export function AnalysisKpiSection({ run, valueScale, showAsOf = true }: {
 }) {
   const headingId = React.useId().replaceAll(":", "");
   if (!run.metrics || run.metrics.length === 0) return null;
+  const isSingleMetric = run.metrics.length === 1;
 
   return (
-    <section className="analysis-kpi-section" aria-labelledby={headingId}>
+    <section className={`analysis-kpi-section${isSingleMetric ? " is-single-metric" : ""}`} aria-labelledby={headingId}>
       {/* 차트·표 섹션과 같은 (eyebrow + 제목 + 우측 메타) 헤더 구조를 공유해 시선 이동을 단순화한다. */}
       <header>
         <div><small>수치 근거</small><h3 id={headingId}>핵심 지표</h3></div>
         <AnalysisSectionMeta run={run} showAsOf={showAsOf}><span>{run.metrics.length}개 지표</span></AnalysisSectionMeta>
       </header>
-      <div className="analysis-metrics">
-        {run.metrics.map((metric) => (
-          <article key={`total-${metric.metricId}`} className="analysis-metric-card--total">
+      <div className={`analysis-metrics${isSingleMetric ? " is-single-metric" : ""}`}>
+        {run.metrics.map((metric) => {
+          const sparkline = isSingleMetric ? kpiSparkline(run, metric.resultField) : null;
+          return (
+          <article key={`total-${metric.metricId}`} className={`analysis-metric-card--total${isSingleMetric ? " is-hero-metric" : ""}${sparkline ? " has-sparkline" : ""}`}>
             {/* 배지와 지표명을 세로로 쌓아, 지표명이 길어도 배지 위로 겹치지 않게 한다. */}
             <div className="metric-header-strip">
               <small>{metricDisplayLabel(metric)}</small>
@@ -101,9 +153,10 @@ export function AnalysisKpiSection({ run, valueScale, showAsOf = true }: {
               {valueScale.isCurrency(metric.unit) ? valueScale.format(metric.value, metric.unit, metric.resultField) : formatKpiValue(metric.value, metric.unit)}
               {metric.unit && metric.value !== null && metric.value !== undefined && metric.value !== "" && <em>{valueScale.unitLabel(metric.unit, metric.resultField)}</em>}
             </strong>
-            {metric.definition && <p>{localizeMetricDefinition(metric.definition)}</p>}
+            {sparkline && <AnalysisKpiSparkline label={metricDisplayLabel(metric)} sparkline={sparkline} />}
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -146,6 +199,7 @@ export function AnalysisVisualSection({
           <EnterpriseChart
             data={table.rows ?? []} xKey={chart.xField} xLabel={columnLabel(chart.xField, run)} series={chartLines}
             type={chartDisplayType} height={chartHeight}
+            interactiveLegend
             valueFormatter={(value, item) => (chartCurrencyField
               ? `${valueScale.format(value, "KRW", chartCurrencyField)}${item?.unit ? ` ${item.unit}` : ""}`
               : formatMetricValue(value, { unit: item?.unit }))}

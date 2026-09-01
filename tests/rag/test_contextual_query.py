@@ -29,6 +29,14 @@ class ContextualQueryBuilderTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ContextualQueryBuilder.validate_document_ids(tuple(str(i) for i in range(11)))
 
+    def test_report_periods_inherit_the_latest_explicit_year(self) -> None:
+        self.assertEqual(
+            ContextualQueryBuilder.report_periods(
+                "2026년 7월과 8월의 객실 점유율 변화를 비교해줘"
+            ),
+            ("2026-07", "2026-08"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

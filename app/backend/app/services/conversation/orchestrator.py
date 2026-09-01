@@ -1111,7 +1111,11 @@ class ConversationOrchestrator:
         원본 command admission은 서버가 다시 검증한다. 명시 route는 모델을 우회한다.
         """
 
-        from app.ports.agent import AgentRequest
+        from app.ports.agent import (
+            AgentPreviousAnalysisContext,
+            AgentPreviousMLContext,
+            AgentRequest,
+        )
         from app.contracts import RuntimeFeature
         from app.runtime_features import runtime_feature_enabled
         from app.services.agent_supervisor import AgentDispatchError
@@ -1174,7 +1178,59 @@ class ConversationOrchestrator:
         if admission is None:
             raise RuntimeError("Agent command admission 결과가 없습니다.")
 
-        admitted_request = request.model_copy(update={"context": admission.context})
+        previous_turns = await self._repo.list_turns(request.conversation_id)
+        previous_analysis = None
+        previous_ml = None
+        if previous_turns and ConversationSlotResolver.is_resolved_analysis_turn(
+            previous_turns[-1]
+        ):
+            previous_slots = previous_turns[-1].get("resolved_slots", {})
+            previous_time = previous_slots.get("time_range")
+            previous_metric_ids = tuple(
+                metric_id
+                for metric_id in (
+                    previous_slots.get("metric_ids")
+                    or (
+                        [previous_slots.get("metric_id")]
+                        if previous_slots.get("metric_id")
+                        else []
+                    )
+                )
+                if isinstance(metric_id, str) and metric_id.strip()
+            )
+            if (
+                previous_metric_ids
+                and isinstance(previous_time, dict)
+                and previous_time.get("start")
+                and previous_time.get("end_exclusive")
+            ):
+                previous_analysis = AgentPreviousAnalysisContext(
+                    metric_ids=previous_metric_ids,
+                    period_start=previous_time["start"],
+                    period_end_exclusive=previous_time["end_exclusive"],
+                )
+        if previous_turns and previous_turns[-1].get("route") == "ML_PREDICTION":
+            previous_slots = previous_turns[-1].get("resolved_slots", {})
+            previous_prediction = previous_slots.get("ml_prediction")
+            if isinstance(previous_prediction, dict):
+                try:
+                    previous_ml = AgentPreviousMLContext(
+                        property_id=previous_prediction.get("property_id"),
+                        as_of=previous_prediction.get("as_of"),
+                        horizon_days=previous_prediction.get("horizon_days"),
+                    )
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Stored ML follow-up context is invalid: conversation_id=%s",
+                        request.conversation_id,
+                    )
+        admitted_request = request.model_copy(
+            update={
+                "context": admission.context,
+                "previous_analysis": previous_analysis,
+                "previous_ml": previous_ml,
+            }
+        )
         try:
             materialized_plan = None
             shared_ml_service = (
@@ -1212,9 +1268,6 @@ class ConversationOrchestrator:
                         RuntimeFeature.ML_PREDICTION
                     ),
                     ml_capability=ml_capability,
-                )
-                previous_turns = await self._repo.list_turns(
-                    request.conversation_id
                 )
                 previous_route = None
                 if previous_turns:
@@ -1493,8 +1546,9 @@ class ConversationOrchestrator:
                 rag_response = dict(
                     await shared_rag_service.execute(
                         InternalManualQuery(
-                            question=rag_request.task_objective
-                            or rag_request.command.user_message,
+                            # 검색 입력에는 모델이 축약한 task뿐 아니라 기간·지표·문서명이
+                            # 들어 있는 사용자의 원문을 보존한다.
+                            question=rag_request.command.user_message,
                             mode="DOCUMENT_ONLY",
                             conversation_id=rag_request.conversation_id,
                             expected_head_turn_id=(

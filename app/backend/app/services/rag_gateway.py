@@ -19,6 +19,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.authorization import role_is_entitled
 from app.database import session_scope
 
 
@@ -506,10 +507,22 @@ class InternalManualAgent:
             for document_id in selected_document_ids
             if document_id.strip()
         ))[:document_limit]
-        search_top_k = 10 if selected_ids else 8 if domains else 5
-        contextual_query = (resolved_question or "\n".join(
-            [*(f"이전 질문: {utterance}" for utterance in recent), f"현재 질문: {normalized}"]
-        ))[-500:].strip()
+        # 자동 route probe와 실제 실행의 기본 후보 수를 같게 유지해, 승인 시점과
+        # 답변 시점의 ANN 후보 집합이 달라지는 순위 변동을 막는다.
+        search_top_k = 10 if selected_ids else 8
+        contextual_query = (
+            resolved_question
+            or (
+                "\n".join(
+                    [
+                        *(f"이전 질문: {utterance}" for utterance in recent),
+                        f"현재 질문: {normalized}",
+                    ]
+                )
+                if recent
+                else normalized
+            )
+        )[-500:].strip()
         actor_hash = hashlib.sha256(str(actor_id).encode("utf-8")).hexdigest()
         try:
             search = await self._signed_post(
@@ -766,7 +779,7 @@ class InternalManualAgent:
             "resolved_question": normalized,
             "domains": [],
             "intent": "REGULATION_CHECK",
-            "top_k": 3,
+            "top_k": 8,
             "recent_utterances": [],
             "selected_document_ids": [],
             "trace_id": trace_id,
@@ -1363,7 +1376,7 @@ class InternalManualAgent:
             raise RagToolError("RAG_REGISTRY_UNAVAILABLE", "RAG Tool Registry를 확인하지 못했습니다.") from error
         if not self._registry_contract_matches(row):
             raise RagToolError("RAG_TOOL_DISABLED", "RAG Tool이 승인되지 않았습니다.", 503)
-        if app_role not in RAG_TOOL_ROLES:
+        if not role_is_entitled(app_role, RAG_TOOL_ROLES):
             raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
 
     @staticmethod
@@ -1455,16 +1468,33 @@ class InternalManualAgent:
     def _evidence_block(item: dict[str, Any]) -> dict[str, str]:
         """검색 결과를 metadata 손실 없는 signed answer evidence로 투영한다."""
 
+        def value(name: str) -> str:
+            raw = item.get(name)
+            return "" if raw is None else str(raw)
+
         return {
-            "evidence_id": str(item.get("evidence_id") or ""),
+            "evidence_id": value("evidence_id"),
             "text": str(item.get("content") or item.get("snippet") or ""),
-            "title": str(item.get("title") or ""),
-            "manual_id": str(item.get("manual_id") or ""),
-            "version": str(item.get("version") or ""),
-            "document_type": str(item.get("document_type") or ""),
-            "owner_team": str(item.get("owner_team") or ""),
-            "section_title": str(item.get("section_title") or ""),
-            "citation": str(item.get("citation") or ""),
+            "document_id": str(item.get("manual_id") or ""),
+            "title": value("title"),
+            "manual_id": value("manual_id"),
+            "version": value("version"),
+            "document_type": value("document_type"),
+            "owner_team": value("owner_team"),
+            "section_title": value("section_title"),
+            "article_number": value("article_number"),
+            "page_start": value("page_start"),
+            "chunk_id": value("chunk_id"),
+            "chunk_index": value("chunk_index"),
+            "score": value("score"),
+            "vector_score": value("vector_score"),
+            "lexical_score": value("lexical_score"),
+            "document_status": value("document_status"),
+            "approval_status": value("approval_status"),
+            "validity_status": value("validity_status"),
+            "effective_from": value("effective_from"),
+            "effective_to": str(item.get("effective_to") or item.get("expires_at") or ""),
+            "citation": value("citation"),
         }
 
     @staticmethod
@@ -1480,9 +1510,14 @@ class InternalManualAgent:
             "",
             body,
         )
-        return re.sub(
+        body = re.sub(
             r"(?:^|\n)\s*자세한 내용은 PDF 원문 보기를 확인하세요\.?\s*(?=\n|$)",
             "\n",
+            body,
+        )
+        return re.sub(
+            r"\s*\[[A-Z0-9-]+:[^\]\n]+\]",
+            "",
             body,
         ).strip()
 

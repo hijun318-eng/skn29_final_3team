@@ -46,7 +46,7 @@ test("production paginator applies portrait and landscape row limits determinist
 
   assert.equal(portrait.length, 1);
   assert.deepEqual(portrait[0].blocks.map(({ id, y, h }) => [id, y, h]), [
-    ["first-left", 0, 10],
+    ["first-left", 0, 8],
     ["first-right", 0, 10],
     ["second", 10, 10],
     ["third", 20, 10],

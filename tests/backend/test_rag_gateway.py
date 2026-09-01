@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 import hashlib
 from pathlib import Path
 import sys
@@ -82,14 +83,27 @@ def test_gateway_answer_evidence_matches_runtime_closed_contract() -> None:
     )
 
     assert set(projected) == {
+        "approval_status",
+        "article_number",
+        "chunk_id",
+        "chunk_index",
+        "document_id",
+        "document_status",
+        "effective_from",
+        "effective_to",
         "evidence_id",
-        "text",
-        "title",
+        "lexical_score",
         "manual_id",
-        "version",
         "document_type",
         "owner_team",
+        "page_start",
+        "score",
         "section_title",
+        "text",
+        "title",
+        "validity_status",
+        "vector_score",
+        "version",
         "citation",
     }
     assert VectorRagApplication._validated_answer_evidence([projected]) == [
@@ -186,7 +200,8 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
         "/v1/tools/internal-manual-search",
         "/v1/tools/internal-manual-answer",
     ]
-    assert calls[0][1]["resolved_question"] == "현재 질문: 객실 승인 절차"
+    assert calls[0][1]["resolved_question"] == "객실 승인 절차"
+    assert calls[0][1]["top_k"] == 8
     assert calls[1][1]["query"] == calls[0][1]["resolved_question"]
     assert calls[1][1]["retrieval_request_id"] == retrieval_request_id
     assert calls[0][1]["trace_id"] == calls[1][1]["trace_id"] == trace_id
@@ -195,6 +210,60 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
         == calls[1][1]["actor_hash"]
         == expected_actor_hash
     )
+
+
+def test_gateway_adds_context_labels_only_when_previous_utterances_exist() -> None:
+    agent = object.__new__(InternalManualAgent)
+    calls: list[dict[str, object]] = []
+    trace_id = "trace-rag-follow-up"
+
+    async def signed_post(
+        path: str,
+        payload: dict[str, object],
+        _role: str,
+    ) -> dict[str, object]:
+        calls.append(payload)
+        if path.endswith("internal-manual-search"):
+            return {
+                "request_id": str(uuid4()),
+                "trace_id": trace_id,
+                "answer_query": payload["resolved_question"],
+                "retrieval_release": {
+                    "schema_version": "RagRetrievalRelease.v2",
+                    "release_id": str(uuid4()),
+                    "model_revision": "text-embedding-3-large:d1024",
+                    "embedding_dimension": 1024,
+                    "corpus_manifest_sha256": "b" * 64,
+                    "processing_profile_sha256": "c" * 64,
+                },
+                "no_evidence": True,
+                "results": [],
+                "processing_steps": ["DOCUMENT_SEARCHED"],
+            }
+        raise AssertionError("근거 없음 검색은 answer endpoint를 호출하지 않아야 합니다.")
+
+    agent._signed_post = signed_post  # type: ignore[method-assign]
+
+    asyncio.run(
+        agent._execute_runtime(
+            "원인을 찾아줘",
+            uuid4(),
+            "analyst",
+            trace_id,
+            recent_utterances=("2026년 7월과 8월 객실 점유율 분석",),
+        )
+    )
+
+    assert calls[0]["resolved_question"] == (
+        "이전 질문: 2026년 7월과 8월 객실 점유율 분석\n"
+        "현재 질문: 원인을 찾아줘"
+    )
+
+
+def test_gateway_removes_internal_evidence_ids_from_answer_body() -> None:
+    assert InternalManualAgent._answer_body(
+        "- 원인 설명 [REPORT-2026-08-ROOMS:2026-08:3:chunk-1]"
+    ) == "- 원인 설명"
 
 
 def _runtime_health() -> dict[str, object]:
@@ -679,6 +748,31 @@ def test_registry_activation_requires_the_exact_candidate_descriptor(
     receipt[field] = drift
 
     assert InternalManualAgent._registry_contract_matches(receipt) is False
+
+
+def test_platform_admin_inherits_rag_tool_access_without_descriptor_drift() -> None:
+    class _RegistryResult:
+        def mappings(self) -> _RegistryResult:
+            return self
+
+        def one_or_none(self) -> dict[str, object]:
+            return _registry_receipt()
+
+    class _RegistrySession:
+        async def execute(self, *_args: object, **_kwargs: object) -> _RegistryResult:
+            return _RegistryResult()
+
+    @asynccontextmanager
+    async def enabled_registry(_database_url: str):
+        yield _RegistrySession()
+
+    agent = object.__new__(InternalManualAgent)
+    agent._database_url = "postgresql+asyncpg://registry-test"  # type: ignore[attr-defined]
+
+    with patch("app.services.rag_gateway.session_scope", enabled_registry):
+        asyncio.run(agent._assert_enabled("platform_admin"))
+
+    assert RAG_TOOL_ROLES == ("analyst",)
 
 
 def _source_agent() -> InternalManualAgent:

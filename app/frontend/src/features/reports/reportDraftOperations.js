@@ -147,7 +147,7 @@ export function frontendBlocksToDocument({ definitionId, title, orientation, cur
   for (const row of rows) {
     const converted = row.blocks.map(modelBlock);
     if (converted.some((block) => !block)) {
-      return { ok: false, errors: ["\ub370\uc774\ud130 \ube14\ub85d\uc5d0 Artifact \ucc38\uc870\uac00 \uc5c6\uc2b5\ub2c8\ub2e4."] };
+      return { ok: false, errors: ["데이터 블록에 연결된 분석 결과가 없습니다."] };
     }
     if (converted.some((block) => block.kind === "pageBreak")) {
       if (!page) startPage();
@@ -160,7 +160,7 @@ export function frontendBlocksToDocument({ definitionId, title, orientation, cur
     let rowX = 0;
     for (const block of converted) {
       const width = Math.min(block.w, 12 - rowX);
-      page.blocks.push({ ...block, x: rowX, y: cursorY, w: width, h: height });
+      page.blocks.push({ ...block, x: rowX, y: cursorY, w: width });
       rowX += width;
     }
     cursorY += height;

@@ -47,9 +47,18 @@ _INSTRUCTIONS = """당신은 Answervice의 실행 계획 Supervisor입니다.
 한 command를 실제로 필요한 고유 Agent task 1~3개로만 분해하세요. 같은 Agent를 반복하지 마세요.
 ANALYSIS_WORKFLOW는 승인된 정형 지표 분석과 이전 분석의 표·차트 변경에 사용합니다.
 INTERNAL_GUIDELINE은 내부 문서 근거가 필요한 질문에 사용합니다.
+사용자가 특정 내부 문서·지침·월간 보고서에서 찾으라고 명시하면, 그 문서 안의 표·수치·순위 비교도
+INTERNAL_GUIDELINE만 사용하고 정형 원천 데이터의 재계산을 별도로 요구할 때만 ANALYSIS_WORKFLOW를 추가하세요.
 ML_PREDICTION은 제공된 ML scope 안의 미래 객실 수요 예측에만 사용하고 구조화 입력을 채웁니다.
-각 objective는 사용자 문장에서 해당 Agent가 처리할 범위만 간결하게 다시 쓰며 새 사실을 추가하지 마세요.
-직전 route는 생략된 후속 요청의 문맥을 판정할 때만 사용하세요.
+각 objective는 사용자 문장에서 해당 Agent가 처리할 범위만 간결하게 다시 쓰되,
+기간·지표·대상·명시한 문서 종류는 생략하거나 일반화하지 마세요.
+직전 route와 previous_analysis·previous_ml은 생략된 후속 요청의 문맥을 판정할 때만 사용하세요.
+previous_analysis는 서버가 확정한 이전 분석 지표·기간이며 새 사실로 간주하지 마세요.
+previous_analysis를 사용한 task의 objective에는 metric_ids와 정확한 시작일·종료일을 포함하세요.
+previous_ml은 서버가 확정한 직전 성공 예측의 입력 범위이며 예측 결과가 아닙니다.
+직전 route가 ML_PREDICTION이고 사용자가 같은 예측의 그래프·표·모델 정보 표시를 요구하면,
+previous_ml의 property_id·as_of·horizon_days를 그대로 사용한 ML_PREDICTION task를 계획하세요.
+사용자가 새 예측 조건을 명시한 경우에만 previous_ml 대신 새 조건을 사용하세요.
 필수 입력이 없거나 필요한 Agent가 unavailable이면 다른 Agent로 대체하지 말고
 status=UNAVAILABLE, tasks=[]와 사유를 반환하세요. 실행 가능하면 status=EXECUTABLE로 반환하세요."""
 
@@ -142,6 +151,16 @@ class OpenAISupervisorPlanner:
             "request_as_of": request.context.as_of.isoformat(),
             "timezone": request.context.timezone,
             "previous_route": previous_route,
+            "previous_analysis": (
+                request.previous_analysis.model_dump(mode="json")
+                if request.previous_analysis is not None
+                else None
+            ),
+            "previous_ml": (
+                request.previous_ml.model_dump(mode="json")
+                if request.previous_ml is not None
+                else None
+            ),
             "available_capabilities": [
                 {
                     "agent": agent.value,

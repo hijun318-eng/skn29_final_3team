@@ -266,23 +266,40 @@ class AnalysisDefinitionRepositoryMixin:
             raise KeyError("Analysis Definition not found")
         return self._definition(row, replay=True)
 
-    async def list_definitions(self) -> list[dict[str, Any]]:
-        """현재 owner가 명시적으로 저장한 분석 definition만 최신 생성 순서로 반환한다."""
+    async def list_definitions(
+        self,
+        *,
+        product_release_id: str,
+        semantic_release_id: str,
+    ) -> list[dict[str, Any]]:
+        """현재 릴리스 영수증과 일치하는 owner의 저장 definition만 반환한다."""
         try:
             async with self._sessionmaker() as session:
                 rows = (await session.execute(
                     text(
                         """
-                        SELECT definition_id, version, title, question_text_redacted,
-                               parameters_json AS parameters,
-                               semantic_request_json AS semantic_request,
-                               parameter_schema_json AS parameter_schema, created_at
-                        FROM analysis_v1.analysis_definitions
-                        WHERE owner_id = :owner_id AND is_saved
-                        ORDER BY created_at DESC, definition_id DESC
+                        SELECT definition.definition_id, definition.version,
+                               definition.title, definition.question_text_redacted,
+                               definition.parameters_json AS parameters,
+                               definition.semantic_request_json AS semantic_request,
+                               definition.parameter_schema_json AS parameter_schema,
+                               definition.created_at
+                        FROM analysis_v1.analysis_definitions definition
+                        JOIN analysis_v1.approved_semantic_request_snapshots snapshot
+                          ON snapshot.snapshot_id = definition.semantic_snapshot_id
+                         AND snapshot.owner_id = definition.owner_id
+                        WHERE definition.owner_id = :owner_id
+                          AND definition.is_saved
+                          AND snapshot.product_release_id = :product_release_id
+                          AND snapshot.semantic_release_id = :semantic_release_id
+                        ORDER BY definition.created_at DESC, definition.definition_id DESC
                         """
                     ),
-                    {"owner_id": self._owner_id},
+                    {
+                        "owner_id": self._owner_id,
+                        "product_release_id": product_release_id,
+                        "semantic_release_id": semantic_release_id,
+                    },
                 )).mappings()
                 return [self._definition(row) for row in rows]
         except SQLAlchemyError as error:

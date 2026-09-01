@@ -118,9 +118,14 @@ class GovernedAnalysisCapabilityProbe:
             )
 
         try:
+            search_context = request.context.model_dump(mode="json")
+            if request.previous_analysis is not None:
+                search_context["preferred_metric_ids"] = list(
+                    request.previous_analysis.metric_ids
+                )
             candidates = await self._data_platform.search_asset_candidates(
                 request.task_objective or request.command.user_message,
-                request.context.model_dump(mode="json"),
+                search_context,
             )
         except NoEntitledAssetsError:
             return self._evidence(

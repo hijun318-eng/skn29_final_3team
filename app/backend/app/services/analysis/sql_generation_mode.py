@@ -11,10 +11,11 @@ SQL_GENERATION_MODE_ENV = "ANALYSIS_SQL_GENERATION_MODE"
 
 
 class SqlGenerationMode(str, Enum):
-    """승인된 SQL 후보를 만들 때 Node 2 사용 여부를 구분한다."""
+    """승인된 SQL 후보의 Node 2 우선·Compiler 복구 정책을 구분한다."""
 
     HYBRID = "hybrid"
     COMPILER_ONLY = "compiler_only"
+    MODEL_ONLY = "model_only"
 
 
 class SqlGenerationEvidenceMode(str, Enum):

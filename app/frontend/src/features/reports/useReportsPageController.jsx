@@ -12,7 +12,7 @@ import {
 } from "./reportDraftV2";
 import { useReportArtifacts } from "./useReportArtifacts";
 import { useReportDraftState } from "./useReportDraftState";
-import { useReportDragAndDrop } from "./useReportDragAndDrop";
+import { parseArtifactViewDragId, useReportDragAndDrop } from "./useReportDragAndDrop";
 import { useReportEditorTools } from "./useReportEditorTools";
 import { useReportLifecycleState } from "./useReportLifecycleState";
 import { REPORT_BUILDER_V2 } from "./reportBuilderFlags";
@@ -31,8 +31,8 @@ import {
   focusReportBlock,
   reportCurrencyState,
 } from "./reportPageControllerSupport";
-import { reportStatusLabel } from "./reportPageLabels";
 import { normalizeReportEditorScale } from "./reportEditorViewport";
+import { reportStatusLabel } from "./reportPageLabels";
 import {
   reportAssistantSessionMatchesDefinition,
   reportAssistantSessionStorageKey,
@@ -253,7 +253,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       if (existingDraft) {
         current = await lifecycle.fetchDefinition(existingDraft);
         if (!current || !isCurrentRequest()) return;
-        lifecycle.setNotice(`기존 v${current.version} 초안을 이어서 편집합니다.`);
+        lifecycle.setNotice(`기존 버전 ${current.version} 초안을 이어서 편집합니다.`);
       } else {
         if (!window.confirm(`확정본 v${current.version}을 기준으로 새 편집 버전을 만들까요?`)) return;
         const nextDraft = await lifecycle.mutate("next-draft", () => lifecycle.reportClient.createNextDraft(
@@ -262,7 +262,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
         ));
         if (!nextDraft || !isCurrentRequest()) return;
         current = lifecycle.upsertDefinition(nextDraft);
-        lifecycle.setNotice(`v${current.version} 초안을 만들었습니다.`);
+        lifecycle.setNotice(`버전 ${current.version} 초안을 만들었습니다.`);
       }
     }
     const localDraft = loadFrontendDraft(window.sessionStorage, current.definitionId, current.version);
@@ -368,7 +368,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       lifecycle.setError("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요.");
       return;
     }
-    if (!window.confirm(`v${definition.version} 저장된 HTML 초안을 확정하고 수정할 수 없는 PDF를 생성할까요?`)) return;
+    if (!window.confirm(`저장된 보고서 버전 ${definition.version}을 확정할까요? 확정하면 PDF가 생성되며 이 버전은 수정할 수 없습니다.`)) return;
     const approved = await lifecycle.approveDefinition(definition, {
       orientation: draft.reportOrientation,
       blocks: draft.blocksRef.current,
@@ -531,7 +531,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   }, [artifacts.invalidateLoads, draft.isDirty, lifecycle.clearFeedback, lifecycle.loadFinalDocument]);
   const previewEditor = useCallback(() => {
     if (draft.isDirty) {
-      lifecycle.setError("변경사항을 저장한 뒤 HTML 초안을 확인해 주세요.");
+      lifecycle.setError("변경사항을 저장한 뒤 보고서 미리보기를 확인해 주세요.");
       return;
     }
     const definition = lifecycle.selectedDefinition;
@@ -606,20 +606,47 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     return () => window.cancelAnimationFrame(frame);
   }, [lifecycle.error]);
   useEffect(() => {
-    const tablet = window.matchMedia("(min-width: 901px) and (max-width: 1100px)");
+    const drawer = window.matchMedia("(max-width: 1179px)");
     const collapse = (event) => { if (event.matches) setToolPanelOpen(false); };
-    if (tablet.matches) setToolPanelOpen(false);
-    tablet.addEventListener("change", collapse);
-    return () => tablet.removeEventListener("change", collapse);
+    if (drawer.matches) setToolPanelOpen(false);
+    drawer.addEventListener("change", collapse);
+    return () => drawer.removeEventListener("change", collapse);
   }, []);
   useEffect(() => {
-    if (!toolPanelOpen || !window.matchMedia("(min-width: 901px) and (max-width: 1100px)").matches) return undefined;
-    const frame = window.requestAnimationFrame(() => toolPanelRef.current?.focus());
-    const close = (event) => { if (event.key === "Escape") setToolPanelOpen(false); };
-    document.addEventListener("keydown", close);
+    if (!toolPanelOpen || !window.matchMedia("(max-width: 1179px)").matches) return undefined;
+    const panel = toolPanelRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      const target = panel?.querySelector(".editor-library-close") || panel;
+      target?.focus();
+    });
+    const containFocus = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setToolPanelOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const controls = [...panel.querySelectorAll("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [href], [tabindex]:not([tabindex='-1'])")]
+        .filter((element) => !element.hidden && element.getClientRects().length > 0);
+      if (!controls.length) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panel || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", containFocus);
     return () => {
       window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", close);
+      document.removeEventListener("keydown", containFocus);
       window.requestAnimationFrame(() => toolToggleRef.current?.focus?.());
     };
   }, [toolPanelOpen]);

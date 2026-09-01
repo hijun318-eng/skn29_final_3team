@@ -30,6 +30,7 @@ class ReportEvidenceFormatter:
         r"|/?(?:TABLE|TABLE_SEGMENT)(?:\s+[^\]]*)?"
         r"|(?:TABLE_HEADER_CONTEXT|PARAGRAPH|HEADING|EXPLICIT_PAGE_BREAK|HEADER|FOOTER|FIELD_SIMPLE)"
         r"(?:\s+[^\]]*)?"
+        r"|SECTION_BOUNDARY(?:\s+[^\]]*)?"
         r")\]\s*"
     )
     _CELL_MARKER = re.compile(r"\[r\d+c\d+\b[^\]]*\]\s*")

@@ -247,7 +247,7 @@ export function paginateReportBlocks(blocks, orientation, documentId = "report")
       startPage(row.sourceY);
     }
     for (const sourceBlock of row.blocks) {
-      page.blocks.push({ ...sourceBlock, y: cursorY, h: height, sourceBlock });
+      page.blocks.push({ ...sourceBlock, y: cursorY, sourceBlock });
     }
     cursorY += height;
   }

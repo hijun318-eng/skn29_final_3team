@@ -1,9 +1,9 @@
 """파이프라인 2단계: 계획 수립 및 G2 SQL 가드 검증 단계(PlanStage) 모듈.
 
 [핵심 목적]
-1. 템플릿(Template) 또는 LLM(Node 2)을 통한 SQL 계획 생성
+1. 템플릿 또는 LLM(Node 2) 우선 SQL 계획 생성과 Compiler 복구
 2. G2 AST 거버넌스 가드(`g2_violation`)를 통한 정책/스키마/지표/조인/시간 검증
-3. 1회 한정 자가 수리(`node2_repair`): 위반 시 거버넌스 힌트를 모델에 주입하여 자동 수리 시도
+3. MODEL_ONLY 평가 모드의 1회 한정 자가 수리(`node2_repair`)
 4. 안전성이 입증된 계획(`canonical_sql`, `executable_sql`)을 격리 캐시에 저장
 """
 
@@ -151,6 +151,7 @@ class AnalysisPlanStage:
         plan = self._cache.get_plan(plan_key)
         plan_cached = plan is not None
         node2_trace_detail = None
+        node2_fallback_reason = None
 
         if plan is not None:
             pass
@@ -173,15 +174,16 @@ class AnalysisPlanStage:
                 "model_version": "TEMPLATE-I2-v1.0.0",
             }
         else:
-            # 2-B. 단일 승인 Serving View의 공통 연산은 질문을 다시 해석하지 않고
-            # 서버 소유 typed plan에서 직접 AST를 만든다. 현재 구조 범위 밖이면 기존
-            # Node 2 후보를 사용하되 아래의 동일한 G2 검증을 생략하지 않는다.
-            plan = self._support.typed_sql_plan(analysis_plan, package)
-            if plan is None:
-                if (
-                    state.approved_semantic_snapshot is not None
-                    or self._sql_generation_mode is SqlGenerationMode.COMPILER_ONLY
-                ):
+            # 2-B. 저장된 semantic snapshot은 재현성을 위해 Compiler 경로를 유지한다.
+            # 일반 HYBRID 요청은 Node 2 후보를 먼저 받고, 계약/G2 실패 때만 동일한
+            # 서버 소유 논리 계획을 Compiler가 복구한다.
+            compiler_first = (
+                self._sql_generation_mode is SqlGenerationMode.COMPILER_ONLY
+                or state.approved_semantic_snapshot is not None
+            )
+            if compiler_first:
+                plan = self._support.typed_sql_plan(analysis_plan, package)
+                if plan is None:
                     return self._responses.error(
                         context,
                         state.machine,
@@ -193,6 +195,7 @@ class AnalysisPlanStage:
                         decision,
                         detail="COMPILER_SCOPE_UNSUPPORTED",
                     )
+            else:
                 try:
                     plan = await state.budget.call(
                         self._model,
@@ -214,13 +217,51 @@ class AnalysisPlanStage:
                         type(error).__name__,
                         error,
                     )
-                    return self._responses.model_error(
-                        context,
-                        state.machine,
-                        state.trace,
-                        decision,
-                        code=model_failure_code(error),
-                    )
+                    if self._sql_generation_mode is SqlGenerationMode.MODEL_ONLY:
+                        return self._responses.model_error(
+                            context,
+                            state.machine,
+                            state.trace,
+                            decision,
+                            code=model_failure_code(error),
+                        )
+                    node2_fallback_reason = f"call_{type(error).__name__}"
+                    plan = None
+
+                if plan is not None:
+                    if isinstance(plan, dict):
+                        plan["analysis_plan"] = analysis_plan_payload
+                    node2_plan_violation = self._support.model_plan_violation(plan)
+                    if node2_plan_violation:
+                        logger.warning(
+                            "node2 plan rejected before G2: reason=%s keys=%s",
+                            node2_plan_violation,
+                            sorted(plan) if isinstance(plan, dict) else [],
+                        )
+                        if self._sql_generation_mode is SqlGenerationMode.MODEL_ONLY:
+                            return self._responses.model_error(
+                                context, state.machine, state.trace, decision
+                            )
+                        node2_fallback_reason = f"contract_{node2_plan_violation}"
+                        plan = None
+
+                if plan is None:
+                    plan = self._support.typed_sql_plan(analysis_plan, package)
+                    if plan is None:
+                        return self._responses.error(
+                            context,
+                            state.machine,
+                            state.trace,
+                            PipelineStage.G2,
+                            AnalysisStatus.BLOCKED,
+                            ErrorCode.SQL_POLICY_BLOCKED,
+                            "모델 SQL을 사용할 수 없고 현재 Compiler 복구 범위에도 포함되지 않습니다.",
+                            decision,
+                            detail=(
+                                f"NODE2_{node2_fallback_reason};"
+                                "COMPILER_SCOPE_UNSUPPORTED"
+                            ),
+                        )
 
         if isinstance(plan, dict):
             # 모델이나 캐시가 이 값을 소유하지 못하도록 G2 직전에 현재 Context에서
@@ -237,9 +278,57 @@ class AnalysisPlanStage:
                 context, state.machine, state.trace, decision
             )
 
-        state.record(
-            PipelineStage.MODEL,
+        # 3. G2 SQL AST 거버넌스 가드 검증
+        repair_count = 0
+        violation = self._support.g2_violation(plan, package)
+
+        if (
+            violation
+            and self._sql_generation_mode is SqlGenerationMode.HYBRID
+            and decision.route_type is not RouteType.TEMPLATE
+            and plan.get("plan_source") != "typed_sql_compiler"
+        ):
+            logger.warning(
+                "node2 G2 rejected; attempting compiler recovery: reason=%s",
+                violation,
+            )
+            compiler_plan = self._support.typed_sql_plan(analysis_plan, package)
+            if compiler_plan is None:
+                state.record(
+                    PipelineStage.MODEL,
+                    f"{node2_trace_detail};plan_cache=miss"
+                    if node2_trace_detail
+                    else "node=node2;plan_cache=miss",
+                )
+                state.record(PipelineStage.G2, str(violation), StageOutcome.BLOCKED)
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.G2,
+                    AnalysisStatus.BLOCKED,
+                    ErrorCode.SQL_POLICY_BLOCKED,
+                    "모델 SQL이 안전성 검증을 통과하지 못했고 현재 Compiler 복구 범위에도 포함되지 않습니다.",
+                    decision,
+                    detail=f"NODE2_G2_{violation};COMPILER_SCOPE_UNSUPPORTED",
+                )
+            compiler_plan["analysis_plan"] = analysis_plan_payload
+            plan = compiler_plan
+            node2_fallback_reason = f"g2_{violation}"
+            compiler_plan_violation = self._support.model_plan_violation(plan)
+            violation = (
+                compiler_plan_violation
+                or self._support.g2_violation(plan, package)
+            )
+
+        model_stage_detail = (
             (
+                f"node={plan.get('plan_source', 'typed_sql_compiler')};"
+                f"model={plan.get('model_version')};plan_cache=miss;"
+                f"fallback_from_node2={node2_fallback_reason}"
+            )
+            if node2_fallback_reason
+            else (
                 f"{node2_trace_detail};plan_cache=miss"
                 if node2_trace_detail
                 else (
@@ -252,12 +341,10 @@ class AnalysisPlanStage:
                         f"plan_cache={'hit' if plan_cached else 'template' if decision.sql_text else 'miss'}"
                     )
                 )
-            ),
+            )
         )
+        state.record(PipelineStage.MODEL, model_stage_detail)
 
-        # 3. G2 SQL AST 거버넌스 가드 검증
-        repair_count = 0
-        violation = self._support.g2_violation(plan, package)
         if violation == "UNSAFE_SQL":
             return self._responses.error(
                 context,

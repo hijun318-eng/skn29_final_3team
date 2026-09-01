@@ -255,7 +255,15 @@ function monthTitle(period?: PeriodLike | null): string {
   if (start[3] === "01" && end[3] === "01" && Number(end[1]) === expectedEndYear && Number(end[2]) === expectedEndMonth) {
     return `${startYear}년 ${startMonth}월`;
   }
-  return `${period.start.replaceAll("-", ".")}–${period.endExclusive.replaceAll("-", ".")}`;
+  const endInclusive = new Date(Date.UTC(Number(end[1]), Number(end[2]) - 1, Number(end[3])));
+  endInclusive.setUTCDate(endInclusive.getUTCDate() - 1);
+  if (Number.isNaN(endInclusive.getTime())) return "";
+  const inclusiveEnd = [
+    endInclusive.getUTCFullYear(),
+    String(endInclusive.getUTCMonth() + 1).padStart(2, "0"),
+    String(endInclusive.getUTCDate()).padStart(2, "0"),
+  ].join(".");
+  return `${period.start.replaceAll("-", ".")}–${inclusiveEnd}`;
 }
 
 /** 승인된 기간·지표 메타데이터만으로 제목을 만들고, 부족하면 일반 결과 제목으로 닫는다. */

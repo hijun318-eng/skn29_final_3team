@@ -1,8 +1,9 @@
 /** text template·artifact library·assistant 지시 입력을 제공하는 editor 도구 모듈이다. */
 import { memo, useDeferredValue, useMemo, useState } from "react";
-import { BarChart3, PanelLeftClose, Plus, Search, Sparkles, X } from "lucide-react";
+import { BarChart3, PanelLeftClose, Search, Sparkles, X } from "lucide-react";
 
 import { ReportArtifactLibraryTile } from "../ReportWholeArtifactBlock";
+import { compactReportArtifactOptions } from "../reportArtifactLibrary";
 import { analysisTimeLabel } from "../reportAnalysisArtifacts";
 import { ARTIFACT_VIEW_LABELS, availableArtifactViews } from "../reportDraftV2";
 import { REPORT_CHART_OPTIONS } from "./reportPresentation";
@@ -37,7 +38,6 @@ export const ReportToolPanel = memo(function ReportToolPanel({
   artifactOptions,
   artifactSelection,
   artifactStates,
-  artifactTemplates,
   artifacts,
   assistantInstruction,
   canEdit,
@@ -75,10 +75,11 @@ export const ReportToolPanel = memo(function ReportToolPanel({
     () => artifactOptions.filter((item) => matchesReportLibraryQuery(item, deferredQuery)),
     [artifactOptions, deferredQuery],
   );
-  const visibleArtifactTemplates = useMemo(
-    () => artifactTemplates.filter((item) => matchesReportLibraryQuery(item, deferredQuery)),
-    [artifactTemplates, deferredQuery],
+  const compactArtifacts = useMemo(
+    () => compactReportArtifactOptions(visibleArtifacts, artifacts, artifactSelection),
+    [artifactSelection, artifacts, visibleArtifacts],
   );
+  const hiddenDuplicateCount = visibleArtifacts.length - compactArtifacts.length;
   const visibleOutline = useMemo(
     () => orderedBlocks.filter((item) => matchesReportLibraryQuery(item, deferredQuery)),
     [deferredQuery, orderedBlocks],

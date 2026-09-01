@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 
@@ -256,10 +257,74 @@ class PipelineSupport:
         if not isinstance(contracts, dict):
             raise ValueError("수리 힌트 생성을 위해 Runtime Context 계약이 필요합니다.")
         detail = self._guard_details.get(violation, "후보 계획이 G2 규칙을 위반했습니다.")
+        approved_contract = self._g2_repair_contract_summary(contracts)
         return (
             f"constraint={violation}; detail={detail}; rebuild the invalid AST subtree "
             "only from schema_context, metric_rules, join_graph, time_rules, "
-            "parameter_contract, and query_policy"
+            "parameter_contract, and query_policy; use these exact governed names: "
+            f"{approved_contract}"
+        )
+
+    @staticmethod
+    def _g2_repair_contract_summary(contracts: dict[str, Any]) -> str:
+        """모델 수리에 필요한 승인 이름만 Runtime Context에서 결정론적으로 추출합니다."""
+
+        schema_context = contracts.get("schema_context")
+        assets = schema_context.get("assets") if isinstance(schema_context, dict) else None
+        approved_assets = sorted(
+            {
+                str(item["fqn"])
+                for item in assets or ()
+                if isinstance(item, dict) and str(item.get("fqn") or "")
+            }
+        )
+
+        metric_rules = contracts.get("metric_rules")
+        expected_result_fields = sorted(
+            {
+                str(item["result_field"])
+                for item in metric_rules or ()
+                if isinstance(item, dict) and str(item.get("result_field") or "")
+            }
+        )
+
+        parameter_contract = contracts.get("parameter_contract")
+        parameters = (
+            parameter_contract.get("parameters")
+            if isinstance(parameter_contract, dict)
+            else None
+        )
+        allowed_parameters = sorted(
+            {
+                f":{item['name']}"
+                for item in parameters or ()
+                if isinstance(item, dict) and str(item.get("name") or "")
+            }
+        )
+
+        time_rules = contracts.get("time_rules")
+        time_fields = time_rules.get("fields") if isinstance(time_rules, dict) else None
+        approved_time_fields = sorted(
+            {
+                f"{field['asset_fqn']}.{field['column']}"
+                for item in time_fields or ()
+                if isinstance(item, dict)
+                and isinstance((field := item.get("field")), dict)
+                and str(field.get("asset_fqn") or "")
+                and str(field.get("column") or "")
+            }
+        )
+
+        return json.dumps(
+            {
+                "allowed_parameters": allowed_parameters,
+                "approved_assets": approved_assets,
+                "approved_time_fields": approved_time_fields,
+                "expected_result_fields": expected_result_fields,
+            },
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
         )
 
     @staticmethod

@@ -106,69 +106,6 @@ function buildForecastSummary(days) {
 }
 
 
-/** API가 반환한 일별 점유율만 이용해 추이를 그린다. */
-export function MLForecastChart({ days }) {
-  if (!Array.isArray(days) || days.length === 0 || !days.every(validForecastDay)) return null;
-  const width = 640;
-  const height = 180;
-  const horizontalPadding = 8;
-  const verticalPadding = 6;
-  const drawableWidth = width - horizontalPadding * 2;
-  const drawableHeight = height - verticalPadding * 2;
-  const coordinates = days.map((day, index) => {
-    const ratio = day.predicted_occupancy_rate;
-    const x = horizontalPadding + (
-      days.length === 1 ? drawableWidth / 2 : (index / (days.length - 1)) * drawableWidth
-    );
-    const y = verticalPadding + (1 - ratio) * drawableHeight;
-    return { x, y };
-  });
-  const points = coordinates.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
-  const occupancyRates = days.map((day) => day.predicted_occupancy_rate);
-  const chartDescription = [
-    `${formatKoreanDate(days[0].target_date)}부터 ${formatKoreanDate(days.at(-1).target_date)}까지 예상 점유율 추이`,
-    `최저 ${formatPercent(Math.min(...occupancyRates))}`,
-    `최고 ${formatPercent(Math.max(...occupancyRates))}`,
-    `마지막 날 ${formatPercent(occupancyRates.at(-1))}`,
-  ].join(", ");
-
-  return (
-    <section className="ml-workspace__chart" aria-labelledby="ml-forecast-chart-heading">
-      <div className="ml-workspace__section-heading">
-        <div>
-          <h3 id="ml-forecast-chart-heading">예상 점유율 추이</h3>
-          <p>예측 기간의 일별 변화를 보여줍니다.</p>
-        </div>
-        <span>{days.length}일</span>
-      </div>
-      <div className="ml-workspace__chart-frame">
-        <div className="ml-workspace__chart-y-axis" aria-hidden="true">
-          <span>100%</span><span>50%</span><span>0%</span>
-        </div>
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          role="img"
-          aria-label={chartDescription}
-          preserveAspectRatio="none"
-        >
-          <line x1={horizontalPadding} y1={verticalPadding} x2={width - horizontalPadding} y2={verticalPadding} />
-          <line x1={horizontalPadding} y1={height / 2} x2={width - horizontalPadding} y2={height / 2} />
-          <line x1={horizontalPadding} y1={height - verticalPadding} x2={width - horizontalPadding} y2={height - verticalPadding} />
-          <polyline points={points} />
-          {coordinates.length === 1 && (
-            <circle cx={coordinates[0].x} cy={coordinates[0].y} r="5" />
-          )}
-        </svg>
-      </div>
-      <div className="ml-workspace__chart-axis" aria-hidden="true">
-        <span>{formatKoreanDate(days[0].target_date)}</span>
-        {days.length > 1 && <span>{formatKoreanDate(days.at(-1).target_date)}</span>}
-      </div>
-    </section>
-  );
-}
-
-
 /** 예측 결과의 사용자 요약과 선택형 상세 정보를 표시한다. */
 export function MLPredictionResult({ result }) {
   const forecasts = result?.daily_forecasts;
@@ -199,11 +136,9 @@ export function MLPredictionResult({ result }) {
         <div className="ml-workspace__kpis">
           <article><span>예측 기간</span><strong>{days.length}일</strong></article>
           <article><span>기간 예상 점유율</span><strong>{formatPercent(summary.occupancyRate)}</strong></article>
-          <article><span>누적 예상 판매 객실박</span><strong>{formatRooms(summary.totalOccupied)}객실박</strong></article>
+          <article><span>누적 예상 객실 판매량</span><strong>{formatRooms(summary.totalOccupied)} 박</strong></article>
         </div>
       </section>
-
-      <MLForecastChart days={days} />
 
       {days.length > 0 && (
         <details className="ml-workspace__details">
@@ -235,7 +170,9 @@ export function MLPredictionResult({ result }) {
         <details className="ml-workspace__technical-details">
           <summary>기술 상세</summary>
           <dl>
-            {result.model_version && <div><dt>모델 버전</dt><dd>{result.model_version}</dd></div>}
+            {result.model_version && (
+              <div><dt>사용 모델</dt><dd>{result.model_version}</dd></div>
+            )}
             {result.provenance?.trino_query_id && (
               <div><dt>조회 식별자</dt><dd>{result.provenance.trino_query_id}</dd></div>
             )}

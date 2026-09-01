@@ -692,6 +692,148 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             any("node=typed_sql_compiler" in detail for detail in model_traces)
         )
 
+    async def test_model_only_uses_node2_even_when_typed_compiler_supports_plan(self):
+        """MODEL_ONLY는 Compiler 지원 여부와 관계없이 Node 2 후보를 G2로 검증한다."""
+
+        serving_fqn = "serving.semantic.observations"
+        asset = copy.deepcopy(ASSET)
+        asset["fqn"] = serving_fqn
+        asset["metrics"][0]["asset_fqn"] = serving_fqn
+        asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = serving_fqn
+        asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        model_plan = copy.deepcopy(VALID_PLAN)
+        model_plan["sql"] = VALID_SQL.replace(ASSET_FQN, serving_fqn)
+        model_plan["declared_assets"] = [serving_fqn]
+        model_plan["declared_columns"] = [
+            {**item, "asset_fqn": serving_fqn}
+            for item in model_plan["declared_columns"]
+        ]
+        adapter = AsyncRuntimeDataPlatform(asset=asset)
+        model = model_with(node2=model_plan)
+        execution = {}
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model,
+            execution_sink=execution.update,
+            sql_generation_mode=SqlGenerationMode.MODEL_ONLY,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(
+            ["node1", "node2", "node3"],
+            [node for node, _ in model.calls],
+        )
+        self.assertNotEqual("typed_sql_compiler", execution["plan"].get("plan_source"))
+        self.assertEqual(["LLM", None], adapter.bound_generation_modes)
+
+    async def test_hybrid_uses_node2_before_compiler_when_both_support_plan(self):
+        """HYBRID는 Compiler 지원 구조에서도 Node 2의 검증된 후보를 먼저 사용한다."""
+
+        serving_fqn = "serving.semantic.observations"
+        asset = copy.deepcopy(ASSET)
+        asset["fqn"] = serving_fqn
+        asset["metrics"][0]["asset_fqn"] = serving_fqn
+        asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = serving_fqn
+        asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        model_plan = copy.deepcopy(VALID_PLAN)
+        model_plan["sql"] = VALID_SQL.replace(ASSET_FQN, serving_fqn)
+        model_plan["declared_assets"] = [serving_fqn]
+        model_plan["declared_columns"] = [
+            {**item, "asset_fqn": serving_fqn}
+            for item in model_plan["declared_columns"]
+        ]
+        execution = {}
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(asset=asset),
+            model=model_with(node2=model_plan),
+            execution_sink=execution.update,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
+        self.assertNotEqual("typed_sql_compiler", execution["plan"].get("plan_source"))
+        self.assertEqual(["LLM", None], adapter.bound_generation_modes)
+
+    async def test_hybrid_recovers_with_compiler_when_node2_call_fails(self):
+        """Node 2 호출 실패는 같은 승인 계획의 Compiler 후보로 복구한다."""
+
+        serving_fqn = "serving.semantic.observations"
+        asset = copy.deepcopy(ASSET)
+        asset["fqn"] = serving_fqn
+        asset["metrics"][0]["asset_fqn"] = serving_fqn
+        asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = serving_fqn
+        asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        execution = {}
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(asset=asset),
+            model=model_with(node2=TimeoutError("deadline")),
+            execution_sink=execution.update,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
+        self.assertEqual("typed_sql_compiler", execution["plan"]["plan_source"])
+        self.assertEqual(["COMPILER", None], adapter.bound_generation_modes)
+        self.assertTrue(
+            any(
+                step.stage is PipelineStage.MODEL
+                and "fallback_from_node2=call_TimeoutError" in (step.detail or "")
+                for step in response.data.trace
+            )
+        )
+
+    async def test_hybrid_recovers_with_compiler_when_node2_is_not_read_only(self):
+        """Node 2 SQL이 read-only G2를 위반하면 Compiler로 복구한다."""
+
+        serving_fqn = "serving.semantic.observations"
+        asset = copy.deepcopy(ASSET)
+        asset["fqn"] = serving_fqn
+        asset["metrics"][0]["asset_fqn"] = serving_fqn
+        asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = serving_fqn
+        asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        rejected_plan = copy.deepcopy(VALID_PLAN)
+        rejected_plan["sql"] = f"DELETE FROM {serving_fqn}"
+        rejected_plan["declared_assets"] = [serving_fqn]
+        rejected_plan["declared_columns"] = []
+        execution = {}
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(asset=asset),
+            model=model_with(node2=rejected_plan),
+            execution_sink=execution.update,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
+        self.assertEqual("typed_sql_compiler", execution["plan"]["plan_source"])
+        self.assertEqual(0, response.data.repair_count)
+        self.assertEqual(["COMPILER", None], adapter.bound_generation_modes)
+
+    async def test_hybrid_blocks_when_node2_fails_and_compiler_is_unsupported(self):
+        response, adapter, model, _service = await self.run_pipeline(
+            model=model_with(node2=TimeoutError("deadline"))
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SQL_POLICY_BLOCKED, response.error.code)
+        self.assertEqual(0, adapter.execute_count)
+        self.assertEqual(["node1", "node2"], [node for node, _ in model.calls])
+        self.assertTrue(
+            any(
+                step.stage is PipelineStage.G2
+                and "COMPILER_SCOPE_UNSUPPORTED" in (step.detail or "")
+                for step in response.data.trace
+            )
+        )
+
     async def test_compiler_only_blocks_unsupported_plan_without_node2_or_query(self):
         adapter = AsyncRuntimeDataPlatform()
         model = model_with()
@@ -902,7 +1044,10 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
     async def test_one_g2_repair_uses_only_the_programmed_repair_response(self):
         model = model_with(node2=MISSING_FILTER_PLAN, repair=VALID_PLAN)
 
-        response, adapter, model, _service = await self.run_pipeline(model=model)
+        response, adapter, model, _service = await self.run_pipeline(
+            model=model,
+            sql_generation_mode=SqlGenerationMode.MODEL_ONLY,
+        )
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
         self.assertEqual(1, response.data.repair_count)
@@ -914,6 +1059,14 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         repair = next(payload for node, payload in model.calls if node == "node2_repair")
         self.assertEqual(1, repair["attempt"])
         self.assertIn("REQUIRED_FILTER", repair["violation"])
+        hint = repair["violation_detail"]
+        self.assertIn(f'"approved_assets":["{ASSET_FQN}"]', hint)
+        self.assertIn(f'"approved_time_fields":["{ASSET_FQN}.observed_on"]', hint)
+        self.assertIn(f'"expected_result_fields":["{RESULT_FIELD}"]', hint)
+        self.assertIn('"allowed_parameters":[', hint)
+        self.assertIn(":window_start", hint)
+        self.assertIn(":window_end", hint)
+        self.assertIn(":state_filter", hint)
 
     async def test_unsafe_candidate_is_blocked_by_g2_without_repair_or_query(self):
         unsafe = {
@@ -1151,7 +1304,8 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, adapter.search_count)
         self.assertEqual(1, adapter.resolve_count)
         self.assertEqual(1, adapter.execute_count)
-        self.assertEqual(["node3"], [node for node, _ in model.calls])
+        self.assertEqual(["node2", "node3"], [node for node, _ in model.calls])
+        self.assertEqual(["COMPILER", None], adapter.bound_generation_modes)
         evidence = response.data.result.evidence
         self.assertIsNone(evidence.period)
         self.assertEqual(self.context.as_of, evidence.snapshot.cutoff)
@@ -1389,7 +1543,8 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
     async def test_model_timeout_and_query_connection_error_are_typed(self):
         timeout_model = model_with(node2=TimeoutError("deadline"))
         timeout_response, timeout_adapter, _model, _service = await self.run_pipeline(
-            model=timeout_model
+            model=timeout_model,
+            sql_generation_mode=SqlGenerationMode.MODEL_ONLY,
         )
         self.assertEqual(ErrorCode.MODEL_TIMEOUT, timeout_response.error.code)
         self.assertTrue(timeout_response.error.retryable)

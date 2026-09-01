@@ -1,4 +1,4 @@
-/** 선택 블록 속성·일괄 작업·검색·세션 스냅샷을 한 패널에 제공한다. */
+/** 선택 블록 속성·일괄 작업·검색·복원 지점을 한 패널에 제공한다. */
 import { memo, useState } from "react";
 import {
   Camera, Clipboard, Copy, Lock, Search, Trash2, Unlock, X,
@@ -6,6 +6,8 @@ import {
 
 import { REPORT_CHART_OPTIONS, blockSettings } from "./reportPresentation";
 import { reportEvidenceLabel } from "../../../contracts/report";
+
+const BLOCK_TYPE_LABELS = { artifact: "분석 결과", chart: "차트", table: "표", text: "텍스트" };
 
 function sourceLabel(artifact) {
   const names = artifact?.evidence?.sources?.map((source) => source.name).filter(Boolean) ?? [];
@@ -49,6 +51,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
         <button type="button" onClick={() => editorTools.setSelectedLocks(true)} disabled={!canEdit}><Lock size={14} />잠금</button>
         <button type="button" onClick={() => editorTools.setSelectedLocks(false)} disabled={!canEdit || !lockedSelectedCount}><Unlock size={14} />해제</button>
         <button type="button" className="danger" onClick={editorTools.deleteSelected} disabled={!canEdit || lockedSelectedCount > 0}><Trash2 size={14} />삭제</button>
+        <button type="button" onClick={editorTools.clearSelection}>선택 해제</button>
       </div>
     </section>}
 
@@ -56,7 +59,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
       <summary><Search size={14} /><span>블록 검색</span></summary>
       <section>
         <label className="report-properties-search"><Search size={14} /><input value={editorTools.searchQuery} onChange={(event) => editorTools.setSearchQuery(event.target.value)} placeholder="제목 또는 텍스트 검색" />{editorTools.searchQuery && <button type="button" aria-label="검색 지우기" onClick={() => editorTools.setSearchQuery("")}><X size={13} /></button>}</label>
-        {editorTools.searchQuery && <div className="report-properties-results">{editorTools.searchResults.length ? editorTools.searchResults.map((result) => <button type="button" onClick={() => editorTools.focusSearchResult(result.id)} key={result.id}><b>{result.title || "제목 없음"}</b><small>{result.type === "text" ? "텍스트" : result.type}</small></button>) : <p>일치하는 블록이 없습니다.</p>}</div>}
+        {editorTools.searchQuery && <div className="report-properties-results">{editorTools.searchResults.length ? editorTools.searchResults.map((result) => <button type="button" onClick={() => editorTools.focusSearchResult(result.id)} key={result.id}><b>{result.title || "제목 없음"}</b><small>{BLOCK_TYPE_LABELS[result.type] || "블록"}</small></button>) : <p>일치하는 블록이 없습니다.</p>}</div>}
       </section>
     </details>
 
@@ -65,7 +68,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
       {block.type === "text"
         ? <label><span>텍스트 제목</span><input defaultValue={block.title} disabled={!canEdit || blockLocked} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== block.title) onUpdate(block.id, { title }); }} /></label>
         : <div className="report-property-evidence report-property-readonly-title"><span>분석 요소 제목</span><b>{block.title}</b><small>원본 분석 결과의 식별 제목으로 유지됩니다.</small></div>}
-      <dl><div><dt>유형</dt><dd>{block.type}</dd></div><div><dt>상태</dt><dd>{blockLocked ? "잠김" : "편집 가능"}</dd></div></dl>
+      <dl><div><dt>유형</dt><dd>{BLOCK_TYPE_LABELS[block.type] || "블록"}</dd></div><div><dt>상태</dt><dd>{blockLocked ? "잠김" : "편집 가능"}</dd></div></dl>
       <div className="report-property-lock"><button type="button" onClick={() => editorTools.toggleBlockLock(block.id)} disabled={!canEdit}>{blockLocked ? <><Unlock size={14} />잠금 해제</> : <><Lock size={14} />블록 잠금</>}</button></div>
       <label className="report-size-preset-select"><span>블록 크기</span><select value={selectedSizePreset?.index ?? "custom"} onChange={(event) => { const preset = editorTools.sizePresets.find((item) => String(item.index) === event.target.value); if (preset) editorTools.resizePrimary(preset); }} disabled={!canEdit || editorTools.lockedBlockIds.has(block.id)}>{!selectedSizePreset && <option value="custom">사용자 지정 · {block.w ?? block.columns}/12 · {block.h}단</option>}{editorTools.sizePresets.map((preset) => <option value={preset.index} key={preset.index}>{preset.label} · {preset.width}/12 · {preset.height}단</option>)}</select></label>
       <details className="report-properties-technical"><summary>배치 정보</summary><dl><div><dt>위치</dt><dd>{(block.x ?? 0) + 1}열 · {(block.y ?? 0) + 1}행</dd></div><div><dt>격자 크기</dt><dd>{block.w ?? block.columns}/12 · {block.h}단</dd></div></dl></details>

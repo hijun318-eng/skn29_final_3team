@@ -1178,6 +1178,62 @@ def test_presentation_yields_when_the_question_changes_the_query_shape():
     assert render_only.route == "PRESENTATION"
 
 
+def test_presentation_reuses_artifact_when_node1_echoes_identical_query_shape() -> None:
+    """Node 1이 기존 슬롯을 반복 출력해도 같은 쿼리를 다시 실행하지 않는다."""
+
+    previous = _prior_analysis_turn()
+    previous["resolved_slots"].update(
+        {
+            "metric_ids": ["room_revenue"],
+            "analysis_operation": "breakdown",
+            "dimension_fields": [
+                {"asset_fqn": "serving.room_daily", "column": "hotel_code"}
+            ],
+            "user_filters": [
+                {
+                    "asset_fqn": "serving.room_daily",
+                    "column": "status",
+                    "operator": "eq",
+                    "value_text": "confirmed",
+                }
+            ],
+        }
+    )
+
+    slots = ConversationSlotResolver.resolve(
+        user_message="호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘.",
+        node1_output={
+            "requested_route": "PRESENTATION",
+            "presentation_type": "HORIZONTAL_BAR",
+            "presentation_explicit": True,
+            "selected_metric_ids": ["room_revenue"],
+            "analysis_operation": "breakdown",
+            "dimension_fields": [
+                {"asset_fqn": "serving.room_daily", "column": "hotel_code"}
+            ],
+            "filter_fields": [
+                {
+                    "asset_fqn": "serving.room_daily",
+                    "column": "status",
+                    "operator": "eq",
+                    "value_text": "confirmed",
+                }
+            ],
+            **_node1_period(
+                "2025-08-01T00:00:00+09:00",
+                "2025-09-01T00:00:00+09:00",
+                "2025년 8월",
+            ),
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 18),
+    )
+
+    assert slots.route == "PRESENTATION"
+    assert slots.target_chart_type == "HORIZONTAL_BAR"
+    assert slots.source_turn_ids == ("turn-1",)
+
+
 def test_presentation_yields_to_typed_period_or_rank_changes() -> None:
     """기간 후보나 순위 개수 변경은 기존 Artifact의 표현 전환으로 처리하지 않는다."""
 

@@ -376,11 +376,23 @@ class ConversationSlotResolver:
         candidate_changes_metric = bool(candidate_metric_ids) and (
             frozenset(candidate_metric_ids) != frozenset(stored_analysis_metric_ids)
         )
+        candidate_changes_dimensions = cls._collection_slot_changes_query_shape(
+            node1_output.get("dimension_fields"),
+            analysis_inheritance_slots.get("dimension_fields"),
+        )
+        candidate_changes_filters = cls._collection_slot_changes_query_shape(
+            node1_output.get("filter_fields"),
+            analysis_inheritance_slots.get("user_filters"),
+        )
+        candidate_changes_period = cls._period_candidates_change_query_shape(
+            node1_output.get("period_candidates"),
+            analysis_inheritance_slots,
+        )
         changes_query_shape = bool(
             candidate_changes_metric
-            or node1_output.get("dimension_fields")
-            or node1_output.get("filter_fields")
-            or node1_output.get("period_candidates")
+            or candidate_changes_dimensions
+            or candidate_changes_filters
+            or candidate_changes_period
             or (
                 candidate_operation is not None
                 and candidate_operation
@@ -911,6 +923,82 @@ class ConversationSlotResolver:
         if isinstance(value, str) and value.upper() in cls.ALLOWED_CHART_TYPES:
             return value.upper()
         return None
+
+    @staticmethod
+    def _collection_slot_changes_query_shape(
+        candidate_value: object,
+        stored_value: object,
+    ) -> bool:
+        """현재 후보 차원·필터가 저장된 쿼리 형태와 실제로 다른지 비교한다.
+
+        Node 1은 표현만 바꾸는 요청에서도 앞선 차원이나 필터를 반복 출력할 수 있다.
+        후보의 존재만 변경으로 간주하면 동일 Artifact를 다시 조회하게 되므로, durable
+        ChangeSet과 같은 식별 키로 집합을 비교한다. 후보가 없으면 생략으로 보고 변경하지
+        않으며, 형식이 깨진 비어 있지 않은 후보는 안전하게 변경으로 닫는다.
+        """
+
+        if not candidate_value:
+            return False
+        if not isinstance(candidate_value, (list, tuple)):
+            return True
+
+        candidate_items = tuple(item for item in candidate_value if isinstance(item, dict))
+        if len(candidate_items) != len(candidate_value):
+            return True
+        stored_items = tuple(
+            item
+            for item in (
+                stored_value if isinstance(stored_value, (list, tuple)) else ()
+            )
+            if isinstance(item, dict)
+        )
+
+        def identity(item: dict[str, Any]) -> tuple[str, str, str, str]:
+            return (
+                str(item.get("asset_fqn", "")),
+                str(item.get("column", "")),
+                str(item.get("operator", "")),
+                str(item.get("value_text", "")),
+            )
+
+        return {identity(item) for item in candidate_items} != {
+            identity(item) for item in stored_items
+        }
+
+    @classmethod
+    def _period_candidates_change_query_shape(
+        cls,
+        candidate_value: object,
+        stored_slots: dict[str, Any],
+    ) -> bool:
+        """typed 기간 후보가 저장된 주·비교 기간과 실제로 다른지 비교한다.
+
+        ``source_text``는 같은 기간을 표현한 자연어가 달라질 수 있으므로 쿼리 경계에
+        포함하지 않는다. 후보가 저장 범위의 선두와 모두 같으면 모델의 반복 출력으로
+        보고, 새 경계·추가 비교 기간·깨진 후보는 재조회가 필요한 변경으로 처리한다.
+        """
+
+        if not candidate_value:
+            return False
+        candidates = TimeAlgebraEngine._valid_candidates(candidate_value)
+        if not candidates:
+            return True
+
+        stored_ranges = tuple(
+            item
+            for item in (
+                cls._parse_stored_time_range(stored_slots.get("time_range")),
+                cls._parse_stored_time_range(stored_slots.get("comparison_time_range")),
+            )
+            if item is not None
+        )
+        if len(candidates) > len(stored_ranges):
+            return True
+        return any(
+            candidate.start != stored.start
+            or candidate.end_exclusive != stored.end_exclusive
+            for candidate, stored in zip(candidates, stored_ranges)
+        )
 
     @staticmethod
     def _parse_stored_time_range(stored: dict[str, Any] | None) -> ResolvedTimeRange | None:

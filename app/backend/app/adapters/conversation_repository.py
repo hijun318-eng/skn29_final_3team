@@ -310,11 +310,13 @@ class ConversationRepository:
                t.terminal_status, t.reason_code,
                t.product_release_id, t.permission_snapshot_id, t.semantic_release_id,
                a.data_snapshot_json, a.chart_spec_json, a.narrative_markdown, a.evidence_json,
-               a.trino_query_id AS query_id,
+               q.trino_query_id AS query_id,
                v.view_type, v.spec_json AS view_spec_json, v.spec_sha256,
                command.status AS command_status, command.error_response AS command_error
         FROM chat.turns t
         LEFT JOIN artifact.analysis_artifacts a ON t.artifact_id = a.artifact_id
+        LEFT JOIN query.query_executions q
+          ON q.query_execution_id = a.query_execution_id
         LEFT JOIN artifact.view_specs v ON t.view_spec_id = v.view_spec_id
         LEFT JOIN LATERAL (
             SELECT c.status, c.error_response

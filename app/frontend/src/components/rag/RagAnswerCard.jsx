@@ -1,5 +1,6 @@
 /** 책임: 인용 가능한 내부 문서 답변과 후속 질문·PDF 근거를 접근 가능한 카드로 표시한다. */
 import { useId } from "react";
+import { FileText } from "lucide-react";
 
 import "./RagAnswerCard.css";
 
@@ -38,6 +39,30 @@ function compareContent(text, answerType) {
   return { sections, prose: blocks.filter((block) => !sections.some((lines) => block === lines.join('\n'))) };
 }
 
+function evidenceSources(rag) {
+  const items = Array.isArray(rag?.evidence_bundle) ? rag.evidence_bundle : [];
+  return Array.from(new Map(items
+    .filter((item) => item && typeof item.evidence_id === 'string' && item.evidence_id)
+    .map((item) => [item.evidence_id, item])).values());
+}
+
+function citationReferences(rag, sources) {
+  const sourceById = new Map(sources.map((item) => [item.evidence_id, item]));
+  const citations = Array.isArray(rag?.citations) ? rag.citations : [];
+  return Array.from(new Map(citations
+    .filter((item) => item && typeof item.evidence_id === 'string' && item.evidence_id)
+    .map((item) => [item.evidence_id, {
+      citation: typeof item.citation === 'string' ? item.citation : '',
+      evidence: sourceById.get(item.evidence_id) || null,
+    }])).values());
+}
+
+function evidenceLabel(item) {
+  return [item?.document_name, item?.document_version, item?.section]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .join(' · ') || '근거 문서';
+}
+
 /** RAG 답변을 비교형 본문, 후속 질문과 중복 제거된 PDF 링크로 렌더링한다. */
 export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp }) {
   const titleId = useId();
@@ -50,6 +75,8 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
   ).values());
   const comparison = compareContent(answerText, rag?.answer_type);
   const paragraphs = comparison?.prose || answerText.split(/\n\s*\n/).filter(Boolean);
+  const sources = evidenceSources(rag);
+  const citationRefs = citationReferences(rag, sources);
   const responseStatus = String(rag?.status || rag?.response_status || '').toUpperCase();
   const isTerminalFailure = ['NO_EVIDENCE', 'ERROR', 'FAILED', 'GENERATION_FAILED'].includes(responseStatus);
   const candidateFollowUps = rag?.status === 'NEEDS_CLARIFICATION'
@@ -80,6 +107,23 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
             ))}
           </div>
         )}
+        {citationRefs.length > 0 && (
+          <div className="rag-answer-card__citations" aria-label="본문 인용">
+            <span>근거 인용</span>
+            <div>
+              {citationRefs.map((reference, index) => (
+                <details key={reference.evidence?.evidence_id || `${reference.citation}-${index}`}>
+                  <summary aria-label={`${index + 1}번 인용 근거 보기`}>[{index + 1}]</summary>
+                  <div className="rag-answer-card__citation-preview">
+                    <strong>{evidenceLabel(reference.evidence)}</strong>
+                    {reference.citation && <small>{reference.citation}</small>}
+                    {reference.evidence?.snippet && <p>{reference.evidence.snippet}</p>}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {onFollowUp && followUpQuestions.length > 0 && (
         <section className="rag-answer-card__followups" aria-label="후속 질문">
@@ -89,6 +133,20 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
               <button key={question} type="button" onClick={() => onFollowUp(question)}>
                 {question}
               </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {sources.length > 0 && (
+        <section className="rag-answer-card__source-strip" aria-label="출처">
+          <p>출처</p>
+          <div>
+            {sources.map((item) => (
+              <span key={item.evidence_id} title={item.snippet || undefined}>
+                <FileText size={14} aria-hidden="true" />
+                <b>{item.document_name || '근거 문서'}</b>
+                {item.section && <small>{item.section}</small>}
+              </span>
             ))}
           </div>
         </section>

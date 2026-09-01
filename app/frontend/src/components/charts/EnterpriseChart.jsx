@@ -1,5 +1,5 @@
 /** 검증된 분석 표 field를 접근 가능한 Recharts 시각화로 표현하는 모듈이다. */
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Label, LabelList, Line,
   LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -97,6 +97,7 @@ export function EnterpriseChart({
   type = "bar",
   height = 280,
   showLegend = true,
+  interactiveLegend = false,
   valueFormatter = (value, item) => formatMetricValue(value, { unit: item?.unit }),
   axisFormatter = formatCompactNumber,
   labelFormatter = formatCompactNumber,
@@ -107,11 +108,22 @@ export function EnterpriseChart({
 }) {
   const chartId = useId().replaceAll(":", "");
   const chartType = normalizeChartType(type);
+  const [hiddenSeries, setHiddenSeries] = useState(() => new Set());
   const sourceRows = Array.isArray(data) ? data : [];
   const sourceSeries = Array.isArray(series) ? series : [];
   const rows = useMemo(() => orderedRows(sourceRows, xKey), [data, xKey]);
   const normalizedSeries = useMemo(() => sourceSeries.map((item, index) => ({ ...item, color: item.color || seriesColor(index) })), [series]);
   const descriptionId = `${chartId}-description`;
+  const visibleSeriesCount = normalizedSeries.filter((item) => !hiddenSeries.has(item.key)).length;
+
+  const toggleSeries = (key) => {
+    setHiddenSeries((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else if (visibleSeriesCount > 1) next.add(key);
+      return next;
+    });
+  };
 
   if (!chartType) {
     return <ChartFallback title="지원하지 않는 차트 형식입니다.">차트 형식을 확인하거나 연결된 데이터 표에서 값을 확인해 주세요.</ChartFallback>;
@@ -189,11 +201,11 @@ export function EnterpriseChart({
 
   let chart;
   if (chartType === "line") {
-    chart = <LineChart data={chartRows} margin={margin} accessibilityLayer>{common}{normalizedSeries.map((item) => <Line key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={3} connectNulls={false} dot={chartRows.length <= 12 ? { r: 3, fill: "var(--chart-dot-fill)", stroke: item.color, strokeWidth: 2 } : false} activeDot={{ r: 6, stroke: "var(--chart-active-dot-stroke)", strokeWidth: 2 }} isAnimationActive={false} />)}</LineChart>;
+    chart = <LineChart data={chartRows} margin={margin} accessibilityLayer>{common}{normalizedSeries.map((item) => <Line key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={3} connectNulls={false} dot={chartRows.length <= 12 ? { r: 3, fill: "var(--chart-dot-fill)", stroke: item.color, strokeWidth: 2 } : false} activeDot={{ r: 6, stroke: "var(--chart-active-dot-stroke)", strokeWidth: 2 }} hide={hiddenSeries.has(item.key)} isAnimationActive={false} />)}</LineChart>;
   } else if (chartType === "area") {
     chart = <AreaChart data={chartRows} margin={margin} accessibilityLayer>
       <defs>{normalizedSeries.map((item, index) => <linearGradient id={`${chartId}-area-${index}`} x1="0" y1="0" x2="0" y2="1" key={item.key}><stop offset="0%" stopColor={item.color} stopOpacity=".34" /><stop offset="100%" stopColor={item.color} stopOpacity=".035" /></linearGradient>)}</defs>
-      {common}{normalizedSeries.map((item, index) => <Area key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={2.5} fill={`url(#${chartId}-area-${index})`} connectNulls={false} dot={chartRows.length <= 10 ? { r: 2.5, fill: "var(--chart-dot-fill)", stroke: item.color, strokeWidth: 2 } : false} activeDot={{ r: 6, fill: item.color, stroke: "var(--chart-active-dot-stroke)", strokeWidth: 2 }} isAnimationActive={false} />)}
+      {common}{normalizedSeries.map((item, index) => <Area key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={item.color} strokeWidth={2.5} fill={`url(#${chartId}-area-${index})`} connectNulls={false} dot={chartRows.length <= 10 ? { r: 2.5, fill: "var(--chart-dot-fill)", stroke: item.color, strokeWidth: 2 } : false} activeDot={{ r: 6, fill: item.color, stroke: "var(--chart-active-dot-stroke)", strokeWidth: 2 }} hide={hiddenSeries.has(item.key)} isAnimationActive={false} />)}
     </AreaChart>;
   } else if (isCircular) {
     const total = circularValues.reduce((sum, value) => sum + value, 0);
@@ -207,19 +219,31 @@ export function EnterpriseChart({
   } else {
     chart = <BarChart data={chartRows} margin={margin} layout={isHorizontal ? "vertical" : "horizontal"} barCategoryGap="26%" accessibilityLayer>
       <defs>{normalizedSeries.map((item, index) => <linearGradient id={`${chartId}-bar-${index}`} x1="0" y1="0" x2={isHorizontal ? "1" : "0"} y2={isHorizontal ? "0" : "1"} key={item.key}><stop offset="0%" stopColor={item.color} /><stop offset="100%" stopColor={item.color} stopOpacity=".72" /></linearGradient>)}</defs>
-      {common}{normalizedSeries.map((item, index) => <Bar key={item.key} dataKey={item.key} name={item.label} stackId={isStacked ? "total" : undefined} fill={`url(#${chartId}-bar-${index})`} maxBarSize={64} radius={isStacked ? 0 : isHorizontal ? [2, 7, 7, 2] : [7, 7, 2, 2]} isAnimationActive={false}>{showLabels && !isStacked && normalizedSeries.length === 1 && <LabelList dataKey={item.key} position={isHorizontal ? "right" : "top"} formatter={(value) => chartNumber(value) === null ? "" : labelFormatter(chartNumber(value))} fill="var(--chart-label)" fontSize={11} fontWeight={750} />}</Bar>)}
+      {common}{normalizedSeries.map((item, index) => <Bar key={item.key} dataKey={item.key} name={item.label} stackId={isStacked ? "total" : undefined} fill={`url(#${chartId}-bar-${index})`} maxBarSize={64} radius={isStacked ? 0 : isHorizontal ? [2, 7, 7, 2] : [7, 7, 2, 2]} hide={hiddenSeries.has(item.key)} isAnimationActive={false}>{showLabels && !isStacked && normalizedSeries.length === 1 && <LabelList dataKey={item.key} position={isHorizontal ? "right" : "top"} formatter={(value) => chartNumber(value) === null ? "" : labelFormatter(chartNumber(value))} fill="var(--chart-label)" fontSize={11} fontWeight={750} />}</Bar>)}
     </BarChart>;
   }
 
   const legendItems = isCircular
     ? circularData.map((item, index) => ({ key: `${item.category}-${index}`, label: item.category, color: item.fill, value: valueFormatter(item.value, normalizedSeries[0]) }))
     : normalizedSeries;
+  const canToggleLegend = interactiveLegend && !isCircular && normalizedSeries.length > 1;
+  const legendClassName = [
+    "enterprise-chart-legend",
+    isCircular ? "is-category-legend" : "",
+    canToggleLegend ? "is-interactive" : "",
+  ].filter(Boolean).join(" ");
   const resolvedDescription = description || `${chartRows.length.toLocaleString("ko-KR")}개 항목의 ${normalizedSeries.map((item) => item.label).join(", ")}을 ${CHART_TYPE_LABELS[chartType]} 차트로 표시합니다.`;
   const resolvedAriaLabel = ariaLabel || `${xLabel || "항목"}별 ${normalizedSeries.map((item) => item.label).join(", ")} ${CHART_TYPE_LABELS[chartType]} 차트`;
 
   return <div className={`enterprise-chart enterprise-chart--${chartType}`} role="group" tabIndex={0} aria-label={resolvedAriaLabel} aria-describedby={descriptionId}>
     <span id={descriptionId} className="sr-only">{resolvedDescription}</span>
-    {showLegend && <div className={`enterprise-chart-legend ${isCircular ? "is-category-legend" : ""}`} role="list" aria-label="차트 범례">{legendItems.map((item) => <span role="listitem" key={item.key}><i style={{ background: item.color }} /><b>{item.label}</b>{item.value !== undefined ? <em>{item.value}</em> : item.unit && !commonUnit ? <em>{item.unit}</em> : null}</span>)}</div>}
+    {showLegend && <div className={legendClassName} role="list" aria-label="차트 범례">{legendItems.map((item) => {
+      const hidden = hiddenSeries.has(item.key);
+      const content = <><i style={{ background: item.color }} /><b>{item.label}</b>{item.value !== undefined ? <em>{item.value}</em> : item.unit && !commonUnit ? <em>{item.unit}</em> : null}</>;
+      return <span role="listitem" key={item.key} className={hidden ? "is-hidden" : ""}>{canToggleLegend
+        ? <button type="button" aria-pressed={!hidden} disabled={!hidden && visibleSeriesCount === 1} onClick={() => toggleSeries(item.key)} title={`${item.label} 계열 ${hidden ? "표시" : "숨기기"}`}>{content}</button>
+        : content}</span>;
+    })}</div>}
     <div className="enterprise-chart-plot">{commonUnit && <span className="enterprise-chart-axis-unit">단위: {commonUnit}</span>}<ResponsiveContainer width="100%" height={height} minWidth={0}>{chart}</ResponsiveContainer></div>
   </div>;
 }

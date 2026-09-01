@@ -79,6 +79,26 @@ try {
   assert.match(localizedSummaryHtml, /데이터 기준 <\/time>|데이터 기준 2026\./);
   assert.doesNotMatch(localizedSummaryHtml, /Room Revenue|KRW|ADR|RevPAR/);
 
+  const singleMetricTrendHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: {
+      ...run,
+      metrics: [run.metrics[0]],
+      chart: { chartType: "line", xField: "period", yFields: ["room_revenue"] },
+      table: {
+        columns: ["period", "room_revenue"],
+        rows: [
+          { period: "2026-05-01", room_revenue: 5200000000 },
+          { period: "2026-06-01", room_revenue: 5480000000 },
+          { period: "2026-07-01", room_revenue: 5842000000 },
+        ],
+      },
+    },
+  }));
+  assert.match(singleMetricTrendHtml, /analysis-kpi-section is-single-metric/);
+  assert.match(singleMetricTrendHtml, /analysis-metric-card--total is-hero-metric has-sparkline/);
+  assert.match(singleMetricTrendHtml, /class="analysis-kpi-sparkline" role="img" aria-label="객실 매출 최근 3개 시점 추이"/);
+  assert.match(singleMetricTrendHtml, /<polyline points=/);
+
   const twoTurnHtml = renderToStaticMarkup(createElement("div", null,
     createElement(AnalysisStatePanel, { run }),
     createElement(AnalysisStatePanel, { run }),

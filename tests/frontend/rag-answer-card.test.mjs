@@ -31,6 +31,16 @@ try {
     follow_up_questions: ["승인 절차를 더 알려줘"],
     document_name: "객실 운영 지침",
     pdf_url: "/api/rag/documents/manual-approved/pdf",
+    citations: [{ evidence_id: "manual-approved:3", citation: "객실 운영 지침 p.3" }],
+    evidence_bundle: [{
+      evidence_id: "manual-approved:3",
+      document_id: "manual-approved",
+      document_name: "객실 운영 지침",
+      document_version: "v3",
+      section: "객실 정비 인계",
+      snippet: "객실 정비 이력과 당직자 인계 내용을 함께 확인한다.",
+      score: 0.92,
+    }],
   };
   const card = (key) => createElement(RagAnswerCard, {
     key,
@@ -49,6 +59,11 @@ try {
   assert.match(html, /aria-label="근거 문서"/);
   assert.match(html, /승인 절차를 더 알려줘/);
   assert.equal((html.match(/PDF 원문 보기/g) || []).length, 2);
+  assert.equal((html.match(/근거 인용/g) || []).length, 2);
+  assert.equal((html.match(/aria-label="1번 인용 근거 보기"/g) || []).length, 2);
+  assert.match(html, /객실 운영 지침 · v3 · 객실 정비 인계/);
+  assert.match(html, /객실 정비 이력과 당직자 인계 내용을 함께 확인한다/);
+  assert.equal((html.match(/class="rag-answer-card__source-strip"/g) || []).length, 2);
   assert.doesNotMatch(html, /style=/);
 
   const labelledBy = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);

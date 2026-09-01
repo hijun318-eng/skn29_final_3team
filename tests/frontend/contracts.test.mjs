@@ -772,8 +772,9 @@ const hydratedComposite = hydrateTurnsFromServer([{
 assert.equal(hydratedComposite[0].viewType, "SUMMARY");
 assert.equal(hydratedComposite[0].run.requestId, "composite-request");
 assert.equal(hydratedComposite[0].run.rag.answer_text, "내부 보고서에서 확인한 하락 원인입니다.");
-assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE" && ragResponse/);
-assert.match(source("pages/AgentPage.jsx"), /className="composite-rag-response"/);
+assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE"/);
+assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction/);
+assert.match(source("pages/AgentPage.jsx"), /className="composite-agent-result"/);
 
 const mismatchedPresentation = hydrateTurnsFromServer([{
   turn_id: "turn-source",

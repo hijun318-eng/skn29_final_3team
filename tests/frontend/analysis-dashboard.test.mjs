@@ -22,6 +22,8 @@ const server = await createServer({
 
 try {
   const { commandClarificationMessage, commandClarificationType, savedRunStatus } = await server.ssrLoadModule("/src/pages/agentPageHelpers.js");
+  const { AgentCapabilityOverview, AgentExecutionBar, agentKindsForRun } = await server.ssrLoadModule("/src/components/agent/AgentIdentity.jsx");
+  const { attachAgentResults, mlPredictionRun, ragRun } = await server.ssrLoadModule("/src/pages/agentResponseMappers.js");
   const { AnalysisStatePanel, analysisResultDensity } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
   const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
@@ -201,6 +203,41 @@ try {
   assert.match(commandClarificationMessage({}, "metric"), /분석할 지표/);
   assert.equal(savedRunStatus("CLARIFYING"), "입력 필요");
 
+  const capabilityHtml = renderToStaticMarkup(createElement(AgentCapabilityOverview, {
+    ragEnabled: true,
+    mlEnabled: true,
+  }));
+  assert.match(capabilityHtml, /분석 Agent/);
+  assert.match(capabilityHtml, /RAG Agent/);
+  assert.match(capabilityHtml, /ML Agent/);
+  assert.match(capabilityHtml, /HGBR 예측 Tool/);
+
+  const ragResult = {
+    status: "ANSWER",
+    answer: { text: "승인 문서 답변" },
+    evidence_bundle: [],
+    citations: [],
+  };
+  const mlResult = {
+    execution_id: "ml-run-1",
+    property_id: "GRAND",
+    as_of: "2026-09-01",
+    daily_forecasts: [{ target_date: "2026-09-02" }],
+  };
+  const compositeRun = attachAgentResults(run, "복합 요청", {
+    ragResult,
+    mlPrediction: mlResult,
+  });
+  assert.deepEqual(agentKindsForRun(compositeRun), ["ANALYSIS", "RAG", "ML"]);
+  assert.equal(compositeRun.rag.answer_text, "승인 문서 답변");
+  assert.equal(compositeRun.mlPrediction, mlResult);
+  const executionHtml = renderToStaticMarkup(createElement(AgentExecutionBar, { run: compositeRun }));
+  assert.match(executionHtml, /전문 Agent 협업/);
+  assert.match(executionHtml, /분석 Agent · RAG Agent · ML Agent/);
+  assert.match(executionHtml, /3개 Agent/);
+  assert.deepEqual(agentKindsForRun(ragRun("질문", ragResult)), ["RAG"]);
+  assert.deepEqual(agentKindsForRun(mlPredictionRun("질문", mlResult)), ["ML"]);
+
   const ragCatalogHtml = renderToStaticMarkup(createElement(RagEmptyState, {
     documents: [{
       manual_id: "manual-approved",
@@ -218,7 +255,9 @@ try {
   assert.match(agentSource, /enabledFeatures\.includes\(SERVICE_FEATURE\.mlPrediction\)/);
   assert.doesNotMatch(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
   assert.doesNotMatch(agentSource, /import MLPredictionWorkspace/);
-  assert.match(agentSource, /객실 수요 예측/);
+  assert.match(agentSource, /AgentCapabilityOverview/);
+  assert.match(agentSource, /AgentExecutionBar/);
+  assert.match(agentSource, /attachAgentResults/);
   assert.doesNotMatch(agentSource, /추천 질문|저장 분석 바로 실행|exampleQuestions/);
   assert.match(agentSource, /이 저장 분석은 현재 데이터 릴리스와 맞지 않아 재실행할 수 없습니다/);
 

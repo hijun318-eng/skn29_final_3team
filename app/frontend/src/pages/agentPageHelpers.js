@@ -6,7 +6,7 @@ import {
   normalizeAnalysisEvidence,
   normalizeAnalysisMetrics,
 } from "../contracts/analysis.ts";
-import { mlPredictionRun, ragRun } from "./agentResponseMappers.js";
+import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers.js";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -182,8 +182,11 @@ export function hydrateTurnsFromServer(serverTurns) {
       if (isOutOfScope) {
         run = scopeNoticeRun(userMessage, scopeRejection?.message);
       } else if (ragResult && !st.data_snapshot_json) {
-        run = ragRun(userMessage, ragResult);
-      } else if (mlPrediction && st.terminal_status === "SUCCEEDED") {
+        run = attachAgentResults(ragRun(userMessage, ragResult), userMessage, {
+          ragResult,
+          mlPrediction: st.terminal_status === "SUCCEEDED" ? mlPrediction : null,
+        });
+      } else if (mlPrediction && st.terminal_status === "SUCCEEDED" && !st.data_snapshot_json) {
         run = mlPredictionRun(userMessage, mlPrediction);
       } else if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
@@ -293,9 +296,10 @@ export function hydrateTurnsFromServer(serverTurns) {
             contractVersion: OPENAPI_VERSION,
           },
         };
-        if (ragResult) {
-          run.rag = ragRun(userMessage, ragResult).rag;
-        }
+        run = attachAgentResults(run, userMessage, {
+          ragResult,
+          mlPrediction: st.terminal_status === "SUCCEEDED" ? mlPrediction : null,
+        });
         lastAnalysisRun = run;
       } else {
         run = commandErrorRun(userMessage, {

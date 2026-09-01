@@ -67,3 +67,14 @@ export function mlPredictionRun(question, result) {
     mlPrediction: result,
   };
 }
+
+
+/** 대표 run에 복합 실행으로 함께 반환된 RAG·ML 결과를 손실 없이 결합한다. */
+export function attachAgentResults(baseRun, question, { ragResult, mlPrediction } = {}) {
+  if (!baseRun) return null;
+  return {
+    ...baseRun,
+    ...(ragResult ? { rag: ragRun(question, ragResult).rag } : {}),
+    ...(mlPrediction ? { mlPrediction } : {}),
+  };
+}

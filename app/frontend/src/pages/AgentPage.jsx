@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, FilePlus2, Info, MessageSquareText, Plus, 
 import { AnalysisApiError, createAnalysisClient, SERVICE_FEATURE } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
+import { AgentCapabilityOverview, AgentExecutionBar } from "../components/agent/AgentIdentity";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
 import { MLPredictionResult } from "../components/ml/MLPredictionWorkspace";
@@ -12,7 +13,7 @@ import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { mlPredictionRun, ragRun } from "./agentResponseMappers";
+import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers";
 import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
 const MAX_QUESTION_LENGTH = 1000;
@@ -402,12 +403,20 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         });
       } else if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
-        if (responseType === "COMPOSITE" && ragResponse) {
-          finalRun = {
-            ...finalRun,
-            rag: ragRun(normalized, ragResponse).rag,
-          };
+        if (responseType === "COMPOSITE") {
+          finalRun = attachAgentResults(finalRun, normalized, {
+            ragResult: ragResponse,
+            mlPrediction,
+          });
         }
+      } else if (responseType === "COMPOSITE" && (ragResponse || mlPrediction)) {
+        const primaryRun = ragResponse
+          ? ragRun(normalized, ragResponse)
+          : mlPredictionRun(normalized, mlPrediction);
+        finalRun = attachAgentResults(primaryRun, normalized, {
+          ragResult: ragResponse,
+          mlPrediction,
+        });
       } else if (data?.status === "PARTIAL") {
         finalRun = commandErrorRun(
           normalized,
@@ -596,6 +605,10 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
               <small>ANSWERVICE AI</small>
               <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
               <p>{availableChatCapabilities.join(", ")}을 한 대화에서 이어서 요청할 수 있습니다.</p>
+              <AgentCapabilityOverview
+                ragEnabled={internalGuidelineEnabled}
+                mlEnabled={mlPredictionEnabled}
+              />
               {ragAvailable && (
                 <div className="chat-support-links" aria-label="도움말">
                   <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부 업무지침 찾아보기</button>
@@ -621,6 +634,9 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                 <div className="message message--agent" aria-label="AI 응답">
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
+                    {!turnItem.run.scopeNotice && !(turnItem.run.chatPending && !turnItem.processViewModel) && (
+                      <AgentExecutionBar run={turnItem.run} />
+                    )}
                     {turnItem.run.scopeNotice ? (
                       <div className="scope-notice-response" role="status">
                         <small>지원 범위 안내</small>
@@ -628,7 +644,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       </div>
                     ) : turnItem.run.rag && !turnItem.run.evidence ? (
                       <>
-                        <small className="agent-result-type">내부지침</small>
                         <RagAnswerCard
                           rag={turnItem.run.rag}
                           pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
@@ -642,10 +657,17 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                               })
                             : undefined}
                         />
+                        {turnItem.run.mlPrediction && (
+                          <section className="composite-agent-result" aria-label="객실 수요 예측">
+                            <small className="agent-result-type">객실 수요 예측</small>
+                            <div className="ml-conversation-result">
+                              <MLPredictionResult result={turnItem.run.mlPrediction} />
+                            </div>
+                          </section>
+                        )}
                       </>
-                    ) : turnItem.run.mlPrediction ? (
+                    ) : turnItem.run.mlPrediction && !turnItem.run.evidence ? (
                       <>
-                        <small className="agent-result-type">객실 수요 예측</small>
                         <div className="ml-conversation-result">
                           <MLPredictionResult result={turnItem.run.mlPrediction} />
                         </div>
@@ -684,7 +706,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       } : undefined}
                     />}
                     {turnItem.run.rag && turnItem.run.evidence && (
-                      <section className="composite-rag-response" aria-label="내부 문서 근거">
+                      <section className="composite-agent-result" aria-label="내부 문서 근거">
                         <small className="agent-result-type">내부 문서 근거</small>
                         <RagAnswerCard
                           rag={turnItem.run.rag}
@@ -693,6 +715,14 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                             url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
                           }))}
                         />
+                      </section>
+                    )}
+                    {turnItem.run.mlPrediction && turnItem.run.evidence && (
+                      <section className="composite-agent-result" aria-label="객실 수요 예측">
+                        <small className="agent-result-type">객실 수요 예측</small>
+                        <div className="ml-conversation-result">
+                          <MLPredictionResult result={turnItem.run.mlPrediction} />
+                        </div>
                       </section>
                     )}
                     {canDraftReport && turnItem.run.reportDefinitionId && (

@@ -298,6 +298,29 @@ try {
   assert.match(chartHtml, /enterprise-chart--horizontal-bar/);
   assert.doesNotMatch(chartHtml, /AI 분석 요약/);
 
+  const tableWithPresentationActionHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    viewType: "TABLE",
+    onRequestBarPresentation: () => {},
+  }));
+  assert.match(tableWithPresentationActionHtml, /막대그래프로 보기/);
+
+  const barPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    viewType: "BAR",
+    onRequestBarPresentation: () => {},
+    artifactReuse: { viewSpecId: "view-spec-bar" },
+  }));
+  assert.doesNotMatch(barPresentationHtml, /막대그래프로 보기/);
+  assert.match(barPresentationHtml, /기존 분석 재사용 · 새 분석 쿼리 없음/);
+
+  const pendingPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    viewType: "BAR",
+    artifactReuse: { pending: true },
+  }));
+  assert.doesNotMatch(pendingPresentationHtml, /새 분석 쿼리 없음/);
+
   const fullHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "FULL" }));
   assert.doesNotMatch(fullHtml, /aria-label="차트 표현 방식"/);
 
@@ -349,7 +372,8 @@ try {
   for (const label of ["요약으로 보기", "표로 보기", "그래프로 보기", "KPI만 보기"]) {
     assert.doesNotMatch(followupHtml, new RegExp(label));
   }
-  assert.doesNotMatch(followupHtml, /결과 보기 전환|이전 분석 결과|재사용|재조회|연결 정보/);
+  assert.match(followupHtml, /기존 분석 재사용 · 새 분석 쿼리 없음/);
+  assert.doesNotMatch(followupHtml, /결과 보기 전환|이전 분석 결과|재조회|연결 정보/);
   assert.doesNotMatch(followupHtml, /DataHub|AST SQL|거버넌스/);
 
   const regularTableHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {

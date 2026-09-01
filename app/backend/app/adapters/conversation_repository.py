@@ -310,6 +310,7 @@ class ConversationRepository:
                t.terminal_status, t.reason_code,
                t.product_release_id, t.permission_snapshot_id, t.semantic_release_id,
                a.data_snapshot_json, a.chart_spec_json, a.narrative_markdown, a.evidence_json,
+               a.trino_query_id AS query_id,
                v.view_type, v.spec_json AS view_spec_json, v.spec_sha256,
                command.status AS command_status, command.error_response AS command_error
         FROM chat.turns t

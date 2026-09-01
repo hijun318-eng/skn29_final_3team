@@ -339,17 +339,21 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           && responseEvidence.query_id === sourceQueryId
         );
         const turnEvidenceMatches = !turnEvidence || (
-          turnEvidence.artifact_id === sourceArtifactId
-          && turnEvidence.query_id === sourceQueryId
+          (!turnEvidence.artifact_id || turnEvidence.artifact_id === sourceArtifactId)
+          && (!turnEvidence.query_id || turnEvidence.query_id === sourceQueryId)
         );
         if (
           data?.status === "PARTIAL"
           || !hasReusablePresentationArtifact(sourceRun)
           || !serverTurn?.artifact_id
           || sourceArtifactId !== serverTurn.artifact_id
+          || !sourceQueryId
+          || serverTurn?.query_id !== sourceQueryId
           || !responseArtifactMatches
           || !responseEvidenceMatches
           || !turnEvidenceMatches
+          || !serverTurn?.view_spec_id
+          || serverTurn.view_spec_id === sourceTurn?.viewSpecId
         ) {
           finalRun = commandErrorRun(normalized, {
             code: "INSUFFICIENT_EVIDENCE",
@@ -646,6 +650,15 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
+                      onRequestBarPresentation={() => void analyzeQuestion(
+                        "호텔별 차이가 잘 보이게 막대그래프로 바꿔줘.",
+                        {
+                          requested_route: "PRESENTATION",
+                          presentation_type: "BAR",
+                          inherit_previous_context: true,
+                        },
+                        turnItem,
+                      )}
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
                       onSave={["success", "partial"].includes(turnItem.run.status) && !turnItem.isArtifactReuse ? () => void saveAnalysis(turnItem.run) : undefined}
                       saveDisabled={savedBusy}

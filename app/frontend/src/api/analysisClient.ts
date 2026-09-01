@@ -124,6 +124,7 @@ export interface ConversationTurnWire {
   reason_code: string | null;
   request_id: string | null;
   artifact_id: string | null;
+  query_id?: string | null;
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {

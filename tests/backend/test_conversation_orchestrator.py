@@ -769,6 +769,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 "chart_spec_json": artifact_payload["chart_spec_json"],
                 "narrative_markdown": artifact_payload["narrative_markdown"],
                 "evidence_json": artifact_payload["evidence_json"],
+                "query_id": artifact_payload["trino_query_id"],
             }
             # Minimal mock response with artifact
             class FakeResp:
@@ -3404,6 +3405,18 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("REPORT_ACTION", report["turn"]["route"])
         self.assertEqual(["2025년 8월 객실 매출 보여줘"], self.support.questions)
         self.assertEqual(1, len(self.submitted_requests))
+        self.assertEqual(
+            analysis["turn"]["artifact_id"],
+            presentation["turn"]["artifact_id"],
+        )
+        self.assertEqual(
+            analysis["turn"]["query_id"],
+            presentation["turn"]["query_id"],
+        )
+        self.assertNotEqual(
+            analysis["turn"]["view_spec_id"],
+            presentation["turn"]["view_spec_id"],
+        )
 
     async def test_report_action_updates_existing_draft_in_subsequent_report_actions(self) -> None:
         """대화방에 이미 연결된 draft 보고서가 있을 때 후속 REPORT_ACTION이 새 uuid 생성 대신 기존 draft blocks를 원자적으로 갱신하는지 검증."""

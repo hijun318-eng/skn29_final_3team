@@ -26,7 +26,6 @@ try {
   const { attachAgentResults, mlPredictionRun, ragRun } = await server.ssrLoadModule("/src/pages/agentResponseMappers.js");
   const { AnalysisStatePanel, analysisResultDensity } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
-  const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
   const { normalizeApiResponse } = await server.ssrLoadModule("/src/contracts/analysis.ts");
   const run = normalizeApiResponse(response, "7월 PLATINUM 장기 투숙 우수 고객 객실 유형별 매출을 분석해줘");
   const html = renderToStaticMarkup(createElement(AnalysisStatePanel, { run }));
@@ -238,20 +237,7 @@ try {
   assert.deepEqual(agentKindsForRun(ragRun("질문", ragResult)), ["RAG"]);
   assert.deepEqual(agentKindsForRun(mlPredictionRun("질문", mlResult)), ["ML"]);
 
-  const ragCatalogHtml = renderToStaticMarkup(createElement(RagEmptyState, {
-    documents: [{
-      manual_id: "manual-approved",
-      title: "승인 운영 매뉴얼",
-      version: "v3",
-      document_type: "OPERATIONS_MANUAL",
-      owner_team: "운영팀",
-    }],
-  }));
-  assert.match(ragCatalogHtml, /승인 운영 매뉴얼/);
-  assert.match(ragCatalogHtml, /운영 매뉴얼 · v3 · 운영팀/);
-  assert.doesNotMatch(ragCatalogHtml, /OPERATIONS_MANUAL|undefined/);
-  assert.doesNotMatch(ragCatalogHtml, /추천 질문|환불 기준|안전사고 발생 시/);
-  assert.match(agentSource, /ragAvailable &&/);
+  assert.doesNotMatch(agentSource, /내부 업무지침 찾아보기|rag-documents|RagEmptyState/);
   assert.match(agentSource, /enabledFeatures\.includes\(SERVICE_FEATURE\.mlPrediction\)/);
   assert.doesNotMatch(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
   assert.doesNotMatch(agentSource, /import MLPredictionWorkspace/);

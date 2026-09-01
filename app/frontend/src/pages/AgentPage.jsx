@@ -6,7 +6,6 @@ import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { AgentCapabilityOverview, AgentExecutionBar } from "../components/agent/AgentIdentity";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
-import RagEmptyState from "../components/rag/RagEmptyState";
 import { MLPredictionResult } from "../components/ml/MLPredictionWorkspace";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
@@ -28,8 +27,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [inputError, setInputError] = useState("");
   const [conversationId, setConversationId] = useState(() => window.sessionStorage.getItem(CONVERSATION_KEY) || "");
   const [turns, setTurns] = useState([]);
-  const [emptyMode, setEmptyMode] = useState("analysis");
-  const [ragCatalog, setRagCatalog] = useState({ status: "idle", documents: [], error: "" });
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
@@ -74,10 +71,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     mlPredictionEnabled ? "객실 수요 예측" : null,
     canDraftReport ? "분석 결과의 보고서 작업" : null,
   ].filter(Boolean), [canDraftReport, internalGuidelineEnabled, mlPredictionEnabled]);
-  const ragAvailable = internalGuidelineEnabled
-    && ragCatalog.status === "ready"
-    && ragCatalog.documents.length > 0;
-
   const refreshSaved = async () => {
     const nextDefs = await analysisClient.listDefinitions();
     setDefinitions(nextDefs);
@@ -103,29 +96,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         });
     }
   }, []);
-
-  useEffect(() => {
-    if (!internalGuidelineEnabled) {
-      setRagCatalog({ status: "idle", documents: [], error: "" });
-      return undefined;
-    }
-    let active = true;
-    setRagCatalog({ status: "loading", documents: [], error: "" });
-    analysisClient.listInternalManuals()
-      .then((documents) => {
-        if (active) setRagCatalog({ status: "ready", documents, error: "" });
-      })
-      .catch((error) => {
-        if (active) {
-          setRagCatalog({
-            status: "error",
-            documents: [],
-            error: error instanceof Error ? error.message : "내부 문서 목록을 불러오지 못했습니다.",
-          });
-        }
-    });
-    return () => { active = false; };
-  }, [analysisClient, internalGuidelineEnabled]);
 
   const handleCancelAnalysis = async (turnId) => {
     const cancelledTraceId = activeTraceId.current;
@@ -191,7 +161,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     setConversationId("");
     window.sessionStorage.removeItem(CONVERSATION_KEY);
     setTurns([]);
-    setEmptyMode("analysis");
     setEvidenceOpen(false);
     setSelectedEvidenceRun(null);
     setReportModal("");
@@ -491,8 +460,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const submitQuestion = (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const action = emptyMode === "rag-documents" ? { requested_route: "INTERNAL_GUIDELINE" } : null;
-    void analyzeQuestion(String(form.get("question") || question).trim(), action);
+    void analyzeQuestion(String(form.get("question") || question).trim());
   };
 
   const saveAnalysis = async (targetRun) => {
@@ -593,29 +561,15 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       <main className="chat-main" inert={Boolean(reportModal)}>
         <div className="chat-scroll-region">
         {turns.length === 0 && !submitting && (
-          emptyMode === "rag-documents" ? (
-            <RagEmptyState
-              documents={ragCatalog.documents}
-              loading={ragCatalog.status === "loading"}
-              error={ragCatalog.error}
-              onBack={() => setEmptyMode("analysis")}
+          <section className="chat-empty-state" aria-labelledby="chat-empty-title">
+            <small>ANSWERVICE AI</small>
+            <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
+            <p>{availableChatCapabilities.join(", ")}을 한 대화에서 이어서 요청할 수 있습니다.</p>
+            <AgentCapabilityOverview
+              ragEnabled={internalGuidelineEnabled}
+              mlEnabled={mlPredictionEnabled}
             />
-          ) : (
-            <section className="chat-empty-state" aria-labelledby="chat-empty-title">
-              <small>ANSWERVICE AI</small>
-              <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
-              <p>{availableChatCapabilities.join(", ")}을 한 대화에서 이어서 요청할 수 있습니다.</p>
-              <AgentCapabilityOverview
-                ragEnabled={internalGuidelineEnabled}
-                mlEnabled={mlPredictionEnabled}
-              />
-              {ragAvailable && (
-                <div className="chat-support-links" aria-label="도움말">
-                  <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부 업무지침 찾아보기</button>
-                </div>
-              )}
-            </section>
-          )
+          </section>
         )}
 
         {turns.length > 0 && (
@@ -762,7 +716,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
               value={question}
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder={emptyMode === "rag-documents" ? "내부 업무지침에 대해 물어보세요" : "메시지를 입력하세요"}
+              placeholder="메시지를 입력하세요"
               aria-invalid={Boolean(inputError)}
               disabled={submitting}
               required

@@ -1546,9 +1546,12 @@ class ConversationOrchestrator:
                 rag_response = dict(
                     await shared_rag_service.execute(
                         InternalManualQuery(
-                            # 검색 입력에는 모델이 축약한 task뿐 아니라 기간·지표·문서명이
-                            # 들어 있는 사용자의 원문을 보존한다.
-                            question=rag_request.command.user_message,
+                            # 복합 계획에서는 SQL·ML 요구를 제거한 Supervisor의 RAG 전용
+                            # objective를 사용한다. 명시 RAG route는 기존 원문 계약을 유지한다.
+                            question=(
+                                rag_request.task_objective
+                                or rag_request.command.user_message
+                            ),
                             mode="DOCUMENT_ONLY",
                             conversation_id=rag_request.conversation_id,
                             expected_head_turn_id=(

@@ -335,12 +335,20 @@ export function hydrateTurnsFromServer(serverTurns) {
  * 화면에 업무 문구를 박아두지 않으며, 저장된 분석이 없으면 예시를 지어내지 않는다.
  * @param {Array<object>} definitions - 서버가 반환한 저장 분석 정의 목록
  * @param {number} [limit=3] - 제시할 최대 개수
- * @returns {Array<{id: string, question: string}>} 예시 질문 목록(없으면 빈 배열)
+ * @returns {Array<{id: string, question: string, definition: object}>} 저장 분석 바로 실행 목록
  */
 export function exampleQuestionsFromDefinitions(definitions, limit = 3) {
   if (!Array.isArray(definitions)) return [];
-  return definitions
-    .filter((item) => item && typeof item.question === "string" && item.question.trim())
-    .slice(0, limit)
-    .map((item) => ({ id: item.definition_id || item.id || item.question, question: item.question }));
+  const unique = new Map();
+  for (const item of definitions) {
+    const question = typeof item?.question === "string" ? item.question.trim() : "";
+    if (!question || unique.has(question)) continue;
+    unique.set(question, {
+      id: item.definition_id || item.id || question,
+      question,
+      definition: item,
+    });
+    if (unique.size >= limit) break;
+  }
+  return [...unique.values()];
 }

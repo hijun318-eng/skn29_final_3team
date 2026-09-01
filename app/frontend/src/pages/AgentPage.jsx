@@ -6,7 +6,7 @@ import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { RagAnswerCard } from "../components/rag/RagAnswerCard";
 import RagEmptyState from "../components/rag/RagEmptyState";
-import MLPredictionWorkspace, { MLPredictionResult } from "../components/ml/MLPredictionWorkspace";
+import { MLPredictionResult } from "../components/ml/MLPredictionWorkspace";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
@@ -68,6 +68,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   );
   const internalGuidelineEnabled = enabledFeatures.includes(SERVICE_FEATURE.internalGuideline);
   const mlPredictionEnabled = enabledFeatures.includes(SERVICE_FEATURE.mlPrediction);
+  const availableChatCapabilities = useMemo(() => [
+    "호텔 운영 데이터 분석",
+    internalGuidelineEnabled ? "승인된 내부 업무지침 확인" : null,
+    mlPredictionEnabled ? "객실 수요 예측" : null,
+    canDraftReport ? "분석 결과의 보고서 작업" : null,
+  ].filter(Boolean), [canDraftReport, internalGuidelineEnabled, mlPredictionEnabled]);
   const ragAvailable = internalGuidelineEnabled
     && ragCatalog.status === "ready"
     && ragCatalog.documents.length > 0;
@@ -579,12 +585,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
             <section className="chat-empty-state" aria-labelledby="chat-empty-title">
               <small>ANSWERVICE AI</small>
               <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
-              <p>{ragAvailable
-                ? "호텔 운영 데이터 분석, 승인된 내부 업무지침 확인, 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."
-                : "호텔 운영 데이터 분석과 분석 결과의 보고서 작업을 이어서 요청할 수 있습니다."}</p>
+              <p>{availableChatCapabilities.join(", ")}을 한 대화에서 이어서 요청할 수 있습니다.</p>
               {exampleQuestions.length > 0 && (
-                <div aria-label="추천 질문">
-                  {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
+                <div className="chat-saved-examples" aria-label="저장 분석 바로 실행">
+                  <span>저장 분석 바로 실행</span>
+                  {exampleQuestions.map((ex) => <button key={ex.id} type="button" disabled={savedBusy} onClick={() => { void replaySavedDefinition(ex.definition); }}>{ex.question}</button>)}
                 </div>
               )}
               {ragAvailable && (
@@ -721,8 +726,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           {inputError && <p className="analysis-input-error" role="alert">{inputError}</p>}
         </form>
       </main>
-
-      {mlPredictionEnabled && <MLPredictionWorkspace conversationId={conversationId || null} />}
 
       {/* 우측 슬라이드: 분석 근거 서랍 */}
       <TurnEvidenceDrawer

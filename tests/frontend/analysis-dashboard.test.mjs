@@ -21,7 +21,7 @@ const server = await createServer({
 });
 
 try {
-  const { commandClarificationMessage, commandClarificationType, savedRunStatus } = await server.ssrLoadModule("/src/pages/agentPageHelpers.js");
+  const { commandClarificationMessage, commandClarificationType, exampleQuestionsFromDefinitions, savedRunStatus } = await server.ssrLoadModule("/src/pages/agentPageHelpers.js");
   const { AnalysisStatePanel, analysisResultDensity } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { AnalysisProgress, createAnalysisProcessViewModel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanelParts.tsx");
   const { default: RagEmptyState } = await server.ssrLoadModule("/src/components/rag/RagEmptyState.jsx");
@@ -216,7 +216,20 @@ try {
   assert.doesNotMatch(ragCatalogHtml, /추천 질문|환불 기준|안전사고 발생 시/);
   assert.match(agentSource, /ragAvailable &&/);
   assert.match(agentSource, /enabledFeatures\.includes\(SERVICE_FEATURE\.mlPrediction\)/);
-  assert.match(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
+  assert.doesNotMatch(agentSource, /mlPredictionEnabled && <MLPredictionWorkspace/);
+  assert.doesNotMatch(agentSource, /import MLPredictionWorkspace/);
+  assert.match(agentSource, /객실 수요 예측/);
+  assert.match(agentSource, /void replaySavedDefinition\(ex\.definition\)/);
+  const firstDefinition = { definition_id: "definition-1", question: "4월은?" };
+  const secondDefinition = { definition_id: "definition-2", question: "4월은?" };
+  const thirdDefinition = { definition_id: "definition-3", question: "5월 객실 매출" };
+  const savedExamples = exampleQuestionsFromDefinitions([
+    firstDefinition,
+    secondDefinition,
+    thirdDefinition,
+  ]);
+  assert.deepEqual(savedExamples.map((item) => item.question), ["4월은?", "5월 객실 매출"]);
+  assert.equal(savedExamples[0].definition, firstDefinition);
 
   // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));

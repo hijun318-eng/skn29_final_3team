@@ -42,6 +42,30 @@
   margin-top: 14px;
 }
 
+.rag-answer-card__lead {
+  color: var(--rag-answer-text);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.rag-answer-card__points {
+  margin: 14px 0 0;
+  padding: 14px 16px 14px 34px;
+  color: var(--rag-answer-muted);
+  border: 1px solid var(--rag-answer-border);
+  border-radius: 10px;
+  background: var(--rag-answer-surface-muted);
+}
+
+.rag-answer-card__points li {
+  padding-left: 2px;
+}
+
+.rag-answer-card__points li + li {
+  margin-top: 7px;
+}
+
 .rag-answer-card__citations {
   margin-top: 14px;
   display: flex;

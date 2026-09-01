@@ -22,7 +22,7 @@ class AnswerSafetySettings:
     minimum_relevance_score: float = 0.18
     maximum_evidence_chars: int = 30000
     maximum_chunks: int = 10
-    maximum_points_per_article: int = 50
+    maximum_points_per_article: int = 6
     maximum_answer_chars: int = 20000
 
     @classmethod
@@ -71,6 +71,7 @@ class EvidenceSafetyGate:
     _STOP_WORDS = {
         "내부", "지침", "문서", "알려줘", "어떻게", "기준", "관련", "내용", "자세히",
         "무엇", "해야", "처리", "순서", "절차", "비교", "차이", "공통점", "각각",
+        "보고서", "전체", "가장", "결과", "요약",
     }
     _NEGATIVE = ("불가능", "불가", "금지", "할 수 없", "하지 않", "안 된다", "제외", "제한")
     _POSITIVE = ("가능", "허용", "할 수 있", "환불한다", "보상한다", "적용한다")
@@ -190,7 +191,11 @@ class EvidenceSafetyGate:
                 if term.endswith(suffix) and len(term) > len(suffix) + 1:
                     term = term[:-len(suffix)]
                     break
-            if len(term) >= 2 and term not in cls._STOP_WORDS:
+            if (
+                len(term) >= 2
+                and term not in cls._STOP_WORDS
+                and not re.fullmatch(r"\d{1,4}(?:년|월|일)?", term)
+            ):
                 terms.add(term)
         return terms
 

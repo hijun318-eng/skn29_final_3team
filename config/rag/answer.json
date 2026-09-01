@@ -9,7 +9,7 @@
   "minimum_relevance_score": 0.18,
   "maximum_evidence_chars": 30000,
   "maximum_chunks": 10,
-  "maximum_points_per_article": 50,
+  "maximum_points_per_article": 6,
   "maximum_answer_chars": 20000,
   "maximum_response_bytes": 1048576,
   "allowed_http_hosts": ["rag-local-answer"]

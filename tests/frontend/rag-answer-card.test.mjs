@@ -40,6 +40,14 @@ try {
       section: "객실 정비 인계",
       snippet: "객실 정비 이력과 당직자 인계 내용을 함께 확인한다.",
       score: 0.92,
+    }, {
+      evidence_id: "manual-approved:4",
+      document_id: "manual-approved",
+      document_name: "객실 운영 지침",
+      document_version: "v3",
+      section: "승인 절차",
+      snippet: "승인 담당자가 후속 기록을 확인한다.",
+      score: 0.89,
     }],
   };
   const card = (key) => createElement(RagAnswerCard, {
@@ -54,6 +62,7 @@ try {
   const html = renderToStaticMarkup(createElement("div", null, card("first"), card("second")));
 
   assert.match(html, /class="rag-answer-card"/);
+  assert.match(html, /핵심 답변/);
   assert.match(html, /class="rag-answer-card__comparison"/);
   assert.match(html, /aria-label="후속 질문"/);
   assert.match(html, /aria-label="근거 문서"/);
@@ -64,7 +73,15 @@ try {
   assert.match(html, /객실 운영 지침 · v3 · 객실 정비 인계/);
   assert.match(html, /객실 정비 이력과 당직자 인계 내용을 함께 확인한다/);
   assert.equal((html.match(/class="rag-answer-card__source-strip"/g) || []).length, 2);
+  assert.equal((html.match(/객실 운영 지침<\/b>/g) || []).length, 2);
   assert.doesNotMatch(html, /style=/);
+
+  const parserMarkerHtml = renderToStaticMarkup(createElement(RagAnswerCard, {
+    rag: { answer_text: "- 전체 취소율은 17.59%입니다.\n- 일정 변경 비중은 53.95%입니다.\n- [SECTION_BOUNDARY index=1 type=nextPage]" },
+  }));
+  assert.match(parserMarkerHtml, /class="rag-answer-card__lead"/);
+  assert.match(parserMarkerHtml, /class="rag-answer-card__points"/);
+  assert.doesNotMatch(parserMarkerHtml, /SECTION_BOUNDARY|nextPage/);
 
   const labelledBy = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(labelledBy.length, 2);

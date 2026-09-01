@@ -9,6 +9,8 @@ function getAnswerText(rag) {
   const cleaned = String(text)
     .replace(/(?:현장\s*확인내용|객실\s*[·ㆍ]\s*설비)?\s*내부\s*업무지침\s*[·ㆍ]\s*현장\s*실행형\s*[·ㆍ]\s*의미전달\s*검증완료본/g, '')
     .replace(/^\s*자세한 내용은 PDF 원문 보기를 확인하세요\.\s*$/gm, '')
+    .replace(/\[SECTION_BOUNDARY\s+[^\]]*\]/g, '')
+    .replace(/^\s*[-*•]\s*$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   if (cleaned) return cleaned;
@@ -39,11 +41,30 @@ function compareContent(text, answerType) {
   return { sections, prose: blocks.filter((block) => !sections.some((lines) => block === lines.join('\n'))) };
 }
 
-function evidenceSources(rag) {
+function evidenceItems(rag) {
   const items = Array.isArray(rag?.evidence_bundle) ? rag.evidence_bundle : [];
   return Array.from(new Map(items
     .filter((item) => item && typeof item.evidence_id === 'string' && item.evidence_id)
     .map((item) => [item.evidence_id, item])).values());
+}
+
+function documentSources(items) {
+  return Array.from(new Map(items.map((item) => [
+      [item.document_id, item.document_version].filter(Boolean).join(':') || item.evidence_id,
+      item,
+    ])).values());
+}
+
+function answerContent(text) {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const points = lines
+    .filter((line) => /^[-*•]\s+/.test(line))
+    .map((line) => line.replace(/^[-*•]\s+/, '').trim())
+    .filter(Boolean);
+  if (points.length && points.length === lines.length) {
+    return { lead: points[0], points: points.slice(1), paragraphs: [] };
+  }
+  return { lead: '', points: [], paragraphs: text.split(/\n\s*\n/).filter(Boolean) };
 }
 
 function citationReferences(rag, sources) {
@@ -74,9 +95,12 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
       .map((item) => [item.url, item]),
   ).values());
   const comparison = compareContent(answerText, rag?.answer_type);
-  const paragraphs = comparison?.prose || answerText.split(/\n\s*\n/).filter(Boolean);
-  const sources = evidenceSources(rag);
-  const citationRefs = citationReferences(rag, sources);
+  const content = comparison
+    ? { lead: '', points: [], paragraphs: comparison.prose }
+    : answerContent(answerText);
+  const evidence = evidenceItems(rag);
+  const sources = documentSources(evidence);
+  const citationRefs = citationReferences(rag, evidence);
   const responseStatus = String(rag?.status || rag?.response_status || '').toUpperCase();
   const isTerminalFailure = ['NO_EVIDENCE', 'ERROR', 'FAILED', 'GENERATION_FAILED'].includes(responseStatus);
   const candidateFollowUps = rag?.status === 'NEEDS_CLARIFICATION'
@@ -88,9 +112,15 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
 
   return (
     <article aria-labelledby={titleId} className="rag-answer-card">
-      <div id={titleId} className="rag-answer-card__label">답변</div>
+      <div id={titleId} className="rag-answer-card__label">핵심 답변</div>
       <div className="rag-answer-card__body">
-        {paragraphs.map((paragraph, index) => (
+        {content.lead && <p className="rag-answer-card__lead">{content.lead}</p>}
+        {content.points.length > 0 && (
+          <ul className="rag-answer-card__points">
+            {content.points.map((point) => <li key={point}>{point}</li>)}
+          </ul>
+        )}
+        {content.paragraphs.map((paragraph, index) => (
           <p key={`${index}-${paragraph.slice(0, 20)}`}>
             {paragraph}
           </p>

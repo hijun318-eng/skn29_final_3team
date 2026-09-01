@@ -1811,8 +1811,90 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "MLActualComparison": {
+        "additionalProperties": false,
+        "description": "실적 적재 여부에 따른 예측 자동 비교 상태와 결과다.",
+        "properties": {
+          "actuals_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Actuals Query Id",
+            "type": "string"
+          },
+          "daily_comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/MLDailyComparison"
+            },
+            "title": "Daily Comparisons",
+            "type": "array"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MLComparisonMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "missing_dates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Missing Dates",
+            "type": "array"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Property Id",
+            "type": "string"
+          },
+          "room_type_comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/MLRoomTypeComparison"
+            },
+            "title": "Room Type Comparisons",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "MLRoomDemandActualComparison.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "COMPLETE",
+              "PENDING"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "execution_id",
+          "property_id",
+          "status",
+          "missing_dates",
+          "daily_comparisons",
+          "room_type_comparisons",
+          "metrics",
+          "actuals_query_id"
+        ],
+        "title": "MLActualComparison",
+        "type": "object"
+      },
       "MLChatQuestionRequest": {
         "additionalProperties": false,
+        "description": "대화 화면에서 전달하는 자연어 객실 수요 질문이다.",
         "properties": {
           "question": {
             "maxLength": 1000,
@@ -1825,6 +1907,930 @@
           "question"
         ],
         "title": "MLChatQuestionRequest",
+        "type": "object"
+      },
+      "MLComparisonMetrics": {
+        "additionalProperties": false,
+        "description": "완료된 예측 비교의 합계와 대표 오차 지표다.",
+        "properties": {
+          "actual_total": {
+            "minimum": 0.0,
+            "title": "Actual Total",
+            "type": "number"
+          },
+          "mae_rooms": {
+            "minimum": 0.0,
+            "title": "Mae Rooms",
+            "type": "number"
+          },
+          "predicted_total": {
+            "minimum": 0.0,
+            "title": "Predicted Total",
+            "type": "number"
+          },
+          "rows": {
+            "minimum": 1.0,
+            "title": "Rows",
+            "type": "integer"
+          },
+          "wape": {
+            "minimum": 0.0,
+            "title": "Wape",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rows",
+          "actual_total",
+          "predicted_total",
+          "mae_rooms",
+          "wape"
+        ],
+        "title": "MLComparisonMetrics",
+        "type": "object"
+      },
+      "MLDailyComparison": {
+        "additionalProperties": false,
+        "description": "하루 예측값과 실제값 및 절대 오차를 표현한다.",
+        "properties": {
+          "absolute_error_rooms": {
+            "minimum": 0.0,
+            "title": "Absolute Error Rooms",
+            "type": "number"
+          },
+          "actual_rooms": {
+            "minimum": 0.0,
+            "title": "Actual Rooms",
+            "type": "number"
+          },
+          "predicted_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Rooms",
+            "type": "number"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_date",
+          "predicted_rooms",
+          "actual_rooms",
+          "absolute_error_rooms"
+        ],
+        "title": "MLDailyComparison",
+        "type": "object"
+      },
+      "MLDailyForecast": {
+        "additionalProperties": false,
+        "description": "한 영업일의 객실 수요·잔여·점유율 예측을 동일 capacity에 결속한다.",
+        "properties": {
+          "predicted_available_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Available Rooms",
+            "type": "number"
+          },
+          "predicted_occupancy_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Predicted Occupancy Rate",
+            "type": "number"
+          },
+          "predicted_occupied_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Occupied Rooms",
+            "type": "number"
+          },
+          "prediction_interval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MLPredictionInterval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          },
+          "total_available_rooms": {
+            "exclusiveMinimum": 0.0,
+            "title": "Total Available Rooms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "target_date",
+          "total_available_rooms",
+          "predicted_occupied_rooms",
+          "predicted_available_rooms",
+          "predicted_occupancy_rate"
+        ],
+        "title": "MLDailyForecast",
+        "type": "object"
+      },
+      "MLHistorySourceCapability": {
+        "additionalProperties": false,
+        "description": "Runtime 시작 시 검증된 history source의 최소 영수증이다.",
+        "properties": {
+          "continuity_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Continuity Query Id",
+            "type": "string"
+          },
+          "max_date": {
+            "format": "date",
+            "title": "Max Date",
+            "type": "string"
+          },
+          "min_date": {
+            "format": "date",
+            "title": "Min Date",
+            "type": "string"
+          },
+          "property_count": {
+            "minimum": 1.0,
+            "title": "Property Count",
+            "type": "integer"
+          },
+          "row_count": {
+            "minimum": 1.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "series_count": {
+            "minimum": 1.0,
+            "title": "Series Count",
+            "type": "integer"
+          },
+          "summary_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Summary Query Id",
+            "type": "string"
+          },
+          "synthetic_only": {
+            "title": "Synthetic Only",
+            "type": "boolean"
+          },
+          "table": {
+            "maxLength": 256,
+            "minLength": 5,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Table",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "row_count",
+          "property_count",
+          "series_count",
+          "min_date",
+          "max_date",
+          "synthetic_only",
+          "summary_query_id",
+          "continuity_query_id"
+        ],
+        "title": "MLHistorySourceCapability",
+        "type": "object"
+      },
+      "MLInfluencingFactor": {
+        "additionalProperties": false,
+        "description": "개별 예측에서 기준값 대비 객실 수 변화가 큰 요인이다.",
+        "properties": {
+          "direction": {
+            "enum": [
+              "INCREASE",
+              "DECREASE"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "feature_code": {
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Feature Code",
+            "type": "string"
+          },
+          "impact_rooms": {
+            "title": "Impact Rooms",
+            "type": "number"
+          },
+          "label": {
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "reference_value": {
+            "title": "Reference Value",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "feature_code",
+          "label",
+          "value",
+          "reference_value",
+          "impact_rooms",
+          "direction"
+        ],
+        "title": "MLInfluencingFactor",
+        "type": "object"
+      },
+      "MLPredictionInterval": {
+        "additionalProperties": false,
+        "description": "예측값 주변의 보정 80%·95% 범위다.",
+        "properties": {
+          "lower_80": {
+            "minimum": 0.0,
+            "title": "Lower 80",
+            "type": "number"
+          },
+          "lower_95": {
+            "minimum": 0.0,
+            "title": "Lower 95",
+            "type": "number"
+          },
+          "upper_80": {
+            "minimum": 0.0,
+            "title": "Upper 80",
+            "type": "number"
+          },
+          "upper_95": {
+            "minimum": 0.0,
+            "title": "Upper 95",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lower_80",
+          "upper_80",
+          "lower_95",
+          "upper_95"
+        ],
+        "title": "MLPredictionInterval",
+        "type": "object"
+      },
+      "MLPredictionProvenance": {
+        "additionalProperties": false,
+        "description": "예측값이 승인 history 조회와 요청 기준일에서 생성됐음을 증명한다.",
+        "properties": {
+          "feature_as_of": {
+            "format": "date",
+            "title": "Feature As Of",
+            "type": "string"
+          },
+          "history_table": {
+            "maxLength": 256,
+            "minLength": 5,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "History Table",
+            "type": "string"
+          },
+          "rag_called": {
+            "const": false,
+            "title": "Rag Called",
+            "type": "boolean"
+          },
+          "request_as_of": {
+            "format": "date",
+            "title": "Request As Of",
+            "type": "string"
+          },
+          "signal_query_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Query Id"
+          },
+          "signal_table": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 5,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Table"
+          },
+          "source": {
+            "const": "TRINO_HISTORICAL_DAILY_FACTS",
+            "title": "Source",
+            "type": "string"
+          },
+          "trino_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Trino Query Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "history_table",
+          "trino_query_id",
+          "feature_as_of",
+          "request_as_of",
+          "rag_called"
+        ],
+        "title": "MLPredictionProvenance",
+        "type": "object"
+      },
+      "MLPropertyCapability": {
+        "additionalProperties": false,
+        "description": "한 호텔의 예측 가능 기준일과 읽힌 history 범위를 고정한다.",
+        "properties": {
+          "feature_max_as_of": {
+            "format": "date",
+            "title": "Feature Max As Of",
+            "type": "string"
+          },
+          "history_rows": {
+            "minimum": 1.0,
+            "title": "History Rows",
+            "type": "integer"
+          },
+          "max_as_of": {
+            "format": "date",
+            "title": "Max As Of",
+            "type": "string"
+          },
+          "min_as_of": {
+            "format": "date",
+            "title": "Min As Of",
+            "type": "string"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          },
+          "signal_rows": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Rows"
+          }
+        },
+        "required": [
+          "property_id",
+          "min_as_of",
+          "max_as_of",
+          "feature_max_as_of",
+          "history_rows"
+        ],
+        "title": "MLPropertyCapability",
+        "type": "object"
+      },
+      "MLQualityScope": {
+        "additionalProperties": false,
+        "description": "객실 유형별 독립 검증 상태와 평가 단위를 보존한다.",
+        "properties": {
+          "baseline_mae": {
+            "minimum": 0.0,
+            "title": "Baseline Mae",
+            "type": "number"
+          },
+          "baseline_wape": {
+            "minimum": 0.0,
+            "title": "Baseline Wape",
+            "type": "number"
+          },
+          "mae": {
+            "minimum": 0.0,
+            "title": "Mae",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "APPROVED",
+              "NOT_APPROVED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "volume_class": {
+            "enum": [
+              "HIGH",
+              "LOW"
+            ],
+            "title": "Volume Class",
+            "type": "string"
+          },
+          "wape": {
+            "minimum": 0.0,
+            "title": "Wape",
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "volume_class",
+          "wape",
+          "mae",
+          "baseline_wape",
+          "baseline_mae"
+        ],
+        "title": "MLQualityScope",
+        "type": "object"
+      },
+      "MLRoomDemandPrediction": {
+        "additionalProperties": false,
+        "description": "Runtime의 전체 room-demand prediction wire contract를 검증한다.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "daily_forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/MLDailyForecast"
+            },
+            "minItems": 1,
+            "title": "Daily Forecasts",
+            "type": "array"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "feature_as_of": {
+            "format": "date",
+            "title": "Feature As Of",
+            "type": "string"
+          },
+          "feature_contract_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Feature Contract Sha256",
+            "type": "string"
+          },
+          "horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Horizon Days",
+            "type": "integer"
+          },
+          "model_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Model Hash",
+            "type": "string"
+          },
+          "model_version": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model Version",
+            "type": "string"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/MLPredictionProvenance"
+          },
+          "room_type_forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/MLRoomTypeForecast"
+            },
+            "minItems": 1,
+            "title": "Room Type Forecasts",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "MLRoomDemandPrediction.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "const": "SUCCEEDED",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "status",
+          "execution_id",
+          "property_id",
+          "as_of",
+          "feature_as_of",
+          "horizon_days",
+          "model_version",
+          "model_hash",
+          "feature_contract_sha256",
+          "daily_forecasts",
+          "room_type_forecasts",
+          "provenance"
+        ],
+        "title": "MLRoomDemandPrediction",
+        "type": "object"
+      },
+      "MLRoomTypeComparison": {
+        "additionalProperties": false,
+        "description": "객실 유형별 예측값과 실제값 비교 결과다.",
+        "properties": {
+          "absolute_error_rooms": {
+            "minimum": 0.0,
+            "title": "Absolute Error Rooms",
+            "type": "number"
+          },
+          "actual_rooms": {
+            "minimum": 0.0,
+            "title": "Actual Rooms",
+            "type": "number"
+          },
+          "predicted_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Rooms",
+            "type": "number"
+          },
+          "room_type_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Room Type Code",
+            "type": "string"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_date",
+          "predicted_rooms",
+          "actual_rooms",
+          "absolute_error_rooms",
+          "room_type_code"
+        ],
+        "title": "MLRoomTypeComparison",
+        "type": "object"
+      },
+      "MLRoomTypeForecast": {
+        "additionalProperties": false,
+        "description": "일자·객실 유형별 raw·capacity-clipped 예측값을 보존한다.",
+        "properties": {
+          "available_rooms": {
+            "exclusiveMinimum": 0.0,
+            "title": "Available Rooms",
+            "type": "number"
+          },
+          "influencing_factors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MLInfluencingFactor"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Influencing Factors"
+          },
+          "occupancy_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Occupancy Rate",
+            "type": "number"
+          },
+          "predicted_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Rooms",
+            "type": "number"
+          },
+          "predicted_rooms_raw": {
+            "title": "Predicted Rooms Raw",
+            "type": "number"
+          },
+          "prediction_interval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MLPredictionInterval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quality_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MLQualityScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "room_type_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Room Type Code",
+            "type": "string"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_date",
+          "room_type_code",
+          "available_rooms",
+          "predicted_rooms_raw",
+          "predicted_rooms",
+          "occupancy_rate"
+        ],
+        "title": "MLRoomTypeForecast",
+        "type": "object"
+      },
+      "MLRuntimeCapability": {
+        "additionalProperties": false,
+        "description": "Backend가 호출할 수 있는 객실 수요 Runtime의 release receipt다.",
+        "properties": {
+          "approval": {
+            "enum": [
+              "APPROVED",
+              "CONDITIONAL_PASS"
+            ],
+            "title": "Approval",
+            "type": "string"
+          },
+          "approval_status": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "title": "Approval Status",
+            "type": "string"
+          },
+          "estimator_type": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Estimator Type",
+            "type": "string"
+          },
+          "feature_contract_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Feature Contract Sha256",
+            "type": "string"
+          },
+          "feature_profile": {
+            "default": "historical_daily_v1",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Feature Profile",
+            "type": "string"
+          },
+          "history_source": {
+            "$ref": "#/components/schemas/MLHistorySourceCapability"
+          },
+          "max_horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Max Horizon Days",
+            "type": "integer"
+          },
+          "min_horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Min Horizon Days",
+            "type": "integer"
+          },
+          "model_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Model Hash",
+            "type": "string"
+          },
+          "model_max_horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Model Max Horizon Days",
+            "type": "integer"
+          },
+          "model_type": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model Type",
+            "type": "string"
+          },
+          "model_version": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model Version",
+            "type": "string"
+          },
+          "prediction_contract_version": {
+            "const": "MLRoomDemandPrediction.v1",
+            "title": "Prediction Contract Version",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/MLPropertyCapability"
+            },
+            "minItems": 1,
+            "title": "Properties",
+            "type": "array"
+          },
+          "query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Query Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "MLRuntimeCapability.v2",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "signal_query_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Query Id"
+          },
+          "signal_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MLSignalSourceCapability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "synthetic_training_data": {
+            "title": "Synthetic Training Data",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "schema_version",
+          "prediction_contract_version",
+          "model_version",
+          "model_hash",
+          "feature_contract_sha256",
+          "model_type",
+          "estimator_type",
+          "approval",
+          "approval_status",
+          "min_horizon_days",
+          "max_horizon_days",
+          "model_max_horizon_days",
+          "properties",
+          "synthetic_training_data",
+          "history_source",
+          "query_id"
+        ],
+        "title": "MLRuntimeCapability",
+        "type": "object"
+      },
+      "MLRuntimeErrorDetail": {
+        "additionalProperties": false,
+        "description": "ML 기능·배포 정책·runtime 실패의 공개 가능한 코드와 안내 사유다.",
+        "properties": {
+          "code": {
+            "maxLength": 96,
+            "minLength": 1,
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "title": "Code",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "reason"
+        ],
+        "title": "MLRuntimeErrorDetail",
+        "type": "object"
+      },
+      "MLRuntimeErrorResponse": {
+        "additionalProperties": false,
+        "description": "FastAPI HTTPException이 반환하는 ML 오류 envelope다.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/MLRuntimeErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "MLRuntimeErrorResponse",
+        "type": "object"
+      },
+      "MLSignalSourceCapability": {
+        "additionalProperties": false,
+        "description": "Runtime 시작 시 검증한 목표일 운영 신호 영수증이다.",
+        "properties": {
+          "max_cutoff_date": {
+            "format": "date",
+            "title": "Max Cutoff Date",
+            "type": "string"
+          },
+          "min_cutoff_date": {
+            "format": "date",
+            "title": "Min Cutoff Date",
+            "type": "string"
+          },
+          "property_count": {
+            "minimum": 1.0,
+            "title": "Property Count",
+            "type": "integer"
+          },
+          "row_count": {
+            "minimum": 1.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "signal_source_kind": {
+            "enum": [
+              "OBSERVED_PIT",
+              "SYNTHETIC_PIT"
+            ],
+            "title": "Signal Source Kind",
+            "type": "string"
+          },
+          "summary_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Summary Query Id",
+            "type": "string"
+          },
+          "synthetic_only": {
+            "title": "Synthetic Only",
+            "type": "boolean"
+          },
+          "table": {
+            "maxLength": 256,
+            "minLength": 5,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Table",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "row_count",
+          "property_count",
+          "min_cutoff_date",
+          "max_cutoff_date",
+          "signal_source_kind",
+          "synthetic_only",
+          "summary_query_id"
+        ],
+        "title": "MLSignalSourceCapability",
         "type": "object"
       },
       "ManualRunCommandResponse": {
@@ -4112,29 +5118,18 @@
       },
       "RoomDemandRequest": {
         "additionalProperties": false,
+        "description": "지원 대상·기준일·일 단위 horizon을 runtime capability 검증에 전달한다.",
         "properties": {
           "as_of": {
             "format": "date",
             "title": "As Of",
             "type": "string"
           },
-          "conversation_id": {
-            "anyOf": [
-              {
-                "maxLength": 128,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conversation Id"
-          },
-          "horizon": {
+          "horizon_days": {
             "default": 7,
             "maximum": 7.0,
             "minimum": 1.0,
-            "title": "Horizon",
+            "title": "Horizon Days",
             "type": "integer"
           },
           "property_id": {
@@ -5997,7 +6992,8 @@
     },
     "/analysis/ml": {
       "post": {
-        "operationId": "create_ml_analysis_analysis_ml_post",
+        "description": "허용된 사용자 요청만 예측하고 provenance 감사 이벤트를 저장한다.",
+        "operationId": "createMlAnalysis",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6013,9 +7009,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Create Ml Analysis Analysis Ml Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/MLRoomDemandPrediction"
                 }
               }
             },
@@ -6030,6 +7024,26 @@
               }
             },
             "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML runtime 응답 계약 오류"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML 기능 또는 승인 runtime 사용 불가"
           }
         },
         "security": [
@@ -6045,7 +7059,7 @@
     },
     "/analysis/ml/chat": {
       "post": {
-        "description": "명시적으로 선택된 ML 대화 요청을 capability 기반 입력으로 변환한다.",
+        "description": "자연어 질문을 capability 범위 안의 구조화된 예측 요청으로 변환한다.",
         "operationId": "createMlChatAnalysis",
         "requestBody": {
           "content": {
@@ -6087,6 +7101,75 @@
           }
         ],
         "summary": "Create Ml Chat Analysis",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
+    "/analysis/ml/{execution_id}/comparison": {
+      "get": {
+        "description": "저장된 예측을 이후 도착한 객실 실적과 자동 비교한다.",
+        "operationId": "getMlActualComparison",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLActualComparison"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML runtime 응답 계약 오류"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML 기능 또는 승인 runtime 사용 불가"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Ml Actual Comparison",
         "tags": [
           "ml"
         ]
@@ -6836,19 +7919,38 @@
     },
     "/ml/capabilities": {
       "get": {
-        "operationId": "ml_capabilities_ml_capabilities_get",
+        "description": "현재 역할과 feature flag를 확인한 뒤 runtime capability를 반환한다.",
+        "operationId": "getMlCapabilities",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Ml Capabilities Ml Capabilities Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/MLRuntimeCapability"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML runtime 응답 계약 오류"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML 기능 또는 승인 runtime 사용 불가"
           }
         },
         "security": [

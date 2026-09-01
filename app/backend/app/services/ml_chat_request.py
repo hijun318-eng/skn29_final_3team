@@ -10,6 +10,8 @@ from typing import Any
 
 @dataclass(frozen=True)
 class MLChatResolution:
+    """자연어 질문을 예측 입력 또는 추가 질문 안내로 변환한 결과다."""
+
     payload: dict[str, Any] | None
     message: str | None = None
     options: tuple[dict[str, str], ...] = ()
@@ -17,9 +19,13 @@ class MLChatResolution:
 
     @property
     def ready(self) -> bool:
+        """실행 가능한 구조화 예측 입력이 만들어졌는지 반환한다."""
+
         return self.payload is not None
 
     def clarification_response(self) -> dict[str, Any]:
+        """대화 화면이 표시할 추가 조건 질문 응답을 만든다."""
+
         return {
             "status": "NEEDS_CLARIFICATION",
             "answer_text": self.message or "예측 조건을 확인해 주세요.",
@@ -49,6 +55,8 @@ class MLChatRequestResolver:
         *,
         conversation_id: str | None,
     ) -> MLChatResolution:
+        """질문과 runtime capability를 호텔·기준일·예측기간 입력으로 변환한다."""
+
         properties = tuple(
             item for item in capabilities.get("properties", [])
             if isinstance(item, dict) and str(item.get("property_id") or "").strip()
@@ -79,7 +87,14 @@ class MLChatRequestResolver:
 
         parsed_dates = self._extract_dates(question, max_as_of.year)
         as_of = parsed_dates[0] if parsed_dates else max_as_of
-        max_horizon = max(1, int(capabilities.get("max_horizon") or 7))
+        max_horizon = max(
+            1,
+            int(
+                capabilities.get("max_horizon_days")
+                or capabilities.get("max_horizon")
+                or 7
+            ),
+        )
         horizon = self._extract_horizon(question)
         if horizon is None and len(parsed_dates) > 1:
             horizon = (parsed_dates[1] - as_of).days

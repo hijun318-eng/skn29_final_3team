@@ -29,11 +29,17 @@ PRODUCTION_PREFIXES = (
     "app/frontend/src/",
     "src/ai/",
     "src/data/",
+    "src/ml/",
     "src/modelops/",
+    "src/rag/",
     "src/report/",
     "scripts/",
     "infrastructure/database/datahub/",
 )
+OFFLINE_ML_TOOL_FILES = {
+    "src/ml/room_demand_timeseries/finalize_approval.py",
+    "src/ml/room_demand_timeseries/freeze.py",
+}
 RUNTIME_CONFIG_PREFIXES = (
     ".github/",
     "app/backend/scripts/",
@@ -103,6 +109,9 @@ ALLOWED_RUNTIME_JSON = {
     "config/rag/access_policy.json": "RAG role policy validated by SearchAccessPolicy tests",
     "config/rag/answer.json": "RAG answer safety limits validated by AnswerSafetySettings",
     "config/rag/benchmark.json": "RAG evaluation-only benchmark configuration",
+    "config/rag/corpus_manifest.json": (
+        "closed RAG corpus membership contract validated by CorpusManifest"
+    ),
     "config/rag/embedding.json": "versioned RAG embedding runtime configuration",
     "config/rag/embedding_models.json": "RAG evaluation-only embedding comparison matrix",
     "config/rag/vector_retrieval.json": "RAG retrieval limits validated by VectorSettings tests",
@@ -129,6 +138,39 @@ ALLOWED_RUNTIME_JSON = {
     ),
     "src/ml/artifacts/room-demand-timeseries-hgbr-v2.2.0/selection_trials.json": (
         "synthetic ML candidate training selection evidence"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/feature_contract.json": (
+        "frozen synthetic HGBR optimization candidate feature contract"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/model_manifest.json": (
+        "checksum-bound non-production HGBR optimization candidate manifest"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/release_checksums.json": (
+        "validated non-production HGBR optimization candidate checksums"
+    ),
+    "src/ml/artifacts/room-demand-hgbr-optimization-v3.3.0/selection.json": (
+        "synthetic HGBR optimization candidate selection evidence"
+    ),
+    "src/ml/artifacts/room-demand-operational-hgbr-v4.0.0/checksums.sha256.json": (
+        "checksum-bound operational ML candidate release receipt"
+    ),
+    "src/ml/artifacts/room-demand-operational-hgbr-v4.0.0/feature_contract.json": (
+        "point-in-time operational ML candidate feature contract"
+    ),
+    "src/ml/artifacts/room-demand-operational-hgbr-v4.0.0/model.approval.json": (
+        "non-production CONDITIONAL_PASS operational ML candidate decision"
+    ),
+    "src/ml/artifacts/room-demand-operational-hgbr-v4.0.0/model_manifest.json": (
+        "checksum-bound operational ML candidate model manifest"
+    ),
+    "src/ml/artifacts/room-demand-operational-hgbr-v4.0.0/selection_trials.json": (
+        "operational ML candidate training selection evidence"
+    ),
+    "src/ml/artifacts/room-demand-operational-hgbr-v4.0.0/evaluation/recent_rolling_validation.json": (
+        "synthetic operational ML candidate rolling-validation evidence"
+    ),
+    "src/ml/artifacts/room-demand-operational-hgbr-v4.0.0/evaluation/release_comparison.json": (
+        "synthetic operational ML candidate release comparison evidence"
     ),
     "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json": (
         "sealed backend deployment retrieval Gate contract"
@@ -252,6 +294,8 @@ def _classify(relative: str) -> str:
         return "archive"
     if relative in ALLOWED_RUNTIME_JSON:
         return "runtime-contract"
+    if relative in OFFLINE_ML_TOOL_FILES:
+        return "offline-ml-tool"
     if relative.startswith("infrastructure/database/datahub/metadata/"):
         # schema.json으로 검증되고 canonical sync가 소유하는 승인 policy다.
         # DataHub 실행 코드와 달리 고객·release·Metric identity를 기록해야 하며,

@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """검증된 객실 수요 예측 결과를 추가만 가능한 감사 표에 저장한다."""
+
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS governance.ml_prediction_audit_events (
@@ -42,6 +44,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """감사 표 권한과 표를 현재 개정 범위에서 제거한다."""
+
     op.execute(
         "REVOKE SELECT, INSERT ON TABLE "
         f"governance.ml_prediction_audit_events FROM {_runtime_role()}"

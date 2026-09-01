@@ -1,0 +1,85 @@
+{
+  "decision": "CONDITIONAL_PASS",
+  "final_decision": "CONDITIONAL_PASS",
+  "approval_status": "VALIDATED_SYNTHETIC",
+  "model_version": "room-demand-operational-hgbr-v4.0.0",
+  "artifact_sha256": "50769a9f84af069f15599dad958aace64f98fe17f3449da4c93b73a07b32d9c2",
+  "feature_version": "room-demand-point-in-time-d1-d7-v4.0.0",
+  "runtime_feature_parity": "PASS",
+  "holdout_comparison": {
+    "new_model_version": "room-demand-operational-hgbr-v4.0.0",
+    "old_model_version": "room-demand-timeseries-hgbr-v2.2.0",
+    "test_period": {
+      "cutoff_start": "2026-06-01",
+      "cutoff_end": "2026-08-24",
+      "rows": 5355
+    },
+    "new_metrics": {
+      "rows": 5355,
+      "actual_total": 304682.0,
+      "actual_mean": 56.89673202614379,
+      "wape": 0.012192130114088765,
+      "mae": 0.6936923599291863,
+      "rmse": 1.3631373432832545,
+      "bias": -0.0012110746791978032
+    },
+    "old_metrics": {
+      "rows": 5355,
+      "actual_total": 304682.0,
+      "actual_mean": 56.89673202614379,
+      "wape": 0.09879252053382243,
+      "mae": 5.620971567000202,
+      "rmse": 10.038612379409074,
+      "bias": 0.01865940481068086
+    },
+    "baseline_metrics": {
+      "rows": 5355,
+      "actual_total": 304682.0,
+      "actual_mean": 56.89673202614379,
+      "wape": 0.05828453929014513,
+      "mae": 3.316199813258637,
+      "rmse": 5.368545132908073,
+      "bias": 0.0005095476595269822
+    },
+    "interval_coverage": {
+      "coverage_80": 0.8095238095238095,
+      "coverage_95": 0.9441643323996265,
+      "coverage_pass": true
+    },
+    "flatness": {
+      "windows": 765,
+      "exact_flat_window_rate": 0.0,
+      "one_decimal_flat_window_rate": 0.0,
+      "flatness_pass": true
+    },
+    "approval_gates": {
+      "overall_better_than_old": true,
+      "overall_better_than_baseline": true,
+      "all_horizons_approved": true,
+      "all_properties_approved": true,
+      "all_room_types_approved": true,
+      "interval_coverage_approved": true,
+      "flatness_approved": true
+    },
+    "candidate_release_approved_on_synthetic_holdout": true,
+    "production_approved": false,
+    "production_block_reason": "운영 관측 데이터 순차 검증이 없어 합성 데이터 조건부 검증만 완료"
+  },
+  "rolling_origin_summary": {
+    "fold_count": 6,
+    "mean_wape": 0.01216157451115629,
+    "all_folds_better_than_baseline": true,
+    "all_horizons_better_than_baseline": true,
+    "all_properties_better_than_baseline": true
+  },
+  "data_is_synthetic": true,
+  "production_approved": false,
+  "human_approved_by": null,
+  "human_approved_at": null,
+  "limitations": [
+    "합성 데이터 조건부 검증이며 실제 호텔 정확도 증거가 아니다.",
+    "1일 전 예약 잔량이 최종 판매량과 같은 합성 데이터 특성이 있어 운영 자료 재검증이 필요하다.",
+    "목표일 재고·행사의 과거 snapshot 시각이 증명되지 않아 현재 신호 view는 운영에서 차단된다.",
+    "사람의 최종 운영 승인이 기록되지 않았다."
+  ]
+}

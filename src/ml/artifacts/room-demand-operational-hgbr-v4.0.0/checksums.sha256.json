@@ -1,0 +1,13 @@
+{
+  "model.joblib": "50769a9f84af069f15599dad958aace64f98fe17f3449da4c93b73a07b32d9c2",
+  "model_manifest.json": "f73a3083234651fd3ccaf3a0766094611f2d071aa7c600b90adb3203f18c027b",
+  "selection_trials.json": "27e196820cdb77d76ee0ddc636922b62d9f29c9b4d3e2c02d81b96a08201340c",
+  "feature_contract.json": "7ba2056b7b646079491afbaee6fcf73cd7df21e11e0bb50bc29d7e2ade5c4959",
+  "model.approval.json": "092c9c7ae50deee24d0c3731238c123abfa0db9714828ccb9db71ef820c23821",
+  "model_card.md": "e87190c3f5e0a20e44a91d11422752be748992aa70b3f1a5866347a6439d8e1f",
+  "evaluation/release_comparison.json": "4fd5f4b675c1cf09355b6534fc41f6b8fe50099548952519e9bd6bbb66321871",
+  "evaluation/recent_rolling_validation.json": "919a13b2895c2f6193d8496cce3e1e96a303019136f30e7c13f93fe8e8ef3d84",
+  "evaluation/test_by_horizon.csv": "ea03e9bddeb87b3c232d7c292d67225d39dc21038525ab1ebcae2c738e33c2ef",
+  "evaluation/test_by_property.csv": "13128228225723a4d372681188717b08c61b0371e3da28e15b790fbc976f22e8",
+  "evaluation/test_by_room_type.csv": "e626772d3c34a7ce84d44e27765d6af46d73f901b6f6f52fe9450414349d953a"
+}

@@ -1,12 +1,14 @@
+"""객실 수요 예측을 baseline과 비교해 전체·그룹·bootstrap 품질 지표를 계산한다."""
+
 from __future__ import annotations
 
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from .modeling import TimeSeriesDemandModel
+from .operational_metrics import DemandMetricSuite
 
 BASELINE_COLUMNS = {
     "last_observation": "cutoff_rooms_sold",
@@ -18,34 +20,14 @@ def metric_record(
     actual: np.ndarray,
     prediction: np.ndarray,
     baseline: np.ndarray,
-) -> dict[str, float | int]:
-    actual = np.asarray(actual, dtype=float)
-    prediction = np.asarray(prediction, dtype=float)
-    baseline = np.asarray(baseline, dtype=float)
-    absolute_error = np.abs(actual - prediction)
-    denominator = float(np.abs(actual).sum())
-    baseline_mae = float(np.abs(actual - baseline).mean())
-    quantiles = np.quantile(absolute_error, [0.50, 0.75, 0.90, 0.95, 0.99])
-    return {
-        "rows": int(len(actual)),
-        "actual_total": float(actual.sum()),
-        "actual_mean": float(actual.mean()),
-        "wape": float(absolute_error.sum() / denominator) if denominator else 0.0,
-        "mae": float(mean_absolute_error(actual, prediction)),
-        "rmse": float(mean_squared_error(actual, prediction) ** 0.5),
-        "bias": float((prediction - actual).sum() / denominator) if denominator else 0.0,
-        "mase": float(absolute_error.mean() / baseline_mae) if baseline_mae else 0.0,
-        "r2": float(r2_score(actual, prediction)),
-        "absolute_error_p50": float(quantiles[0]),
-        "absolute_error_p75": float(quantiles[1]),
-        "absolute_error_p90": float(quantiles[2]),
-        "absolute_error_p95": float(quantiles[3]),
-        "absolute_error_p99": float(quantiles[4]),
-        "absolute_error_max": float(absolute_error.max()),
-        "within_1_room_rate": float((absolute_error <= 1.0).mean()),
-        "within_3_rooms_rate": float((absolute_error <= 3.0).mean()),
-        "within_5_rooms_rate": float((absolute_error <= 5.0).mean()),
-    }
+) -> dict[str, float | int | None]:
+    """실측·예측·baseline 배열에서 WAPE, 오차 분위수와 범위별 적중률을 계산한다.
+
+    배열 길이·형상이 맞지 않거나 표본이 비어 있으면 numpy/sklearn 오류를
+    그대로 전달해 유효하지 않은 metric을 만들지 않는다.
+    """
+
+    return DemandMetricSuite.point_metrics(actual, prediction, baseline)
 
 
 def _baseline_predictions(frame: pd.DataFrame) -> dict[str, np.ndarray]:
@@ -109,6 +91,12 @@ def evaluate_model(
     frame: pd.DataFrame,
     bootstrap_samples: int = 0,
 ) -> tuple[dict[str, Any], dict[str, pd.DataFrame]]:
+    """모델 예측을 여러 seasonal baseline과 비교해 report와 그룹표를 반환한다.
+
+    필수 feature·label이 없거나 요청한 horizon 그룹이 존재하지 않으면 평가를
+    실패시키며, 선택적으로 target-date block bootstrap 신뢰구간도 계산한다.
+    """
+
     actual = frame["target_rooms_sold"].astype(float).to_numpy()
     baselines = _baseline_predictions(frame)
     baseline_metrics = {
@@ -213,6 +201,8 @@ def evaluate_model(
 
 
 def selection_score(report: dict[str, Any]) -> float:
+    """전체 WAPE와 취약 그룹·장기 horizon 벌점을 합쳐 후보 선택 점수를 만든다."""
+
     return float(
         report["metrics"]["wape"]
         + 0.05 * report["worst_high_volume_room_type_wape"]

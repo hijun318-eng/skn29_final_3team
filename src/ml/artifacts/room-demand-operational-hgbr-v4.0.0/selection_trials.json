@@ -1,0 +1,122 @@
+[
+  {
+    "config": {
+      "name": "balanced_leaf31",
+      "loss": "squared_error",
+      "learning_rate": 0.045,
+      "max_iter": 420,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 30,
+      "l2_regularization": 1.5,
+      "random_state": 20260901
+    },
+    "score": 0.0207883680894806,
+    "report": {
+      "metrics": {
+        "rows": 5796,
+        "actual_total": 329655.0,
+        "actual_mean": 56.876293995859214,
+        "wape": 0.013104219028398036,
+        "mae": 0.7453194140452993,
+        "rmse": 1.2629944024045703,
+        "bias": 0.0008668363908069937
+      },
+      "baseline_metrics": {
+        "rows": 5796,
+        "actual_total": 329655.0,
+        "actual_mean": 56.876293995859214,
+        "wape": 0.06047079522531131,
+        "mae": 3.4393547273982055,
+        "rmse": 5.20259207373731,
+        "bias": 0.000661297416996557
+      },
+      "baseline_improvement": 0.7832967306023951,
+      "all_horizons_better_than_baseline": true,
+      "all_properties_better_than_baseline": true,
+      "approved_room_type_count": 9,
+      "room_type_count": 9,
+      "worst_high_volume_room_type_wape": 0.04066812243141749,
+      "worst_low_volume_room_type_mae": 0.1583930696369941
+    }
+  },
+  {
+    "config": {
+      "name": "robust_leaf31",
+      "loss": "absolute_error",
+      "learning_rate": 0.04,
+      "max_iter": 460,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 35,
+      "l2_regularization": 2.0,
+      "random_state": 20260901
+    },
+    "score": 0.01931292309182636,
+    "report": {
+      "metrics": {
+        "rows": 5796,
+        "actual_total": 329655.0,
+        "actual_mean": 56.876293995859214,
+        "wape": 0.012425274146405438,
+        "mae": 0.7067035453301044,
+        "rmse": 1.2671053339038265,
+        "bias": -0.0012571613714051138
+      },
+      "baseline_metrics": {
+        "rows": 5796,
+        "actual_total": 329655.0,
+        "actual_mean": 56.876293995859214,
+        "wape": 0.06047079522531131,
+        "mae": 3.4393547273982055,
+        "rmse": 5.20259207373731,
+        "bias": 0.000661297416996557
+      },
+      "baseline_improvement": 0.794524379907533,
+      "all_horizons_better_than_baseline": true,
+      "all_properties_better_than_baseline": true,
+      "approved_room_type_count": 9,
+      "room_type_count": 9,
+      "worst_high_volume_room_type_wape": 0.04085529799901826,
+      "worst_low_volume_room_type_mae": 0.07593542455681834
+    }
+  },
+  {
+    "config": {
+      "name": "detailed_leaf63",
+      "loss": "squared_error",
+      "learning_rate": 0.035,
+      "max_iter": 500,
+      "max_leaf_nodes": 63,
+      "min_samples_leaf": 25,
+      "l2_regularization": 2.5,
+      "random_state": 20260901
+    },
+    "score": 0.02116085026338196,
+    "report": {
+      "metrics": {
+        "rows": 5796,
+        "actual_total": 329655.0,
+        "actual_mean": 56.876293995859214,
+        "wape": 0.01337638257199959,
+        "mae": 0.760799067766136,
+        "rmse": 1.3031795248367837,
+        "bias": 0.0014664430988967515
+      },
+      "baseline_metrics": {
+        "rows": 5796,
+        "actual_total": 329655.0,
+        "actual_mean": 56.876293995859214,
+        "wape": 0.06047079522531131,
+        "mae": 3.4393547273982055,
+        "rmse": 5.20259207373731,
+        "bias": 0.000661297416996557
+      },
+      "baseline_improvement": 0.7787959870188605,
+      "all_horizons_better_than_baseline": true,
+      "all_properties_better_than_baseline": true,
+      "approved_room_type_count": 9,
+      "room_type_count": 9,
+      "worst_high_volume_room_type_wape": 0.041294768943047115,
+      "worst_low_volume_room_type_mae": 0.15902523499253055
+    }
+  }
+]

@@ -1,11 +1,12 @@
 /** 보고서 block의 통화·표현·크기·복제·삭제 제어기를 제공하는 모듈이다. */
-import { memo, useId, useRef } from "react";
+import { memo, useId, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { ARTIFACT_VIEW_LABELS, artifactViewBlockSettings } from "../reportDraftV2";
 import { REPORT_CURRENCY_OPTIONS } from "../reportCurrency";
 import { blockSettings, REPORT_CHART_OPTIONS } from "./reportPresentation";
+import { ReportFloatingPanel } from "./ReportFloatingPanel";
 
 /** 문서 통화 배율을 계약 값으로만 선택하게 하는 memo 제어 컴포넌트다. */
 export const ReportCurrencyControl = memo(function ReportCurrencyControl({
@@ -117,13 +118,20 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
   onToggleLock,
 }) {
   const detailsRef = useRef(null);
+  const panelRef = useRef(null);
+  const menuId = useId();
+  const [open, setOpen] = useState(false);
+  const closeMenu = () => {
+    if (detailsRef.current) detailsRef.current.open = false;
+    setOpen(false);
+  };
   const handleMenuKeyDown = (event) => {
     const details = detailsRef.current;
     if (!details?.open) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      details.open = false;
+      closeMenu();
       details.querySelector("summary")?.focus();
       return;
     }
@@ -131,7 +139,7 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
       return;
     }
     const controls = [
-      ...details.querySelectorAll("button:not(:disabled), input:not(:disabled), select:not(:disabled)"),
+      ...panelRef.current?.querySelectorAll("button:not(:disabled), input:not(:disabled), select:not(:disabled)") || [],
     ];
     if (!controls.length) return;
     event.preventDefault();
@@ -145,22 +153,32 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
     controls[next]?.focus();
   };
 
-  return (
+  return <>
     <details
       ref={detailsRef}
       className="report-block-menu"
       name="report-block-menu"
       onClick={(event) => event.stopPropagation()}
       onKeyDown={handleMenuKeyDown}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary className="report-block-menu-trigger report-block-chrome-button" aria-label={`${block.title} 블록 메뉴`} aria-haspopup="true" title="블록 설정 및 작업">
+      <summary className="report-block-menu-trigger report-block-chrome-button" aria-label={`${block.title} 블록 메뉴`} aria-haspopup="true" aria-expanded={open} aria-controls={menuId} title="블록 설정 및 작업">
         <MoreHorizontal size={17} />
       </summary>
-      <div className="report-block-menu-popover" aria-label={`${block.title} 블록 설정`}>
-        <ReportBlockSettings block={block} artifact={artifact} disabled={locked} locked={locked} onMove={onMove} onResize={onResize} onSetting={onSetting} onDuplicate={onDuplicate} onDelete={onDelete} onToggleLock={onToggleLock} />
-      </div>
     </details>
-  );
+    <ReportFloatingPanel
+      anchorRef={detailsRef}
+      panelRef={panelRef}
+      open={open}
+      id={menuId}
+      className="report-block-menu-popover"
+      aria-label={`${block.title} 블록 설정`}
+      onKeyDown={handleMenuKeyDown}
+      onRequestClose={closeMenu}
+    >
+      <ReportBlockSettings block={block} artifact={artifact} disabled={locked} locked={locked} onMove={onMove} onResize={onResize} onSetting={onSetting} onDuplicate={onDuplicate} onDelete={onDelete} onToggleLock={onToggleLock} />
+    </ReportFloatingPanel>
+  </>;
 });
 
 /** 일반 block template을 drag/keyboard 삽입 대상으로 제공하며 안정된 props를 재사용한다. */

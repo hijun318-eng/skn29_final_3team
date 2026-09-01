@@ -1,5 +1,5 @@
 /** 보고서 controller를 목록·문서·A4 편집기 컴포넌트에 배선하는 얇은 화면 모듈이다. */
-import { AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, Check, Layers3 } from "lucide-react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { useCallback, useMemo } from "react";
 
@@ -111,6 +111,13 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   }
 
   const ActiveInsertIcon = page.activeInsert?.icon;
+  const activeDraggedBlock = page.activeInsert
+    ? null
+    : draft.orderedBlocks.find((block) => block.id === dnd.draggedBlockId);
+  const draggedBlockCount = dnd.draggedBlockIds.size;
+  const dragPlacementClass = dnd.dragDelta
+    ? dnd.dropPosition ? "is-valid" : "is-invalid"
+    : "";
   const toolbar = <ReportEditorToolbar
     builderV2={page.builderV2}
     currencyControl={editorCurrencyControl}
@@ -324,7 +331,14 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   >
     {editor}
     <DragOverlay dropAnimation={{ duration: 160, easing: "ease-out" }}>
-      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeInsert.title}</b><small>{page.activeArtifactSource ? `${page.activeArtifactSource.title}에서 독립 요소로 추가` : "캔버스에 놓아 추가"}</small></span></div>}
+      {page.activeInsert && <div className={`report-template-overlay ${dragPlacementClass}`.trim()}>{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeInsert.title}</b><small>{dragPlacementClass === "is-invalid" ? "보고서 안의 빈 위치로 이동하세요" : page.activeArtifactSource ? `${page.activeArtifactSource.title}에서 독립 요소로 추가` : "캔버스에 놓아 추가"}</small></span></div>}
+      {activeDraggedBlock && <div className={`report-block-drag-overlay ${draggedBlockCount > 1 ? "is-group" : ""} ${dragPlacementClass}`.trim()}>
+        <Layers3 size={15} aria-hidden="true" />
+        <span>
+          <b>{draggedBlockCount > 1 ? `${draggedBlockCount}개 블록 이동` : activeDraggedBlock.title || "제목 없음"}</b>
+          <small>{dragPlacementClass === "is-invalid" ? "보고서 안의 빈 위치로 이동하세요" : draggedBlockCount > 1 ? activeDraggedBlock.title || "선택한 블록" : "놓을 위치를 선택하세요"}</small>
+        </span>
+      </div>}
     </DragOverlay>
   </DndContext>;
 }

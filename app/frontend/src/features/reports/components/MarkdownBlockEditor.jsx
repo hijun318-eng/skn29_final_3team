@@ -4,6 +4,7 @@ import { Bold, Heading2, Italic, Link2, List, ListChecks, Minus, Quote, Table2 }
 
 import { REPORT_BLOCK_CONTENT_MAX_LENGTH } from "../../../contracts/reportContract";
 import { MarkdownText } from "./ReportArtifactContent";
+import { ReportFloatingPanel } from "./ReportFloatingPanel";
 
 /** toolbar와 키보드가 공유하는 안전한 Markdown 삽입 명령 집합이다. */ export const MARKDOWN_INSERT_COMMANDS = [
   {
@@ -273,44 +274,45 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
             onKeyDown={handleTextareaKeyDown}
             placeholder="내용을 입력하세요. Markdown 표·목록·체크박스·링크를 사용할 수 있습니다."
           />
-          {slash && (
-            <div
-              ref={slashMenuRef}
-              id={`${block.id}-slash-menu`}
-              className="report-slash-menu"
-              role="listbox"
-              aria-label="Markdown 블록 삽입"
-            >
-              <header>
-                <b>블록 삽입</b>
-                <span>↑↓·Home·End 선택 · Enter 삽입 · Esc 닫기</span>
-              </header>
-              {slashCommands.length ? slashCommands.map((command, index) => {
-                const Icon = command.icon;
-                return (
-                  <button
-                    id={`${block.id}-slash-option-${command.id}`}
-                    data-slash-index={index}
-                    type="button"
-                    role="option"
-                    aria-selected={index === slashIndex}
-                    className={index === slashIndex ? "active" : ""}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => insertSlashCommand(command)}
-                    key={command.id}
-                  >
-                    <Icon size={15} aria-hidden="true" />
-                    <span>
-                      <small>{command.group}</small>
-                      <b>{command.title}</b>
-                      <small>{command.description}</small>
-                    </span>
-                    <kbd>{command.shortcut}</kbd>
-                  </button>
-                );
-              }) : <p role="status">일치하는 블록이 없습니다.</p>}
-            </div>
-          )}
+          <ReportFloatingPanel
+            anchorRef={textareaRef}
+            panelRef={slashMenuRef}
+            open={Boolean(slash)}
+            id={`${block.id}-slash-menu`}
+            className="report-slash-menu"
+            role="listbox"
+            aria-label="Markdown 블록 삽입"
+            onRequestClose={() => setSlash(null)}
+          >
+            <header>
+              <b>블록 삽입</b>
+              <span>↑↓·Home·End 선택 · Enter 삽입 · Esc 닫기</span>
+            </header>
+            {slashCommands.length ? slashCommands.map((command, index) => {
+              const Icon = command.icon;
+              return (
+                <button
+                  id={`${block.id}-slash-option-${command.id}`}
+                  data-slash-index={index}
+                  type="button"
+                  role="option"
+                  aria-selected={index === slashIndex}
+                  className={index === slashIndex ? "active" : ""}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => insertSlashCommand(command)}
+                  key={command.id}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  <span>
+                    <small>{command.group}</small>
+                    <b>{command.title}</b>
+                    <small>{command.description}</small>
+                  </span>
+                  <kbd>{command.shortcut}</kbd>
+                </button>
+              );
+            }) : <p role="status">일치하는 블록이 없습니다.</p>}
+          </ReportFloatingPanel>
           <small className="report-markdown-hint">
             <kbd>/</kbd> 입력으로 제목·목록·표를 바로 삽입할 수 있습니다.
           </small>

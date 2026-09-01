@@ -200,7 +200,7 @@
   font-size: 6.5pt;
 }
 
-.answer-report-page .report-data-provenance {
+.answer-report-page .generated-report-block > header > .report-data-provenance {
   inline-size: auto;
   block-size: auto;
   max-inline-size: none;

@@ -1111,7 +1111,11 @@ class ConversationOrchestrator:
         원본 command admission은 서버가 다시 검증한다. 명시 route는 모델을 우회한다.
         """
 
-        from app.ports.agent import AgentPreviousAnalysisContext, AgentRequest
+        from app.ports.agent import (
+            AgentPreviousAnalysisContext,
+            AgentPreviousMLContext,
+            AgentRequest,
+        )
         from app.contracts import RuntimeFeature
         from app.runtime_features import runtime_feature_enabled
         from app.services.agent_supervisor import AgentDispatchError
@@ -1176,6 +1180,7 @@ class ConversationOrchestrator:
 
         previous_turns = await self._repo.list_turns(request.conversation_id)
         previous_analysis = None
+        previous_ml = None
         if previous_turns and ConversationSlotResolver.is_resolved_analysis_turn(
             previous_turns[-1]
         ):
@@ -1204,10 +1209,26 @@ class ConversationOrchestrator:
                     period_start=previous_time["start"],
                     period_end_exclusive=previous_time["end_exclusive"],
                 )
+        if previous_turns and previous_turns[-1].get("route") == "ML_PREDICTION":
+            previous_slots = previous_turns[-1].get("resolved_slots", {})
+            previous_prediction = previous_slots.get("ml_prediction")
+            if isinstance(previous_prediction, dict):
+                try:
+                    previous_ml = AgentPreviousMLContext(
+                        property_id=previous_prediction.get("property_id"),
+                        as_of=previous_prediction.get("as_of"),
+                        horizon_days=previous_prediction.get("horizon_days"),
+                    )
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Stored ML follow-up context is invalid: conversation_id=%s",
+                        request.conversation_id,
+                    )
         admitted_request = request.model_copy(
             update={
                 "context": admission.context,
                 "previous_analysis": previous_analysis,
+                "previous_ml": previous_ml,
             }
         )
         try:

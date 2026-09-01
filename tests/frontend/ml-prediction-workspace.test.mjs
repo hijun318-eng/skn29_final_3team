@@ -76,6 +76,10 @@ test("ML 예측 결과는 KPI와 차트를 먼저 보여주고 상세 데이터�
     assert.doesNotMatch(html, /<text/);
     assert.match(html, /최저 70%, 최고 80%, 마지막 날 80%/);
     assert.doesNotMatch(html, />2026-08-31</);
+    assert.match(html, /모델 및 해석 안내/);
+    assert.match(html, /사용 모델<\/dt><dd>room-demand-hgbr-v2\.2\.0/);
+    assert.match(html, /실제 실적이 아닌 모델 추정값/);
+    assert.match(html, /불확실성 구간/);
     assert.match(html, /<details class="ml-workspace__details">/);
     assert.match(html, /<table>/);
     assert.match(html, /<details class="ml-workspace__technical-details">/);

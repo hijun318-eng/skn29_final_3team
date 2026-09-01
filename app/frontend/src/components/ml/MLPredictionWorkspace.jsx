@@ -205,6 +205,25 @@ export function MLPredictionResult({ result }) {
 
       <MLForecastChart days={days} />
 
+      <section className="ml-workspace__model-guide" aria-labelledby="ml-model-guide-heading">
+        <div className="ml-workspace__section-heading">
+          <div>
+            <h3 id="ml-model-guide-heading">모델 및 해석 안내</h3>
+            <p>예측값을 의사결정에 사용할 때 함께 확인해 주세요.</p>
+          </div>
+        </div>
+        <dl>
+          <div><dt>사용 모델</dt><dd>{result.model_version || "모델 정보 없음"}</dd></div>
+          <div>
+            <dt>예측 한계</dt>
+            <dd>
+              예측치는 실제 실적이 아닌 모델 추정값입니다. 현재 결과에는 불확실성 구간이
+              제공되지 않으며, 기준일 이후의 외부 이벤트나 운영 변경은 반영되지 않을 수 있습니다.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
       {days.length > 0 && (
         <details className="ml-workspace__details">
           <summary><span>일별 예측 상세 보기</span><strong>{days.length}일</strong></summary>
@@ -235,7 +254,6 @@ export function MLPredictionResult({ result }) {
         <details className="ml-workspace__technical-details">
           <summary>기술 상세</summary>
           <dl>
-            {result.model_version && <div><dt>모델 버전</dt><dd>{result.model_version}</dd></div>}
             {result.provenance?.trino_query_id && (
               <div><dt>조회 식별자</dt><dd>{result.provenance.trino_query_id}</dd></div>
             )}

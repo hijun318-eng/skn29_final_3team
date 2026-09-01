@@ -28,6 +28,7 @@ from app.conversation_contracts import ConversationCommandRequest  # noqa: E402
 from app.ports.agent import (  # noqa: E402
     AgentKind,
     AgentPreviousAnalysisContext,
+    AgentPreviousMLContext,
     AgentRequest,
 )
 from app.services.agent_supervisor import AgentDispatchError  # noqa: E402
@@ -204,6 +205,89 @@ def test_terra_planner_receives_only_typed_previous_analysis_context() -> None:
         "route": "ANALYSIS",
         "schema_version": "AgentPreviousAnalysisContext.v1",
     }
+
+
+def test_terra_planner_reuses_typed_previous_ml_scope_for_followup() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json=_response(
+                {
+                    "schema_version": "SupervisorExecutionPlan.v2",
+                    "status": "EXECUTABLE",
+                    "tasks": [
+                        {
+                            "agent": "ML_PREDICTION",
+                            "objective": "직전 7일 객실 수요 예측의 그래프와 모델 정보를 표시",
+                            "ml_prediction": {
+                                "property_id": "GRAND",
+                                "as_of": "2026-09-01",
+                                "horizon_days": 7,
+                            },
+                        }
+                    ],
+                    "unavailable_reason": None,
+                }
+            ),
+        )
+
+    catalog = SupervisorCapabilityCatalog(
+        available_agents=(AgentKind.ANALYSIS_WORKFLOW, AgentKind.ML_PREDICTION),
+        unavailable_agents=(AgentKind.INTERNAL_GUIDELINE,),
+        ml_properties=(
+            SupervisorMLPropertyScope(
+                property_id="GRAND",
+                min_as_of="2026-01-01",
+                max_as_of="2026-09-01",
+            ),
+        ),
+        ml_min_horizon_days=1,
+        ml_max_horizon_days=90,
+    )
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            planner = OpenAISupervisorPlanner(
+                "https://api.openai.com",
+                "test-token",
+                client=client,
+            )
+            request = _request(
+                "예측 결과를 날짜별 그래프로 보여주고 사용한 모델과 예측 한계를 알려줘"
+            ).model_copy(
+                update={
+                    "previous_ml": AgentPreviousMLContext(
+                        property_id="GRAND",
+                        as_of="2026-09-01",
+                        horizon_days=7,
+                    )
+                }
+            )
+            result = await planner.plan(
+                request,
+                catalog,
+                previous_route="ML_PREDICTION",
+            )
+            return request, result
+
+    request, result = asyncio.run(run())
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    model_input = json.loads(payload["input"])
+    assert model_input["previous_ml"] == {
+        "as_of": "2026-09-01",
+        "horizon_days": 7,
+        "property_id": "GRAND",
+        "route": "ML_PREDICTION",
+        "schema_version": "AgentPreviousMLContext.v1",
+    }
+    materialized = materialize_supervisor_plan(request, result, catalog)
+    assert materialized.requests[0].invocation is not None
+    assert materialized.requests[0].invocation.property_id == "GRAND"
+    assert materialized.requests[0].invocation.horizon_days == 7
 
 
 def test_ml_plan_is_materialized_only_from_dynamic_runtime_scope() -> None:

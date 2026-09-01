@@ -2239,8 +2239,8 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(generation_calls, 1)
         self.assertEqual(persisted, [first["data"]["ml_prediction"]])
 
-    async def test_terra_plan_materializes_and_rechecks_ml_invocation(self) -> None:
-        """자연어 ML 계획은 runtime scope와 selected capability를 각각 검증한 뒤 실행한다."""
+    async def test_terra_plan_reuses_previous_ml_scope_and_rechecks_invocation(self) -> None:
+        """ML 후속 요청은 저장된 입력 범위를 Supervisor에 전달하고 다시 검증해 실행한다."""
 
         conversation = await self.repo.create_conversation(
             self.user_id,
@@ -2257,10 +2257,14 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         )
         capability_calls = 0
         generation_payloads: list[dict[str, Any]] = []
+        planner_requests: list[AgentRequest] = []
+        previous_routes: list[str | None] = []
 
         class Planner:
             async def plan(self, admitted_request, catalog, *, previous_route):
                 self.catalog = catalog
+                planner_requests.append(admitted_request)
+                previous_routes.append(previous_route)
                 return SupervisorPlanResult(
                     plan=SupervisorExecutionPlan(
                         status="EXECUTABLE",
@@ -2356,9 +2360,31 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 ml_prediction_service_factory=lambda: service,
                 ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
+            followup_request = AgentRequest(
+                conversation_id=conversation["conversation_id"],
+                command=ConversationCommandRequest(
+                    user_message=(
+                        "예측 결과를 날짜별 그래프로 보여주고 사용한 모델과 "
+                        "예측 한계를 알려줘"
+                    ),
+                    idempotency_key="model-supervisor-ml-followup",
+                    expected_head_turn_id=result["data"]["turn"]["turn_id"],
+                ),
+                context=self.context,
+            )
+            followup = await self.orchestrator.dispatch_agent_command(
+                followup_request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                supervisor_planner_factory=lambda: planner,
+                supervisor_routing_enabled=True,
+                ml_prediction_service_factory=lambda: service,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
+            )
 
         self.assertEqual(result["data"]["type"], "ML_PREDICTION")
         self.assertEqual(result["data"]["turn"]["route"], "ML_PREDICTION")
+        self.assertEqual(followup["data"]["turn"]["route"], "ML_PREDICTION")
         self.assertEqual(
             generation_payloads,
             [
@@ -2366,11 +2392,22 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                     "property_id": "GRAND",
                     "as_of": "2026-08-18",
                     "horizon_days": 30,
-                }
+                },
+                {
+                    "property_id": "GRAND",
+                    "as_of": "2026-08-18",
+                    "horizon_days": 30,
+                },
             ],
         )
-        self.assertEqual(capability_calls, 2)
+        self.assertEqual(capability_calls, 4)
         self.assertIn(AgentKind.ML_PREDICTION, planner.catalog.available_agents)
+        self.assertIsNone(planner_requests[0].previous_ml)
+        self.assertIsNotNone(planner_requests[1].previous_ml)
+        self.assertEqual(planner_requests[1].previous_ml.property_id, "GRAND")
+        self.assertEqual(planner_requests[1].previous_ml.as_of.isoformat(), "2026-08-18")
+        self.assertEqual(planner_requests[1].previous_ml.horizon_days, 30)
+        self.assertEqual(previous_routes, [None, "ML_PREDICTION"])
 
     async def test_ml_audit_failure_does_not_commit_partial_turn(self) -> None:
         """감사 저장 실패를 예측 턴 성공으로 남기지 않는다."""

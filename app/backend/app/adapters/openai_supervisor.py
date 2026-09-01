@@ -54,7 +54,7 @@ ML_PREDICTION은 제공된 ML scope 안의 미래 객실 수요 예측에만 사
 previous_analysis는 서버가 확정한 이전 분석 지표·기간이며 새 사실로 간주하지 마세요.
 previous_analysis를 사용한 task의 objective에는 metric_ids와 정확한 시작일·종료일을 포함하세요.
 previous_ml은 서버가 확정한 직전 성공 예측의 입력 범위이며 예측 결과가 아닙니다.
-직전 route가 ML_PREDICTION이고 사용자가 같은 예측의 그래프·표·모델·한계 설명을 요구하면,
+직전 route가 ML_PREDICTION이고 사용자가 같은 예측의 그래프·표·모델 정보 표시를 요구하면,
 previous_ml의 property_id·as_of·horizon_days를 그대로 사용한 ML_PREDICTION task를 계획하세요.
 사용자가 새 예측 조건을 명시한 경우에만 previous_ml 대신 새 조건을 사용하세요.
 필수 입력이 없거나 필요한 Agent가 unavailable이면 다른 Agent로 대체하지 말고

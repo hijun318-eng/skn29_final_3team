@@ -2364,8 +2364,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 conversation_id=conversation["conversation_id"],
                 command=ConversationCommandRequest(
                     user_message=(
-                        "예측 결과를 날짜별 그래프로 보여주고 사용한 모델과 "
-                        "예측 한계를 알려줘"
+                        "예측 결과를 날짜별 그래프로 보여주고 사용한 모델을 알려줘"
                     ),
                     idempotency_key="model-supervisor-ml-followup",
                     expected_head_turn_id=result["data"]["turn"]["turn_id"],

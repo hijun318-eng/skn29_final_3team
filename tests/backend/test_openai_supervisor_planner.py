@@ -256,7 +256,7 @@ def test_terra_planner_reuses_typed_previous_ml_scope_for_followup() -> None:
                 client=client,
             )
             request = _request(
-                "예측 결과를 날짜별 그래프로 보여주고 사용한 모델과 예측 한계를 알려줘"
+                "예측 결과를 날짜별 그래프로 보여주고 사용한 모델을 알려줘"
             ).model_copy(
                 update={
                     "previous_ml": AgentPreviousMLContext(

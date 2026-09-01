@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BarChart3, Eye, FilePlu
 import { EnterpriseChart } from "../charts/EnterpriseChart";
 import { type AnalysisRun } from "../../contracts/analysis";
 import { type AnalysisValueScale, userFacingAnalysisSummary } from "./analysisValueScale";
-import { analysisTitle, formatCompactNumber, formatMetricValue, isNumericValue, localizeMetricDefinition, metricDisplayLabel, metricUnitLabel } from "../../utils/presentation";
+import { analysisTitle, formatCompactNumber, formatMetricValue, isNumericValue, metricDisplayLabel, metricUnitLabel } from "../../utils/presentation";
 
 const KPI_SPARKLINE_PERIOD = /^\d{4}-\d{2}(?:-\d{2})?$/;
 const KPI_SPARKLINE_MAX_POINTS = 30;
@@ -96,13 +96,11 @@ export function AnalysisConversationalSummary({ run, valueScale }: { run: Analys
     <div className="agent-conversational-bubble" aria-label="AI 분석 요약">
       <header className="analysis-summary-heading">
         <div>
-          <small>분석 결과</small>
           <h3>{analysisTitle(run)}</h3>
         </div>
         <AnalysisSectionMeta run={run} />
       </header>
       <div className="analysis-summary-answer">
-        <small>핵심 답변</small>
         <p className="agent-narrative-text">{userFacingAnalysisSummary(run, valueScale)}</p>
       </div>
     </div>
@@ -156,7 +154,6 @@ export function AnalysisKpiSection({ run, valueScale, showAsOf = true }: {
               {metric.unit && metric.value !== null && metric.value !== undefined && metric.value !== "" && <em>{valueScale.unitLabel(metric.unit, metric.resultField)}</em>}
             </strong>
             {sparkline && <AnalysisKpiSparkline label={metricDisplayLabel(metric)} sparkline={sparkline} />}
-            {metric.definition && <p>{localizeMetricDefinition(metric.definition)}</p>}
           </article>
           );
         })}

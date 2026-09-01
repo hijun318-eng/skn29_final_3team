@@ -40,13 +40,14 @@ try {
   assert.match(html, /AI 분석 요약/);
   assert.match(html, /analysis-summary-heading/);
   assert.doesNotMatch(html, /근거 검증 완료|analysis-summary-verified/);
-  assert.match(html, /분석 결과/);
+  assert.doesNotMatch(html, />분석 결과</);
   assert.match(html, /analysis-summary-answer/);
-  assert.match(html, /핵심 답변/);
+  assert.doesNotMatch(html, /핵심 답변/);
   assert.match(html, /수치 근거/);
   assert.match(html, />핵심 지표</);
   assert.doesNotMatch(html, /주요 KPI|개 승인 지표/);
   assert.doesNotMatch(html, /상세 데이터 표/);
+  assert.doesNotMatch(html, /취소·무료 제공을 제외한 객실 매출/);
   assert.doesNotMatch(html, /aria-label="차트 표현 방식"/);
   assert.equal(analysisResultDensity({ ...run, metrics: run.metrics.slice(0, 1) }, "SUMMARY"), "compact");
   assert.equal(analysisResultDensity({ ...run, metrics: run.metrics.slice(0, 3) }, "SUMMARY"), "regular");
@@ -152,6 +153,7 @@ try {
     processViewModel: processViewModels.analysisActive,
   }));
   assert.match(runningPanelHtml, /data-process-status="running"/);
+  assert.match(runningPanelHtml, /analysis-state--regular-width/);
   assert.match(runningPanelHtml, /승인된 범위에서 분석하고 있습니다/);
 
   assert.match(html, /analysis-section-meta/);
@@ -447,7 +449,7 @@ try {
   assert.match(stylesSource, /\.analysis-data-section\.is-compact-result \.analysis-table\{overflow-x:auto/);
   assert.match(stylesSource, /\.analysis-data-section\.is-single-value-result \.analysis-table\{overflow-x:hidden/);
   assert.match(stylesSource, /\.analysis-data-section\.is-wide-result \.analysis-table table\{width:100%;min-width:var\(--analysis-table-min-width,760px\)/);
-  assert.match(stylesSource, /\.analysis-summary-heading small,[^\n]*\.analysis-result-section \.analysis-table thead th,[^\n]*\{font-size:12px\}/);
+  assert.match(stylesSource, /\.analysis-kpi-section header small,[^\n]*\.analysis-result-section \.analysis-table thead th,[^\n]*\{font-size:12px\}/);
   assert.match(stylesSource, /\.theme-light \.analysis-state\{--av-ink-3:#5f7085\}/);
   assert.match(stylesSource, /\.analysis-state button:focus-visible/);
   assert.match(stylesSource, /\.analysis-state\{[^}]*--av-paper:#0f1825[^}]*--av-ink:#e8edf5[^}]*--av-chart-grid:#223149/);

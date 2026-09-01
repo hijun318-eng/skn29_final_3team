@@ -115,7 +115,7 @@ export function AnalysisStatePanel({
   const hasTableRows = Boolean(table?.columns?.length && table?.rows?.length);
   const isPresentationPending = Boolean(artifactReuse?.pending);
   const resultDensity = !showResult || isPresentationPending
-    ? "compact"
+    ? "regular"
     : analysisResultDensity(run, normalizedViewType);
   const widthClass = `analysis-state--${resultDensity}-width`;
   // 차트 표현 전환은 서버가 확정한 차트 보기 요청에서만 제공한다. 기본 요약·KPI·전체 보기에는 노출하지 않는다.

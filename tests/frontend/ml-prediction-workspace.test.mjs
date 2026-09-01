@@ -17,7 +17,7 @@ const styles = readFileSync(
   "utf8",
 );
 
-test("ML 예측 결과는 KPI와 차트를 먼저 보여주고 상세 데이터는 접어 둔다", async () => {
+test("ML 예측 결과는 핵심 KPI를 먼저 보여주고 상세·기술 정보는 접어 둔다", async () => {
   const server = await createServer({
     appType: "custom",
     cacheDir: "node_modules/.vite-ml-prediction-workspace-test",
@@ -66,22 +66,17 @@ test("ML 예측 결과는 KPI와 차트를 먼저 보여주고 상세 데이터�
 
     assert.match(html, /예측 요약/);
     assert.match(html, /기간 예상 점유율<\/span><strong>75%/);
-    assert.match(html, /누적 예상 판매 객실박<\/span><strong>150객실박/);
+    assert.match(html, /누적 예상 객실 판매량<\/span><strong>150 박/);
     assert.match(html, /title="HOTEL-SEOUL"/);
     assert.match(html, /2026\.08\.30\./);
-    assert.match(html, /role="img"/);
-    assert.match(html, /class="ml-workspace__chart-y-axis"[^>]*><span>100%<\/span><span>50%<\/span><span>0%<\/span>/);
-    assert.match(html, /preserveAspectRatio="none"/);
-    assert.match(html, /예상 점유율 추이/);
-    assert.doesNotMatch(html, /<text/);
-    assert.match(html, /최저 70%, 최고 80%, 마지막 날 80%/);
+    assert.doesNotMatch(html, /role="img"|예상 점유율 추이|ml-workspace__chart/);
     assert.doesNotMatch(html, />2026-08-31</);
-    assert.match(html, /사용 모델/);
     assert.match(html, /room-demand-hgbr-v2\.2\.0/);
     assert.doesNotMatch(html, /예측 한계|불확실성 구간/);
     assert.match(html, /<details class="ml-workspace__details">/);
     assert.match(html, /<table>/);
     assert.match(html, /<details class="ml-workspace__technical-details">/);
+    assert.match(html, /<dt>사용 모델<\/dt><dd>room-demand-hgbr-v2\.2\.0<\/dd>/);
     assert.doesNotMatch(html, /<details[^>]+open/);
     assert.doesNotMatch(html, /RAG 호출|Trino query/);
 

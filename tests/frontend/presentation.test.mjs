@@ -37,6 +37,13 @@ assert.equal(analysisTitle({
     comparisonPeriod: { start: "2026-08-01", endExclusive: "2026-09-01" },
   },
 }), "2026년 7월·2026년 8월 객실 매출 분석");
+assert.equal(analysisTitle({
+  ...structuredRun,
+  evidence: {
+    ...structuredRun.evidence,
+    period: { start: "2026-03-01", endExclusive: "2026-09-01" },
+  },
+}), "2026.03.01–2026.08.31 객실 매출 분석");
 assert.equal(reportTitleForAnalysis(structuredRun), "2026년 7월 객실 매출 분석 보고서");
 assert.doesNotMatch(reportTitleForAnalysis(structuredRun), /이 문장을 제목으로 쓰지 마세요/);
 assert.equal(reportTitleForAnalysis({ question: "원문 질문" }), "분석 결과 보고서");

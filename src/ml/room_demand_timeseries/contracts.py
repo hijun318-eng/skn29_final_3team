@@ -3,10 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-# 이전 시계열 학습·비교 재현에만 쓰는 버전이다.
-# 활성 운영 후보는 operational_contracts.OPERATIONAL_MODEL_VERSION으로 고정한다.
-LEGACY_TRAINING_MODEL_VERSION = "room-demand-timeseries-hgbr-v2.6.0"
-MODEL_VERSION = LEGACY_TRAINING_MODEL_VERSION
+MODEL_VERSION = "room-demand-timeseries-hgbr-v2.6.0"
 MAX_HORIZON = 10
 
 CATEGORICAL_FEATURES = [

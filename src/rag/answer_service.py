@@ -304,6 +304,15 @@ class AnswerService:
                         for evidence_id in referenced_ids
                     ],
                 )
+                model_section_count = len(parsed_response.sections)
+                model_claim_count = sum(
+                    len(section.claims) for section in parsed_response.sections
+                )
+                model_claim_chars = sum(
+                    len(claim.text)
+                    for section in parsed_response.sections
+                    for claim in section.claims
+                )
 
                 # Override request/trace IDs to match input
                 parsed_response.request_id = request.request_id
@@ -313,8 +322,11 @@ class AnswerService:
                 validated = self._validate_response(parsed_response, packed_request)
                 if validated.status == "GENERATION_FAILED":
                     logger.warning(
-                        "rag_answer_validation_failed reason=%s",
+                        "rag_answer_validation_failed reason=%s sections=%s claims=%s claim_chars=%s",
                         validated.answer,
+                        model_section_count,
+                        model_claim_count,
+                        model_claim_chars,
                     )
                 return self._attach_context_receipt(
                     validated,

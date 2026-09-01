@@ -80,6 +80,7 @@ function markdownSlashContext(content, cursor) {
 export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
   block,
   disabled,
+  onModeChange,
   onUpdate,
 }) {
   const textareaRef = useRef(null);
@@ -113,6 +114,21 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
   const updateSlash = (content, cursor) => {
     setSlash(markdownSlashContext(content, cursor));
     setSlashIndex(0);
+  };
+
+  const changeMode = (nextMode) => {
+    if (mode === nextMode) return;
+    setMode(nextMode);
+    setSlash(null);
+    onModeChange?.(nextMode);
+    if (nextMode === "edit") {
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        const cursor = textarea?.value.length ?? 0;
+        textarea?.focus();
+        textarea?.setSelectionRange(cursor, cursor);
+      });
+    }
   };
 
   const insertSlashCommand = (command) => {
@@ -192,9 +208,11 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
     });
   };
 
+  const preview = disabled || mode === "preview";
+
   return (
-    <div className="report-markdown-editor">
-      {!disabled && (
+    <div className={`report-markdown-editor ${preview ? "is-preview" : "is-editing"}`}>
+      {!disabled && mode === "edit" && (
         <div className="report-markdown-toolbar" aria-label={`${block.title} Markdown 도구`}>
           <div>
             <button type="button" title="굵게" aria-label="굵게" onMouseDown={(event) => event.preventDefault()} onClick={() => apply("bold")}><Bold size={14} /></button>
@@ -205,13 +223,19 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
             <button type="button" title="링크" aria-label="링크" onMouseDown={(event) => event.preventDefault()} onClick={() => apply("link")}><Link2 size={14} /></button>
           </div>
           <div className="report-markdown-mode">
-            <button type="button" className={mode === "edit" ? "active" : ""} onClick={() => setMode("edit")}>편집</button>
-            <button type="button" className={mode === "preview" ? "active" : ""} onClick={() => setMode("preview")}>미리보기</button>
+            <button type="button" onClick={() => changeMode("preview")}>미리보기</button>
           </div>
         </div>
       )}
-      {mode === "preview" && !disabled ? (
-        <div className="report-markdown-preview"><MarkdownText content={block.content} /></div>
+      {preview ? (
+        <>
+          {!disabled && (
+            <div className="report-markdown-preview-actions" data-report-editor-chrome="true">
+              <button type="button" onClick={() => changeMode("edit")}>편집</button>
+            </div>
+          )}
+          <div className="report-markdown-preview"><MarkdownText content={block.content} /></div>
+        </>
       ) : (
         <>
           <textarea

@@ -5,6 +5,21 @@ import { KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } fro
 import { placeDraftBlock } from "../../contracts/report.ts";
 import { keyboardEndDropPosition, moveFrontendBlock } from "./reportDraftV2.js";
 
+const ARTIFACT_VIEW_DRAG_PREFIX = "artifact-view:";
+
+/** 분석 결과 ID와 보기 template을 결합한 library drag ID를 안전하게 분리한다. */
+export function parseArtifactViewDragId(value) {
+  const id = String(value || "");
+  if (!id.startsWith(ARTIFACT_VIEW_DRAG_PREFIX)) return null;
+  const encoded = id.slice(ARTIFACT_VIEW_DRAG_PREFIX.length);
+  const templateMarker = encoded.lastIndexOf(":artifact-");
+  if (templateMarker <= 0) return null;
+  return {
+    artifactId: encoded.slice(0, templateMarker),
+    templateId: encoded.slice(templateMarker + 1),
+  };
+}
+
 /** 이동 대상과 형제 블록의 좌·중·우 및 상·중·하가 일치하는 12열 guide를 계산한다. */
 export function computeReportAlignmentGuides(position, blocks, activeId) {
   if (!position) return null;
@@ -76,18 +91,28 @@ export function useReportDragAndDrop({
 
   const dragLabel = useCallback((activeId) => {
     const id = String(activeId);
+    const artifactView = parseArtifactViewDragId(id);
+    if (artifactView) {
+      const source = artifactOptions.find((item) => item.artifactId === artifactView.artifactId);
+      const view = artifactView.templateId === "artifact-chart" ? "차트" : "표";
+      return `${source?.title || "분석 결과"} ${view} 블록`;
+    }
     if (id.startsWith("template:")) return `${reportTemplateMap.get(id.slice("template:".length))?.title || "새"} 블록`;
-    if (id.startsWith("artifact:")) return `${artifactOptions.find((item) => item.artifactId === id.slice("artifact:".length))?.title || "분석 결과"} Artifact 전체 블록`;
+    if (id.startsWith("artifact:")) return `${artifactOptions.find((item) => item.artifactId === id.slice("artifact:".length))?.title || "분석 결과"} 분석 묶음`;
     const block = blocksRef.current.find((item) => item.id === id);
-    const type = block?.type === "artifact" ? "Artifact 전체" : block?.type === "chart" ? "차트" : block?.type === "table" ? "표" : "텍스트";
+    const type = block?.type === "artifact" ? "분석 묶음" : block?.type === "chart" ? "차트" : block?.type === "table" ? "표" : "텍스트";
     return `${block?.title || "제목 없음"} ${type} 블록`;
   }, [artifactOptions, blocksRef, reportTemplateMap]);
 
   const dragDestination = useCallback((active, delta) => {
     const activeId = String(active.id);
     const source = blocksRef.current.find((block) => block.id === activeId);
-    const template = activeId.startsWith("template:")
-      ? viewArtifactTemplateFor(reportTemplateMap.get(activeId.slice("template:".length)))
+    const artifactView = parseArtifactViewDragId(activeId);
+    const templateId = activeId.startsWith("template:")
+      ? activeId.slice("template:".length)
+      : artifactView?.templateId;
+    const template = templateId
+      ? viewArtifactTemplateFor(reportTemplateMap.get(templateId))
       : null;
     const libraryArtifact = activeId.startsWith("artifact:")
       ? artifactOptions.find((item) => item.artifactId === activeId.slice("artifact:".length))
@@ -171,7 +196,7 @@ export function useReportDragAndDrop({
     dropPositionRef.current = null;
     lastDropOutcomeRef.current = { success: false, message: "" };
     setDraggedBlockId(activeId);
-    if (!activeId.startsWith("template:") && !activeId.startsWith("artifact:")) setSelectedBlockId(activeId);
+    if (!activeId.startsWith("template:") && !activeId.startsWith("artifact:") && !parseArtifactViewDragId(activeId)) setSelectedBlockId(activeId);
   }, [setSelectedBlockId]);
 
   const handleDragMove = useCallback(({ active, delta }) => {
@@ -183,8 +208,11 @@ export function useReportDragAndDrop({
 
   const handleDragEnd = useCallback(({ active, delta }) => {
     const activeId = String(active.id);
+    const artifactView = parseArtifactViewDragId(activeId);
     const libraryTemplate = activeId.startsWith("template:")
       ? viewArtifactTemplateFor(reportTemplateMap.get(activeId.slice("template:".length)))
+      : artifactView
+        ? viewArtifactTemplateFor(reportTemplateMap.get(artifactView.templateId))
       : activeId.startsWith("artifact:")
         ? wholeArtifactTemplateFor(artifactOptions.find((item) => item.artifactId === activeId.slice("artifact:".length)))
         : null;
@@ -195,6 +223,12 @@ export function useReportDragAndDrop({
     let succeeded = false;
     if (activeId.startsWith("artifact:")) {
       if (position) succeeded = addWholeArtifact(activeId.slice("artifact:".length), position);
+    } else if (artifactView) {
+      if (position) succeeded = addTemplateBlock(
+        artifactView.templateId,
+        position,
+        { artifactId: artifactView.artifactId },
+      );
     } else if (activeId.startsWith("template:")) {
       if (position) succeeded = addTemplateBlock(activeId.slice("template:".length), position);
     } else {
@@ -207,8 +241,11 @@ export function useReportDragAndDrop({
         succeeded = true;
       }
     }
+    const pageNumber = position
+      ? Math.max(1, reportPages.findIndex((page) => page.id === position.pageId) + 1)
+      : 1;
     const message = succeeded
-      ? `${dragLabel(activeId)}을 문서에 놓았습니다.`
+      ? `${dragLabel(activeId)}을 ${pageNumber}페이지 ${position.y + 1}번째 줄에 놓았습니다.`
       : `${dragLabel(activeId)}은 유효한 위치가 없어 이동을 취소했습니다. 원래 구성을 유지합니다.`;
     lastDropOutcomeRef.current = { success: succeeded, message };
     setEditorAnnouncement(message);
@@ -228,10 +265,13 @@ export function useReportDragAndDrop({
 
   const dragPositionMessage = useCallback((activeId) => {
     const position = dropPositionRef.current;
-    if (position) return `${dragLabel(activeId)}, ${position.y + 1}행 ${position.x + 1}열, 너비 ${position.w}/12 위치`;
+    if (position) {
+      const pageNumber = Math.max(1, reportPages.findIndex((page) => page.id === position.pageId) + 1);
+      return `${dragLabel(activeId)}, ${pageNumber}페이지 ${position.y + 1}번째 줄, 가로 위치 ${position.x + 1}`;
+    }
     const block = blocksRef.current.find((item) => item.id === String(activeId));
-    return block ? `${dragLabel(activeId)}, ${Number(block.y ?? 0) + 1}행 ${Number(block.x ?? 0) + 1}열` : dragLabel(activeId);
-  }, [blocksRef, dragLabel]);
+    return block ? `${dragLabel(activeId)}, ${Number(block.y ?? 0) + 1}번째 줄, 가로 위치 ${Number(block.x ?? 0) + 1}` : dragLabel(activeId);
+  }, [blocksRef, dragLabel, reportPages]);
 
   return {
     alignmentGuides,

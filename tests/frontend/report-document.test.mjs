@@ -55,6 +55,25 @@ const halfWidth = insert(createReportDocument({ id: "half-width", title: "단일
   width: 6, height: 9, visibleViews: ["chart"],
 });
 assert.deepEqual(halfWidth.pages[0].blocks.map(({ w, h }) => [w, h]), [[6, 9]]);
+
+const independentDocumentRows = createReportDocument({ id: "independent-rows", title: "독립 높이" });
+independentDocumentRows.pages[0].blocks = [
+  { id: "short", kind: "markdown", title: "짧은 요약", markdown: "요약", x: 0, y: 0, w: 6, h: 4 },
+  { id: "tall", kind: "markdown", title: "긴 설명", markdown: "설명", x: 6, y: 0, w: 6, h: 7 },
+  { id: "following", kind: "markdown", title: "다음 행", markdown: "다음", x: 0, y: 7, w: 12, h: 5 },
+];
+const compactIndependentRows = compactReportDocument(independentDocumentRows);
+assert.equal(compactIndependentRows.ok, true);
+assert.deepEqual(
+  compactIndependentRows.document.pages[0].blocks.map(({ id, x, y, w, h }) => [id, x, y, w, h]),
+  [
+    ["short", 0, 0, 6, 4],
+    ["tall", 6, 0, 6, 7],
+    ["following", 0, 7, 12, 5],
+  ],
+);
+assertNoOverlap(compactIndependentRows.document);
+
 const beforeInvalidWidth = JSON.stringify(halfWidth);
 const invalidWidth = insertArtifactBlock(halfWidth, {
   blockId: "invalid-width",

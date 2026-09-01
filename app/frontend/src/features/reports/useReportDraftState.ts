@@ -22,6 +22,10 @@ import {
   readDraftBlockSettings,
   resizeDraftBlocks,
 } from "./reportDraftMutations.ts";
+import {
+  normalizeGeneratedArtifactViewTitle,
+  reportArtifactDefaultTitle,
+} from "./reportTimePresentation.js";
 import type {
   DraftArtifactData,
   DraftInsertPosition,
@@ -184,9 +188,19 @@ export function useReportDraftState(
     }
   }, [announce, commitBlocks]);
 
-  const resizeBlock = useCallback((blockId: string, requestedWidth: number, requestedHeight?: number) => {
+  const resizeBlock = useCallback((
+    blockId: string,
+    requestedWidth: number,
+    requestedHeight?: number,
+    requestedPosition?: { readonly x?: number; readonly y?: number },
+  ) => {
     const result = resizeDraftBlocks(
-      blocksRef.current, blockId, requestedWidth, requestedHeight, orientationRef.current,
+      blocksRef.current,
+      blockId,
+      requestedWidth,
+      requestedHeight,
+      orientationRef.current,
+      requestedPosition,
     );
     if (result && commitBlocks(result.blocks)) announce(result.announcement);
   }, [announce, commitBlocks]);
@@ -194,9 +208,9 @@ export function useReportDraftState(
   const compactLayout = useCallback((): boolean => {
     const current = blocksRef.current;
     const compacted = compactDraftLayout(current) as readonly DraftReportBlock[];
-    if (JSON.stringify(compacted) === JSON.stringify(current)) { announce("블록이 이미 12열 격자에 맞게 정돈되어 있습니다."); return false; }
+    if (JSON.stringify(compacted) === JSON.stringify(current)) { announce("블록이 이미 읽는 순서대로 정리되어 있습니다."); return false; }
     const committed = commitBlocks(compacted);
-    if (committed) announce("블록을 기존 12열 격자와 시각 순서에 맞게 정돈했습니다.");
+    if (committed) announce("겹친 블록을 읽는 순서대로 정리했습니다.");
     return committed;
   }, [announce, commitBlocks]);
 
@@ -235,7 +249,7 @@ export function useReportDraftState(
     if (!optionsRef.current.editable) return false;
     const source = optionsRef.current.artifactSources?.find((item) => item.artifactId === artifactId);
     if (!source) {
-      optionsRef.current.onNotice?.("추가할 Artifact를 불러온 뒤 다시 시도해 주세요.");
+      optionsRef.current.onNotice?.("추가할 분석 결과를 불러온 뒤 다시 시도해 주세요.");
       return false;
     }
     const artifact = optionsRef.current.artifacts?.[artifactId];
@@ -271,16 +285,16 @@ export function useReportDraftState(
       placement: position?.placement || { type: "end", pageId: position?.pageId },
     }, reportContext());
     if (!result.ok) {
-      optionsRef.current.onError?.(result.errors?.[0] || "Artifact 전체 블록을 추가하지 못했습니다.");
+      optionsRef.current.onError?.(result.errors?.[0] || "분석 묶음을 추가하지 못했습니다.");
       return false;
     }
     if (!commitBlocks(result.blocks)) return false;
     selectBlock(blockId);
-    optionsRef.current.onNotice?.("Artifact 전체를 요약·KPI·차트·표가 포함된 하나의 블록으로 추가했습니다.");
+    optionsRef.current.onNotice?.("요약·핵심 지표·차트·표를 하나의 분석 묶음으로 추가했습니다.");
     return true;
   }, [commitBlocks, reportContext, selectBlock]);
 
-  const addTemplateBlock = useCallback((templateId: string, position: DraftInsertPosition | null = null, settings: { readonly chartType?: string } = {}): boolean => {
+  const addTemplateBlock = useCallback((templateId: string, position: DraftInsertPosition | null = null, settings: { readonly artifactId?: string; readonly chartType?: string } = {}): boolean => {
     if (!optionsRef.current.editable) return false;
     const template = optionsRef.current.templates?.get(templateId);
     if (!template) return false;
@@ -291,7 +305,9 @@ export function useReportDraftState(
     } else {
       const type = templateId === "artifact-chart" ? "chart" : "table";
       const sources = optionsRef.current.artifactSources ?? [];
-      const source = sources.find((item) => item.artifactId === optionsRef.current.selectedArtifactId) ?? sources[0];
+      const source = sources.find((item) => item.artifactId === settings.artifactId)
+        ?? sources.find((item) => item.artifactId === optionsRef.current.selectedArtifactId)
+        ?? sources[0];
       if (!source?.artifactId) {
         optionsRef.current.onNotice?.("먼저 분석 결과를 보고서로 가져오면 표와 차트를 추가할 수 있습니다.");
         return false;
@@ -307,7 +323,8 @@ export function useReportDraftState(
         ...source,
         id: createUuid(),
         type,
-        title: `${source.title} ${type === "chart" ? "차트" : "표"}`,
+        title: reportArtifactDefaultTitle(artifact, type)
+          || `${source.title} ${type === "chart" ? "차트" : "표"}`,
         content: type === "chart"
           ? JSON.stringify({ showLegend: true, sizeMode: "auto", ...(settings.chartType ? { chartType: settings.chartType } : {}) })
           : JSON.stringify({ density: "comfortable", sizeMode: "auto" }),
@@ -362,14 +379,28 @@ export function useReportDraftState(
   const fitHydratedArtifactViews = useCallback((artifactMap = optionsRef.current.artifacts ?? {}): boolean => {
     if (!optionsRef.current.editable) return false;
     const current = blocksRef.current;
-    const fitted = fitAutoArtifactViewLayout(current, artifactMap, orientationRef.current);
+    const normalizeTitles = (items: readonly DraftReportBlock[]) => items.map((block) => {
+      const artifact = block.artifactId ? artifactMap[block.artifactId] : undefined;
+      if (!artifact) return block;
+      const title = normalizeGeneratedArtifactViewTitle(block.title, artifact, block.type);
+      return title === block.title ? block : { ...block, title };
+    });
+    const fitted = fitAutoArtifactViewLayout(
+      normalizeTitles(current),
+      artifactMap,
+      orientationRef.current,
+    );
     if (JSON.stringify(fitted) === JSON.stringify(current)) return false;
-    const fittedSaved = fitAutoArtifactViewLayout(savedBlocksRef.current, artifactMap, savedOrientationRef.current);
+    const fittedSaved = fitAutoArtifactViewLayout(
+      normalizeTitles(savedBlocksRef.current),
+      artifactMap,
+      savedOrientationRef.current,
+    );
     blocksRef.current = copyDraftBlocks(fitted);
     savedBlocksRef.current = copyDraftBlocks(fittedSaved);
     setBlocks(blocksRef.current);
     setIsDirty(draftChanged(blocksRef.current));
-    announce("차트와 표 높이를 실제 데이터에 맞춰 조정했습니다.");
+    announce("차트와 표 표시를 데이터 기준에 맞췄습니다.");
     return true;
   }, [announce, draftChanged]);
 

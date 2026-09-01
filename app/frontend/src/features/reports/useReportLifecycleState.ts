@@ -205,7 +205,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     ));
     if (!draft) return null;
     upsertDefinition(draft);
-    setNotice(`v${draft.version} 초안을 만들었습니다.`);
+    setNotice(`버전 ${draft.version} 초안을 만들었습니다.`);
     return draft;
   }, [mutate, reportClient, upsertDefinition]);
 
@@ -304,7 +304,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       setSelectedRun(run);
       setRuns((current) => [run, ...current.filter((item) => item.runId !== run.runId)]);
     }
-    setNotice(`보고서 실행을 요청했습니다. · ${reportRunStatusLabel(receipt.status)}`);
+    setNotice(`최신 데이터로 보고서를 다시 생성하도록 요청했습니다. · ${reportRunStatusLabel(receipt.status)}`);
     return { receipt, run };
   }, [mutate, reportClient]);
 
@@ -362,7 +362,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     if (requestOptions.upsert !== false) upsertDefinition(result.definition);
     setAssistantTrace({ requestId: result.requestId, ...result.trace });
     setAssistantInstruction("");
-    setNotice("AI 초안을 만들었습니다. 게시하거나 확정하기 전에 내용을 검토해 주세요.");
+    setNotice("초안을 만들었습니다. 확정 전 내용을 확인해 주세요.");
     return result;
   }, [mutate, reportClient, upsertDefinition]);
 
@@ -407,7 +407,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setNotice(proposal.change_kind === "new_data"
       ? "새 데이터 분석 계획을 검토한 뒤 승인해 주세요."
       : proposal.change_kind === "existing_artifact"
-        ? "AI 변경안을 검토한 뒤 적용하거나 취소해 주세요."
+        ? "변경안을 검토한 뒤 적용하거나 취소해 주세요."
         : proposal.message);
     return {
       status: proposal.change_kind === "new_data"
@@ -443,7 +443,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSession(session);
     setAssistantEvaluation(null);
     setAssistantInstruction("");
-    setNotice("새 Assistant 세션을 열었습니다. 지시를 다시 입력해 주세요.");
+    setNotice("새 작성 세션을 열었습니다. 요청을 다시 입력해 주세요.");
     return session;
   }, [mutate, reportClient]);
 
@@ -464,7 +464,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     ));
     if (!definition) return { session, definition: null };
     upsertDefinition(definition);
-    setNotice(`AI가 검증된 Artifact를 반영한 v${definition.version} 초안을 만들었습니다.`);
+    setNotice(`검증된 분석 결과를 반영한 버전 ${definition.version} 초안을 만들었습니다.`);
     return { session, definition };
   }, [mutate, reportClient, upsertDefinition]);
 
@@ -499,7 +499,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     ));
     if (!definition) return { session, definition: null };
     upsertDefinition(definition);
-    setNotice(`검토한 AI 변경안을 v${definition.version} 초안으로 저장했습니다.`);
+    setNotice(`검토한 변경안을 버전 ${definition.version} 초안으로 저장했습니다.`);
     return { session, definition };
   }, [mutate, reportClient, upsertDefinition]);
 
@@ -513,7 +513,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     ));
     if (!session) return null;
     setAssistantSession(session);
-    setNotice("AI 변경안을 취소했습니다. 보고서는 변경되지 않았습니다.");
+    setNotice("변경안을 취소했습니다. 보고서는 변경되지 않았습니다.");
     return session;
   }, [mutate, reportClient]);
 

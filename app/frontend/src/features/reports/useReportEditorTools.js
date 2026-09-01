@@ -1,4 +1,4 @@
-/** 저장 payload와 분리된 선택·잠금·검색·스냅샷·클립보드 편집 편의를 관리한다. */
+/** 저장 payload와 분리된 선택·잠금·검색·복원 지점·클립보드 편집 편의를 관리한다. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createUuid } from "../../utils/createUuid.ts";
@@ -96,6 +96,10 @@ export function useReportEditorTools({
     setSelectedBlockIds(next);
     if (!next.has(primaryBlockId)) selectPrimary([...next][0] ?? "");
   }, [primaryBlockId, selectPrimary, selectedBlockIds]);
+  const clearSelection = useCallback(() => {
+    setSelectedBlockIds(new Set());
+    selectPrimary("");
+  }, [selectPrimary]);
 
   const toggleBlockLock = useCallback((blockId) => {
     setLockedBlockIds((current) => {
@@ -173,7 +177,7 @@ export function useReportEditorTools({
   const createSnapshot = useCallback((name) => {
     const snapshot = {
       id: createUuid(),
-      name: name.trim() || `스냅샷 ${snapshots.length + 1}`,
+      name: name.trim() || `복원 지점 ${snapshots.length + 1}`,
       createdAt: new Date().toISOString(),
       blocks: copyReportBlocks(blocks),
     };
@@ -210,6 +214,7 @@ export function useReportEditorTools({
   );
 
   return {
+    clearSelection,
     copySelected,
     createSnapshot,
     deleteBlock,

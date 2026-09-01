@@ -30,15 +30,12 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       disabled={!page.canEdit}
     />
   ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit, page.canEdit]);
-  const documentCurrencyControl = useMemo(() => (
-    <ReportCurrencyControl
-      value={draft.reportCurrencyPolicy.displayUnit}
-      onChange={draft.changeCurrencyDisplayUnit}
-      disabled={lifecycle.selectedDefinition?.status === "approved"}
-    />
-  ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit, lifecycle.selectedDefinition?.status]);
   const addChartBlock = useCallback(
     (chartType) => draft.addTemplateBlock("artifact-chart", null, { chartType }),
+    [draft.addTemplateBlock],
+  );
+  const addArtifactView = useCallback(
+    (artifactId, templateId) => draft.addTemplateBlock(templateId, null, { artifactId }),
     [draft.addTemplateBlock],
   );
 
@@ -68,7 +65,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
 
   if (page.view === "document" && lifecycle.selectedDefinition) {
     return <ReportDocumentView
-      currencyControl={documentCurrencyControl}
       error={lifecycle.error}
       errorRef={page.errorRef}
       finalDocument={lifecycle.finalDocument}
@@ -77,7 +73,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       isDirty={draft.isDirty}
       notice={lifecycle.notice}
       onApprove={page.approveDefinition}
-      onChangeOrientation={draft.changeOrientation}
       onLeave={page.leaveEditor}
       onOpenFinalAsset={lifecycle.openFinalAsset}
       onReloadFinalDocument={page.reloadFinalDocument}
@@ -115,7 +110,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     onUndo={draft.undo}
     orientation={draft.reportOrientation}
     pending={lifecycle.pending}
-    reportTitle={lifecycle.selectedDefinition?.title}
+    reportTitle={page.reportDisplayTitle}
     saveStatus={draft.saveState}
     selectedDefinition={lifecycle.selectedDefinition}
     toolPanelOpen={page.toolPanelOpen}
@@ -128,13 +123,13 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     artifactOptions={artifacts.artifactOptions}
     artifactSelection={artifacts.artifactSelection}
     artifactStates={artifacts.artifactStates}
-    artifactTemplates={page.artifactTemplates}
     artifacts={artifacts.artifacts}
     assistantInstruction={lifecycle.assistantInstruction}
     canEdit={page.canEdit}
     evaluation={lifecycle.assistantEvaluation}
     isDraft={page.isDraft}
     onAddChart={addChartBlock}
+    onAddView={addArtifactView}
     onAddTemplate={draft.addTemplateBlock}
     onAddWholeArtifact={draft.addWholeArtifact}
     onClose={page.closeToolPanel}
@@ -173,7 +168,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       renderBlock={page.renderEditorBlock}
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
-      reportTitle={lifecycle.selectedDefinition?.title}
+      reportTitle={page.reportDisplayTitle}
       viewScale={page.editorViewScale}
     />
     {page.isAdmin && lifecycle.selectedDefinition?.status === "approved" && <ReportOperationsPanel
@@ -198,7 +193,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       visibleRunCount={lifecycle.visibleRunCount}
       visibleRuns={lifecycle.visibleRuns}
     />}
-    {lifecycle.assistantTrace && lifecycle.selectedDefinition?.status !== "approved" && <details className="card editor-advanced"><summary>AI 처리 정보</summary><p>초안 생성을 완료했습니다. · {(lifecycle.assistantTrace.duration_ms / 1000).toFixed(1)}초</p></details>}
+    {lifecycle.assistantTrace && lifecycle.selectedDefinition?.status !== "approved" && <details className="card editor-advanced"><summary>초안 생성 정보</summary><p>생성 완료 · {(lifecycle.assistantTrace.duration_ms / 1000).toFixed(1)}초</p></details>}
     <p className="sr-only" aria-live="polite">{draft.editorAnnouncement}</p>
   </>;
   const properties = <ReportPropertiesPanel
@@ -252,6 +247,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     canvas={workspace}
     library={library}
     libraryOpen={page.toolPanelOpen}
+    onCloseLibrary={page.closeToolPanel}
     onKeyDown={page.handleEditorKeyDown}
     onPointerMove={dnd.handlePointerMove}
     orientation={draft.reportOrientation}
@@ -262,11 +258,12 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       renderBlock={page.renderPreviewBlock}
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
-      reportTitle={lifecycle.selectedDefinition?.title}
+      reportTitle={page.reportDisplayTitle}
       theme={theme}
     />}
     properties={properties}
-    reportTitle={lifecycle.selectedDefinition?.title}
+    reportTitle={page.reportDisplayTitle}
+    theme={theme}
     toolbar={toolbar}
   /> : <div
     className={`enterprise-report-editor notion-report-editor ${page.toolPanelOpen ? "" : "tools-collapsed"}`}
@@ -288,7 +285,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   >
     {editor}
     <DragOverlay dropAnimation={{ duration: 160, easing: "ease-out" }}>
-      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeArtifactSource?.title || page.activeInsert.title}</b><small>{page.activeArtifactSource ? "Artifact 전체로 추가" : "캔버스에 놓아 추가"}</small></span></div>}
+      {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeArtifactSource?.title || page.activeInsert.title}</b><small>{page.activeArtifactView ? `${page.activeInsert.title}로 추가` : page.activeArtifactSource ? "전체 구성으로 추가" : "캔버스에 놓아 추가"}</small></span></div>}
     </DragOverlay>
   </DndContext>;
 }

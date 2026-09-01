@@ -132,17 +132,6 @@ const ScaledPage = memo(function ScaledPage({
 
   return (
     <div className="answer-report-page-viewport" data-report-page-index={pageIndex} ref={viewportRef}>
-      {mode === "editor" && (
-        <div
-          className="answer-report-page-chrome"
-          data-report-editor-chrome="true"
-          style={frame ? { inlineSize: frame.width } : undefined}
-          aria-hidden="true"
-        >
-          <span>{String(pageNumber).padStart(2, "0")} 페이지</span>
-          <span>{A4_LABELS[orientation]}</span>
-        </div>
-      )}
       <div
         className={`answer-report-page-frame answer-report-page-frame--${orientation}`}
         style={frame ? { inlineSize: frame.width, blockSize: frame.height } : undefined}
@@ -174,7 +163,7 @@ const ScaledPage = memo(function ScaledPage({
           </div>
           <footer className="answer-report-page__footer">
             <div className="answer-report-page__footer-slot">{footer}</div>
-            <span className="answer-report-page__folio" aria-label={`${pageNumber}/${pageCount}페이지`}>
+            <span className="answer-report-page__folio" aria-label={`${pageNumber}/${resolvedPageCount}페이지`}>
               {String(pageNumber).padStart(2, "0")} / {String(resolvedPageCount).padStart(2, "0")}
             </span>
           </footer>

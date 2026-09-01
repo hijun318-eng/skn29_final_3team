@@ -26,7 +26,7 @@ assert.match(component, /aria-label=\{pageLabel\}/);
 assert.match(component, /data-report-mode=\{mode\}/);
 assert.match(component, /mode === "presentation"/);
 assert.match(component, /pageCountOverride/);
-assert.match(component, /data-report-editor-chrome="true"/);
+assert.doesNotMatch(component, /answer-report-page-chrome/);
 assert.match(component, /getGridRef\?\.\(element, context\)/);
 assert.match(component, /renderGridOverlay\?\.\(context\)/);
 assert.match(component, /gridColumn: `\$\{column \+ 1\} \/ span \$\{width\}`/);

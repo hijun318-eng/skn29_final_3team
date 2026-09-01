@@ -5,7 +5,7 @@ import { compactDraftLayout, toReportBlockRequest } from "../../contracts/report
 import { DEFAULT_FRONTEND_CURRENCY_POLICY, createFrontendDraftSnapshot, loadFrontendDraft, saveFrontendDraft } from "./reportDraftV2";
 import { useReportArtifacts } from "./useReportArtifacts";
 import { useReportDraftState } from "./useReportDraftState";
-import { useReportDragAndDrop } from "./useReportDragAndDrop";
+import { parseArtifactViewDragId, useReportDragAndDrop } from "./useReportDragAndDrop";
 import { useReportEditorTools } from "./useReportEditorTools";
 import { useReportLifecycleState } from "./useReportLifecycleState";
 import { REPORT_BUILDER_V2 } from "./reportBuilderFlags";
@@ -26,8 +26,8 @@ import {
   reportCurrencyState,
   wholeArtifactTemplate,
 } from "./reportPageControllerSupport";
-import { reportStatusLabel } from "./reportPageLabels";
 import { normalizeReportEditorScale } from "./reportEditorViewport";
+import { normalizeGeneratedReportTitle } from "./reportTimePresentation.js";
 
 /** 보고서 lifecycle·artifact·draft·DND를 화면 계약으로 합성하고 stale open generation을 폐기한다. */
 export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEditorMode }) {
@@ -107,6 +107,16 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const selectedArtifactSource = artifacts.artifactOptions.find(
     (source) => source.artifactId === artifacts.artifactSelection,
   );
+  const reportTitleArtifact = useMemo(() => {
+    const linkedBlock = draft.orderedBlocks.find((block) => (
+      block.artifactId && artifacts.artifacts[block.artifactId]
+    ));
+    return linkedBlock?.artifactId ? artifacts.artifacts[linkedBlock.artifactId] : selectedArtifact;
+  }, [artifacts.artifacts, draft.orderedBlocks, selectedArtifact]);
+  const reportDisplayTitle = useMemo(() => normalizeGeneratedReportTitle(
+    lifecycle.selectedDefinition?.title || "보고서 초안",
+    reportTitleArtifact,
+  ), [lifecycle.selectedDefinition?.title, reportTitleArtifact]);
 
   const wholeArtifactTemplateFor = useCallback((source, width = null) => wholeArtifactTemplate(
     source, artifacts.artifacts, draft.reportOrientation, WHOLE_ARTIFACT_TEMPLATE, width,
@@ -197,16 +207,16 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       if (existingDraft) {
         current = await lifecycle.fetchDefinition(existingDraft);
         if (!current || !isCurrentRequest()) return;
-        lifecycle.setNotice(`기존 v${current.version} 초안을 이어서 편집합니다.`);
+        lifecycle.setNotice(`기존 버전 ${current.version} 초안을 이어서 편집합니다.`);
       } else {
-        if (!window.confirm(`확정본 v${current.version}을 기준으로 새 편집 버전을 만들까요?`)) return;
+        if (!window.confirm(`확정된 버전 ${current.version}을 기준으로 새 편집 버전을 만들까요?`)) return;
         const nextDraft = await lifecycle.mutate("next-draft", () => lifecycle.reportClient.createNextDraft(
           current.definitionId,
           current.version,
         ));
         if (!nextDraft || !isCurrentRequest()) return;
         current = lifecycle.upsertDefinition(nextDraft);
-        lifecycle.setNotice(`v${current.version} 초안을 만들었습니다.`);
+        lifecycle.setNotice(`버전 ${current.version} 초안을 만들었습니다.`);
       }
     }
     const localDraft = loadFrontendDraft(window.sessionStorage, current.definitionId, current.version);
@@ -297,7 +307,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       lifecycle.setError("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요.");
       return;
     }
-    if (!window.confirm(`v${definition.version} 저장된 HTML 초안을 확정하고 수정할 수 없는 PDF를 생성할까요?`)) return;
+    if (!window.confirm(`저장된 보고서 버전 ${definition.version}을 확정할까요? 확정하면 PDF가 생성되며 이 버전은 수정할 수 없습니다.`)) return;
     const approved = await lifecycle.approveDefinition(definition, {
       orientation: draft.reportOrientation,
       blocks: draft.blocksRef.current,
@@ -389,7 +399,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   }, [artifacts.invalidateLoads, draft.isDirty, lifecycle.loadFinalDocument]);
   const previewEditor = useCallback(() => {
     if (draft.isDirty) {
-      lifecycle.setError("변경사항을 저장한 뒤 HTML 초안을 확인해 주세요.");
+      lifecycle.setError("변경사항을 저장한 뒤 보고서 미리보기를 확인해 주세요.");
       return;
     }
     const definition = lifecycle.selectedDefinition;
@@ -460,20 +470,47 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     return () => window.cancelAnimationFrame(frame);
   }, [lifecycle.error]);
   useEffect(() => {
-    const tablet = window.matchMedia("(min-width: 901px) and (max-width: 1100px)");
+    const drawer = window.matchMedia("(max-width: 1179px)");
     const collapse = (event) => { if (event.matches) setToolPanelOpen(false); };
-    if (tablet.matches) setToolPanelOpen(false);
-    tablet.addEventListener("change", collapse);
-    return () => tablet.removeEventListener("change", collapse);
+    if (drawer.matches) setToolPanelOpen(false);
+    drawer.addEventListener("change", collapse);
+    return () => drawer.removeEventListener("change", collapse);
   }, []);
   useEffect(() => {
-    if (!toolPanelOpen || !window.matchMedia("(min-width: 901px) and (max-width: 1100px)").matches) return undefined;
-    const frame = window.requestAnimationFrame(() => toolPanelRef.current?.focus());
-    const close = (event) => { if (event.key === "Escape") setToolPanelOpen(false); };
-    document.addEventListener("keydown", close);
+    if (!toolPanelOpen || !window.matchMedia("(max-width: 1179px)").matches) return undefined;
+    const panel = toolPanelRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      const target = panel?.querySelector(".editor-library-close") || panel;
+      target?.focus();
+    });
+    const containFocus = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setToolPanelOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const controls = [...panel.querySelectorAll("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [href], [tabindex]:not([tabindex='-1'])")]
+        .filter((element) => !element.hidden && element.getClientRects().length > 0);
+      if (!controls.length) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panel || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", containFocus);
     return () => {
       window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", close);
+      document.removeEventListener("keydown", containFocus);
       window.requestAnimationFrame(() => toolToggleRef.current?.focus?.());
     };
   }, [toolPanelOpen]);
@@ -481,8 +518,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const artifactStateFor = useCallback((artifactId) => artifactId
     ? artifacts.artifactStates[artifactId] || { status: "loading", message: "" }
     : null, [artifacts.artifactStates]);
-  const renderHeader = useCallback(({ pageNumber, pageCount }) => <><div className="answer-report-page-title"><small>ANSWERVICE · GOVERNED REPORT</small><h1>{lifecycle.selectedDefinition?.title || "보고서"}</h1><p>{lifecycle.assistantTrace ? "AI 초안 · 검토 필요" : reportStatusLabel(lifecycle.selectedDefinition?.status)} · v{lifecycle.selectedDefinition?.version} · {pageNumber}/{pageCount}페이지</p></div><span className="answer-report-draft-mark">{lifecycle.selectedDefinition?.status === "approved" ? "확정본" : "HTML 편집 초안"}</span></>, [lifecycle.assistantTrace, lifecycle.selectedDefinition]);
-  const renderFooter = useCallback(() => <span>분석 근거 연결 · HTML 편집본</span>, []);
+  const renderHeader = useCallback(() => <><div className="answer-report-page-title"><small>ANSWERVICE REPORT</small><h1>{reportDisplayTitle}</h1><p>{lifecycle.assistantTrace ? "검토 필요 · " : ""}버전 {lifecycle.selectedDefinition?.version}</p></div><span className="answer-report-draft-mark">{lifecycle.selectedDefinition?.status === "approved" ? "확정" : "초안"}</span></>, [lifecycle.assistantTrace, lifecycle.selectedDefinition, reportDisplayTitle]);
+  const renderFooter = useCallback(() => <span>연결된 분석 결과</span>, []);
   const renderPreviewBlock = useCallback((layoutBlock) => {
     const block = layoutBlock.sourceBlock || layoutBlock;
     return <GeneratedReportBlock block={block} number={reportBlockNumbers.get(block.id)} rowOffset={0} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} orientation={draft.reportOrientation} onRetry={block.artifactId ? () => artifacts.retryArtifact(block.artifactId) : undefined} />;
@@ -506,13 +543,20 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   const activeTemplate = dnd.draggedBlockId.startsWith("template:")
     ? viewArtifactTemplateFor(REPORT_TEMPLATE_MAP.get(dnd.draggedBlockId.slice("template:".length)))
     : null;
+  const activeArtifactView = parseArtifactViewDragId(dnd.draggedBlockId);
+  const activeArtifactViewTemplate = activeArtifactView
+    ? viewArtifactTemplateFor(REPORT_TEMPLATE_MAP.get(activeArtifactView.templateId))
+    : null;
   const activeArtifactSource = dnd.draggedBlockId.startsWith("artifact:")
     ? artifacts.artifactOptions.find((source) => source.artifactId === dnd.draggedBlockId.slice("artifact:".length))
-    : null;
-  const activeInsert = activeTemplate || (activeArtifactSource ? wholeArtifactTemplateFor(activeArtifactSource) : null);
+    : activeArtifactView
+      ? artifacts.artifactOptions.find((source) => source.artifactId === activeArtifactView.artifactId)
+      : null;
+  const activeInsert = activeTemplate || activeArtifactViewTemplate || (activeArtifactSource ? wholeArtifactTemplateFor(activeArtifactSource) : null);
 
   return {
     activeArtifactSource,
+    activeArtifactView,
     activeInsert,
     approveDefinition,
     approveAssistantDataRequest,
@@ -542,6 +586,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     rejectAssistantDataRequest,
     rejectAssistantPatch,
     reportCurrency,
+    reportDisplayTitle,
     reportPages,
     reloadFinalDocument,
     returnToEditor,

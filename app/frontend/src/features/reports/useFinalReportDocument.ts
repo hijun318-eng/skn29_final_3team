@@ -85,7 +85,7 @@ export function useFinalReportDocument({
       if (requestRef.current !== operationId) return null;
       if (timedOut) {
         setFinalDocumentState("error");
-        setError("확정 문서 정보를 15초 안에 불러오지 못했습니다. 다시 시도해 주세요.");
+        setError("확정 문서를 불러오지 못했습니다. 다시 시도해 주세요.");
       } else if (nextError instanceof ReportApiError && nextError.status === 404) {
         setFinalDocumentState("missing");
       } else if (nextError instanceof DOMException && nextError.name === "AbortError") {

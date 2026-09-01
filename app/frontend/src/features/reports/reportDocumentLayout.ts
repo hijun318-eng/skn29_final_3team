@@ -102,7 +102,7 @@ export function reflowDocumentBlocks(
     if (pageY + height > rows && pageBlocks.length > 0) finishPage();
     let x = 0;
     for (const block of row) {
-      pageBlocks.push(canonicalBlock({ ...block, x, y: pageY, h: height } as ReportDocumentBlock));
+      pageBlocks.push(canonicalBlock({ ...block, x, y: pageY } as ReportDocumentBlock));
       x += block.w;
     }
     pageY += height;

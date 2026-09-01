@@ -7,6 +7,7 @@ import {
   frontendTextBlockLayout,
 } from "../reportDraftV2";
 import { isCurrencyMetricUnit } from "../reportCurrency";
+import { reportTimeColumnLabel } from "../reportTimePresentation.js";
 
 /** 보고서 컴포넌트가 공유하는 표시·pagination·키보드 순수 계약이다. */
 export { reportEvidenceReady } from "../reportArtifactEvidence";
@@ -100,7 +101,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
   {
     id: "artifact-table",
     title: "표 보기만",
-    description: "Artifact의 상세 행만 삽입",
+    description: "선택한 분석 결과의 상세 행",
     icon: Table2,
     w: 12,
     h: 5,
@@ -108,7 +109,7 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
   {
     id: "artifact-chart",
     title: "차트 보기만",
-    description: "Artifact의 차트만 삽입",
+    description: "선택한 분석 결과의 차트",
     icon: FileBarChart,
     w: 12,
     h: 7,
@@ -117,8 +118,8 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
 
 /** governed artifact 전체 view를 삽입하는 일반 template이다. */ export const WHOLE_ARTIFACT_TEMPLATE = {
   id: "artifact-whole",
-  title: "Artifact 전체",
-  description: "요약·KPI·차트·표를 한 블록으로",
+  title: "분석 묶음",
+  description: "요약·핵심 지표·차트·표를 한 블록으로",
   icon: FileBarChart,
 };
 
@@ -156,9 +157,8 @@ function humanizeColumnIdentifier(column) {
 /** governed metric label을 우선하고 없으면 canonical column을 일반 표시형으로만 바꾼다. */
 export function reportColumnLabel(artifact, column) {
   const governedLabel = artifactMetric(artifact, column)?.label;
-  return typeof governedLabel === "string" && governedLabel.trim()
-    ? governedLabel.trim()
-    : humanizeColumnIdentifier(column);
+  if (typeof governedLabel === "string" && governedLabel.trim()) return governedLabel.trim();
+  return reportTimeColumnLabel(artifact, column) || humanizeColumnIdentifier(column);
 }
 
 /** 통화 unit이 명시된 metric의 표·카드 원본 수치만 수집한다. */
@@ -225,7 +225,7 @@ export function paginateReportBlocks(blocks, orientation, documentId = "report")
       startPage(row.sourceY);
     }
     for (const sourceBlock of row.blocks) {
-      page.blocks.push({ ...sourceBlock, y: cursorY, h: height, sourceBlock });
+      page.blocks.push({ ...sourceBlock, y: cursorY, sourceBlock });
     }
     cursorY += height;
   }

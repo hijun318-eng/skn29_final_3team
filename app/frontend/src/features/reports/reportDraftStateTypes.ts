@@ -143,7 +143,12 @@ import type {
   readonly redo: () => void;
   readonly updateBlock: (blockId: string, change: Partial<DraftReportBlock>, record?: boolean) => void;
   readonly moveBlock: (blockId: string, deltaX: number, deltaY: number) => void;
-  readonly resizeBlock: (blockId: string, width: number, height?: number) => void;
+  readonly resizeBlock: (
+    blockId: string,
+    width: number,
+    height?: number,
+    position?: { readonly x?: number; readonly y?: number },
+  ) => void;
   readonly compactLayout: () => boolean;
   readonly setBlockSetting: (blockId: string, name: string, value: unknown) => void;
   readonly addTemplateBlock: (

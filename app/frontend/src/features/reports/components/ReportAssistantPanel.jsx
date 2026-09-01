@@ -3,9 +3,9 @@ import { memo, useCallback, useState } from "react";
 import { Bot, Check, Database, LoaderCircle, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 
 const QUICK_REQUESTS = [
-  "요약을 세 줄로 줄여줘",
-  "차트를 표보다 위로 올려줘",
-  "핵심 인사이트를 더 짧게 정리해줘",
+  "요약을 3문장으로 정리",
+  "차트를 표 위로 이동",
+  "핵심 내용을 간결하게 정리",
 ];
 
 /** 실제 assistant API가 반환한 모델·시도 횟수·처리 시간만 성공 영수증으로 표시하며 trace가 없으면 렌더링하지 않는다. */
@@ -13,18 +13,18 @@ function AssistantReceipt({ trace }) {
   if (!trace) return null;
   return <div className="report-assistant-receipt">
     <Check size={13} aria-hidden="true" />
-    <span><b>AI 초안 반영 완료</b><small>{trace.model_version} · {trace.attempts}회 시도 · {(trace.duration_ms / 1000).toFixed(1)}초</small></span>
+    <span><b>초안 반영 완료</b><small>변경 내용을 확인해 주세요.</small></span>
   </div>;
 }
 
 const WORKFLOW_COPY = {
-  waiting_patch_approval: ["AI 변경안 검토 필요", "적용 전에는 보고서 Revision을 저장하지 않습니다."],
-  running_data_agent: ["Data Agent 실행 중", "승인된 계획으로만 새 Artifact를 생성합니다."],
-  waiting_artifact: ["새 Artifact 대기", "승인된 분석 계획과 일치하는 Artifact를 기다립니다."],
-  saving_revision: ["Revision 저장 중", "기존 lineage와 새 Artifact를 함께 저장합니다."],
-  completed: ["Revision 저장 완료", "검증된 새 보고서 버전을 Canvas에 반영했습니다."],
-  failed: ["Assistant 실행 실패", "안전하게 중단했습니다. 새 요청으로 다시 시도해 주세요."],
-  cancelled: ["Assistant 실행 취소", "보고서와 Artifact는 변경되지 않았습니다."],
+  waiting_patch_approval: ["변경안 확인 필요", "적용 전에는 보고서가 바뀌지 않습니다."],
+  running_data_agent: ["데이터 분석 중", "승인한 계획으로 새 분석 결과를 만들고 있습니다."],
+  waiting_artifact: ["분석 결과 준비 중", "승인한 범위의 결과를 기다리고 있습니다."],
+  saving_revision: ["새 버전 저장 중", "분석 결과와 보고서를 함께 저장하고 있습니다."],
+  completed: ["새 버전 저장 완료", "편집 화면에 반영했습니다."],
+  failed: ["요청을 처리하지 못했습니다", "새 요청으로 다시 시도해 주세요."],
+  cancelled: ["요청 취소", "보고서는 변경되지 않았습니다."],
 };
 
 const REQUIRED_ACTION_COPY = {
@@ -32,28 +32,28 @@ const REQUIRED_ACTION_COPY = {
   RETRY: "새 세션에서 지시를 다시 입력할 수 있습니다.",
   REFRESH: "페이지를 새로고침해 최신 상태를 확인해 주세요.",
   REAUTHENTICATE: "다시 로그인한 뒤 권한을 확인해 주세요.",
-  REOPEN_LATEST_REPORT: "최신 보고서 Revision을 다시 열어 주세요.",
-  CONTACT_ADMIN: "Artifact 또는 권한 확인을 위해 관리자에게 문의해 주세요.",
+  REOPEN_LATEST_REPORT: "최신 보고서 버전을 다시 열어 주세요.",
+  CONTACT_ADMIN: "분석 결과 또는 권한 확인을 위해 관리자에게 문의해 주세요.",
 };
 
 const PATCH_OPERATION_LABEL = {
   set_report_title: "보고서 제목 변경",
   add_text: "텍스트 블록 추가",
   update_text: "텍스트 블록 수정",
-  add_artifact_view: "Artifact 보기 추가",
+  add_artifact_view: "분석 결과 보기 추가",
   reposition_block: "블록 위치 변경",
   remove_block: "블록 삭제",
   duplicate_block: "블록 복제",
-  restore_previous_revision: "직전 Revision 복원",
+  restore_previous_revision: "직전 버전 복원",
 };
 
 /** 승인 카드가 닫힌 뒤에도 서버 terminal phase와 안전한 오류 code를 사용자에게 보여준다. */
-function AssistantWorkflowStatus({ status, errorCode, requiredAction, retryable, onRetry, pending }) {
+function AssistantWorkflowStatus({ status, requiredAction, retryable, onRetry, pending }) {
   if (!WORKFLOW_COPY[status] || !["completed", "failed", "cancelled"].includes(status)) return null;
   const [title, detail] = WORKFLOW_COPY[status];
   return <article className={`report-assistant-message assistant workflow-${status}`}>
     <ShieldCheck size={15} aria-hidden="true" />
-    <p><b>{title}</b><br />{detail}{errorCode ? <small> · {errorCode}</small> : null}
+    <p><b>{title}</b><br />{detail}
       {status === "failed" ? <small> · {REQUIRED_ACTION_COPY[requiredAction] || REQUIRED_ACTION_COPY.NONE}</small> : null}
       {status === "failed" && retryable
         ? <button type="button" onClick={onRetry} disabled={pending}>새 세션으로 다시 시도</button>
@@ -67,13 +67,10 @@ function AssistantEvaluationReceipt({ evaluation }) {
   if (!evaluation) return null;
   const route = evaluation.route === "new_data"
     ? "신규 데이터 분석"
-    : evaluation.route === "existing_artifact" ? "기존 Artifact 편집" : "분류 없음";
+    : evaluation.route === "existing_artifact" ? "기존 분석 결과 편집" : "요청 확인";
   return <article className="report-assistant-message assistant">
     <ShieldCheck size={15} aria-hidden="true" />
-    <p><b>실행 검증 완료</b><br />{route} · 계약 {evaluation.contract_valid ? "통과" : "실패"} · Revision {evaluation.revision_created ? "생성" : "미생성"}
-      {evaluation.latency_ms == null ? null : <small> · {Math.round(evaluation.latency_ms)}ms</small>}
-      {evaluation.error_code ? <small> · {evaluation.error_code}</small> : null}
-    </p>
+    <p><b>실행 확인 완료</b><br />{route} · {evaluation.revision_created ? "새 버전을 만들었습니다." : "보고서 버전은 바뀌지 않았습니다."}</p>
   </article>;
 }
 
@@ -81,7 +78,7 @@ function AssistantEvaluationReceipt({ evaluation }) {
 function AssistantApproval({ request, status, onApprove, onReject, pending }) {
   if (!request) return null;
   const waiting = status === "waiting_approval";
-  const [title, detail] = WORKFLOW_COPY[status] || ["새 데이터 분석 승인 필요", "승인 전에는 Data Agent를 호출하지 않습니다."];
+  const [title, detail] = WORKFLOW_COPY[status] || ["새 데이터 분석 승인 필요", "승인 전에는 분석을 시작하지 않습니다."];
   return <section className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label="새 데이터 분석 계획">
     <header><ShieldCheck size={15} aria-hidden="true" /><span><b>{title}</b><small>{detail}</small></span></header>
     <dl>
@@ -91,7 +88,7 @@ function AssistantApproval({ request, status, onApprove, onReject, pending }) {
     </dl>
     {(waiting || status === "saving_revision") && <nav aria-label="분석 계획 결정">
       {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />거절</button>}
-      <button type="button" className="primary" onClick={onApprove} disabled={pending}><Check size={12} />{waiting ? "승인 후 분석" : "Revision 저장 재개"}</button>
+      <button type="button" className="primary" onClick={onApprove} disabled={pending}><Check size={12} />{waiting ? "승인 후 분석" : "저장 계속"}</button>
     </nav>}
   </section>;
 }
@@ -100,15 +97,15 @@ function AssistantApproval({ request, status, onApprove, onReject, pending }) {
 function AssistantPatchApproval({ preview, status, onApprove, onReject, pending }) {
   if (!preview) return null;
   const waiting = status === "waiting_patch_approval";
-  return <section className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label="AI 보고서 변경안">
-    <header><ShieldCheck size={15} aria-hidden="true" /><span><b>{waiting ? "AI 변경안 검토 필요" : "Revision 저장 재개"}</b><small>승인 전에는 현재 보고서를 변경하지 않습니다.</small></span></header>
+  return <section className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label="보고서 변경안">
+    <header><ShieldCheck size={15} aria-hidden="true" /><span><b>{waiting ? "변경안 확인 필요" : "저장 계속"}</b><small>적용 전에는 현재 보고서가 바뀌지 않습니다.</small></span></header>
     <dl>
       <div><dt>변경 요약</dt><dd>{preview.summary}</dd></div>
       <div><dt>적용 작업</dt><dd>{preview.operations.map((operation) => PATCH_OPERATION_LABEL[operation] || operation).join(" · ")}</dd></div>
     </dl>
-    <nav aria-label="AI 변경안 결정">
+    <nav aria-label="변경안 결정">
       {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />취소</button>}
-      <button type="button" className="primary" onClick={onApprove} disabled={pending}><Check size={12} />{waiting ? "변경안 적용" : "Revision 저장 재개"}</button>
+      <button type="button" className="primary" onClick={onApprove} disabled={pending}><Check size={12} />{waiting ? "변경안 적용" : "저장 계속"}</button>
     </nav>
   </section>;
 }
@@ -134,7 +131,6 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   selectedBlock,
   trace,
   workflowStatus = "",
-  workflowError = "",
   workflowRequiredAction = "NONE",
   workflowRetryable = false,
 }) {
@@ -151,30 +147,30 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
     const result = await onSubmit(text);
     setMessages((current) => [...current, result
       ? result.status === "approval_required"
-        ? { role: "assistant", text: "현재 Artifact만으로는 요청을 완료할 수 없어 분석 계획을 준비했습니다." }
+        ? { role: "assistant", text: "새 데이터가 필요해 분석 계획을 준비했습니다." }
         : result.status === "patch_approval_required"
-          ? { role: "assistant", text: "현재 Artifact 근거로 만들 수 있는 변경안을 준비했습니다. 적용 전에 검토해 주세요." }
+          ? { role: "assistant", text: "변경안이 준비되었습니다. 적용할 내용을 확인하세요." }
         : result.message
           ? { role: "assistant", text: result.message }
           : { role: "assistant", trace: { requestId: result.requestId, ...result.trace } }
       : { role: "error" }]);
   }, [artifact, canEdit, instruction, onSubmit, pending]);
 
-  return <aside className="report-assistant-panel" aria-label="보고서 AI Assistant">
+  return <aside className="report-assistant-panel" aria-label="보고서 도우미">
     <header>
       <span className="report-assistant-mark"><Sparkles size={15} aria-hidden="true" /></span>
-      <div><p>REPORT ASSISTANT</p><h2>보고서 AI Assistant</h2><small>선택된 블록 · {selectedBlock?.title || "선택 없음"}</small></div>
+      <div><p>보고서 편집</p><h2>보고서 도우미</h2><small>선택된 블록 · {selectedBlock?.title || "선택 없음"}</small></div>
     </header>
 
     <div className="report-assistant-context">
       <Database size={14} aria-hidden="true" />
-      <span><b>{artifactTitle || "분석 Artifact를 선택해 주세요"}</b><small>{artifact ? "승인된 분석 결과를 근거로 초안을 다시 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
+      <span><b>{artifactTitle || "분석 결과를 선택해 주세요"}</b><small>{artifact ? "선택한 분석 결과로 초안을 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
     </div>
 
     <div className="report-assistant-thread" aria-live="polite">
       <article className="report-assistant-message assistant">
         <Bot size={15} aria-hidden="true" />
-        <p>보고서 초안을 열었습니다. 요약 수정, 블록 구성, 데이터 표현 방식을 요청할 수 있습니다.</p>
+        <p>요약, 블록 구성, 데이터 표현 방식을 요청할 수 있습니다.</p>
       </article>
       {!messages.length && trace && <article className="report-assistant-message assistant"><AssistantReceipt trace={trace} /></article>}
       {messages.map((message, index) => message.role === "user"
@@ -200,14 +196,13 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
       />
       <AssistantWorkflowStatus
         status={workflowStatus}
-        errorCode={workflowError}
         requiredAction={workflowRequiredAction}
         retryable={workflowRetryable}
         onRetry={onRetry}
         pending={Boolean(pending)}
       />
       <AssistantEvaluationReceipt evaluation={evaluation} />
-      {waiting && <article className="report-assistant-message assistant pending"><LoaderCircle size={15} aria-hidden="true" /><p>근거를 유지하며 초안을 구성하고 있습니다.</p></article>}
+      {waiting && <article className="report-assistant-message assistant pending"><LoaderCircle size={15} aria-hidden="true" /><p>변경안을 만드는 중입니다.</p></article>}
     </div>
 
     <div className="report-assistant-quick" aria-label="빠른 요청">
@@ -228,12 +223,12 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
             }
           }}
           maxLength={500}
-          placeholder={artifact ? "예: 핵심 요약을 세 문장으로 정리해줘" : "분석 Artifact를 선택하면 요청할 수 있습니다."}
+          placeholder={artifact ? "예: 핵심 요약을 3문장으로 정리" : "분석 결과를 선택하면 요청할 수 있습니다."}
           disabled={!canEdit || !artifact || Boolean(pending) || workflowActive}
         />
-        <button type="submit" aria-label="AI 초안 요청 보내기" disabled={disabled}>{waiting ? <LoaderCircle size={16} /> : <Send size={16} />}</button>
+        <button type="submit" aria-label="작성 요청 보내기" disabled={disabled}>{waiting ? <LoaderCircle size={16} /> : <Send size={16} />}</button>
       </div>
-      <small>생성 결과는 AI 초안이며 확정 전에 검토가 필요합니다.</small>
+      <small>확정 전 변경 내용을 확인하세요.</small>
     </form>
   </aside>;
 });

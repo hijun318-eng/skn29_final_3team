@@ -11,7 +11,7 @@ function analysisSnapshotLabel(snapshot = {}) {
   const cutoff = String(snapshot.cutoff || snapshot.snapshot_cutoff || "").slice(0, 10);
   const selection = snapshot.selection || snapshot.snapshot_selection;
   return cutoff && selection === "max_source_value_lt_as_of"
-    ? `${cutoff} 이전 최신 스냅샷`
+    ? `${cutoff} 이전 최신 데이터`
     : "";
 }
 
@@ -74,6 +74,7 @@ export function analysisRunArtifactSources(runs = [], definitions = []) {
         periodEndExclusive: run.period_end_exclusive || undefined,
         snapshotCutoff: run.snapshot_cutoff || undefined,
         snapshotSelection: run.snapshot_selection || undefined,
+        completedAt: run.completed_at || run.started_at || undefined,
       }];
     });
 }
@@ -124,6 +125,8 @@ export function adaptAnalysisRunArtifact(run) {
       query_id: evidence.queryId,
       as_of: evidence.asOf,
       timezone: evidence.timezone,
+      time_granularity: evidence.timeGranularity || undefined,
+      time_field: evidence.timeField || run.chart?.xField || undefined,
       period: evidence.period
         ? { start: evidence.period.start, end_exclusive: evidence.period.endExclusive }
         : null,

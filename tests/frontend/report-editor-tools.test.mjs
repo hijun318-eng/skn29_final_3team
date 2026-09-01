@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { computeReportAlignmentGuides } from "../../app/frontend/src/features/reports/useReportDragAndDrop.js";
+import { computeReportAlignmentGuides, parseArtifactViewDragId } from "../../app/frontend/src/features/reports/useReportDragAndDrop.js";
 import { copyReportBlocks, reportSizePresets, searchReportBlocks } from "../../app/frontend/src/features/reports/useReportEditorTools.js";
 
 const blocks = [
@@ -33,6 +33,15 @@ test("alignment guides compare 12-column edges and centers", () => {
   assert.equal(guides.pageId, "page-1");
   assert.deepEqual(guides.vertical, [0, 3, 6]);
   assert.ok(guides.horizontal.includes(8));
+});
+
+test("artifact library view drag IDs preserve the selected analysis result", () => {
+  assert.deepEqual(
+    parseArtifactViewDragId("artifact-view:artifact-a:artifact-chart"),
+    { artifactId: "artifact-a", templateId: "artifact-chart" },
+  );
+  assert.equal(parseArtifactViewDragId("artifact:artifact-a"), null);
+  assert.equal(parseArtifactViewDragId("artifact-view::artifact-table"), null);
 });
 
 test("session copies preserve artifact lineage without sharing source arrays", () => {

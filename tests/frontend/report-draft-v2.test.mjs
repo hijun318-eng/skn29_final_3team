@@ -42,6 +42,23 @@ const textBlock = {
   id: "summary", title: "경영진 요약", type: "text", content: "핵심 변화", columns: 12,
   x: 0, y: 0, w: 12, h: 4,
 };
+const independentDocument = frontendBlocksToDocument({
+  ...report,
+  blocks: [
+    { ...textBlock, id: "short-text", w: 6, columns: 6, h: 4 },
+    { ...textBlock, id: "tall-text", x: 6, w: 6, columns: 6, h: 7 },
+    { ...textBlock, id: "following-text", y: 7, h: 5 },
+  ],
+});
+assert.equal(independentDocument.ok, true);
+assert.deepEqual(
+  independentDocument.document.pages[0].blocks.map(({ id, x, y, w, h }) => [id, x, y, w, h]),
+  [
+    ["short-text", 0, 0, 6, 4],
+    ["tall-text", 6, 0, 6, 7],
+    ["following-text", 0, 7, 12, 5],
+  ],
+);
 const sourceA = {
   artifactId: "artifact-a", queryId: "query-a", title: "객실 매출 분석",
   artifactChecksum: "sha256:a", sourceUrns: ["urn:rooms"],
@@ -178,10 +195,10 @@ assert.deepEqual(adaptedSnapshotArtifact.evidence.snapshot, {
   cutoff: "2026-08-20",
   selection: "max_source_value_lt_as_of",
 });
-assert.equal(analysisTimeLabel(adaptedSnapshotArtifact.evidence), "2026-08-20 이전 최신 스냅샷");
+assert.equal(analysisTimeLabel(adaptedSnapshotArtifact.evidence), "2026-08-20 이전 최신 데이터");
 assert.equal(
   analysisArtifactTitle(adaptedSnapshotArtifact),
-  "2026-08-20 이전 최신 스냅샷 객실 매출 분석",
+  "2026-08-20 이전 최신 데이터 객실 매출 분석",
 );
 assert.equal(reportEvidenceReady(adaptedSnapshotArtifact), true);
 
@@ -307,7 +324,7 @@ const fittedMonthlyRow = compactDraftLayout([
   fittedLegacyChart,
   fitFrontendArtifactViewBlock(legacyMonthlyTable, monthlyArtifact, { orientation: "landscape" }),
 ]);
-assert.deepEqual(fittedMonthlyRow.map(({ id, h }) => [id, h]), [["legacy-chart", 10], ["legacy-monthly-table", 10]]);
+assert.deepEqual(fittedMonthlyRow.map(({ id, h }) => [id, h]), [["legacy-chart", 8], ["legacy-monthly-table", 10]]);
 assert.deepEqual(fitFrontendArtifactViewBlock(structuredClone(fittedLegacyChart), monthlyArtifact, { orientation: "landscape" }), fittedLegacyChart, "saved auto sizing must be idempotent on re-entry");
 assert.equal(fitFrontendArtifactViewBlock(structuredClone(fittedLegacyChart), monthlyArtifact, { orientation: "portrait" }).h, 9);
 const denseSeriesChart = { ...monthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["a", "b", "c", "d"] } };

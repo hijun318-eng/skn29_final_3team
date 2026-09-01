@@ -97,9 +97,9 @@ export function useReportArtifacts({
         );
         libraryState = definitionResult.status === "fulfilled"
           ? { status: "ready", message: "" }
-          : { status: "partial", message: "일부 저장된 분석의 제목을 확인하지 못해 지표·기간 기반 제목으로 표시합니다." };
+          : { status: "partial", message: "일부 분석 결과는 지표와 기간으로 표시합니다." };
       } else {
-        libraryState = { status: "error", message: "저장된 분석 보관함을 불러오지 못했습니다. 보고서에 이미 연결된 결과는 계속 사용할 수 있습니다." };
+        libraryState = { status: "error", message: "분석 결과 목록을 불러오지 못했습니다. 이미 연결된 결과는 계속 사용할 수 있습니다." };
       }
     } else {
       setAnalysisLibraryState({ status: "idle", message: "" });
@@ -143,7 +143,7 @@ export function useReportArtifacts({
     if (includeLibrary) setAnalysisLibraryState(libraryState.status === "error"
       ? libraryState
       : unavailableCount
-        ? { status: "partial", message: [libraryState.message, `근거가 완전하지 않은 저장 분석 ${unavailableCount}개는 보관함에서 제외했습니다.`].filter(Boolean).join(" ") }
+        ? { status: "partial", message: [libraryState.message, `${unavailableCount}개 분석 결과를 사용할 수 없어 목록에서 제외했습니다.`].filter(Boolean).join(" ") }
         : libraryState);
     const availableIds = loaded.filter(({ artifact }) => artifact).map(({ artifactId }) => artifactId);
     setArtifactSelection((current) => availableIds.includes(current) ? current : availableIds[0] || "");

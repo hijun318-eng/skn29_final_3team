@@ -181,7 +181,7 @@ assert.match(reportSources.lifecycle, /\{ preserveFeedback: true \}/);
 assert.match(reportSources.lifecycle, /setAssistantEvaluation\(null\)/);
 assert.match(reportSources.page, /evaluation=\{lifecycle\.assistantEvaluation\}/);
 assert.match(reportSources.page, /onRetry=\{lifecycle\.retryAssistantSession\}/);
-assert.match(reportAssistantPanelSource, /실행 검증 완료/);
+assert.match(reportAssistantPanelSource, /실행 확인 완료/);
 assert.match(reportAssistantPanelSource, /failed" && retryable/);
 assert.match(reportAssistantPanelSource, /새 세션으로 다시 시도/);
 assert.doesNotMatch(reportAssistantPanelSource, /estimated_cost|raw_model_response|sql_text/);
@@ -223,8 +223,8 @@ assert.match(reportSources.blockControls, /className="report-template-drag"/);
 assert.match(reportSources.blockControls, /setActivatorNodeRef/);
 assert.match(reportSources.page, /DragOverlay/);
 assert.match(reportSources.dragAndDrop, /dropPositionRef\.current/);
-assert.match(reportSources.toolPanel, /원하는 위치로 끌어다 놓으세요/);
-assert.match(reportSources.toolPanel, /행은 빈 공간 없이 자동 정렬됩니다/);
+assert.match(reportSources.toolPanel, /클릭하거나 끌어 원하는 위치에 추가하세요/);
+assert.doesNotMatch(reportSources.toolPanel, /같은 행|동일한 높이|미포함/);
 assert.doesNotMatch(reportFeatureSource, /notion-block-toolbar/);
 assert.match(reportSources.artifactContent, /memo\(function ReportArtifactContent/);
 assert.match(reportSources.presentation, /metric\.result_field === resultField/);
@@ -237,10 +237,11 @@ assert.match(reportSources.artifacts, /if \(!artifact \|\| !reportEvidenceReady\
 assert.match(reportSources.controller, /const canEdit = Boolean\(isDraft && !lifecycle\.pending\)/);
 assert.match(reportSources.editorCanvas, /aria-busy=\{pending === "save"\}/);
 assert.match(reportSources.controller, /existingDraft/);
-assert.match(reportSources.controller, /window\.confirm\(`확정본 v\$\{current\.version\}을 기준으로 새 편집 버전을 만들까요\?`\)/);
+assert.match(reportSources.controller, /window\.confirm\(`확정된 버전 \$\{current\.version\}을 기준으로 새 편집 버전을 만들까요\?`\)/);
 assert.match(reportSources.controller, /selectedArtifactSource\?\.artifactId/);
-assert.match(reportSources.toolPanel, /선택한 원본으로 AI 초안 생성/);
-assert.match(reportSources.controller, /AI 초안 · 검토 필요/);
+assert.match(reportSources.toolPanel, /확정 전 변경 내용을 확인하세요/);
+assert.doesNotMatch(reportSources.toolPanel, /AI가 만든 초안/);
+assert.match(reportSources.controller, /검토 필요/);
 assert.match(reportSources.artifacts, /status: "loading"/);
 assert.match(reportSources.artifactContent, /artifactState\.status === "empty"/);
 assert.match(reportSources.artifactContent, /artifactState\.status === "error"/);
@@ -252,7 +253,8 @@ assert.match(reportA4Styles, /\.answer-report-page \.report-data-provenance/);
 assert.match(reportSources.page, /onDragMove=\{dnd\.handleDragMove\}/);
 assert.match(reportSources.editorToolbar, /저장되지 않은 변경/);
 assert.match(reportSources.editorToolbar, /저장 실패/);
-assert.match(reportSources.draftMutations, /resizeRow && block\.y === source\.y/);
+assert.doesNotMatch(reportSources.draftMutations, /resizeRow && block\.y === source\.y/);
+assert.doesNotMatch(reportSources.presentation, /h: height, sourceBlock/);
 assert.match(reportSources.editorBlock, /event\.buttons & 1/);
 assert.match(reportSources.controller, /await artifacts\.loadArtifacts\(current\)/);
 assert.match(reportSources.editorBlock, /<ReportArtifactContent/);
@@ -290,7 +292,9 @@ for (const exposedImplementationCopy of [
   /Saved Analysis/, /Run History/, /Authenticated Session/, /세션 종료/,
   /제목 또는 ID 검색/, /window\.location\.reload/,
 ]) assert.doesNotMatch(productSources, exposedImplementationCopy);
-assert.match(reportSources.operationsPanel, /<details><summary>기술 정보<\/summary><code>Artifact/);
+assert.match(reportSources.operationsPanel, /<details><summary>기술 정보<\/summary>[\s\S]*<code>Artifact/);
+assert.match(reportSources.operationsPanel, /reportRunBlockMessage\(block\.status\)/);
+assert.doesNotMatch(reportSources.operationsPanel, /<span>\{block\.failureMessage/);
 assert.match(source("authorization.ts"), /호텔 분석가/);
 assert.match(source("authorization.ts"), /플랫폼 관리자/);
 assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
@@ -315,10 +319,10 @@ assert.deepEqual(reorderedBlocks.map((block) => [block.x, block.y]), [[0, 0], [6
 
 const compactlyPlacedBlocks = placeDraftBlock(reorderedBlocks, "right", 6, 3);
 assert.deepEqual(compactlyPlacedBlocks.find((block) => block.id === "right"), {
-  id: "right", title: "오른쪽", columns: 12, type: "text", content: "오른쪽", x: 0, y: 2, w: 12, h: 2,
+  id: "right", title: "오른쪽", columns: 6, type: "text", content: "오른쪽", x: 0, y: 2, w: 6, h: 2,
 });
 const collisionAvoidedBlocks = placeDraftBlock(compactlyPlacedBlocks, "left", 6, 3);
-assert.deepEqual(collisionAvoidedBlocks.map((block) => [block.x, block.y]), [[0, 0], [6, 0]]);
+assert.deepEqual(collisionAvoidedBlocks.map((block) => [block.x, block.y]), [[0, 0], [0, 2]]);
 
 const movedOutOfPair = placeDraftBlock([
   { id: "pair-left", title: "Left", columns: 6, type: "text", x: 0, y: 0, w: 6, h: 4 },
@@ -328,7 +332,7 @@ const movedOutOfPair = placeDraftBlock([
 assert.deepEqual(
   movedOutOfPair.map(({ id, x, y, w }) => ({ id, x, y, w })),
   [
-    { id: "pair-left", x: 0, y: 0, w: 12 },
+    { id: "pair-left", x: 0, y: 0, w: 6 },
     { id: "pair-right", x: 0, y: 4, w: 6 },
     { id: "full-target", x: 6, y: 4, w: 6 },
   ],
@@ -338,7 +342,7 @@ const splitFullRow = placeDraftBlock([
   { id: "table", title: "표", columns: 12, type: "table", x: 0, y: 0, w: 12, h: 5 },
   { id: "chart", title: "차트", columns: 12, type: "chart", x: 0, y: 0, w: 12, h: 6 },
 ], "chart", 6, 2);
-assert.deepEqual(splitFullRow.map((block) => [block.x, block.y, block.w, block.h]), [[0, 0, 6, 6], [6, 0, 6, 6]]);
+assert.deepEqual(splitFullRow.map((block) => [block.x, block.y, block.w, block.h]), [[0, 0, 6, 5], [6, 0, 6, 6]]);
 
 const gaplessRows = compactDraftLayout([
   { id: "summary", title: "요약", columns: 12, type: "text", x: 0, y: 9, w: 12, h: 4 },
@@ -350,7 +354,7 @@ const filledRows = compactDraftLayout([
   { id: "summary", title: "요약", columns: 6, type: "text", x: 0, y: 0, w: 6, h: 4 },
   { id: "table", title: "표", columns: 12, type: "table", x: 0, y: 4, w: 12, h: 5 },
 ]);
-assert.deepEqual(filledRows.map((block) => [block.x, block.y, block.w]), [[0, 0, 12], [0, 4, 12]]);
+assert.deepEqual(filledRows.map((block) => [block.x, block.y, block.w]), [[0, 0, 6], [0, 4, 12]]);
 
 const invariantLayout = compactDraftLayout([
   { id: "a", title: "A", columns: 4, type: "text", x: 8, y: 30, w: 4, h: 4 },

@@ -88,8 +88,8 @@ export const ReportBlockSettings = memo(function ReportBlockSettings({
       <button type="button" className={viewSizing?.sizeMode === "auto" ? "active" : ""} onClick={() => onSetting("sizeMode", "auto")} disabled={disabled}>내용에 맞춤</button>
     </section>}
     {block.type === "artifact" && <section>
-      <span>Artifact 전체</span>
-      <small>요약·KPI·차트·표를 같은 Artifact lineage로 유지합니다.</small>
+      <span>분석 묶음</span>
+      <small>요약·핵심 지표·차트·표를 같은 분석 결과로 유지합니다.</small>
       <button type="button" className={settings.sizeMode === "auto" ? "active" : ""} onClick={() => onSetting("sizeMode", "auto")} disabled={disabled}>내용에 맞춤</button>
     </section>}
     <div className="report-block-menu-actions">
@@ -149,7 +149,7 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
       onClick={(event) => event.stopPropagation()}
       onKeyDown={handleMenuKeyDown}
     >
-      <summary aria-label={`${block.title} 블록 메뉴`} aria-haspopup="true" title="블록 메뉴">
+      <summary className="report-block-menu-trigger report-block-chrome-button" aria-label={`${block.title} 블록 메뉴`} aria-haspopup="true" title="블록 설정 및 작업">
         <MoreHorizontal size={17} />
       </summary>
       <div className="report-block-menu-popover" aria-label={`${block.title} 블록 설정`}>

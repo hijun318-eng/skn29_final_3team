@@ -165,6 +165,8 @@ export interface ConversationCommandProgress extends AnalysisProcessViewModel {
   queryId?: string | null;
   asOf: string;
   timezone?: string | null;
+  timeGranularity?: "day" | "week" | "month" | "quarter" | "year" | null;
+  timeField?: string | null;
   period?: {
     start: string;
     endExclusive: string;
@@ -210,6 +212,8 @@ interface WireAnalysisEvidence {
   query_id?: string | null;
   as_of: string;
   timezone?: string | null;
+  time_granularity?: "day" | "week" | "month" | "quarter" | "year" | null;
+  time_field?: string | null;
   period?: {
     start: string;
     end_exclusive: string;
@@ -463,6 +467,8 @@ export function normalizeAnalysisEvidence(
     queryId: evidence.query_id,
     asOf: evidence.as_of,
     timezone: evidence.timezone,
+    timeGranularity: evidence.time_granularity,
+    timeField: evidence.time_field,
     period: evidence.period ? {
       start: evidence.period.start,
       endExclusive: evidence.period.end_exclusive,

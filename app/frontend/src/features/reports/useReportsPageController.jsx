@@ -720,7 +720,6 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     rejectAssistantDataRequest,
     rejectAssistantPatch,
     reportCurrency,
-    reportDisplayTitle,
     reportPages,
     reloadFinalDocument,
     returnToEditor,

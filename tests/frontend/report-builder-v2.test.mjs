@@ -44,6 +44,7 @@ assert.match(appStyles, /\.report-builder-v2-mode>\.workspace\{height:100%;min-h
 assert.match(appStyles, /\.report-builder-v2-mode>\.workspace>\.page-stage\{height:auto;min-height:0;overflow:hidden;padding:0\}/);
 assert.match(appStyles, /\.report-builder-v2-mode>\.workspace>\.topbar\{display:none\}/);
 assert.doesNotMatch(controller, /REPORT_REVIEW_MODE|reviewDefinition|mockReport/i);
+assert.doesNotMatch(controller, /\breportDisplayTitle,\s*$/m);
 assert.match(controller, /ANSWERVICE · 분석 보고서/);
 assert.doesNotMatch(controller, /GOVERNED REPORT|HTML 편집 초안|분석 근거 연결 · HTML 편집본/);
 assert.match(page, /page\.builderV2 \? <ReportBuilderV2/);

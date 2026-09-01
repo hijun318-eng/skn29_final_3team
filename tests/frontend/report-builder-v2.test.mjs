@@ -179,7 +179,7 @@ assert.match(builderStyles, /\.report-orientation-switch button\[aria-pressed="t
 assert.match(builderStyles, /\.answer-report-page \.notion-markdown-input\{min-height:42px!important/);
 assert.match(builderStyles, /\.answer-report-page__block>\.notion-block\{padding:4\.2mm 3\.8mm 3\.2mm!important/);
 assert.match(builderStyles, /\.answer-report-canvas--editor \.answer-report-page__grid\{overflow:visible\}/);
-assert.match(builderStyles, /\.notion-block>\.report-block-chrome\{[^}]*right:auto!important;[^}]*left:calc\(-42px \* var\(--report-editor-inverse-scale,1\)\)!important[^}]*transform:scale\(var\(--report-editor-inverse-scale,1\)\)/);
+assert.match(builderStyles, /\.notion-block>\.report-block-chrome\{[^}]*z-index:24;[^}]*right:auto!important;[^}]*left:calc\(-42px \* var\(--report-editor-inverse-scale,1\)\)!important[^}]*transform:scale\(var\(--report-editor-inverse-scale,1\)\)/);
 assert.match(builderStyles, /\.report-block-actions\{[^}]*flex-direction:column/);
 assert.match(builderStyles, /\.report-block-actions \.report-drag-handle,[^\n]*width:34px;height:34px/);
 assert.match(builderStyles, /\.report-resize-handle\{[^}]*width:44px!important;[^}]*height:44px!important/);

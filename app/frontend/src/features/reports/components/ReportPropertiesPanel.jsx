@@ -1,4 +1,4 @@
-/** 선택 블록 속성·일괄 작업·검색·세션 스냅샷을 한 패널에 제공한다. */
+/** 선택 블록 속성·일괄 작업·검색·복원 지점을 한 패널에 제공한다. */
 import { memo, useState } from "react";
 import {
   Camera, Clipboard, Copy, Lock, Search, Trash2, Unlock, X,
@@ -51,6 +51,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
         <button type="button" onClick={() => editorTools.setSelectedLocks(true)} disabled={!canEdit}><Lock size={14} />잠금</button>
         <button type="button" onClick={() => editorTools.setSelectedLocks(false)} disabled={!canEdit || !lockedSelectedCount}><Unlock size={14} />해제</button>
         <button type="button" className="danger" onClick={editorTools.deleteSelected} disabled={!canEdit || lockedSelectedCount > 0}><Trash2 size={14} />삭제</button>
+        <button type="button" onClick={editorTools.clearSelection}>선택 해제</button>
       </div>
     </section>}
 

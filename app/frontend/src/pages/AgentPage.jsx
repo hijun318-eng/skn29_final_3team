@@ -13,7 +13,7 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { mlPredictionRun, ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
@@ -60,7 +60,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     return definitions.filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
   }, [definitionQuery, definitions]);
 
-  const exampleQuestions = useMemo(() => exampleQuestionsFromDefinitions(definitions), [definitions]);
   const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
   const latestArtifactTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
@@ -519,7 +518,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       setFeedback({ tone: "success", message: "저장 분석을 새 실행으로 완료했습니다." });
       await refreshSaved();
     } catch (error) {
-      setFeedback({ tone: "error", message: error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다." });
+      setFeedback({
+        tone: "error",
+        message: error instanceof AnalysisApiError && error.status === 409
+          ? "이 저장 분석은 현재 데이터 릴리스와 맞지 않아 재실행할 수 없습니다. 같은 조건을 새 질문으로 분석해 주세요."
+          : error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다.",
+      });
     } finally {
       requestInFlight.current = false;
       setSavedBusy(false);
@@ -586,12 +590,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
               <small>ANSWERVICE AI</small>
               <h2 id="chat-empty-title">무엇을 도와드릴까요?</h2>
               <p>{availableChatCapabilities.join(", ")}을 한 대화에서 이어서 요청할 수 있습니다.</p>
-              {exampleQuestions.length > 0 && (
-                <div className="chat-saved-examples" aria-label="저장 분석 바로 실행">
-                  <span>저장 분석 바로 실행</span>
-                  {exampleQuestions.map((ex) => <button key={ex.id} type="button" disabled={savedBusy} onClick={() => { void replaySavedDefinition(ex.definition); }}>{ex.question}</button>)}
-                </div>
-              )}
               {ragAvailable && (
                 <div className="chat-support-links" aria-label="도움말">
                   <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부 업무지침 찾아보기</button>

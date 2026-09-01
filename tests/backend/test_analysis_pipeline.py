@@ -914,6 +914,14 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         repair = next(payload for node, payload in model.calls if node == "node2_repair")
         self.assertEqual(1, repair["attempt"])
         self.assertIn("REQUIRED_FILTER", repair["violation"])
+        hint = repair["violation_detail"]
+        self.assertIn(f'"approved_assets":["{ASSET_FQN}"]', hint)
+        self.assertIn(f'"approved_time_fields":["{ASSET_FQN}.observed_on"]', hint)
+        self.assertIn(f'"expected_result_fields":["{RESULT_FIELD}"]', hint)
+        self.assertIn('"allowed_parameters":[', hint)
+        self.assertIn(":window_start", hint)
+        self.assertIn(":window_end", hint)
+        self.assertIn(":state_filter", hint)
 
     async def test_unsafe_candidate_is_blocked_by_g2_without_repair_or_query(self):
         unsafe = {

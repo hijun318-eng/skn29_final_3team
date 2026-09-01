@@ -10,6 +10,17 @@ from src.rag.local_answer_service import EvidenceBoundAnswerComposer
 COMPOSER = EvidenceBoundAnswerComposer(AnswerSafetySettings())
 
 
+def test_external_answer_prompt_requests_rich_but_non_padded_evidence_selection() -> None:
+    system_prompt = build_answer_prompt("취소 원인과 조치를 알려줘", [
+        evidence("EV-PROMPT", "전체 취소율은 17.59%다."),
+    ])[0]["content"]
+
+    assert "각 요구 항목에 직접 답하는 claim만" in system_prompt
+    assert "3~6개" in system_prompt
+    assert "수치·차이·원인·조치" in system_prompt
+    assert "요구 밖 내용으로 채우지 않는다" in system_prompt
+
+
 def evidence(
     evidence_id: str,
     body: str,

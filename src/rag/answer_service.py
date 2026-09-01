@@ -1,6 +1,7 @@
 """OpenAI-compatible answer endpoint를 호출하고 evidence 인용 계약을 재검증한다."""
 
 import json
+import re
 import unicodedata
 from typing import Dict, Any
 from urllib.parse import urlsplit
@@ -216,9 +217,12 @@ class AnswerService:
                 packed_context.receipt,
             )
 
+        model_evidence_blocks = self._model_ready_evidence_blocks(
+            packed_request.evidence_blocks
+        )
         messages = build_answer_prompt(
             request.query,
-            packed_request.evidence_blocks,
+            model_evidence_blocks,
             request.intent,
         )
 
@@ -268,6 +272,10 @@ class AnswerService:
                         continue
                     break
                 model_output = GroundedModelOutput.model_validate_json(content)
+                self._prune_unbound_model_evidence_ids(
+                    model_output,
+                    packed_request.evidence_blocks,
+                )
                 source_citations = {
                     str(block.get("evidence_id") or ""): str(block.get("citation") or "")
                     for block in packed_request.evidence_blocks
@@ -320,6 +328,81 @@ class AnswerService:
             ),
             packed_context.receipt,
         )
+
+    def _model_ready_evidence_blocks(
+        self,
+        evidence_blocks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """DOCX parser 표식 대신 서버가 검증할 canonical claim 후보만 모델에 전달한다."""
+
+        prepared: list[dict[str, Any]] = []
+        for block in evidence_blocks:
+            body = str(block.get("content") or block.get("text") or block.get("snippet") or "")
+            candidates = list(dict.fromkeys(
+                candidate.strip()
+                for candidate in self._canonical_claim_candidates(block, body)
+                if candidate.strip()
+            ))
+            item = dict(block)
+            item["content"] = "\n".join(candidates) if candidates else body
+            item.pop("text", None)
+            item.pop("snippet", None)
+            prepared.append(item)
+        return prepared
+
+    def _prune_unbound_model_evidence_ids(
+        self,
+        model_output: GroundedModelOutput,
+        evidence_blocks: list[dict[str, Any]],
+    ) -> None:
+        """같은 수치를 가진 다른 청크까지 과잉 인용하면 원문 text가 있는 ID만 남긴다."""
+
+        evidence_segments = {
+            str(block.get("evidence_id") or ""): self._canonical_claim_segments(
+                block,
+                str(block.get("content") or block.get("text") or block.get("snippet") or ""),
+            )
+            for block in evidence_blocks
+        }
+        canonical_by_id = {
+            str(block.get("evidence_id") or ""): self._canonical_claim_text_map(
+                block,
+                str(block.get("content") or block.get("text") or block.get("snippet") or ""),
+            )
+            for block in evidence_blocks
+        }
+        for section in model_output.sections:
+            for claim in section.claims:
+                bound_ids = [
+                    evidence_id
+                    for evidence_id in dict.fromkeys(claim.evidence_ids)
+                    if self._claim_is_canonically_bound(
+                        claim.text,
+                        [evidence_id],
+                        evidence_segments,
+                    )
+                ]
+                if not bound_ids:
+                    markerless = self._normalize_claim_segment(
+                        self._without_leading_list_marker(claim.text)
+                    )
+                    for evidence_id in dict.fromkeys(claim.evidence_ids):
+                        candidates = canonical_by_id.get(evidence_id, {}).get(markerless, ())
+                        if len(candidates) != 1:
+                            continue
+                        claim.text = candidates[0]
+                        bound_ids = [
+                            candidate_id
+                            for candidate_id in dict.fromkeys(claim.evidence_ids)
+                            if self._claim_is_canonically_bound(
+                                claim.text,
+                                [candidate_id],
+                                evidence_segments,
+                            )
+                        ]
+                        break
+                if bound_ids:
+                    claim.evidence_ids = bound_ids
 
     def _read_bounded_json_response(self, response: httpx.Response) -> dict[str, Any]:
         """Content-Length와 실제 디코딩 바이트를 모두 검사해 JSON 응답을 제한 내에서 읽는다."""
@@ -649,19 +732,47 @@ class AnswerService:
     ) -> frozenset[str]:
         """manual·report parser가 결정론적으로 분리한 원문 segment를 정규화해 봉인한다."""
 
-        candidates = [
-            *self._manual_formatter.claim_segments(
-                body,
-                str(block.get("section_title") or ""),
-            ),
-            *self._report_formatter.claim_segments(body),
-        ]
+        candidates = self._canonical_claim_candidates(block, body)
         return frozenset(
             normalized
             for candidate in candidates
             if (normalized := self._normalize_claim_segment(candidate))
             and sum(character.isalnum() for character in normalized) >= 2
         )
+
+    def _canonical_claim_text_map(
+        self,
+        block: dict[str, Any],
+        body: str,
+    ) -> dict[str, tuple[str, ...]]:
+        """목록 번호만 바뀐 model claim을 원문으로 복원할 비번호 key를 만든다."""
+
+        grouped: dict[str, list[str]] = {}
+        for candidate in self._canonical_claim_candidates(block, body):
+            canonical = candidate.strip()
+            key = self._normalize_claim_segment(
+                self._without_leading_list_marker(canonical)
+            )
+            if key and sum(character.isalnum() for character in key) >= 2:
+                grouped.setdefault(key, []).append(canonical)
+        return {key: tuple(dict.fromkeys(values)) for key, values in grouped.items()}
+
+    def _canonical_claim_candidates(
+        self,
+        block: dict[str, Any],
+        body: str,
+    ) -> list[str]:
+        return [
+            *self._manual_formatter.claim_segments(
+                body,
+                str(block.get("section_title") or ""),
+            ),
+            *self._report_formatter.claim_segments(body),
+        ]
+
+    @staticmethod
+    def _without_leading_list_marker(text: str) -> str:
+        return re.sub(r"^\s*(?:[-*•]|\d+[.)])\s+", "", text, count=1)
 
     @staticmethod
     def _normalize_claim_segment(text: str) -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from src.rag.answer_contracts import AnswerRequest, AnswerResponse
+from src.rag.answer_contracts import AnswerRequest, AnswerResponse, GroundedModelOutput
 from src.rag.answer_service import AnswerService
 from src.rag.answer_prompt import serialize_evidence_blocks
 from src.rag.answer_prompt import build_answer_prompt
@@ -140,6 +140,81 @@ def test_answer_service_accepts_canonical_citation_and_claim_binding() -> None:
     assert result.sections[0].article_number is None
     assert result.schema_version == "rag-answer-v1.1"
     assert result.model_version == "gpt-4o-mini"
+
+
+def test_model_overcitation_is_reduced_to_evidence_containing_exact_claim() -> None:
+    service = _service()
+    output = GroundedModelOutput.model_validate({
+        "status": "ANSWER",
+        "sections": [{
+            "title": "취소율",
+            "claims": [{
+                "text": "전체 취소율은 17.59%다.",
+                "evidence_ids": ["EV-EXACT", "EV-NUMERIC"],
+            }],
+        }],
+    })
+
+    service._prune_unbound_model_evidence_ids(output, [
+        {
+            "evidence_id": "EV-EXACT",
+            "citation": "[운영 결론]",
+            "content": "전체 취소율은 17.59%다.",
+        },
+        {
+            "evidence_id": "EV-NUMERIC",
+            "citation": "[취소 표]",
+            "content": "합계 | 9,418건 | 1,657건 | 17.59%",
+        },
+    ])
+
+    assert output.sections[0].claims[0].evidence_ids == ["EV-EXACT"]
+
+
+def test_model_evidence_uses_canonical_report_rows_without_docx_parser_markers() -> None:
+    service = _service()
+    prepared = service._model_ready_evidence_blocks([{
+        "evidence_id": "EV-REPORT",
+        "citation": "[객실 운영보고서]",
+        "section_title": "호텔별 취소",
+        "content": (
+            "[TABLE index=3 style=UNSTYLED]\n"
+            "[r1c1 span=1] 주요 취소 사유 | [r1c2 span=1] 건수 | [r1c3 span=1] 비중\n"
+            "[r2c1 span=1] 일정 변경 | [r2c2 span=1] 894건 | [r2c3 span=1] 53.95%\n"
+            "[/TABLE]"
+        ),
+    }])
+
+    assert "주요 취소 사유 | 건수 | 비중" in prepared[0]["content"]
+    assert "일정 변경 | 894건 | 53.95%" in prepared[0]["content"]
+    assert "[r1c1" not in prepared[0]["content"]
+    assert "[TABLE" not in prepared[0]["content"]
+
+
+def test_changed_list_number_is_restored_from_exact_source_without_rewriting_text() -> None:
+    service = _service()
+    output = GroundedModelOutput.model_validate({
+        "status": "ANSWER",
+        "sections": [{
+            "title": "후속 조치",
+            "claims": [{
+                "text": "1) 일정 변경 취소에는 일정 변경 상품을 우선 제안한다.",
+                "evidence_ids": ["EV-ACTION"],
+            }],
+        }],
+    })
+    evidence = [{
+        "evidence_id": "EV-ACTION",
+        "citation": "[객실팀 판단과 조치]",
+        "content": "4) 일정 변경 취소에는 일정 변경 상품을 우선 제안한다.",
+    }]
+
+    service._prune_unbound_model_evidence_ids(output, evidence)
+
+    assert output.sections[0].claims[0].text == (
+        "4) 일정 변경 취소에는 일정 변경 상품을 우선 제안한다."
+    )
+    assert output.sections[0].claims[0].evidence_ids == ["EV-ACTION"]
 
 
 def test_answer_service_rejects_citation_without_bound_claim() -> None:

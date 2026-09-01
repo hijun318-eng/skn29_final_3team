@@ -2,7 +2,6 @@ services:
   rag-api:
     profiles: [rag, rag-e2e, full]
     image: ${RAG_RUNTIME_IMAGE:-answervice-rag-e2e-backend:20260819-orchestration2}
-    container_name: answervice-rag-api
     build:
       context: ../..
       dockerfile: infrastructure/rag/Dockerfile
@@ -72,7 +71,6 @@ services:
 
   rag-local-answer:
     profiles: [rag, rag-e2e, full]
-    container_name: answervice-rag-local-answer
     image: ${RAG_RUNTIME_IMAGE:-answervice-rag-e2e-backend:20260819-orchestration2}
     entrypoint: ["uvicorn"]
     command: ["src.rag.local_answer_service:app", "--host", "0.0.0.0", "--port", "8001"]

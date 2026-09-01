@@ -1,122 +1,363 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
-import socket
 import time
 from pathlib import Path
 
 
+class BootstrapError(RuntimeError):
+    pass
+
+
+class EnvFile:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def read(self) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for raw_line in self.path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+        return values
+
+    def set(self, key: str, value: str) -> None:
+        text = self.path.read_text(encoding="utf-8-sig")
+        newline = "\r\n" if "\r\n" in text else "\n"
+        lines = text.splitlines()
+        replacement = f"{key}={value}"
+        for index, line in enumerate(lines):
+            if line.strip().startswith(f"{key}="):
+                lines[index] = replacement
+                break
+        else:
+            lines.append(replacement)
+        self.path.write_text(newline.join(lines) + newline, encoding="utf-8")
+
+
 class PortableRagBootstrap:
-    """Automate model preparation, Compose startup, ingestion, security checks, and RAG E2E."""
+    DOCKER_CONTEXT = "desktop-linux"
+    PROJECT_NAME = "answervice"
+    STATE_QUERY = """
+        SELECT json_build_object(
+            'document_count', (SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL),
+            'approved_document_count', (SELECT COUNT(*) FROM documents
+                WHERE deleted_at IS NULL AND approval_status = 'APPROVED'),
+            'validated_document_count', (SELECT COUNT(*) FROM documents
+                WHERE deleted_at IS NULL AND validity_status != 'UNRESOLVED'),
+            'chunk_count', (SELECT COUNT(*) FROM document_chunks WHERE deleted_at IS NULL),
+            'vector_count', (SELECT COUNT(*) FROM document_chunks
+                WHERE deleted_at IS NULL AND embedding IS NOT NULL),
+            'provider_count', (SELECT COUNT(DISTINCT embedding_provider)
+                FROM document_chunks WHERE deleted_at IS NULL),
+            'provider', (SELECT MIN(embedding_provider)
+                FROM document_chunks WHERE deleted_at IS NULL),
+            'model_count', (SELECT COUNT(DISTINCT embedding_model)
+                FROM document_chunks WHERE deleted_at IS NULL),
+            'model', (SELECT MIN(embedding_model)
+                FROM document_chunks WHERE deleted_at IS NULL),
+            'dimension_count', (SELECT COUNT(DISTINCT embedding_dimensions)
+                FROM document_chunks WHERE deleted_at IS NULL),
+            'dimensions', (SELECT MIN(embedding_dimensions)
+                FROM document_chunks WHERE deleted_at IS NULL)
+        )::text
+    """
 
-    _PROJECT_NAME = "answervice-rag-e2e"
+    def __init__(
+        self,
+        root: Path,
+        force_reindex: bool,
+        verify: bool,
+        approve_local_manuals: bool,
+    ) -> None:
+        self.root = root
+        self.env_file = EnvFile(root / ".env")
+        self.force_reindex = force_reindex
+        self.verify = verify
+        self.approve_local_manuals = approve_local_manuals
+        self.environment = os.environ.copy()
+        self.lock_fd: int | None = None
+        self.lock_path = root / "tmp" / "rag-bootstrap.lock"
+        self.manual_dir = root / "data" / "rag" / "manuals"
+        self.pdf_count = 0
+        self.expected_provider = "openai"
+        self.expected_model = "text-embedding-3-small"
+        self.expected_dimensions = 1024
 
-    def __init__(self, repository_root: Path) -> None:
-        self._root = repository_root
-        self._models_dir = self._root / "models"
-        self._model_dir = self._models_dir / "Qwen3-Embedding-0.6B"
-        self._environment = os.environ.copy()
-        self._environment.setdefault("RAG_MODELS_DIR", str(self._models_dir))
-        self._environment["RAG_API_PORT"] = str(self._free_port())
-
-    def run(self, download_model: bool, keep_running: bool) -> None:
+    def run(self) -> None:
         try:
-            self.prepare(download_model)
-            self.start_services()
-            self.migrate_database()
-            self.wait_until_ready()
-            self.ingest_documents()
-            self.verify_security_contracts()
-            self.run_end_to_end()
+            self._acquire_lock()
+            self._prepare_environment()
+            self._start_services()
+            self._migrate_database()
+            self._wait_for_ready()
+            state = self._read_state()
+            if self.force_reindex or not self._is_current(state):
+                self._print_state("Reindex required", state)
+                self._ingest_documents()
+                state = self._read_state()
+            if (
+                self.approve_local_manuals
+                and (
+                    int(state.get("approved_document_count") or 0) != self.pdf_count
+                    or int(state.get("validated_document_count") or 0) != self.pdf_count
+                )
+            ):
+                self._approve_local_manuals()
+                state = self._read_state()
+            if not self._is_current(state):
+                self._print_state("Invalid state after ingestion", state)
+                raise BootstrapError(
+                    "RAG data is incomplete or stale after ingestion. "
+                    "Review the ingestion logs before retrying."
+                )
+            self._print_state("RAG data ready", state)
+            if self.verify:
+                self._run_end_to_end()
+            self._print_backend_guidance()
         finally:
-            if not keep_running:
-                self.stop_services()
+            self._release_lock()
 
-    def prepare(self, download_model: bool) -> None:
-        if not self._model_dir.exists():
-            if not download_model:
-                raise RuntimeError(f"Embedding model is missing: {self._model_dir}. Re-run with --download-model.")
-            self._download_embedding_model()
-        self._run(sys.executable, "infrastructure/rag/prepare_build_context.py", "--output", "tmp/rag-build-context")
+    def _prepare_environment(self) -> None:
+        if not self.env_file.path.exists():
+            raise BootstrapError("Missing .env file in the repository root.")
+        self.env_file.set("RAG_FEATURE_ENABLED", "1")
+        values = self.env_file.read()
+        self._require_secret(values, "OPENAI_API_KEY")
+        self._require_secret(values, "RAG_DB_PASSWORD")
+        self._require_secret(values, "RAG_GATEWAY_HMAC_SECRET", minimum_length=32)
 
-    def start_services(self) -> None:
-        self._remove_conflicting_containers()
-        self._compose("build", "rag-api")
-        self._compose("--profile", "rag", "up", "-d")
+        self.expected_provider = values.get("RAG_EMBEDDING_PROVIDER", "openai").lower()
+        if self.expected_provider != "openai":
+            raise BootstrapError(
+                "This bootstrap supports the current OpenAI embedding runtime only."
+            )
+        self.expected_model = values.get(
+            "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+        )
+        self.expected_dimensions = int(values.get("OPENAI_EMBEDDING_DIMENSIONS", "1024"))
 
-    def _remove_conflicting_containers(self) -> None:
-        for name in ("answervice-rag-api", "answervice-rag-local-answer", "answervice-rag-pgvector", "answervice-rag-e2e"):
-            subprocess.run(("docker", "rm", "-f", name), cwd=self._root, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(("docker", "volume", "rm", "-f", "answervice-rag-e2e_answervice-rag-pgdata"), cwd=self._root, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        configured_manual_dir = values.get("RAG_MANUALS_HOST_DIR", "").strip()
+        if configured_manual_dir:
+            candidate = Path(configured_manual_dir)
+            self.manual_dir = candidate if candidate.is_absolute() else self.root / candidate
+        self.pdf_count = len(list(self.manual_dir.glob("*.pdf")))
+        if self.pdf_count == 0:
+            raise BootstrapError(f"No PDF manuals found in {self.manual_dir}")
 
-    def wait_until_ready(self) -> None:
-        deadline = time.monotonic() + 180
+        self.environment.update(
+            {
+                "COMPOSE_PROJECT_NAME": self.PROJECT_NAME,
+                "RAG_FEATURE_ENABLED": "1",
+                "RAG_MANUALS_HOST_DIR": str(self.manual_dir.resolve()),
+                "RAG_E2E_GATEWAY_HMAC_SECRET": values["RAG_GATEWAY_HMAC_SECRET"],
+            }
+        )
+        context = self._run("docker", "context", "show", capture=True).stdout.strip()
+        if context != self.DOCKER_CONTEXT:
+            self._run("docker", "context", "use", self.DOCKER_CONTEXT)
+
+    @staticmethod
+    def _require_secret(
+        values: dict[str, str], key: str, minimum_length: int = 1
+    ) -> None:
+        value = values.get(key, "").strip()
+        invalid_markers = ("change_me", "replace_me", "your_", "example")
+        if len(value) < minimum_length or any(marker in value.lower() for marker in invalid_markers):
+            raise BootstrapError(f"Set a valid {key} value in .env before starting RAG.")
+
+    def _compose(self, *args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
+        return self._run(
+            "docker", "--context", self.DOCKER_CONTEXT,
+            "compose", "--project-name", self.PROJECT_NAME,
+            "--env-file", str(self.env_file.path),
+            "-f", str(self.root / "compose.yml"), "--profile", "rag",
+            *args, capture=capture,
+        )
+
+    def _start_services(self) -> None:
+        print("Starting persistent RAG services...")
+        self._compose(
+            "up", "-d", "--build", "rag-postgres", "rag-local-answer", "rag-api"
+        )
+
+    def _migrate_database(self) -> None:
+        self._compose(
+            "exec", "-T", "rag-api", "python", "-m", "src.rag.vector_cli", "migrate"
+        )
+
+    def _wait_for_ready(self, timeout_seconds: int = 180) -> None:
+        deadline = time.monotonic() + timeout_seconds
+        probe = (
+            "import urllib.request; "
+            "urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()"
+        )
         while time.monotonic() < deadline:
-            result = self._compose("exec", "-T", "rag-api", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)", check=False)
+            result = self._compose(
+                "exec", "-T", "rag-api", "python", "-c", probe, capture=True
+            )
             if result.returncode == 0:
                 return
             time.sleep(3)
-        raise RuntimeError("rag-api did not become ready within 180 seconds.")
+        raise BootstrapError("RAG API did not become ready within 180 seconds.")
 
-    def migrate_database(self) -> None:
-        self._compose("exec", "-T", "rag-api", "python", "-m", "src.rag.vector_cli", "migrate")
+    def _read_state(self) -> dict[str, object]:
+        code = (
+            "import os,psycopg; "
+            f"sql={self.STATE_QUERY!r}; "
+            "conn=psycopg.connect(os.environ['RAG_DATABASE_URL']); "
+            "print(conn.execute(sql).fetchone()[0])"
+        )
+        result = self._compose(
+            "exec", "-T", "rag-api", "python", "-c", code, capture=True
+        )
+        if result.returncode != 0:
+            raise BootstrapError(result.stderr.strip() or "Unable to inspect RAG database state.")
+        return json.loads(result.stdout.strip())
 
-    def ingest_documents(self) -> None:
-        self._compose("exec", "-T", "rag-api", "python", "-m", "src.rag.vector_cli", "ingest")
-
-    def verify_security_contracts(self) -> None:
-        self._compose(
-            "exec", "-T",
-            "-e", "RAG_E2E_BASE_URL=http://rag-api:8000",
-            "-e", "RAG_E2E_GATEWAY_HMAC_SECRET=rag-local-dev-hmac-secret-change-before-shared-use",
-            "rag-api", "python", "-m", "src.rag.e2e.security_live_probe",
+    def _is_current(self, state: dict[str, object]) -> bool:
+        chunk_count = int(state.get("chunk_count") or 0)
+        return all(
+            (
+                int(state.get("document_count") or 0) == self.pdf_count,
+                int(state.get("approved_document_count") or 0) == self.pdf_count,
+                int(state.get("validated_document_count") or 0) == self.pdf_count,
+                chunk_count > 0,
+                int(state.get("vector_count") or 0) == chunk_count,
+                int(state.get("provider_count") or 0) == 1,
+                state.get("provider") == self.expected_provider,
+                int(state.get("model_count") or 0) == 1,
+                state.get("model") == self.expected_model,
+                int(state.get("dimension_count") or 0) == 1,
+                int(state.get("dimensions") or 0) == self.expected_dimensions,
+            )
         )
 
-    def run_end_to_end(self) -> None:
-        self._compose("run", "--rm", "rag-e2e")
+    def _ingest_documents(self) -> None:
+        print(f"Ingesting {self.pdf_count} PDF manuals with {self.expected_model}...")
+        self._compose(
+            "exec", "-T", "rag-api", "python", "-m", "src.rag.vector_cli", "ingest"
+        )
 
-    def stop_services(self) -> None:
-        self._compose("down", "--volumes", "--remove-orphans", check=False)
+    def _approve_local_manuals(self) -> None:
+        print("Approving local bootstrap manuals with an auditable lifecycle record...")
+        sql = """
+            WITH approved AS (
+                UPDATE documents
+                SET approval_status = 'APPROVED',
+                    validity_status = 'VALIDATED',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE deleted_at IS NULL
+                  AND (
+                      approval_status != 'APPROVED'
+                      OR validity_status = 'UNRESOLVED'
+                  )
+                RETURNING manual_id
+            )
+            INSERT INTO document_lifecycle_logs(manual_id, action, actor_role, reason)
+            SELECT manual_id, 'UPSERT', 'SYSTEM_ADMIN', 'LOCAL_BOOTSTRAP_APPROVAL'
+            FROM approved
+        """
+        code = (
+            "import os,psycopg; "
+            f"sql={sql!r}; "
+            "conn=psycopg.connect(os.environ['RAG_DATABASE_URL']); "
+            "conn.execute(sql); conn.commit()"
+        )
+        self._compose("exec", "-T", "rag-api", "python", "-c", code)
+
+    def _run_end_to_end(self) -> None:
+        print("Running optional live RAG E2E verification...")
+        artifact_dir = self.root / "evals" / "runs" / "rag"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        self._compose(
+            "run",
+            "--rm",
+            "-v",
+            f"{artifact_dir.resolve()}:/workspace/evals/runs/rag",
+            "rag-e2e",
+        )
+
+    def _print_backend_guidance(self) -> None:
+        result = self._run(
+            "docker", "--context", self.DOCKER_CONTEXT, "ps",
+            "--filter", f"label=com.docker.compose.project={self.PROJECT_NAME}",
+            "--filter", "label=com.docker.compose.service=backend",
+            "--format", "{{.ID}}", capture=True,
+        )
+        if result.stdout.strip():
+            print("Backend is running. Recreate it to load RAG_FEATURE_ENABLED=1.")
+        else:
+            print("RAG is ready. Start the main application normally to load the enabled RAG flag.")
 
     @staticmethod
-    def _free_port() -> int:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.bind(("127.0.0.1", 0))
-            return int(probe.getsockname()[1])
-
-    def _download_embedding_model(self) -> None:
-        try:
-            from huggingface_hub import snapshot_download
-        except ImportError as error:
-            raise RuntimeError("huggingface_hub is required for --download-model.") from error
-        self._models_dir.mkdir(parents=True, exist_ok=True)
-        snapshot_download(repo_id="Qwen/Qwen3-Embedding-0.6B", local_dir=str(self._model_dir), local_dir_use_symlinks=False)
-
-    def _compose(self, *arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-        environment = os.environ.copy()
-        environment.setdefault("RAG_MODELS_DIR", str(self._models_dir))
-        command = (
-            "docker-compose", "-p", self._PROJECT_NAME,
-            "-f", "infrastructure/rag/compose.fragment.yml",
-            "-f", "infrastructure/rag/compose.api.fragment.yml",
-            *arguments,
+    def _print_state(title: str, state: dict[str, object]) -> None:
+        print(
+            f"{title}: documents={state.get('document_count')}, "
+            f"approved={state.get('approved_document_count')}, "
+            f"validated={state.get('validated_document_count')}, "
+            f"chunks={state.get('chunk_count')}, vectors={state.get('vector_count')}, "
+            f"provider={state.get('provider')}, model={state.get('model')}, "
+            f"dimensions={state.get('dimensions')}"
         )
-        return self._run(*command, environment=environment, check=check)
 
-    def _run(self, *arguments: str, environment: dict[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(arguments, cwd=self._root, check=check, env=environment, text=True)
+    def _acquire_lock(self) -> None:
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.lock_path.exists() and time.time() - self.lock_path.stat().st_mtime > 3600:
+            self.lock_path.unlink()
+        try:
+            self.lock_fd = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(self.lock_fd, str(os.getpid()).encode("ascii"))
+        except FileExistsError as exc:
+            raise BootstrapError("Another RAG bootstrap process is already running.") from exc
+
+    def _release_lock(self) -> None:
+        if self.lock_fd is not None:
+            os.close(self.lock_fd)
+            self.lock_fd = None
+        if self.lock_path.exists():
+            self.lock_path.unlink()
+
+    def _run(
+        self, *command: str, capture: bool = False
+    ) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            list(command), cwd=self.root, env=self.environment,
+            text=True, capture_output=capture, check=False,
+        )
+        if result.returncode != 0 and not capture:
+            raise BootstrapError(f"Command failed ({result.returncode}): {' '.join(command)}")
+        return result
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Start and initialize persistent RAG services.")
+    parser.add_argument("--force-reindex", action="store_true")
+    parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--approve-local-manuals", action="store_true")
+    return parser.parse_args()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Fully automate portable Manual/Policy RAG E2E")
-    parser.add_argument("--download-model", action="store_true", help="Download Qwen3 embedding model if absent")
-    parser.add_argument("--keep-running", action="store_true", help="Keep the RAG Docker services running after successful E2E")
-    arguments = parser.parse_args()
-    PortableRagBootstrap(Path(__file__).resolve().parents[2]).run(arguments.download_model, arguments.keep_running)
-    return 0
+    args = parse_args()
+    root = Path(__file__).resolve().parents[2]
+    try:
+        PortableRagBootstrap(
+            root,
+            args.force_reindex,
+            args.verify,
+            args.approve_local_manuals,
+        ).run()
+        return 0
+    except (BootstrapError, ValueError) as exc:
+        print(f"RAG bootstrap failed: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

@@ -1040,6 +1040,10 @@ assert.deepEqual(await ragCatalogClient.listInternalManuals(), [{
 }]);
 assert.equal(ragCatalogRequest.url, "http://backend.test/rag/documents");
 assert.equal(ragCatalogRequest.init.headers.Authorization, "Bearer runtime-token");
+assert.equal(
+  ragCatalogClient.manualSourceUrl("REPORT-2026-08-ROOMS"),
+  "http://backend.test/rag/documents/REPORT-2026-08-ROOMS/source",
+);
 
 const invalidRagCatalogClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
   data: { documents: [{ manual_id: "manual-missing-approved-metadata" }] },

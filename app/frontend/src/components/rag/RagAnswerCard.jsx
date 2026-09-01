@@ -295,7 +295,7 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
         <nav className="rag-answer-card__sources" aria-label="근거 문서">
           {pdfLinks.map((item) => (
             <a key={item.url} href={item.url} target="_blank" rel="noreferrer noopener">
-              PDF 원문 보기 · {item.label}
+              원문 보기 · {item.label}
             </a>
           ))}
         </nav>

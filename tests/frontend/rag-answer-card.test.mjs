@@ -67,7 +67,8 @@ try {
   assert.match(html, /aria-label="후속 질문"/);
   assert.match(html, /aria-label="근거 문서"/);
   assert.match(html, /승인 절차를 더 알려줘/);
-  assert.equal((html.match(/PDF 원문 보기/g) || []).length, 2);
+  assert.equal((html.match(/원문 보기/g) || []).length, 2);
+  assert.doesNotMatch(html, /PDF 원문 보기/);
   assert.equal((html.match(/근거 인용/g) || []).length, 2);
   assert.equal((html.match(/aria-label="1번 인용 근거 보기"/g) || []).length, 2);
   assert.match(html, /객실 운영 지침 · v3 · 객실 정비 인계/);

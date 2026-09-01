@@ -602,7 +602,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                           rag={turnItem.run.rag}
                           pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
                             label: item.document_name || "근거 문서",
-                            url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
+                            url: item.document_id ? analysisClient.manualSourceUrl(item.document_id) : "",
                           }))}
                           onFollowUp={turnItem.turnId === turns.at(-1)?.turnId
                             ? (followUp) => void analyzeQuestion(followUp, {
@@ -666,7 +666,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                           rag={turnItem.run.rag}
                           pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
                             label: item.document_name || "근거 문서",
-                            url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
+                            url: item.document_id ? analysisClient.manualSourceUrl(item.document_id) : "",
                           }))}
                         />
                       </section>

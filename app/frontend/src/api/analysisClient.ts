@@ -48,7 +48,7 @@ export interface AnalysisClient {
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
   listInternalManuals(): Promise<InternalManualSummary[]>;
-  manualPdfUrl(documentId: string): string;
+  manualSourceUrl(documentId: string): string;
   cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
@@ -643,8 +643,8 @@ export function createHttpAnalysisClient(
       ));
       return normalizeInternalManuals(payload?.data?.documents);
     },
-    manualPdfUrl(documentId) {
-      return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source.pdf`);
+    manualSourceUrl(documentId) {
+      return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source`);
     },
     async cancelAnalysis(traceId) {
       const payload = await parse<{ data: AnalysisProgress }>(await request(

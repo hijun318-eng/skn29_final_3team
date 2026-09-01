@@ -327,6 +327,9 @@ assert.match(assistant, /className="report-assistant-evidence-picker"/);
 assert.match(assistant, /className="report-assistant-evidence-options"/);
 assert.match(assistant, /title=\{option\.title \|\| "승인된 분석 결과"\}/);
 assert.match(assistant, /draftArtifactIds\.length >= 5/);
+assert.match(assistant, /current\.length < 5 \? \[\.\.\.current, artifactId\] : current/);
+assert.match(assistant, /draftArtifactIds\.length} \/ 5개 선택/);
+assert.match(assistant, /근거 변경\{assistantArtifactIds\.length > 1 \? ` · \$\{assistantArtifactIds\.length}` : ""}/);
 assert.match(assistant, /대표 근거 · 필수/);
 assert.match(assistant, /onSelectArtifacts\(draftArtifactIds\)/);
 assert.match(assistant, /선택한 근거만 검증해 Assistant에 전달합니다/);
@@ -469,6 +472,7 @@ assert.equal((controller.match(/if \(!requireSavedAssistantDraft\(\)\) return nu
 assert.match(controller, /operationScope === "report_title" \? null : editorTools\.primaryBlock\?\.id \|\| null/);
 assert.match(controller, /reportAssistantRepresentativeBlock\([\s\S]*draft\.orderedBlocks,[\s\S]*editorTools\.primaryBlock\?\.id/);
 assert.match(controller, /artifacts\.setAssistantArtifacts\([\s\S]*assistantArtifactSource\?\.artifactId/);
+assert.match(controller, /\.slice\(0, 4\)/);
 assert.doesNotMatch(controller, /submitAssistantInstruction\([\s\S]{0,180}selectedArtifactSource\.artifactId/);
 assert.match(controller, /createAssistantDraft\(instruction, "report_title"\)/);
 assert.match(lifecycle, /operationScope: ReportAssistantOperationScope = "full_report"/);

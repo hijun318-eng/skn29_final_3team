@@ -580,6 +580,8 @@ assert.match(reportSources.artifacts, /sources\.filter\([\s\S]*hydrationIds\.has
 assert.match(reportSources.artifacts, /const setAssistantArtifacts = useCallback\(async/);
 assert.match(reportSources.artifacts, /const primaryArtifactId = representativeArtifactId \|\| artifactSelection \|\| uniqueIds\[0\] \|\| ""/);
 assert.match(reportSources.artifacts, /const selectedIds = \[primaryArtifactId, \.\.\.requested\]/);
+assert.match(reportSources.artifacts, /filter\(Boolean\)\.slice\(0, 5\)/);
+assert.match(reportSources.artifacts, /filter\(\(artifactId\) => artifactId !== primaryArtifactId\)[\s\S]*\.slice\(0, 4\)/);
 assert.match(reportSources.artifacts, /setArtifactSelection\(primaryArtifactId\)/);
 assert.match(reportSources.controller, /const persistedBlocks = draft\.orderedBlocks/);
 assert.doesNotMatch(

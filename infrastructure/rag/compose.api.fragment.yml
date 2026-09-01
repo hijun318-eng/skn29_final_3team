@@ -23,9 +23,11 @@ services:
       OPENAI_EMBEDDING_ENDPOINT: ${OPENAI_EMBEDDING_ENDPOINT:-https://api.openai.com/v1/embeddings}
       RAG_DEVICE: ${RAG_DEVICE:-cpu}
       RAG_SNIPPET_MAX_CHARS: ${RAG_SNIPPET_MAX_CHARS:-1800}
-      RAG_ANSWER_ENDPOINT: ${RAG_ANSWER_ENDPOINT:-https://api.openai.com/v1/chat/completions}
-      RAG_ANSWER_MODEL: ${RAG_ANSWER_MODEL:-gpt-5.4-mini}
-      RAG_ANSWER_API_KEY: ${RAG_ANSWER_API_KEY:-${OPENAI_API_KEY:-}}
+      # 로컬 기본값은 검색 근거를 외부로 전송하지 않는다. 외부 모델은 세 값을
+      # deployment env에 모두 명시한 환경에서만 opt-in한다.
+      RAG_ANSWER_ENDPOINT: ${RAG_ANSWER_ENDPOINT:-http://rag-local-answer:8001/v1/chat/completions}
+      RAG_ANSWER_MODEL: ${RAG_ANSWER_MODEL:-rag-local-answer-v2}
+      RAG_ANSWER_API_KEY: ${RAG_ANSWER_API_KEY:-local-runtime}
       RAG_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:-}
     volumes:
       - "${RAG_MODELS_DIR:-../rag/models}:/models:ro"
@@ -33,6 +35,8 @@ services:
       - "${RAG_BACKUPS_DIR:-../../backups/rag}:/backups/rag"
     depends_on:
       rag-postgres:
+        condition: service_healthy
+      rag-local-answer:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]

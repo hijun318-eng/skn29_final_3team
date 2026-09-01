@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | V4.0 단독 재학습과 제출용 객관적 평가지표 검증 결과 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.2 |
-| 문서 기준일 | 2026-09-01 13:16 |
+| 버전 | v1.3 |
+| 문서 기준일 | 2026-09-01 13:24 |
 | 작성·수정 | Codex |
 | 문서 ID | `ML-ROOM-DEMAND-V4-RESULT-20260901` |
 | 기준 모델 | `room-demand-operational-hgbr-v4.0.0` |
@@ -299,6 +299,27 @@ commit은 기록됐지만 미커밋 변경이 있으므로 완전한 재현 기�
 
 따라서 V4 전용 검증은 통과했지만 저장소 전체 Gate는 엄격하게 `FAIL`로 기록한다. FastAPI `on_event` deprecation warning 2건은 기존 경고이며 이번 V4 평가 결과에는 영향을 주지 않는다. skip 74건은 PASS 수에 포함하지 않았다.
 
+### 16.3 jaehong 브랜치 적용 전 검증
+
+재학습·평가 변경을 `origin/jaehong` 기반 전용 브랜치 `codex/jaehong-ml-v4`에 적용한 뒤 같은 저장소 Gate를 다시 실행했다. V4 ML 경로는 통과했지만 jaehong 원본에 존재하던 RAG·Backend·release archive 문제가 확인됐다.
+
+| 검증 | 결과 |
+|---|---|
+| V4 ML 테스트 | PASS, 39개 |
+| Frontend 테스트 | PASS, 26개 |
+| Frontend production build | PASS, 2,689 modules |
+| Compose profile config | PASS, 11/11 조합 |
+| OpenAPI snapshot | PASS |
+| 아키텍처 invariant | PASS, source 353개 |
+| Python compileall | PASS |
+| `git diff --check` | PASS |
+| 전체 suite 수집 | FAIL, `torch` 미설치로 RAG test collection 중단 |
+| CI core 분리 suite | FAIL, 1,260 passed·22 failed·39 skipped·subtest 258 passed |
+| code documentation | FAIL, 기존 RAG·Frontend 문서화 위반 29건 |
+| repository integrity | FAIL, 기존 RAG 결과 JSON의 Unicode 대체문자 1건 |
+
+core 실패는 HTTP runtime timeout, metric governance, runtime generality, release archive checksum 계열이다. 이번 V4 ML 파일의 테스트 실패는 없다. 따라서 jaehong feature 브랜치 push는 변경 보존 목적으로 수행할 수 있지만, dev 병합·운영 배포 승인의 근거로 사용할 수 없다.
+
 ## 17. 운영 차단 사유와 다음 조치
 
 1. 실제 PMS PIT snapshot으로 동일 파이프라인을 재학습·평가한다.
@@ -332,7 +353,8 @@ commit은 기록됐지만 미커밋 변경이 있으므로 완전한 재현 기�
 | 1.0 | 2026-09-01 | 기존 합성 평가와 운영 차단 사유 최초 정리 |
 | 1.1 | 2026-09-01 | V4 단독 purged 재학습, 제출 지표·상세표·bootstrap·latency·재현정보 반영 |
 | 1.2 | 2026-09-01 | 모델 독립 재추론·데이터 품질 검사와 저장소 전체 Gate 결과 반영 |
+| 1.3 | 2026-09-01 | origin/jaehong 기반 적용 후 V4·Frontend·Compose 통과와 기존 저장소 실패 기록 |
 
 ## 20. 결론
 
-V4.0은 합성 데이터 기준 제출용 기술 평가지표를 대부분 갖췄고, Test WAPE 1.237%와 기준선 대비 78.772% 개선을 기록했다. V4 모델·데이터 검증은 통과했지만 저장소 전체 Gate에는 V4 외 기존 실패 2건이 남았다. 또한 실제 PMS 평가와 PIT provenance가 없으며 D+7 극단오차가 존재한다. 따라서 현재 결과는 `합성 데이터 V4 기술 검증 완료`로만 제출할 수 있고, `저장소 전체 검증 PASS`, `운영 승인 완료` 또는 `실제 호텔 정확도 입증`으로 표현해서는 안 된다.
+V4.0은 합성 데이터 기준 제출용 기술 평가지표를 대부분 갖췄고, Test WAPE 1.237%와 기준선 대비 78.772% 개선을 기록했다. V4 모델·데이터 검증은 통과했지만 jaehong 적용 브랜치의 저장소 전체 Gate에는 기존 RAG·Backend·release archive 실패가 남았다. 또한 실제 PMS 평가와 PIT provenance가 없으며 D+7 극단오차가 존재한다. 따라서 현재 결과는 `합성 데이터 V4 기술 검증 완료`와 `jaehong feature 브랜치 push 완료`로만 표현할 수 있고, `저장소 전체 검증 PASS`, `dev 병합 승인`, `운영 승인 완료` 또는 `실제 호텔 정확도 입증`으로 표현해서는 안 된다.

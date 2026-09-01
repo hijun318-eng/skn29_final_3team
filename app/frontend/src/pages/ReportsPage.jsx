@@ -153,6 +153,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     artifactOptions={artifacts.artifactOptions}
     artifactSelection={artifacts.artifactSelection}
     artifactStates={artifacts.artifactStates}
+    artifactTemplates={page.artifactTemplates}
     artifacts={artifacts.artifacts}
     assistantInstruction={lifecycle.assistantInstruction}
     canEdit={page.canEdit}

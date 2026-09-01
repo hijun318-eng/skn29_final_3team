@@ -169,6 +169,11 @@ assert.match(builderStyles, /@media\(max-width:600px\)\{[\s\S]*\.editor-history-
 assert.match(builderStyles, /@media\(max-width:600px\)\{[\s\S]*\.editor-command-actions>button:not\(\.primary\)\{[^}]*width:44px[\s\S]*\.report-view-menu>summary\{[^}]*width:44px;[^}]*height:44px[\s\S]*\.editor-command-actions>\.primary\{[^}]*min-width:68px/);
 assert.match(builderStyles, /\.report-view-menu>summary\{[^}]*white-space:nowrap/);
 assert.match(toolPanel, /report-template-grid/);
+assert.match(toolPanel, /import \{[^}]*\bPlus\b[^}]*\} from "lucide-react"/);
+assert.match(toolPanel, /const visibleArtifactTemplates = useMemo/);
+assert.match(page, /artifactTemplates=\{page\.artifactTemplates\}/);
+assert.match(editorBlock, /useDraggable\(\{ id: block\.id, disabled: !isDraft \|\| locked \}\)/);
+assert.doesNotMatch(editorBlock, /\{!isBlockPreview && <header className="report-block-chrome">/);
 assert.match(builderStyles, /\.report-template-grid\{grid-template-columns:1fr\}/);
 assert.match(builderStyles, /\.report-insert-grid>\.report-template-tile\{grid-template-columns:1fr\}/);
 assert.match(builderStyles, /\.report-template-add\{[^}]*grid-template-columns:15px minmax\(0,1fr\)/);

@@ -84,7 +84,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     setNodeRef,
     setActivatorNodeRef,
     transform,
-  } = useDraggable({ id: block.id, disabled: !isDraft || locked || isBlockPreview });
+  } = useDraggable({ id: block.id, disabled: !isDraft || locked });
   const blockNodeRef = useRef(null);
   const resizeStart = useRef(null);
   const resizePreviewRef = useRef(null);
@@ -334,7 +334,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       onFocusCapture={selectBlockFromKeyboard}
       style={style}
     >
-      {!isBlockPreview && <header className="report-block-chrome">
+      <header className="report-block-chrome">
         <div className="report-block-title">
           {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
           <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "분석 결과" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
@@ -368,7 +368,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
             />
           </div>
         )}
-      </header>}
+      </header>
       {isDraft && block.type === "text" ? (
         isBlockPreview
           ? <h2 className="notion-block-title notion-block-title--preview">{displayTitle}</h2>

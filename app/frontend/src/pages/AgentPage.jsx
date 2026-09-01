@@ -14,7 +14,7 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { mlRun, ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
@@ -57,7 +57,6 @@ export function AgentPage({ onNavigate }) {
     return definitions.filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
   }, [definitionQuery, definitions]);
 
-  const exampleQuestions = useMemo(() => exampleQuestionsFromDefinitions(definitions), [definitions]);
   const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
   const visibleRuns = savedRuns.slice(0, visibleRunCount);
   const latestArtifactTurn = useMemo(
@@ -188,8 +187,8 @@ export function AgentPage({ onNavigate }) {
     const normalized = nextQuestion.trim();
     if (!normalized) { setInputError("분석할 질문을 입력해 주세요."); return; }
     if (requestInFlight.current) return;
-    const resolvedAction = action
-      || (/^\[\s*내부\s*지침\s*\]/i.test(normalized)
+    let resolvedAction = action
+      || (/^(?:\[\s*)?(?:내부\s*지침|업무\s*지침)(?:\s*\])?/i.test(normalized)
         ? { requested_route: "INTERNAL_GUIDELINE" }
         : /^\[\s*객실\s*예측\s*\]/i.test(normalized)
           ? { requested_route: "FORECAST" }
@@ -262,6 +261,24 @@ export function AgentPage({ onNavigate }) {
     };
 
     try {
+      if (!resolvedAction) {
+        const routing = await analysisClient.routeChatQuestion(normalized, commandOptions);
+        if (routing?.intent === "INTERNAL_GUIDELINE") {
+          resolvedAction = { requested_route: "INTERNAL_GUIDELINE" };
+        } else if (routing?.intent === "FORECAST") {
+          resolvedAction = { requested_route: "FORECAST" };
+        }
+      }
+      if (resolvedAction?.requested_route === "INTERNAL_GUIDELINE") {
+        const ragResponse = await analysisClient.queryInternalManual(normalized, commandOptions);
+        const finalRun = ragRun(normalized, ragResponse);
+        if (requestGeneration.current !== generation) return;
+        setTurns((prev) => prev.map((turn) => turn.turnId === optimisticTurn.turnId
+          ? { ...turn, run: finalRun, viewType: "RAG", reusePending: false }
+          : turn));
+        window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+        return;
+      }
       if (resolvedAction?.requested_route === "FORECAST") {
         const mlChatResponse = await analysisClient.executeMlChat(normalized, commandOptions);
         const finalRun = mlRun(normalized, mlChatResponse.ml_response);
@@ -563,18 +580,6 @@ export function AgentPage({ onNavigate }) {
               <small>대화형 데이터 분석</small>
               <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
               <p>호텔 운영 데이터 분석, ML 객실 수요 예측, 내부 업무지침 검색을 한 대화창에서 이용할 수 있습니다.</p>
-              {exampleQuestions.length > 0 && (
-                <div aria-label="추천 질문">
-                  {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
-                </div>
-              )}
-              <div className="chat-support-links" aria-label="도움말">
-                <button type="button" onClick={() => void analyzeQuestion("[객실 예측] 향후 7일 객실 수요를 알려줘")}>객실 수요 예측</button>
-                <span aria-hidden="true">·</span>
-                <button type="button" onClick={() => setEmptyMode("rag-documents")}>내부문서 보기</button>
-                <span aria-hidden="true">·</span>
-                <button type="button" onClick={() => setEmptyMode("rag-examples")}>내부지침 질문 예시</button>
-              </div>
             </section>
           )
         )}
@@ -609,7 +614,6 @@ export function AgentPage({ onNavigate }) {
                             label: item.document_name || "근거 문서",
                             url: item.document_id ? analysisClient.manualPdfUrl(item.document_id) : "",
                           }))}
-                          onFollowUp={(followUp) => void analyzeQuestion(followUp, { requested_route: "INTERNAL_GUIDELINE" })}
                         />
                       </>
                     ) : <AnalysisStatePanel

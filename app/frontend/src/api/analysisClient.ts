@@ -37,6 +37,8 @@ export interface AnalysisClient {
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
   listInternalManuals(): Promise<InternalManualSummary[]>;
+  routeChatQuestion(question: string, options?: SubmitTurnCommandOptions): Promise<any>;
+  queryInternalManual(question: string, options?: SubmitTurnCommandOptions): Promise<any>;
   manualPdfUrl(documentId: string): string;
   cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
@@ -395,6 +397,32 @@ export function createHttpAnalysisClient(
         { credentials: "include", headers: headers() },
       ));
       return normalizeInternalManuals(payload?.data?.documents);
+    },
+    async routeChatQuestion(question, options = {}) {
+      const payload = await parse<{ status: string; data: any }>(await request(
+        endpoint("/chat/route"),
+        {
+          method: "POST",
+          credentials: "include",
+          headers: headers(true, options.traceId || createUuid()),
+          body: JSON.stringify({ question }),
+          signal: options.signal,
+        },
+      ));
+      return payload.data;
+    },
+    async queryInternalManual(question, options = {}) {
+      const payload = await parse<{ status: string; data: any }>(await request(
+        endpoint("/rag/query"),
+        {
+          method: "POST",
+          credentials: "include",
+          headers: headers(true, options.traceId || createUuid()),
+          body: JSON.stringify({ question, mode: "DOCUMENT_ONLY" }),
+          signal: options.signal,
+        },
+      ));
+      return payload.data;
     },
     manualPdfUrl(documentId) {
       return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source.pdf`);

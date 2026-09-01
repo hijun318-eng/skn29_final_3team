@@ -495,6 +495,30 @@ async def replay_analysis_definition(
 # =========================================================================
 
 @router.post(
+    "/chat/route",
+    operation_id="routeChatQuestion",
+)
+async def route_chat_question(
+    payload: dict[str, Any] = Body(...),
+    context: RequestContext = Depends(session_context),
+) -> dict[str, Any]:
+    """대화 저장소나 분석 카탈로그를 열기 전에 실행 경로만 결정한다."""
+    from app.services.unified_chat_router import UnifiedChatRouter
+
+    question = str(payload.get("question") or "").strip()
+    if len(question) < 2 or len(question) > 1000:
+        raise HTTPException(status_code=422, detail="질문은 2자 이상 1,000자 이하여야 합니다.")
+    decision = UnifiedChatRouter().classify(question)
+    return {
+        "status": "SUCCESS",
+        "data": {
+            "intent": decision.intent.value,
+            "confidence": decision.confidence,
+            "clarification_options": list(decision.clarification_options),
+        },
+    }
+
+@router.post(
     "/conversations",
     operation_id="createConversation",
 )

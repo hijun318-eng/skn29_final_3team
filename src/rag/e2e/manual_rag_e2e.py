@@ -32,14 +32,20 @@ class ManualRagE2EConfig:
     top_k: int
     timeout_seconds: float
     artifact_dir: Path
+    intent: str = "REGULATION_CHECK"
 
     @classmethod
     def from_environment(cls) -> "ManualRagE2EConfig":
-        config = cls(os.getenv("RAG_E2E_BASE_URL", "").strip().rstrip("/"), os.getenv("RAG_E2E_GATEWAY_HMAC_SECRET", "").strip(), os.getenv("RAG_E2E_ROLE", "MANAGER").strip().upper(), os.getenv("RAG_E2E_QUERY", "").strip(), int(os.getenv("RAG_E2E_TOP_K", "3")), float(os.getenv("RAG_E2E_TIMEOUT_SECONDS", "20")), Path(os.getenv("RAG_E2E_ARTIFACT_DIR", "evals/runs/rag")))
+        config = cls(os.getenv("RAG_E2E_BASE_URL", "").strip().rstrip("/"), os.getenv("RAG_E2E_GATEWAY_HMAC_SECRET", "").strip(), os.getenv("RAG_E2E_ROLE", "MANAGER").strip().upper(), os.getenv("RAG_E2E_QUERY", "").strip(), int(os.getenv("RAG_E2E_TOP_K", "3")), float(os.getenv("RAG_E2E_TIMEOUT_SECONDS", "20")), Path(os.getenv("RAG_E2E_ARTIFACT_DIR", "evals/runs/rag")), os.getenv("RAG_E2E_INTENT", "REGULATION_CHECK").strip().upper())
         if not config.base_url or len(config.gateway_secret) < 32:
             raise ManualRagE2EError("RAG_E2E_BASE_URL and a 32+ character gateway secret are required")
         if len(config.role) < 2 or len(config.query) < 2 or not 1 <= config.top_k <= 10:
             raise ManualRagE2EError("Invalid Manual RAG E2E role, query, or top_k")
+        if config.intent not in {
+            "PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA",
+            "REGULATION_CHECK", "COMPARISON", "SUMMARY",
+        }:
+            raise ManualRagE2EError("Invalid Manual RAG E2E intent")
         return config
 
 
@@ -101,11 +107,25 @@ class ManualRagE2EOrchestrator:
         try:
             self._verify_health(report, "/health/live", "LIVE_READY")
             self._verify_health(report, "/health/ready", "READY")
-            search_payload = {"query": self._config.query, "top_k": self._config.top_k, "recent_utterances": [], "selected_document_ids": []}
+            search_payload = {
+                "query": self._config.query,
+                "top_k": self._config.top_k,
+                "recent_utterances": [],
+                "selected_document_ids": [],
+                "intent": self._config.intent,
+            }
             search = self._http.post(f"{self._config.base_url}/v1/tools/internal-manual-search", search_payload, self._signed_headers(search_payload, trace_id))
             evidence_blocks = self._evidence_blocks(search)
-            report.record("SEARCHED", {"evidence_count": len(search.get("results", [])), "gateway_request_id": search.get("gateway_request_id", "")})
-            answer_payload = {"query": self._config.query, "evidence_blocks": evidence_blocks}
+            retrieval_request_id = str(
+                search.get("request_id") or search.get("gateway_request_id") or ""
+            ) or None
+            report.record("SEARCHED", {"evidence_count": len(search.get("results", [])), "gateway_request_id": search.get("gateway_request_id", ""), "intent": self._config.intent})
+            answer_payload = {
+                "query": self._config.query,
+                "evidence_blocks": evidence_blocks,
+                "intent": self._config.intent,
+                "retrieval_request_id": retrieval_request_id,
+            }
             answer = self._http.post(f"{self._config.base_url}/v1/tools/internal-manual-answer", answer_payload, self._signed_headers(answer_payload, trace_id))
             self._validate_answer(answer, evidence_blocks)
             report.record("ANSWERED", {"status": answer["status"], "citation_count": len(answer["citations"]), "gateway_request_id": answer.get("gateway_request_id", "")})
@@ -133,6 +153,8 @@ class ManualRagE2EOrchestrator:
             canonical_answer_request(
                 payload["query"],
                 tuple(payload.get("evidence_blocks", [])),
+                str(payload.get("intent", "REGULATION_CHECK")),
+                payload.get("retrieval_request_id"),
             )
             if "evidence_blocks" in payload
             else canonical_search_request(
@@ -140,6 +162,9 @@ class ManualRagE2EOrchestrator:
                 int(payload["top_k"]),
                 tuple(payload.get("recent_utterances", ())),
                 tuple(payload.get("selected_document_ids", ())),
+                payload.get("resolved_question"),
+                tuple(payload.get("domains", ())),
+                str(payload.get("intent", "REGULATION_CHECK")),
             )
         )
         signature = GatewayRequestAuthenticator.build_signature(
@@ -148,29 +173,37 @@ class ManualRagE2EOrchestrator:
         return {"X-Verified-Role": self._config.role, "X-Request-Id": request_id, "X-Request-Timestamp": timestamp, "X-Request-Signature": signature, "X-Trace-Id": trace_id}
 
     @staticmethod
-    def _evidence_blocks(search: dict[str, Any]) -> list[dict[str, str]]:
+    def _evidence_blocks(search: dict[str, Any]) -> list[dict[str, Any]]:
         results = search.get("results")
         if search.get("no_evidence") or not isinstance(results, list) or not results:
             raise ManualRagE2EError("Manual RAG search returned no evidence")
-        blocks = [
-            {
-                "evidence_id": str(item.get("evidence_id", "")).strip(),
-                "text": str(item.get("content") or item.get("snippet") or "").strip(),
-                "title": str(item.get("title", "")).strip(),
-                "manual_id": str(item.get("manual_id", "")).strip(),
-                "section_title": str(item.get("section_title", "")).strip(),
-                "citation": str(item.get("citation", "")).strip(),
-            }
-            for item in results
-            if isinstance(item, dict)
-        ]
-        blocks = [item for item in blocks if item["evidence_id"] and item["text"]]
+        blocks: list[dict[str, Any]] = []
+        metadata_fields = (
+            "title", "manual_id", "version", "section_title", "page_start",
+            "chunk_id", "chunk_index", "score", "vector_score", "lexical_score",
+            "document_status", "approval_status", "validity_status",
+            "effective_from", "expires_at", "citation", "ranking_stage",
+        )
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            evidence_id = str(item.get("evidence_id", "")).strip()
+            content = str(item.get("content") or item.get("snippet") or "").strip()
+            if not evidence_id or not content:
+                continue
+            block = {field: item.get(field) for field in metadata_fields}
+            block.update({
+                "evidence_id": evidence_id,
+                "document_id": str(item.get("manual_id", "")).strip(),
+                "content": content,
+            })
+            blocks.append(block)
         if not blocks:
             raise ManualRagE2EError("Search results did not contain usable evidence blocks")
         return blocks
 
     @staticmethod
-    def _validate_answer(answer: dict[str, Any], evidence_blocks: list[dict[str, str]]) -> None:
+    def _validate_answer(answer: dict[str, Any], evidence_blocks: list[dict[str, Any]]) -> None:
         if answer.get("status") != "ANSWER" or not isinstance(answer.get("answer"), str) or not answer["answer"].strip():
             detail = answer.get("error") or answer.get("message") or answer.get("detail") or answer.get("answer") or "no diagnostic detail"
             raise ManualRagE2EError(f"Answer service returned {answer.get('status', 'invalid')}: {detail}")

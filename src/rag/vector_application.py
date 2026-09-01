@@ -431,7 +431,7 @@ class VectorRagApplication:
 
     def catalog(self, role: str) -> list[dict[str, object]]:
         decision = self._policy.decide(role, 1)
-        return self._repository.catalog(role, decision.allow_unresolved)
+        return self._repository.catalog(role, decision.allow_unresolved_validity)
 
     def source_pdf(self, manual_id: str, role: str) -> tuple[bytes, str]:
         decision = self._policy.decide(role, 1)

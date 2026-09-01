@@ -54,10 +54,32 @@ class VectorSettings:
         retrieval = json.loads(
             (config_dir / "vector_retrieval.json").read_text(encoding="utf-8")
         )
-        configured_model_path = os.getenv("RAG_MODEL_PATH", embedding["local_path"])
         provider = os.getenv("RAG_EMBEDDING_PROVIDER", embedding.get("provider", "qwen")).strip().lower()
-        model_id = os.getenv("OPENAI_EMBEDDING_MODEL", embedding["model_id"]).strip() if provider == "openai" else embedding["model_id"]
-        dimension = int(os.getenv("OPENAI_EMBEDDING_DIMENSIONS", str(embedding["dimension"]))) if provider == "openai" else int(embedding["dimension"])
+        if provider not in {"openai", "qwen"}:
+            raise ValueError(f"Unsupported RAG_EMBEDDING_PROVIDER: {provider}")
+        profile: dict[str, object] = embedding
+        if provider == "qwen":
+            profiles = json.loads(
+                (config_dir / "embedding_models.json").read_text(encoding="utf-8")
+            )
+            profile = profiles["profiles"]["qwen3_06b"]
+        configured_model_path = os.getenv(
+            "RAG_MODEL_PATH", str(profile["local_path"])
+        )
+        model_id = (
+            os.getenv("OPENAI_EMBEDDING_MODEL", str(embedding["model_id"])).strip()
+            if provider == "openai"
+            else str(profile["model_id"])
+        )
+        dimension = (
+            int(os.getenv("OPENAI_EMBEDDING_DIMENSIONS", str(embedding["dimension"])))
+            if provider == "openai"
+            else int(profile["dimension"])
+        )
+        if dimension != int(embedding["dimension"]):
+            raise ValueError(
+                "Embedding dimension must match the configured pgvector schema"
+            )
         return cls(
             project_root=root,
             config_dir=config_dir,
@@ -74,12 +96,16 @@ class VectorSettings:
             embedding_timeout_seconds=float(os.getenv("OPENAI_EMBEDDING_TIMEOUT_SECONDS", "30")),
             embedding_maximum_attempts=int(os.getenv("OPENAI_EMBEDDING_MAX_ATTEMPTS", "3")),
             model_id=model_id,
-            model_revision=(f"{model_id}:d{dimension}" if provider == "openai" else embedding["revision"]),
+            model_revision=(
+                f"{model_id}:d{dimension}"
+                if provider == "openai"
+                else str(profile["revision"])
+            ),
             dimension=dimension,
             device=os.getenv("RAG_DEVICE", embedding["device"]).strip().lower(),
             batch_size=int(embedding["batch_size"]),
-            query_prompt_name=embedding["query_prompt_name"],
-            max_sequence_length=int(embedding.get("max_sequence_length", 2048)),
+            query_prompt_name=str(profile.get("query_prompt_name") or ""),
+            max_sequence_length=int(profile.get("max_sequence_length", 2048)),
             chunk_max_tokens=int(retrieval.get("chunk_max_tokens", 384)),
             chunk_overlap_tokens=int(retrieval.get("chunk_overlap_tokens", 64)),
         )

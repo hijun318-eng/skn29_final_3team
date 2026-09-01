@@ -7656,6 +7656,54 @@
         "summary": "Authenticated Session"
       }
     },
+    "/chat/route": {
+      "post": {
+        "description": "대화 저장소나 분석 카탈로그를 열기 전에 실행 경로만 결정한다.",
+        "operationId": "routeChatQuestion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Routechatquestion",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Route Chat Question"
+      }
+    },
     "/conversations": {
       "post": {
         "description": "새로운 분석 대화방을 생성한다.",

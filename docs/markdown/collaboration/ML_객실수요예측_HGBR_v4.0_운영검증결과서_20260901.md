@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | V4.0 단독 재학습과 제출용 객관적 평가지표 검증 결과 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.3 |
-| 문서 기준일 | 2026-09-01 13:24 |
+| 버전 | v1.4 |
+| 문서 기준일 | 2026-09-01 13:29 |
 | 작성·수정 | Codex |
 | 문서 ID | `ML-ROOM-DEMAND-V4-RESULT-20260901` |
 | 기준 모델 | `room-demand-operational-hgbr-v4.0.0` |
@@ -301,11 +301,11 @@ commit은 기록됐지만 미커밋 변경이 있으므로 완전한 재현 기�
 
 ### 16.3 jaehong 브랜치 적용 전 검증
 
-재학습·평가 변경을 `origin/jaehong` 기반 전용 브랜치 `codex/jaehong-ml-v4`에 적용한 뒤 같은 저장소 Gate를 다시 실행했다. V4 ML 경로는 통과했지만 jaehong 원본에 존재하던 RAG·Backend·release archive 문제가 확인됐다.
+재학습·평가 변경을 최신 `origin/jaehong`과 병합한 전용 브랜치 `codex/jaehong-ml-v4`에 적용한 뒤 같은 저장소 Gate를 다시 실행했다. V4 ML·Backend 통합 경로는 통과했지만 jaehong 원본에 존재하던 RAG·Backend·release archive 문제가 확인됐다.
 
 | 검증 | 결과 |
 |---|---|
-| V4 ML 테스트 | PASS, 39개 |
+| V4 ML·Backend 통합 테스트 | PASS, 42개 |
 | Frontend 테스트 | PASS, 26개 |
 | Frontend production build | PASS, 2,689 modules |
 | Compose profile config | PASS, 11/11 조합 |
@@ -354,6 +354,7 @@ core 실패는 HTTP runtime timeout, metric governance, runtime generality, rele
 | 1.1 | 2026-09-01 | V4 단독 purged 재학습, 제출 지표·상세표·bootstrap·latency·재현정보 반영 |
 | 1.2 | 2026-09-01 | 모델 독립 재추론·데이터 품질 검사와 저장소 전체 Gate 결과 반영 |
 | 1.3 | 2026-09-01 | origin/jaehong 기반 적용 후 V4·Frontend·Compose 통과와 기존 저장소 실패 기록 |
+| 1.4 | 2026-09-01 | 최신 origin/jaehong 병합, ML·Backend 42개와 OpenAPI 계약 재검증 반영 |
 
 ## 20. 결론
 

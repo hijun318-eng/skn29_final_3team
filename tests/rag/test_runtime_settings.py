@@ -25,6 +25,23 @@ class RuntimeSettingsTest(unittest.TestCase):
 
         self.assertEqual(settings.device, "cpu")
 
+    @patch.dict(
+        os.environ,
+        {
+            "RAG_DATABASE_URL": "postgresql://rag_test@localhost/rag_test",
+            "RAG_EMBEDDING_PROVIDER": "qwen",
+        },
+    )
+    def test_qwen_runtime_uses_its_pinned_model_identity(self) -> None:
+        settings = VectorSettings.load(PROJECT_ROOT)
+
+        self.assertEqual(settings.model_id, "Qwen/Qwen3-Embedding-0.6B")
+        self.assertEqual(
+            settings.model_revision,
+            "4000000000000000000000000000000000000000",
+        )
+        self.assertEqual(settings.dimension, 1024)
+
     @patch("src.rag.runtime_device.torch.cuda.is_available", return_value=True)
     def test_auto_prefers_cuda_when_available(self, _cuda_available: object) -> None:
         self.assertEqual(RuntimeDeviceSelector.resolve("auto"), "cuda")

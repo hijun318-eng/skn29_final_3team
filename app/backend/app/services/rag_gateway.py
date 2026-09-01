@@ -19,6 +19,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.authorization import role_is_entitled
 from app.database import session_scope
 
 
@@ -1363,7 +1364,7 @@ class InternalManualAgent:
             raise RagToolError("RAG_REGISTRY_UNAVAILABLE", "RAG Tool Registry를 확인하지 못했습니다.") from error
         if not self._registry_contract_matches(row):
             raise RagToolError("RAG_TOOL_DISABLED", "RAG Tool이 승인되지 않았습니다.", 503)
-        if app_role not in RAG_TOOL_ROLES:
+        if not role_is_entitled(app_role, RAG_TOOL_ROLES):
             raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
 
     @staticmethod

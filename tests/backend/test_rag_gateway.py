@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 import hashlib
 from pathlib import Path
 import sys
@@ -679,6 +680,31 @@ def test_registry_activation_requires_the_exact_candidate_descriptor(
     receipt[field] = drift
 
     assert InternalManualAgent._registry_contract_matches(receipt) is False
+
+
+def test_platform_admin_inherits_rag_tool_access_without_descriptor_drift() -> None:
+    class _RegistryResult:
+        def mappings(self) -> _RegistryResult:
+            return self
+
+        def one_or_none(self) -> dict[str, object]:
+            return _registry_receipt()
+
+    class _RegistrySession:
+        async def execute(self, *_args: object, **_kwargs: object) -> _RegistryResult:
+            return _RegistryResult()
+
+    @asynccontextmanager
+    async def enabled_registry(_database_url: str):
+        yield _RegistrySession()
+
+    agent = object.__new__(InternalManualAgent)
+    agent._database_url = "postgresql+asyncpg://registry-test"  # type: ignore[attr-defined]
+
+    with patch("app.services.rag_gateway.session_scope", enabled_registry):
+        asyncio.run(agent._assert_enabled("platform_admin"))
+
+    assert RAG_TOOL_ROLES == ("analyst",)
 
 
 def _source_agent() -> InternalManualAgent:

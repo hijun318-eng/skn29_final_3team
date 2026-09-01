@@ -213,6 +213,12 @@ class DemandMetricSuite:
         residual = prediction - actual
         centered = residual - residual.mean()
         standard_deviation = float(residual.std(ddof=0))
+        residual_quantiles = np.quantile(
+            residual, [0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
+        )
+        absolute_quantiles = np.quantile(
+            np.abs(residual), [0.50, 0.75, 0.90, 0.95, 0.99]
+        )
         skewness = (
             float(np.mean((centered / standard_deviation) ** 3))
             if standard_deviation > 0.0
@@ -232,6 +238,20 @@ class DemandMetricSuite:
             "residual_mean_rooms": float(residual.mean()),
             "residual_standard_deviation_rooms": standard_deviation,
             "residual_skewness": skewness,
+            "residual_quantiles_rooms": {
+                name: float(value)
+                for name, value in zip(
+                    ("p01", "p05", "p10", "p25", "p50", "p75", "p90", "p95", "p99"),
+                    residual_quantiles,
+                )
+            },
+            "absolute_error_quantiles_rooms": {
+                name: float(value)
+                for name, value in zip(
+                    ("p50", "p75", "p90", "p95", "p99"),
+                    absolute_quantiles,
+                )
+            },
             "residual_lag_1_autocorrelation": cls._grouped_autocorrelation(
                 sorted_frame, 1
             ),

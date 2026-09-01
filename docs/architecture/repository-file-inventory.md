@@ -1,5 +1,13 @@
 # Repository file integrity inventory
 
+| 항목 | 내용 |
+|---|---|
+| 문서 설명 | 저장소의 모든 비무시 파일 분류와 운영 무결성 감사 결과 |
+| 문서 분류 | 일반 문서 |
+| 버전 | v1.0 |
+| 문서 기준일 | 2026-09-01 12:14 |
+| 작성·수정 | scripts/audit_repository_integrity.py |
+
 > 이 파일은 `python scripts/audit_repository_integrity.py --write-report`로 생성한다. 
 > Git이 관리하거나 명시적으로 추가된 모든 비무시 파일을 분류하며, test/archive 결과를 live 증거로 승격하지 않는다.
 
@@ -10,11 +18,11 @@
 | archive | 149 |
 | documentation | 141 |
 | offline-ml-tool | 2 |
-| production | 510 |
-| project-config | 97 |
+| production | 500 |
+| project-config | 93 |
 | runtime-config | 89 |
-| runtime-contract | 53 |
-| test | 210 |
+| runtime-contract | 51 |
+| test | 207 |
 
 운영 무결성 위반: **1건**
 
@@ -64,8 +72,6 @@
 | `app/backend/app/adapters/governed_data_platform.py` | production | REVIEWED |
 | `app/backend/app/adapters/legacy_semantic_release.py` | production | REVIEWED |
 | `app/backend/app/adapters/ml_prediction_client.py` | production | REVIEWED |
-| `app/backend/app/adapters/ml_prediction_client.py` | production | REVIEWED |
-| `app/backend/app/adapters/ml_prediction_client.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_adapter.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_context.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_schemas.py` | production | REVIEWED |
@@ -95,8 +101,6 @@
 | `app/backend/app/api/analysis_router_runtime.py` | production | REVIEWED |
 | `app/backend/app/api/analysis_router_support.py` | production | REVIEWED |
 | `app/backend/app/api/mcp_router.py` | production | REVIEWED |
-| `app/backend/app/api/ml_router.py` | production | REVIEWED |
-| `app/backend/app/api/ml_router.py` | production | REVIEWED |
 | `app/backend/app/api/ml_router.py` | production | REVIEWED |
 | `app/backend/app/api/rag_router.py` | production | REVIEWED |
 | `app/backend/app/api/report_router.py` | production | REVIEWED |
@@ -173,8 +177,6 @@
 | `app/backend/app/services/ml_actual_comparison.py` | production | REVIEWED |
 | `app/backend/app/services/ml_chat_request.py` | production | REVIEWED |
 | `app/backend/app/services/ml_prediction_service.py` | production | REVIEWED |
-| `app/backend/app/services/ml_prediction_service.py` | production | REVIEWED |
-| `app/backend/app/services/ml_prediction_service.py` | production | REVIEWED |
 | `app/backend/app/services/rag_gateway.py` | production | REVIEWED |
 | `app/backend/app/services/rag_routing.py` | production | REVIEWED |
 | `app/backend/app/services/readiness.py` | production | REVIEWED |
@@ -204,8 +206,6 @@
 | `app/backend/contracts/analysis_capability.multi_asset_join.v1.json` | runtime-contract | REVIEWED |
 | `app/backend/contracts/analysis_capability.product.v1.json` | runtime-contract | REVIEWED |
 | `app/backend/contracts/analysis_capability.single_asset.v1.json` | runtime-contract | REVIEWED |
-| `app/backend/contracts/openapi.v0.1.json` | runtime-contract | REVIEWED |
-| `app/backend/contracts/openapi.v0.1.json` | runtime-contract | REVIEWED |
 | `app/backend/contracts/openapi.v0.1.json` | runtime-contract | REVIEWED |
 | `app/backend/contracts/state_mapping.v0.1.json` | runtime-contract | REVIEWED |
 | `app/backend/Dockerfile` | runtime-config | REVIEWED |
@@ -292,7 +292,6 @@
 | `app/frontend/src/components/ml/MLPredictionCard.css` | production | REVIEWED |
 | `app/frontend/src/components/ml/MLPredictionCard.jsx` | production | REVIEWED |
 | `app/frontend/src/components/ml/MLPredictionResult.jsx` | production | REVIEWED |
-| `app/frontend/src/components/ml/MLPredictionWorkspace.css` | production | REVIEWED |
 | `app/frontend/src/components/ml/MLPredictionWorkspace.css` | production | REVIEWED |
 | `app/frontend/src/components/rag/RagAnswerCard.jsx` | production | REVIEWED |
 | `app/frontend/src/components/rag/RagEmptyState.jsx` | production | REVIEWED |
@@ -406,8 +405,6 @@
 | `docs/architecture/canonical-semantic-release-migration.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/daesung/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/jaehong/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/junhee/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -479,6 +476,8 @@
 | `docs/e2e_mvp/source/04_Answervice_단계별_구현_가이드.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/markdown/collaboration/ML_HGBR_v3.3_최적화_검증보고서_20260829.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/markdown/collaboration/ML_RAG_작업내역_및_검증결과_20260830.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/markdown/collaboration/ML_객실수요예측_HGBR_v2.2_v3.3_v4.0_통합비교보고서_20260901.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/markdown/collaboration/ML_객실수요예측_HGBR_v2.2_제출용_객관적결과지표서_20260901.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/markdown/collaboration/ML_객실수요예측_HGBR_v4.0_운영검증결과서_20260901.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/ML_RAG_통합_개선_반영사항_20260828.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/ML_RAG_통합_검증_방어논리_20260828.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -556,8 +555,6 @@
 | `infrastructure/ai/node2_serverless/handler.py` | project-config | REVIEWED |
 | `infrastructure/ai/node2_serverless/main.py` | project-config | REVIEWED |
 | `infrastructure/ai/node2_serverless/README.md` | documentation | REFERENCE_NON_RUNTIME |
-| `infrastructure/database/.env.example` | project-config | REVIEWED |
-| `infrastructure/database/.env.example` | project-config | REVIEWED |
 | `infrastructure/database/.env.example` | project-config | REVIEWED |
 | `infrastructure/database/.gitignore` | project-config | REVIEWED |
 | `infrastructure/database/clickhouse/config.d/timezone.xml` | project-config | REVIEWED |
@@ -819,8 +816,6 @@
 | `infrastructure/handoff/New-HandoffBundle.ps1` | project-config | REVIEWED |
 | `infrastructure/handoff/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `infrastructure/ml/compose.fragment.yml` | project-config | REVIEWED |
-| `infrastructure/ml/compose.fragment.yml` | project-config | REVIEWED |
-| `infrastructure/ml/compose.fragment.yml` | project-config | REVIEWED |
 | `infrastructure/ml/Dockerfile` | project-config | REVIEWED |
 | `infrastructure/ml/sql/02_room_demand_point_in_time_signals_v43_synthetic.sql` | project-config | REVIEWED |
 | `infrastructure/ml/sql/03_room_demand_point_in_time_snapshot_store.sql` | project-config | REVIEWED |
@@ -850,8 +845,6 @@
 | `prototypes/report_assistant_v2/test_workflow.py` | project-config | REVIEWED |
 | `prototypes/report_assistant_v2/workflow.py` | project-config | REVIEWED |
 | `README.md` | documentation | REFERENCE_NON_RUNTIME |
-| `scripts/audit_repository_integrity.py` | production | REVIEWED |
-| `scripts/audit_repository_integrity.py` | production | REVIEWED |
 | `scripts/audit_repository_integrity.py` | production | REVIEWED |
 | `scripts/build_node2_serverless_image.ps1` | production | REVIEWED |
 | `scripts/build_node2_static_checkpoint.py` | production | REVIEWED |
@@ -930,8 +923,6 @@
 | `src/ml/room_demand_timeseries/contracts.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/evaluate.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/evaluation_metrics.py` | production | REVIEWED |
-| `src/ml/room_demand_timeseries/evaluation_metrics.py` | production | REVIEWED |
-| `src/ml/room_demand_timeseries/evaluation_metrics.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/features.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/finalize_approval.py` | offline-ml-tool | REVIEWED |
 | `src/ml/room_demand_timeseries/freeze.py` | offline-ml-tool | REVIEWED |
@@ -950,6 +941,8 @@
 | `src/ml/room_demand_timeseries/operational_readiness.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_release.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_release_compare.py` | production | REVIEWED |
+| `src/ml/room_demand_timeseries/operational_retrain_artifacts.py` | production | REVIEWED |
+| `src/ml/room_demand_timeseries/operational_retrain_v4.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_rolling_validate.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_self_evaluation.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_self_evaluation_support.py` | production | REVIEWED |
@@ -960,12 +953,11 @@
 | `src/ml/room_demand_timeseries/operational_snapshot_repository.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_split_validation.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_statistical_validation.py` | production | REVIEWED |
+| `src/ml/room_demand_timeseries/operational_submission_evaluation.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/operational_training.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/optimize_hgbr.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/requirements.hgbr-v3.3.txt` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/rolling_validate.py` | production | REVIEWED |
-| `src/ml/room_demand_timeseries/runtime_api.py` | production | REVIEWED |
-| `src/ml/room_demand_timeseries/runtime_api.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/runtime_api.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/train.py` | production | REVIEWED |
 | `src/ml/room_demand_timeseries/validate_candidate.py` | production | REVIEWED |
@@ -1135,16 +1127,12 @@
 | `tests/backend/test_metric_governance_runtime_v2.py` | test | TEST_ONLY |
 | `tests/backend/test_metric_reduction.py` | test | TEST_ONLY |
 | `tests/backend/test_migration_compatibility.py` | test | TEST_ONLY |
-| `tests/backend/test_migration_compatibility.py` | test | TEST_ONLY |
-| `tests/backend/test_migration_compatibility.py` | test | TEST_ONLY |
 | `tests/backend/test_ml_actual_comparison.py` | test | TEST_ONLY |
 | `tests/backend/test_ml_v4_jaehong_integration.py` | test | TEST_ONLY |
 | `tests/backend/test_model_runtime_routing.py` | test | TEST_ONLY |
 | `tests/backend/test_node1_grounding.py` | test | TEST_ONLY |
 | `tests/backend/test_node1_previous_period_anchor.py` | test | TEST_ONLY |
 | `tests/backend/test_node1_signal_wire_contract.py` | test | TEST_ONLY |
-| `tests/backend/test_openapi_contract.py` | test | TEST_ONLY |
-| `tests/backend/test_openapi_contract.py` | test | TEST_ONLY |
 | `tests/backend/test_openapi_contract.py` | test | TEST_ONLY |
 | `tests/backend/test_phase10_runtime_audit_grants.py` | test | TEST_ONLY |
 | `tests/backend/test_phase10_runtime_query_grants.py` | test | TEST_ONLY |
@@ -1250,6 +1238,7 @@
 | `tests/ml/test_operational_self_evaluation.py` | test | TEST_ONLY |
 | `tests/ml/test_operational_shadow_validation.py` | test | TEST_ONLY |
 | `tests/ml/test_operational_snapshot.py` | test | TEST_ONLY |
+| `tests/ml/test_operational_submission_evaluation.py` | test | TEST_ONLY |
 | `tests/rag/test_answer_safety_p0.py` | test | TEST_ONLY |
 | `tests/rag/test_answer_templates.py` | test | TEST_ONLY |
 | `tests/rag/test_bm25.py` | test | TEST_ONLY |
@@ -1273,3 +1262,9 @@
 | `tests/support/fakes.py` | test | TEST_ONLY |
 | `tests/support/report_repository.py` | test | TEST_ONLY |
 | `tests/support/runtime_app.py` | test | TEST_ONLY |
+
+## 변경 내역
+
+| 버전 | 일자 | 변경 내용 |
+|---|---|---|
+| v1.0 | 2026-09-01 | 자동 inventory에 문서 정책 metadata와 변경 내역 추가 |

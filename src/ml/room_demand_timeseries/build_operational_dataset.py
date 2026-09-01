@@ -30,6 +30,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def build_development_dataset(
+    datasets: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """최종 재학습용 Train+Validation만 결합하고 Test는 제외한다."""
+
+    missing = sorted({"TRAIN", "VALIDATION"} - set(datasets))
+    if missing:
+        raise ValueError(f"development dataset missing splits: {missing}")
+    return pd.concat(
+        [datasets["TRAIN"], datasets["VALIDATION"]], ignore_index=True
+    )
+
+
 def main() -> None:
     """일별 실적과 시점 신호를 검증해 학습·평가 자료를 생성한다."""
 
@@ -87,7 +100,7 @@ def main() -> None:
         path = args.output_dir / f"{name.lower()}.csv.gz"
         frame.to_csv(path, index=False, compression="gzip")
         paths[name.lower()] = path
-    development = pd.concat(datasets.values(), ignore_index=True)
+    development = build_development_dataset(datasets)
     development_path = args.output_dir / "development.csv.gz"
     development.to_csv(development_path, index=False, compression="gzip")
     paths["development"] = development_path

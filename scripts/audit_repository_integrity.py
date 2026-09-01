@@ -478,6 +478,14 @@ def _render_report(paths: tuple[Path, ...], findings: tuple[Finding, ...]) -> st
     lines = [
         "# Repository file integrity inventory",
         "",
+        "| 항목 | 내용 |",
+        "|---|---|",
+        "| 문서 설명 | 저장소의 모든 비무시 파일 분류와 운영 무결성 감사 결과 |",
+        "| 문서 분류 | 일반 문서 |",
+        "| 버전 | v1.0 |",
+        "| 문서 기준일 | 2026-09-01 12:14 |",
+        "| 작성·수정 | scripts/audit_repository_integrity.py |",
+        "",
         "> 이 파일은 `python scripts/audit_repository_integrity.py --write-report`로 생성한다. ",
         "> Git이 관리하거나 명시적으로 추가된 모든 비무시 파일을 분류하며, test/archive 결과를 live 증거로 승격하지 않는다.",
         "",
@@ -502,7 +510,17 @@ def _render_report(paths: tuple[Path, ...], findings: tuple[Finding, ...]) -> st
         relative = _relative(path)
         escaped = relative.replace("|", "\\|")
         lines.append(f"| `{escaped}` | {_classify(relative)} | {_inventory_status(path)} |")
-    lines.append("")
+    lines.extend(
+        [
+            "",
+            "## 변경 내역",
+            "",
+            "| 버전 | 일자 | 변경 내용 |",
+            "|---|---|---|",
+            "| v1.0 | 2026-09-01 | 자동 inventory에 문서 정책 metadata와 변경 내역 추가 |",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 

@@ -12,6 +12,13 @@ from .operational_metrics import DemandMetricSuite, METRIC_CONTRACT_VERSION
 from .operational_modeling import OperationalDemandModel
 
 
+BASELINE_NAME = "seasonal_same_weekday_mean_4w_clipped"
+BASELINE_DEFINITION = (
+    "목표일과 같은 요일의 최근 4주 평균 판매 객실 수를 "
+    "0과 목표일 판매 가능 객실 수 사이로 제한한 기준선"
+)
+
+
 def error_metrics(
     actual: np.ndarray, prediction: np.ndarray
 ) -> dict[str, float | int | None]:
@@ -82,6 +89,8 @@ def evaluate_operational_model(
     low_volume = room_types.loc[room_types["actual_mean"] < 10]
     return {
         "metric_contract_version": METRIC_CONTRACT_VERSION,
+        "baseline_name": BASELINE_NAME,
+        "baseline_definition": BASELINE_DEFINITION,
         "metrics": overall,
         "baseline_metrics": overall_baseline,
         "baseline_improvement": overall_comparison["relative_improvement"]["wape"],

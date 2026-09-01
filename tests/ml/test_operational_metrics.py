@@ -67,3 +67,25 @@ def test_paired_moving_block_bootstrap_is_positive_and_reproducible() -> None:
     assert first["statistically_better"] is True
     assert first["candidate_win_rate_by_cutoff"] == 1.0
     assert first["ci95"]["mae_improvement_rooms"][0] > 0.0
+
+
+def test_paired_bootstrap_can_use_target_date_as_the_time_block() -> None:
+    frame = pd.DataFrame(
+        {
+            "target_date": pd.date_range("2026-01-02", periods=28, freq="D"),
+            "target_rooms_sold": np.linspace(20.0, 47.0, 28),
+        }
+    )
+    actual = frame["target_rooms_sold"].to_numpy()
+
+    report = PairedBaselineValidator(samples=100, random_seed=7).validate(
+        frame,
+        actual + 1.0,
+        actual + 4.0,
+        date_column="target_date",
+    )
+
+    assert report["method"] == "paired_moving_block_bootstrap_by_target_date"
+    assert report["date_column"] == "target_date"
+    assert report["evaluation_days"] == 28
+    assert report["cutoff_days"] is None

@@ -33,9 +33,9 @@ class PairedBaselineValidator:
         baseline: Iterable[float],
         *,
         actual_column: str = "target_rooms_sold",
-        cutoff_column: str = "cutoff_date",
+        date_column: str = "cutoff_date",
     ) -> dict[str, Any]:
-        """개선량 신뢰구간과 cutoff 단위 승·무·패를 반환한다."""
+        """개선량 신뢰구간과 지정 날짜 단위 승·무·패를 반환한다."""
 
         actual = frame[actual_column].to_numpy(dtype=float)
         candidate_values = np.asarray(candidate, dtype=float).reshape(-1)
@@ -49,24 +49,60 @@ class PairedBaselineValidator:
             raise ValueError("paired validation contains a non-finite value")
         daily = pd.DataFrame(
             {
-                "cutoff": pd.to_datetime(frame[cutoff_column], errors="raise"),
+                "evaluation_date": pd.to_datetime(
+                    frame[date_column], errors="raise"
+                ),
                 "actual_abs": np.abs(actual),
                 "candidate_error": np.abs(candidate_values - actual),
                 "baseline_error": np.abs(baseline_values - actual),
                 "rows": 1.0,
             }
-        ).groupby("cutoff", sort=True).sum()
+        ).groupby("evaluation_date", sort=True).sum()
         if daily.empty:
-            raise ValueError("paired validation has no cutoff rows")
+            raise ValueError("paired validation has no evaluation-date rows")
         point = self._improvement(daily.sum().to_numpy(dtype=float))
         bootstrap = self._bootstrap(daily.to_numpy(dtype=float))
         difference = daily["baseline_error"] - daily["candidate_error"]
         tolerance = 1e-12
+        rates = {
+            "candidate_win_rate_by_evaluation_date": float(
+                (difference > tolerance).mean()
+            ),
+            "tie_rate_by_evaluation_date": float(
+                (difference.abs() <= tolerance).mean()
+            ),
+            "candidate_loss_rate_by_evaluation_date": float(
+                (difference < -tolerance).mean()
+            ),
+            f"candidate_win_rate_by_{date_column}": float(
+                (difference > tolerance).mean()
+            ),
+            f"tie_rate_by_{date_column}": float(
+                (difference.abs() <= tolerance).mean()
+            ),
+            f"candidate_loss_rate_by_{date_column}": float(
+                (difference < -tolerance).mean()
+            ),
+        }
+        if date_column == "cutoff_date":
+            rates.update(
+                {
+                    "candidate_win_rate_by_cutoff": rates[
+                        "candidate_win_rate_by_evaluation_date"
+                    ],
+                    "tie_rate_by_cutoff": rates["tie_rate_by_evaluation_date"],
+                    "candidate_loss_rate_by_cutoff": rates[
+                        "candidate_loss_rate_by_evaluation_date"
+                    ],
+                }
+            )
         return {
-            "method": "paired_moving_block_bootstrap_by_cutoff_date",
+            "method": f"paired_moving_block_bootstrap_by_{date_column}",
+            "date_column": date_column,
             "samples": self.samples,
             "block_days": min(self.block_days, len(daily)),
-            "cutoff_days": int(len(daily)),
+            "evaluation_days": int(len(daily)),
+            "cutoff_days": int(len(daily)) if date_column == "cutoff_date" else None,
             "point_estimate": point,
             "ci95": {
                 key: [
@@ -75,9 +111,7 @@ class PairedBaselineValidator:
                 ]
                 for key in point
             },
-            "candidate_win_rate_by_cutoff": float((difference > tolerance).mean()),
-            "tie_rate_by_cutoff": float((difference.abs() <= tolerance).mean()),
-            "candidate_loss_rate_by_cutoff": float((difference < -tolerance).mean()),
+            **rates,
             "statistically_better": bool(
                 np.quantile(
                     [row["wape_absolute_improvement"] for row in bootstrap],

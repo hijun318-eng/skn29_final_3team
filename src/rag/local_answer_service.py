@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import os
 from typing import Any
@@ -10,6 +9,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from .answer_contracts import GroundedModelOutput
 from .answer_safety import AnswerSafetySettings, EvidenceSafetyGate
 from .answer_prompt import parse_answer_input
 from .manual_article_formatter import ManualArticleFormatter, ManualClaim, ManualSection
@@ -547,6 +547,28 @@ class EvidenceBoundAnswerComposer:
         return [dict(item) for item in payload["evidence"]]
 
 
+def _grounded_model_output(answer: dict[str, Any]) -> GroundedModelOutput:
+    """결정론적 composer 결과를 외부·로컬 공통 최소 모델 계약으로 축약한다."""
+
+    status = "ANSWER" if answer.get("status") == "ANSWER" else "NO_EVIDENCE"
+    sections = []
+    if status == "ANSWER":
+        sections = [
+            {
+                "title": str(section.get("title") or "근거 기반 답변"),
+                "claims": [
+                    {
+                        "text": str(claim.get("text") or ""),
+                        "evidence_ids": list(claim.get("evidence_ids") or []),
+                    }
+                    for claim in section.get("claims") or []
+                ],
+            }
+            for section in answer.get("sections") or []
+        ]
+    return GroundedModelOutput(status=status, sections=sections)
+
+
 def create_app() -> FastAPI:
     """health와 evidence-bound chat completion route를 포함한 FastAPI app을 만든다."""
 
@@ -563,7 +585,9 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/chat/completions")
     def chat_completion(request: ChatCompletionRequest) -> dict[str, Any]:
-        content = json.dumps(composer.compose(request.messages), ensure_ascii=False)
+        content = _grounded_model_output(
+            composer.compose(request.messages)
+        ).model_dump_json()
         return {
             "id": "rag-local-answer",
             "object": "chat.completion",

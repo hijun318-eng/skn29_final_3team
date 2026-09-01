@@ -4,10 +4,53 @@ import unittest
 
 from src.rag.answer_prompt import build_answer_prompt
 from src.rag.answer_safety import AnswerSafetySettings
-from src.rag.local_answer_service import EvidenceBoundAnswerComposer
+from src.rag.local_answer_service import (
+    EvidenceBoundAnswerComposer,
+    _grounded_model_output,
+)
 
 
 class EvidenceBoundAnswerComposerTest(unittest.TestCase):
+    def test_chat_completion_adapter_emits_minimal_grounded_contract(self) -> None:
+        grounded = _grounded_model_output(
+            {
+                "status": "ANSWER",
+                "sections": [
+                    {
+                        "title": "운영 요약",
+                        "document_id": "REPORT-1",
+                        "claims": [
+                            {"text": "승인된 원문 문장", "evidence_ids": ["EV-1"]}
+                        ],
+                    }
+                ],
+                "citations": [{"evidence_id": "EV-1", "citation": "ignored"}],
+            }
+        )
+
+        self.assertEqual(grounded.status, "ANSWER")
+        self.assertEqual(len(grounded.sections), 1)
+        self.assertEqual(grounded.sections[0].claims[0].evidence_ids, ["EV-1"])
+        self.assertEqual(set(grounded.model_dump()), {"status", "sections"})
+
+    def test_chat_completion_adapter_clears_non_answer_sections(self) -> None:
+        grounded = _grounded_model_output(
+            {
+                "status": "POTENTIAL_CONFLICT",
+                "sections": [
+                    {
+                        "title": "충돌",
+                        "claims": [
+                            {"text": "모델 비노출", "evidence_ids": ["EV-1"]}
+                        ],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(grounded.status, "NO_EVIDENCE")
+        self.assertEqual(grounded.sections, [])
+
     def test_answer_cites_only_extracted_evidence(self) -> None:
         composer = EvidenceBoundAnswerComposer()
         answer = composer.compose(build_answer_prompt(

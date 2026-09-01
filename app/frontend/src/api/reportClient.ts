@@ -12,6 +12,7 @@ import {
   type ReportBlockRequest,
   type ReportDefinitionListResponse,
   type ReportDefinitionLifecycleResponse,
+  type ReportDefinitionPermanentDeleteResponse,
   type ReportDefinitionResponse,
   type ReportDefinitionVersion,
   type ReportDocument,
@@ -474,6 +475,17 @@ export function createReportClient(
         throw new Error("Report 복원 응답이 요청과 일치하지 않습니다.");
       }
       return lifecycle;
+    },
+    async permanentlyDeleteDefinition(definitionId: string) {
+      const response = await parse<ReportDefinitionPermanentDeleteResponse>(await send(
+        `/reports/definitions/${encodeURIComponent(definitionId)}`,
+        "DELETE",
+      ));
+      assertReportContractVersion(response.contract_version);
+      if (response.definition_id !== definitionId || response.permanently_deleted !== true) {
+        throw new Error("Report 영구삭제 응답이 요청과 일치하지 않습니다.");
+      }
+      return response;
     },
     async getDefinition(definitionId: string, version: number) {
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(

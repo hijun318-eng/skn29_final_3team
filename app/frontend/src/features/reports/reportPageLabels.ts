@@ -13,6 +13,12 @@ export function reportApiError(error: unknown): string {
     if (error.code === "EXTERNAL_TRANSFER_DISCLOSURE_NOT_FOUND") {
       return "확인할 외부 전송 동의 요청을 찾지 못했습니다. Assistant 요청을 다시 실행해 주세요.";
     }
+    if (error.code === "REPORT_ARCHIVE_IN_PROGRESS") {
+      return "실행 중인 작업이 있어 삭제할 수 없습니다. 작업이 끝난 뒤 다시 시도해 주세요.";
+    }
+    if (error.code === "REPORT_PERMANENT_DELETE_REQUIRES_ARCHIVE") {
+      return "영구삭제는 휴지통에 있는 보고서에서만 할 수 있습니다.";
+    }
     if (error.status === 401) return "로그인이 만료되었습니다. 다시 로그인해 주세요.";
     if (error.status === 403) return "이 정보를 볼 권한이 없습니다. 관리자에게 권한을 확인해 주세요.";
     if (error.status === 404) return "연결된 정보를 찾을 수 없습니다.";

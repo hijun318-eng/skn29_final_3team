@@ -36,11 +36,13 @@ from app.report_contracts import (  # noqa: E402
     ReplaceReportBlocksRequest,
     ReportArtifactResponse,
     ReportDefinitionLifecycleResponse,
+    ReportDefinitionPermanentDeleteResponse,
     ReportDefinitionListResponse,
     UpdateReportScheduleRequest,
 )
 from tests.support.report_repository import InMemoryReportRepository  # noqa: E402
 from src.report.router import create_report_router  # noqa: E402
+from src.report.repository import ReportLifecycleConflict  # noqa: E402
 from src.report.domain import (  # noqa: E402
     DefinitionStatus,
     BlockType,
@@ -669,6 +671,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             "/reports/definitions/{definition_id}/restore", schema["paths"]
         )
+        self.assertIn("delete", schema["paths"]["/reports/definitions/{definition_id}"])
         self.assertIn("/reports/runs/manual", schema["paths"])
         self.assertIn("/reports/schedules", schema["paths"])
         self.assertIn("/reports/schedules/{schedule_id}", schema["paths"])
@@ -706,6 +709,18 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 )
             )
             self.assertFalse(restored.archived)
+
+            await report_api.archive_definition(
+                "00000000-0000-0000-0000-000000000111",
+                report_context,
+            )
+            deleted = ReportDefinitionPermanentDeleteResponse.model_validate(
+                await report_api.permanently_delete_definition(
+                    "00000000-0000-0000-0000-000000000111",
+                    report_context,
+                )
+            )
+            self.assertTrue(deleted.permanently_deleted)
 
     def test_schedule_contract_requires_timezone_aware_instants(self):
         payload = {
@@ -829,6 +844,83 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
         from app.database import dispose_database
 
         await dispose_database()
+
+    async def test_permanent_delete_requires_archive_removes_immutable_content_and_audits(self):
+        from app.adapters.report_repository import PostgresReportRepository
+        from app.services.report.document import canonical_source_checksum
+        from sqlalchemy import create_engine, make_url, text
+
+        database_url = os.environ["REPORT_DATABASE_URL"]
+        owner_id = uuid4()
+        definition_id = str(uuid4())
+        repository = PostgresReportRepository(database_url, owner_id)
+        await repository.add_draft(
+            ReportDefinitionVersion(
+                definition_id,
+                1,
+                DefinitionStatus.DRAFT,
+                "영구삭제 DB 경계 검증",
+                (
+                    ReportBlock(
+                        str(uuid4()),
+                        "삭제 대상 본문",
+                        None,
+                        12,
+                        None,
+                        BlockType.TEXT,
+                        content="영구삭제 뒤 남아서는 안 되는 보고서 본문",
+                    ),
+                ),
+            )
+        )
+        source = await repository.get_document_source(definition_id, 1)
+        checksum = canonical_source_checksum(source, "portrait")
+        await repository.approve_with_document(
+            definition_id,
+            1,
+            datetime.now(timezone.utc),
+            "portrait",
+            "auto",
+            checksum,
+            "<html><body>purge target</body></html>",
+            b"%PDF-1.7\npurge target",
+        )
+        with self.assertRaises(ReportLifecycleConflict):
+            await repository.permanently_delete_definition(
+                definition_id,
+                actor_role="analyst",
+                trace_id="purge-active-contract",
+            )
+
+        await repository.archive_definition(
+            definition_id,
+            actor_role="analyst",
+            trace_id="purge-archive-contract",
+        )
+        self.assertTrue(
+            await repository.permanently_delete_definition(
+                definition_id,
+                actor_role="analyst",
+                trace_id="purge-delete-contract",
+            )
+        )
+        with self.assertRaises(KeyError):
+            await repository.get_version(definition_id, 1)
+
+        sync_url = make_url(database_url).set(drivername="postgresql+psycopg")
+        engine = create_engine(sync_url)
+        self.addCleanup(engine.dispose)
+        with engine.connect() as connection:
+            event = connection.execute(
+                text(
+                    "SELECT action_code FROM governance.audit_events "
+                    "WHERE object_type = 'REPORT_DEFINITION' "
+                    "AND object_id = :object_id "
+                    "AND action_code = 'REPORT_PERMANENTLY_DELETED'"
+                ),
+                {"object_id": definition_id},
+            ).scalar_one()
+        self.assertEqual("REPORT_PERMANENTLY_DELETED", event)
 
     async def test_archive_restore_is_owner_scoped_idempotent_and_keeps_schedule_disabled(self):
         from app.adapters.report_repository import PostgresReportRepository

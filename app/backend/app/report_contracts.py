@@ -214,6 +214,14 @@ class ReportDefinitionLifecycleResponse(ReportContractModel):
         return self
 
 
+class ReportDefinitionPermanentDeleteResponse(ReportContractModel):
+    """휴지통 보고서 영구삭제 후 대상과 복원 불가 상태를 확인한다."""
+
+    contract_version: str
+    definition_id: UUID
+    permanently_deleted: Literal[True]
+
+
 class ReportArtifactVersionResponse(ReportContractModel):
     """승인 문서가 사용한 분석 산출물과 쿼리를 64자리 checksum에 결속해 재현성을 증명한다."""
     artifact_id: UUID

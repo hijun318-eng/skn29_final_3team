@@ -6007,6 +6007,33 @@
         "title": "ReportDefinitionListResponse",
         "type": "object"
       },
+      "ReportDefinitionPermanentDeleteResponse": {
+        "additionalProperties": false,
+        "description": "휴지통 보고서 영구삭제 후 대상과 복원 불가 상태를 확인한다.",
+        "properties": {
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "permanently_deleted": {
+            "const": true,
+            "title": "Permanently Deleted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contract_version",
+          "definition_id",
+          "permanently_deleted"
+        ],
+        "title": "ReportDefinitionPermanentDeleteResponse",
+        "type": "object"
+      },
       "ReportDefinitionResponse": {
         "additionalProperties": false,
         "description": "보고서 정의 버전의 초안·승인 상태, 블록, 승인 시각과 문서 표시 설정을 반환한다.",
@@ -12581,9 +12608,81 @@
         "summary": "Create Definition"
       }
     },
+    "/reports/definitions/{definition_id}": {
+      "delete": {
+        "description": "휴지통의 권한 범위 보고서만 복원 불가능하게 제거하고 최소 감사 이벤트를 남긴다.",
+        "operationId": "reportPermanentlyDeleteDefinition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDefinitionPermanentDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Permanently Delete Definition"
+      }
+    },
     "/reports/definitions/{definition_id}/archive": {
       "post": {
-        "description": "소유 보고서를 비파괴 보관하고 진행 중 실행·Assistant가 있으면 409로 거부한다.",
+        "description": "권한 범위의 보고서를 비파괴 보관하고 진행 중 실행·Assistant가 있으면 409로 거부한다.",
         "operationId": "reportArchiveDefinition",
         "parameters": [
           {
@@ -12655,7 +12754,7 @@
     },
     "/reports/definitions/{definition_id}/restore": {
       "post": {
-        "description": "소유 보고서를 복원하되 보관 시 비활성화한 schedule은 자동으로 다시 켜지 않는다.",
+        "description": "권한 범위의 보고서를 복원하되 보관 시 비활성화한 schedule은 자동으로 다시 켜지 않는다.",
         "operationId": "reportRestoreDefinition",
         "parameters": [
           {

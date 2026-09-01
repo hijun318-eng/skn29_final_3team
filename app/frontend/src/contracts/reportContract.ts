@@ -206,6 +206,12 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly archived_by: string | null;
 }
 
+/** 휴지통 보고서 영구삭제 명령의 wire 응답이다. */ export interface ReportDefinitionPermanentDeleteResponse {
+  readonly contract_version: string;
+  readonly definition_id: string;
+  readonly permanently_deleted: true;
+}
+
 /** 최종 문서 API의 versioned wire envelope다. */ export interface ReportDocumentResponse {
   readonly definition_id: string;
   readonly definition_version: number;

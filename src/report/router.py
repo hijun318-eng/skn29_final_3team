@@ -30,6 +30,7 @@ REPORT_ROUTES: Final = (
     ("GET", "/reports/definitions", "list_definitions"),
     ("POST", "/reports/definitions/{definition_id}/archive", "archive_definition"),
     ("POST", "/reports/definitions/{definition_id}/restore", "restore_definition"),
+    ("DELETE", "/reports/definitions/{definition_id}", "permanently_delete_definition"),
     ("POST", "/reports/definitions/{definition_id}/versions/{version}/approve", "approve_version"),
     ("POST", "/reports/definitions/{definition_id}/versions/{version}/drafts", "create_next_draft"),
     ("GET", "/reports/definitions/{definition_id}/versions/{version}", "get_version"),
@@ -263,6 +264,35 @@ class ReportRouter:
         except KeyError as error:
             raise ReportRouteError(404, str(error.args[0])) from error
         except ValueError as error:
+            raise ReportRouteError(409, str(error)) from error
+
+    async def permanently_delete_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """휴지통 보고서만 영구삭제하고 활성·진행 상태 충돌은 409로 닫는다."""
+
+        try:
+            deleted = await _repository_result(
+                self.repository.permanently_delete_definition(
+                    definition_id,
+                    actor_role=actor_role,
+                    trace_id=trace_id,
+                )
+            )
+            if not deleted:
+                raise KeyError("Report definition을 찾을 수 없습니다.")
+            return {
+                "contract_version": REPORT_CONTRACT_VERSION,
+                "definition_id": definition_id,
+                "permanently_deleted": True,
+            }
+        except KeyError as error:
+            raise ReportRouteError(404, str(error.args[0])) from error
+        except (ReportLifecycleConflict, ValueError) as error:
             raise ReportRouteError(409, str(error)) from error
 
     async def replace_draft_blocks(

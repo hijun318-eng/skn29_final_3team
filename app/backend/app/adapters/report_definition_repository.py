@@ -668,6 +668,43 @@ class ReportDefinitionRepositoryMixin:
             )
             return self._lifecycle(restored)
 
+    async def permanently_delete_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> bool:
+        """권한 범위의 휴지통 보고서를 DB 경계의 단일 purge transaction으로 제거한다."""
+
+        self._validate_lifecycle_actor(actor_role, trace_id)
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker.begin() as session:
+            result = (await session.execute(
+                text(
+                    """
+                    SELECT report_v1.permanently_delete_archived_definition(
+                        :definition_id, :owner_id, :manage_all, :actor_role, :trace_id
+                    )
+                    """
+                ),
+                {
+                    "definition_id": definition_uuid,
+                    "actor_role": actor_role,
+                    "trace_id": trace_id,
+                    **self._scope_params(),
+                },
+            )).scalar_one()
+            if result == "not_found":
+                raise KeyError("Report definition을 찾을 수 없습니다.")
+            if result == "requires_archive":
+                raise ReportLifecycleConflict(
+                    "REPORT_PERMANENT_DELETE_REQUIRES_ARCHIVE"
+                )
+            if result != "deleted":
+                raise RuntimeError("Report 영구삭제 결과가 유효하지 않습니다.")
+            return True
+
     async def get_version(self, definition_id: str, version: int) -> ReportDefinitionVersion:
         """접근 가능한 definition의 정확한 version과 배치 순 block을 값 객체로 복원한다.
 

@@ -61,6 +61,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       onCreate={page.createDefinition}
       onEdit={page.openEditor}
       onOpen={page.openPreview}
+      onPermanentDelete={lifecycle.permanentlyDeleteDefinition}
       onRefresh={lifecycle.loadDefinitions}
       onRestore={lifecycle.restoreDefinition}
       pending={lifecycle.pending}

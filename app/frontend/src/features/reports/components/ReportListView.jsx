@@ -31,6 +31,7 @@ export const ReportListView = memo(function ReportListView({
   onCreate,
   onEdit,
   onOpen,
+  onPermanentDelete,
   onRefresh,
   onRestore,
   pending,
@@ -45,6 +46,7 @@ export const ReportListView = memo(function ReportListView({
 }) {
   const archived = definitionCollection === "archived";
   const [lifecycleDialog, setLifecycleDialog] = useState(null);
+  const [permanentDeleteConfirmed, setPermanentDeleteConfirmed] = useState(false);
   const dialogRef = useRef(null);
   const dialogCancelRef = useRef(null);
 
@@ -64,6 +66,7 @@ export const ReportListView = memo(function ReportListView({
     const details = event.currentTarget.closest("details");
     const trigger = details?.querySelector("summary") ?? event.currentTarget;
     details?.removeAttribute("open");
+    setPermanentDeleteConfirmed(false);
     setLifecycleDialog({ definition, action, trigger });
   };
   const confirmLifecycleChange = async (event) => {
@@ -72,7 +75,9 @@ export const ReportListView = memo(function ReportListView({
     const { action, definition } = lifecycleDialog;
     const result = action === "archive"
       ? await onArchive(definition.definitionId)
-      : await onRestore(definition.definitionId);
+      : action === "restore"
+        ? await onRestore(definition.definitionId)
+        : await onPermanentDelete(definition.definitionId);
     if (result) setLifecycleDialog(null);
   };
 
@@ -106,7 +111,8 @@ export const ReportListView = memo(function ReportListView({
       {definitionState === "empty" && !createOpen && <section className="report-empty-state"><span>{archived ? <Trash2 size={24} /> : <FilePlus2 size={24} />}</span><small>{archived ? "휴지통" : "첫 보고서"}</small><h2>{archived ? "삭제한 보고서가 없습니다" : "아직 작성한 보고서가 없습니다"}</h2><p>{archived ? "삭제한 보고서는 이곳에 보관되며 필요할 때 다시 복원할 수 있습니다." : "새 초안을 만들면 서버에 저장되고 편집 화면으로 바로 이동합니다."}</p>{!archived && <button type="button" className="primary" onClick={() => setCreateOpen(true)}><FilePlus2 size={15} />첫 보고서 만들기</button>}</section>}
       {definitionState === "error" && <p className="report-api-state report-notice-shell error" role="alert"><ShieldAlert size={17} />{archived ? "휴지통을 불러오지 못했습니다." : "보고서 목록을 불러오지 못했습니다."}</p>}
       {definitionState === "ready" && <section className="card legacy-report-list"><div className="legacy-report-row legacy-report-head"><span>상태</span><span>버전·제목</span><span>구성</span><span>{archived ? "삭제 시각" : "최근 변경"}</span><span>동작</span></div>{visibleDefinitions.map((definition) => {
-        const actionPending = pending === `${archived ? "restore" : "archive"}:${definition.definitionId}`;
+        const actionPending = pending === `${archived ? "restore" : "archive"}:${definition.definitionId}`
+          || pending === `permanent-delete:${definition.definitionId}`;
         const canOpenArchived = !archived || definition.status === "approved";
         return <article className="legacy-report-row" aria-busy={actionPending} key={`${definition.definitionId}-${definition.version}`}>
           <strong>{reportStatusLabel(definition.status)}</strong>
@@ -123,6 +129,10 @@ export const ReportListView = memo(function ReportListView({
                 <button type="button" role="menuitem" disabled={Boolean(pending)} onClick={(event) => requestLifecycleChange(definition, "restore", event)}>
                   {actionPending ? <LoaderCircle className="spin" size={14} /> : <ArchiveRestore size={14} />}
                   {actionPending ? "복원 중" : "복원"}
+                </button>
+                <button type="button" role="menuitem" className="danger" disabled={Boolean(pending)} onClick={(event) => requestLifecycleChange(definition, "permanent-delete", event)}>
+                  {pending === `permanent-delete:${definition.definitionId}` ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}
+                  {pending === `permanent-delete:${definition.definitionId}` ? "삭제 중" : "영구삭제"}
                 </button>
               </div>
             </details>}
@@ -141,10 +151,11 @@ export const ReportListView = memo(function ReportListView({
         }}
       >
         <form onSubmit={confirmLifecycleChange}>
-          <span className={`app-lifecycle-dialog-icon ${lifecycleDialog.action === "archive" ? "danger" : ""}`}>{lifecycleDialog.action === "archive" ? <Trash2 size={19} /> : <ArchiveRestore size={19} />}</span>
-          <div><small>{lifecycleDialog.action === "archive" ? "보고서 삭제" : "보고서 복원"}</small><h2 id="report-lifecycle-dialog-title">{lifecycleDialog.action === "archive" ? "이 보고서를 삭제할까요?" : "이 보고서를 복원할까요?"}</h2><p><b>“{lifecycleDialog.definition.title}”</b>{lifecycleDialog.action === "archive" ? "의 모든 버전이 휴지통으로 이동합니다. 예약은 중지되며 복원 전에는 편집하거나 실행할 수 없습니다." : "가 활성 목록으로 돌아갑니다. 삭제할 때 중지된 예약은 자동으로 다시 켜지지 않습니다."}</p></div>
+          <span className={`app-lifecycle-dialog-icon ${lifecycleDialog.action !== "restore" ? "danger" : ""}`}>{lifecycleDialog.action === "restore" ? <ArchiveRestore size={19} /> : <Trash2 size={19} />}</span>
+          <div><small>{lifecycleDialog.action === "archive" ? "보고서 삭제" : lifecycleDialog.action === "restore" ? "보고서 복원" : "보고서 영구삭제"}</small><h2 id="report-lifecycle-dialog-title">{lifecycleDialog.action === "archive" ? "이 보고서를 삭제할까요?" : lifecycleDialog.action === "restore" ? "이 보고서를 복원할까요?" : "이 보고서를 영구 삭제할까요?"}</h2><p><b>“{lifecycleDialog.definition.title}”</b>{lifecycleDialog.action === "archive" ? "의 모든 버전이 휴지통으로 이동합니다. 예약은 중지되며 복원 전에는 편집하거나 실행할 수 없습니다." : lifecycleDialog.action === "restore" ? "가 활성 목록으로 돌아갑니다. 삭제할 때 중지된 예약은 자동으로 다시 켜지지 않습니다." : "의 본문·버전·실행 기록이 삭제됩니다. 최소 감사 기록을 제외한 보고서 데이터는 복원할 수 없습니다."}</p></div>
+          {lifecycleDialog.action === "permanent-delete" && <label className="app-lifecycle-confirm"><input type="checkbox" checked={permanentDeleteConfirmed} onChange={(event) => setPermanentDeleteConfirmed(event.target.checked)} disabled={Boolean(pending)} /><span>이 보고서를 다시 복원할 수 없음을 확인했습니다.</span></label>}
           {error && <p className="app-lifecycle-dialog-error" role="alert"><AlertTriangle size={15} />{error}</p>}
-          <footer><button ref={dialogCancelRef} type="button" onClick={() => setLifecycleDialog(null)} disabled={Boolean(pending)}>취소</button><button type="submit" className={lifecycleDialog.action === "archive" ? "danger" : "primary"} disabled={Boolean(pending)}>{pending ? <LoaderCircle className="spin" size={14} /> : lifecycleDialog.action === "archive" ? <Trash2 size={14} /> : <ArchiveRestore size={14} />}{pending ? lifecycleDialog.action === "archive" ? "삭제 중" : "복원 중" : lifecycleDialog.action === "archive" ? "삭제" : "복원"}</button></footer>
+          <footer><button ref={dialogCancelRef} type="button" onClick={() => setLifecycleDialog(null)} disabled={Boolean(pending)}>취소</button><button type="submit" className={lifecycleDialog.action === "restore" ? "primary" : "danger"} disabled={Boolean(pending) || (lifecycleDialog.action === "permanent-delete" && !permanentDeleteConfirmed)}>{pending ? <LoaderCircle className="spin" size={14} /> : lifecycleDialog.action === "restore" ? <ArchiveRestore size={14} /> : <Trash2 size={14} />}{pending ? lifecycleDialog.action === "restore" ? "복원 중" : "삭제 중" : lifecycleDialog.action === "archive" ? "삭제" : lifecycleDialog.action === "restore" ? "복원" : "영구삭제"}</button></footer>
         </form>
       </dialog>}
     </div>

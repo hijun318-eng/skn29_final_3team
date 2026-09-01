@@ -486,6 +486,25 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return restored;
   }, [mutate, reportClient]);
 
+  const permanentlyDeleteDefinition = useCallback(async (definitionId: string) => {
+    if (definitionCollectionRef.current !== "archived") {
+      setError("영구삭제는 휴지통에 있는 보고서에서만 할 수 있습니다.");
+      return null;
+    }
+    const deleted = await mutate(
+      `permanent-delete:${definitionId}`,
+      () => reportClient.permanentlyDeleteDefinition(definitionId),
+    );
+    if (!deleted) return null;
+    const next = definitionsRef.current.filter((item) => item.definitionId !== definitionId);
+    definitionsRef.current = next;
+    setDefinitions(next);
+    setDefinitionState(next.length ? "ready" : "empty");
+    setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
+    setNotice("보고서를 영구 삭제했습니다. 이 작업은 되돌릴 수 없습니다.");
+    return deleted;
+  }, [mutate, reportClient]);
+
   const fetchDefinition = useCallback((definition: Pick<ReportDefinitionVersion, "definitionId" | "version">) => (
     mutate("definition", () => reportClient.getDefinition(definition.definitionId, definition.version))
   ), [mutate, reportClient]);
@@ -1103,6 +1122,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     loadDefinitions,
     archiveDefinition,
     restoreDefinition,
+    permanentlyDeleteDefinition,
     fetchDefinition,
     findLatestDraft,
     createDefinition,
@@ -1134,7 +1154,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     finalDocumentState, findLatestDraft, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
     pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient,
-    restoreAssistantSession, restoreDefinition, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
+    restoreAssistantSession, restoreDefinition, permanentlyDeleteDefinition, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
     runs, scheduleAt, schedules, selectedDefinition, selectedRun, selectedSchedules,
     selectDefinition, setDefinitionCollection, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
     reviewAssistantReport, submitAssistantInstruction, visibleDefinitions, visibleRunCount, visibleRuns,

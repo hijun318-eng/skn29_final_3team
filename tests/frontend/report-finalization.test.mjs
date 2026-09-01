@@ -268,9 +268,9 @@ assert.doesNotMatch(
 );
 const saveSource = sourceSection(reportSources.controller, "const saveDraft", "const approveDefinition");
 assert.ok(
-  saveSource.indexOf("const persistedBlocks = compactDraftLayout(draft.orderedBlocks)")
+  saveSource.indexOf("const persistedBlocks = draft.orderedBlocks")
     < saveSource.indexOf("const snapshot = createFrontendDraftSnapshot"),
-  "the recovery snapshot must be built from the exact compacted layout sent to the server",
+  "the recovery snapshot must be built from the exact coordinate-preserving layout sent to the server",
 );
 assert.match(
   saveSource,

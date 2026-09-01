@@ -72,6 +72,46 @@ function normalizedDraftBlock(block: ReportBlock): DraftLayoutBlock {
   };
 }
 
+function draftBlocksOverlap(left: DraftLayoutBlock, right: DraftLayoutBlock): boolean {
+  return left.x < right.x + right.w
+    && left.x + left.w > right.x
+    && left.y < right.y + right.h
+    && left.y + left.h > right.y;
+}
+
+/** 현재 좌표와 gap은 보존하고 실제 충돌이 있는 블록만 아래로 이동한다. */
+export function resolveDraftLayoutCollisions(
+  blocks: readonly ReportBlock[],
+  anchorId?: string,
+): readonly DraftLayoutBlock[] {
+  const normalized = blocks.map(normalizedDraftBlock);
+  const originalOrder = new Map(normalized.map((block, index) => [block.id, index]));
+  const anchor = anchorId ? normalized.find((block) => block.id === anchorId) : undefined;
+  const ordered = normalized
+    .filter((block) => block.id !== anchorId)
+    .sort((left, right) => (
+      left.y - right.y
+      || left.x - right.x
+      || (originalOrder.get(left.id) ?? 0) - (originalOrder.get(right.id) ?? 0)
+    ));
+  const placed: DraftLayoutBlock[] = anchor ? [anchor] : [];
+  const resolved = new Map<string, DraftLayoutBlock>(anchor ? [[anchor.id, anchor]] : []);
+  for (const block of ordered) {
+    let candidate = block;
+    while (true) {
+      const collisions = placed.filter((placedBlock) => draftBlocksOverlap(candidate, placedBlock));
+      if (!collisions.length) break;
+      candidate = {
+        ...candidate,
+        y: Math.max(...collisions.map((placedBlock) => placedBlock.y + placedBlock.h)),
+      };
+    }
+    placed.push(candidate);
+    resolved.set(candidate.id, candidate);
+  }
+  return normalized.map((block) => resolved.get(block.id) ?? block);
+}
+
 function minimumDraftHeight(block: ReportBlock): number {
   return block.type === "page_break" ? 1 : block.type === "artifact" ? 5 : block.type === "chart" ? 7 : block.type === "table" ? 5 : 4;
 }
@@ -184,7 +224,7 @@ export function placeDraftBlock(
 ): readonly DraftLayoutBlock[] {
   const normalized = blocks.map(normalizedDraftBlock);
   const source = normalized.find((block) => block.id === blockId);
-  if (!source) return compactDraftLayout(normalized);
+  if (!source) return normalized;
 
   const rawX = Math.max(0, Math.round(requestedX));
   const rawY = Math.max(0, Math.round(requestedY));
@@ -206,7 +246,10 @@ export function placeDraftBlock(
       ? { ...block, columns: 6, w: 6, x: sourceOnLeft ? 6 : 0 }
       : block);
   }
-  return compactDraftLayout(adjusted.map((block) => block.id === blockId ? candidate : block));
+  return resolveDraftLayoutCollisions(
+    adjusted.map((block) => block.id === blockId ? candidate : block),
+    blockId,
+  );
 }
 
 /** 정규화된 grid 필드만 결정론적 JSON으로 직렬화한다. */

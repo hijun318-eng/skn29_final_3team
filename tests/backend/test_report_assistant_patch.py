@@ -336,6 +336,29 @@ class ReportAssistantPatchTest(unittest.TestCase):
         )
         self.assertEqual("현재 실적", self.definition.blocks[1].title)
 
+    def test_resize_preserves_valid_vertical_gap(self) -> None:
+        """resize는 실제 충돌이 없으면 기존 block의 세로 gap을 유지한다."""
+
+        gapped = self.definition.replace_blocks((
+            self.definition.blocks[0],
+            ReportBlock(
+                "current-chart", "현재 실적", "artifact-old", 6, "query-old",
+                BlockType.CHART, 0, 20, 6, 7,
+            ),
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "차트 크기만 변경합니다.",
+            "operations": [{
+                "op": "resize_block", "block_id": "current-chart",
+                "block_width": 6, "block_height": 9,
+            }],
+        })
+
+        result = apply_report_assistant_patch(gapped, patch, self.bindings)
+
+        self.assertEqual(20, result.blocks[1].y)
+        self.assertEqual(9, result.blocks[1].h)
+
     def test_artifact_view_title_change_is_rejected(self) -> None:
         """chart·table·Artifact 제목은 승인 근거 식별값이므로 patch로 바꿀 수 없다."""
 

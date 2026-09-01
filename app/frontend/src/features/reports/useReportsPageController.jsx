@@ -1,7 +1,7 @@
 /** 보고서 하위 hook과 memo renderer를 목록·문서·editor 화면 계약으로 합성하는 controller 모듈이다. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { compactDraftLayout, toReportBlockRequest } from "../../contracts/report";
+import { toReportBlockRequest } from "../../contracts/report";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
@@ -319,7 +319,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       )?.focus());
       return;
     }
-    const persistedBlocks = compactDraftLayout(draft.orderedBlocks);
+    const persistedBlocks = draft.orderedBlocks;
     const snapshot = createFrontendDraftSnapshot({
       definitionId: definition.definitionId,
       version: definition.version,

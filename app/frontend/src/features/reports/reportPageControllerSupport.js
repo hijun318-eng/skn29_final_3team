@@ -1,5 +1,5 @@
 /** 보고서 page controller의 초기 상태·template 크기·focus 계산을 분리한 helper 모듈이다. */
-import { compactDraftLayout, restoreDraftLayout } from "../../contracts/report";
+import { restoreDraftLayout } from "../../contracts/report";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
   estimateArtifactBlockLayout,
@@ -19,7 +19,7 @@ export function definitionDraftState(definition, options = {}) {
   };
   const savedOrientation = options.savedOrientation || orientation;
   const savedCurrencyPolicy = options.savedCurrencyPolicy || currencyPolicy;
-  const serverBlocks = compactDraftLayout(restoreDraftLayout(options.serverBlocks || definition.blocks));
+  const serverBlocks = restoreDraftLayout(options.serverBlocks || definition.blocks);
   const blocks = prepareEditorLayout(definition.blocks, orientation);
   const dirty = Boolean(options.forceDirty) || (
     definition.status === "draft" && (

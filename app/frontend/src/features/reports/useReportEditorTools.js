@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createUuid } from "../../utils/createUuid.ts";
-import { compactDraftLayout } from "../../contracts/report.ts";
+import { resolveDraftLayoutCollisions } from "../../contracts/report.ts";
 
 const SNAPSHOT_LIMIT = 20;
 
@@ -134,7 +134,7 @@ export function useReportEditorTools({
     if ([...ids].some((id) => lockedBlockIds.has(id))) return false;
     const deletable = new Set(ids);
     if (!deletable.size) return false;
-    const ordered = compactDraftLayout(blocks.filter((block) => !deletable.has(block.id)));
+    const ordered = blocks.filter((block) => !deletable.has(block.id));
     if (!commitBlocks(ordered)) return false;
     const nextId = ordered[0]?.id ?? "";
     setSelectedBlockIds(nextId ? new Set([nextId]) : new Set());
@@ -168,7 +168,7 @@ export function useReportEditorTools({
       title: `${block.title || "제목 없음"} 복사본`,
       y: startY + (block.y ?? 0) - minY,
     }));
-    if (!commitBlocks(compactDraftLayout([...blocks, ...pasted]))) return false;
+    if (!commitBlocks([...blocks, ...pasted])) return false;
     const ids = new Set(pasted.map((block) => block.id));
     const primary = pasted[0]?.id ?? "";
     setSelectedBlockIds(ids);
@@ -233,7 +233,7 @@ export function useReportEditorTools({
       selected.some((block) => block.type !== "text") ? 6 : 4,
     );
     const targetHeight = primaryBlock.h ?? 4;
-    return commitBlocks(compactDraftLayout(blocks.map((block) => {
+    return commitBlocks(resolveDraftLayoutCollisions(blocks.map((block) => {
       if (!selectedBlockIds.has(block.id)) return block;
       if (dimension === "width") return { ...block, columns: targetWidth, w: targetWidth };
       return { ...block, h: targetHeight };

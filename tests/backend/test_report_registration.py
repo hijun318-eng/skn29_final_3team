@@ -368,8 +368,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             [
                 ("실제 분석 결과 · 요약", "artifact", 0, 0, 6, 5),
                 ("실제 분석 결과 · 핵심 지표", "artifact", 6, 0, 6, 6),
-                ("실제 분석 결과 · 차트", "chart", 0, 6, 8, 7),
-                ("실제 분석 결과 · 표", "table", 0, 13, 6, 5),
+                ("실제 분석 결과 · 차트", "chart", 0, 6, 12, 7),
+                ("실제 분석 결과 · 표", "table", 0, 13, 12, 5),
             ],
             [
                 (

@@ -1,6 +1,10 @@
 /** 보고서 draft·history·selection·layout·통화 정책을 한 도메인 상태로 관리하는 hook 모듈이다. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { compactDraftLayout, placeDraftBlock } from "../../contracts/report.ts";
+import {
+  compactDraftLayout,
+  placeDraftBlock,
+  resolveDraftLayoutCollisions,
+} from "../../contracts/report.ts";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
   ARTIFACT_VIEW_LABELS,
@@ -260,11 +264,11 @@ export function useReportDraftState(
           }
         : block);
       if (!Object.hasOwn(change, "content")) return next;
-      return compactDraftLayout(next.map((block) => (
+      return resolveDraftLayoutCollisions(next.map((block) => (
         block.id === blockId && block.type === "text"
           ? { ...block, h: frontendTextBlockLayout(block, orientationRef.current).height }
           : block
-      ))) as readonly DraftReportBlock[];
+      )), blockId) as readonly DraftReportBlock[];
     }, record);
   }, [commitBlocks]);
 
@@ -318,12 +322,12 @@ export function useReportDraftState(
       return;
     }
     const artifact = source.artifactId ? optionsRef.current.artifacts?.[source.artifactId] : undefined;
-    if (commitBlocks((current) => compactDraftLayout(current.map((block) => {
+    if (commitBlocks((current) => resolveDraftLayoutCollisions(current.map((block) => {
       if (block.id !== blockId) return block;
       return wholeAuto
         ? fitFrontendArtifactBlock(block, artifact, { orientation: orientationRef.current, force: true, settings })
         : fitFrontendArtifactViewBlock(block, artifact, { orientation: orientationRef.current, force: true, settings });
-    })) as readonly DraftReportBlock[])) {
+    }), blockId) as readonly DraftReportBlock[])) {
       announce(`${source.title || "분석 결과"} 블록 크기를 내용에 맞췄습니다.`);
     }
   }, [announce, commitBlocks, updateBlock]);
@@ -470,7 +474,7 @@ export function useReportDraftState(
     const deleted = deleteFrontendBlock(blocksRef.current, blockId, reportContext());
     const next = deleted.ok
       ? deleted.blocks
-      : compactDraftLayout(blocksRef.current.filter((block) => block.id !== blockId));
+      : blocksRef.current.filter((block) => block.id !== blockId);
     if (!commitBlocks(next as readonly DraftReportBlock[])) return;
     selectBlock(nextFocusId);
     optionsRef.current.onNotice?.("블록을 삭제했습니다. 실행 취소로 되돌릴 수 있습니다.");

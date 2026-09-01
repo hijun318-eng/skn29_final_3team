@@ -162,13 +162,18 @@ const movedToFirstPageEnd = moveReportBlock(pageEndFixture, "first", {
   pageId: pageEndFixture.pages[0].id,
 });
 assert.equal(movedToFirstPageEnd.ok, true);
-assert.deepEqual(movedToFirstPageEnd.document.pages[0].blocks.map((block) => block.id), ["second", "first"]);
+assert.deepEqual(movedToFirstPageEnd.document.pages[0].blocks.map((block) => block.id), ["second"]);
+assert.equal(movedToFirstPageEnd.document.pages.flatMap((page) => page.blocks).some((block) => block.id === "first"), true);
 assertNoOverlap(movedToFirstPageEnd.document);
 
 const gapSource = insert(createReportDocument({ id: "gap-fixture", title: "간격 검증 보고서" }), "gap-block");
 const withGap = structuredClone(gapSource);
 withGap.pages[0].blocks[0].y = 4;
 assert.equal(validateReportDocument(withGap).valid, true);
+const serializedGap = serializeReportDocument(withGap);
+const parsedGap = parseReportDocument(serializedGap);
+assert.equal(parsedGap.ok, true);
+assert.equal(parsedGap.document.pages[0].blocks[0].y, 4);
 const compacted = compactReportDocument(withGap);
 assert.equal(compacted.ok, true);
 assert.equal(compacted.document.pages[0].blocks[0].y, 0);

@@ -1,7 +1,7 @@
 /** 보고서 UI의 일반 template·pagination·표시 helper 계약을 제공하는 모듈이다. */
 import { Columns2, FileBarChart, Heading2, List, Quote, Sparkles, Table2, Type } from "lucide-react";
 
-import { compactDraftLayout, restoreDraftLayout } from "../../../contracts/report";
+import { resolveDraftLayoutCollisions, restoreDraftLayout } from "../../../contracts/report";
 import {
   artifactMetricCards,
   canonicalDraftBlockContent,
@@ -255,9 +255,9 @@ export function paginateReportBlocks(blocks, orientation, documentId = "report")
   return pages;
 }
 
-/** text 높이를 다시 계산한 뒤 복원·compact해 editor grid를 준비한다. */
+/** text 높이를 다시 계산한 뒤 충돌 블록만 아래로 이동해 editor grid를 준비한다. */
 export function prepareEditorLayout(blocks, orientation = "landscape") {
-  return compactDraftLayout(
+  return resolveDraftLayoutCollisions(
     restoreDraftLayout(blocks).map((block) => (
       block.type === "text"
         ? { ...block, h: frontendTextBlockLayout(block, orientation).height }
@@ -269,7 +269,7 @@ export function prepareEditorLayout(blocks, orientation = "landscape") {
 /** dirty 비교에 필요한 block 필드만 canonical JSON signature로 만든다. */
 export function draftLayoutSignature(blocks) {
   return JSON.stringify(
-    compactDraftLayout(restoreDraftLayout(blocks)).map((block) => ({
+    restoreDraftLayout(blocks).map((block) => ({
       id: block.id,
       title: block.title,
       artifactId: block.artifactId,

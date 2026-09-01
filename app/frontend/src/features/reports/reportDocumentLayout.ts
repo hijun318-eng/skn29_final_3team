@@ -57,6 +57,69 @@ function canonicalCurrencyPolicy(policy: CurrencyDisplayPolicy): CurrencyDisplay
   };
 }
 
+/** 유효한 page와 block 좌표를 바꾸지 않고 canonical 필드만 복제한다. */
+export function canonicalReportDocument(document: ReportDocumentV2): ReportDocumentV2 {
+  return {
+    schemaVersion: REPORT_DOCUMENT_SCHEMA_VERSION,
+    id: document.id,
+    title: document.title,
+    orientation: document.orientation,
+    presentationMode: document.presentationMode,
+    currencyPolicy: canonicalCurrencyPolicy(document.currencyPolicy),
+    pages: [...document.pages]
+      .sort((left, right) => left.index - right.index)
+      .map((page, index) => ({
+        id: page.id,
+        index,
+        size: "A4",
+        orientation: document.orientation,
+        blocks: page.blocks
+          .map(canonicalBlock)
+          .sort((left, right) => left.y - right.y || left.x - right.x),
+      })),
+  };
+}
+
+function documentBlocksOverlap(left: ReportDocumentBlock, right: ReportDocumentBlock): boolean {
+  return left.x < right.x + right.w
+    && left.x + left.w > right.x
+    && left.y < right.y + right.h
+    && left.y + left.h > right.y;
+}
+
+/** 한 page 안에서 anchor 좌표를 유지하고 실제 충돌 block만 아래로 이동한다. */
+export function resolveDocumentPageCollisions(
+  blocks: readonly ReportDocumentBlock[],
+  anchorId: string,
+): ReportDocumentBlock[] {
+  const canonical = blocks.map(canonicalBlock);
+  const anchor = canonical.find((block) => block.id === anchorId);
+  if (!anchor) return canonical;
+  const order = new Map(canonical.map((block, index) => [block.id, index]));
+  const ordered = canonical
+    .filter((block) => block.id !== anchorId)
+    .sort((left, right) => (
+      left.y - right.y || left.x - right.x
+      || (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0)
+    ));
+  const placed = [anchor];
+  const resolved = new Map<string, ReportDocumentBlock>([[anchor.id, anchor]]);
+  for (const block of ordered) {
+    let candidate = block;
+    while (true) {
+      const collisions = placed.filter((placedBlock) => documentBlocksOverlap(candidate, placedBlock));
+      if (!collisions.length) break;
+      candidate = canonicalBlock({
+        ...candidate,
+        y: Math.max(...collisions.map((placedBlock) => placedBlock.y + placedBlock.h)),
+      } as ReportDocumentBlock);
+    }
+    placed.push(candidate);
+    resolved.set(candidate.id, candidate);
+  }
+  return canonical.map((block) => resolved.get(block.id) ?? block);
+}
+
 /** 페이지·grid 좌표 순으로 새 블록 배열을 반환하며 문서를 변경하지 않는다. */
 export function orderedDocumentBlocks(document: ReportDocumentV2): ReportDocumentBlock[] {
   return [...document.pages]

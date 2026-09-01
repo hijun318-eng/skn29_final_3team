@@ -223,7 +223,7 @@ async def create_artifact_draft(
     if not source_title or not views:
         raise ValueError("승인 Artifact에 보고서로 만들 수 있는 원자 view가 없습니다.")
     blocks: list[ReportBlock] = []
-    view_widths = {"summary": 6, "kpi": 6, "chart": 8, "table": 6}
+    view_widths = {"summary": 6, "kpi": 6, "chart": 12, "table": 12}
     row_x = row_y = row_height = 0
     for view in views:
         block_type = (

@@ -188,6 +188,8 @@ assert.match(builderStyles, /\.report-resize-handle--s\{[^}]*bottom:-22px;left:c
 assert.match(floatingPanel, /createPortal\(/);
 assert.match(floatingPanel, /getBoundingClientRect\(\)/);
 assert.match(floatingPanel, /window\.addEventListener\("scroll", updatePosition, true\)/);
+assert.match(appStyles, /\.report-editor-portal\{[^}]*width:0;height:0;[^}]*background:transparent!important/);
+assert.doesNotMatch(appStyles, /\.report-editor-portal\{[^}]*inset:0/);
 assert.match(blockControls, /<ReportFloatingPanel/);
 assert.match(markdownEditor, /<ReportFloatingPanel/);
 assert.match(page, /className=\{`report-block-drag-overlay/);

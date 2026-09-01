@@ -1,3 +1,5 @@
+"""원시 일별 실적을 시점 보존 학습·비공개 평가·추론 dataset 묶음으로 변환한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -13,6 +15,8 @@ from .features import TimeSeriesFeatureBuilder
 
 
 def sha256(path: Path) -> str:
+    """dataset 파일을 스트리밍해 무결성 manifest용 SHA-256을 반환한다."""
+
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -21,10 +25,18 @@ def sha256(path: Path) -> str:
 
 
 class DatasetBundleWriter:
+    """분할별 label 공개 범위를 지키며 압축 CSV와 파일 hash를 기록한다."""
+
     def __init__(self, output_dir: Path) -> None:
         self.output_dir = output_dir
 
     def write(self, datasets: dict[str, pd.DataFrame]) -> dict[str, str]:
+        """분할 DataFrame을 용도별 경로에 쓰고 논리 이름별 SHA-256을 반환한다.
+
+        필수 분할이나 label 열이 없거나 파일 쓰기가 실패하면 해당 예외를
+        호출자에게 전달해 불완전한 bundle을 성공으로 취급하지 않는다.
+        """
+
         trainer = self.output_dir / "trainer"
         evaluator = self.output_dir / "evaluator_private"
         inference = self.output_dir / "inference"
@@ -61,6 +73,8 @@ class DatasetBundleWriter:
 
 
 def main() -> None:
+    """CLI 원본을 감사·feature화하고 dataset manifest와 hash를 출력한다."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--daily-facts", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

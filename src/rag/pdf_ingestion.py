@@ -1,3 +1,5 @@
+"""PDF 매뉴얼을 페이지별 안전 text block과 checksum receipt로 변환한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -5,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .source_bytes import DEFAULT_MAX_SOURCE_BYTES, read_bounded_source_bytes
 from .text_processing import SecurityScanner
 from .vector_models import PdfChunk, PdfDocument
 
@@ -15,18 +18,34 @@ MANUAL_ID_PATTERN = re.compile(
 )
 VERSION_PATTERN = re.compile(r"\bv(\d+(?:\.\d+)*)\b", re.IGNORECASE)
 SECTION_PATTERN = re.compile(r"(?m)^\s*(\d+(?:\.\d+)*)[.)]\s+([^\n]{2,100})")
+PDF_PARSER_CONTRACT_VERSION = "fitz-blocks-v1.1"
+PDF_MAX_SOURCE_BYTES = DEFAULT_MAX_SOURCE_BYTES
+
+
+def read_bounded_pdf_bytes(path: Path) -> bytes:
+    """PDF 원본을 고정 상한까지만 읽어 parser와 source 응답의 메모리 경계를 통일한다."""
+
+    return read_bounded_source_bytes(
+        path,
+        expected_suffix=".pdf",
+        maximum_bytes=PDF_MAX_SOURCE_BYTES,
+    )
 
 
 class PdfManualParser:
+    """PyMuPDF text block을 보안 검사한 뒤 페이지 locator chunk로 생성한다."""
+
     def __init__(self, chunker: "TokenChunker", maximum_empty_page_ratio: float = 0.05) -> None:
         self._chunker = chunker
         self._maximum_empty_page_ratio = maximum_empty_page_ratio
         self._scanner = SecurityScanner()
 
     def parse(self, path: Path) -> tuple[PdfDocument, list[PdfChunk], list[str], dict[str, Any]]:
-        source_bytes = path.read_bytes()
+        """PDF bytes·페이지를 검증하고 문서·chunk·경고·구조 receipt를 반환한다."""
+
+        source_bytes = read_bounded_pdf_bytes(path)
         source_checksum = hashlib.sha256(source_bytes).hexdigest()
-        pages = self._extract_pages(path)
+        pages, image_receipts = self._extract_pages(source_bytes)
 
         page_count = len(pages)
         empty_page_count = sum(1 for _, blocks in pages if not blocks)
@@ -35,6 +54,8 @@ class PdfManualParser:
         warnings: list[str] = []
         if empty_page_count > 0:
             warnings.append(f"{path.name}: EMPTY_TEXT_PAGE ({empty_page_count} pages)")
+        if image_receipts:
+            warnings.append("IMAGE_BINARY_NOT_OCR_EXTRACTED")
 
         if empty_page_ratio > self._maximum_empty_page_ratio:
             raise ValueError(f"OCR_REQUIRED: Empty page ratio {empty_page_ratio:.2f} exceeds {self._maximum_empty_page_ratio:.2f}")
@@ -49,6 +70,7 @@ class PdfManualParser:
         title = self._extract_title(path, first_page_text, manual_id)
 
         chunks: list[PdfChunk] = []
+        content_unit_count = 0
         for page_number, blocks in valid_pages:
             # Check security per block and combine safe text
             safe_blocks = []
@@ -62,6 +84,7 @@ class PdfManualParser:
                 if safe_text.strip():
                     safe_blocks.append(safe_text)
 
+            content_unit_count += len(safe_blocks)
             page_chunks = self._chunker.chunk_blocks(manual_id, page_number, safe_blocks)
             chunks.extend(page_chunks)
 
@@ -84,10 +107,14 @@ class PdfManualParser:
         manifest = {
             "manual_id": manual_id,
             "source_checksum": source_checksum,
+            "parser_contract_version": PDF_PARSER_CONTRACT_VERSION,
+            "content_unit_count": content_unit_count,
             "page_count": page_count,
             "parsed_page_count": len(valid_pages),
             "empty_page_count": empty_page_count,
             "empty_page_ratio": empty_page_ratio,
+            "image_count": len(image_receipts),
+            "image_receipts": image_receipts,
             "section_count": len(set(c.section_title for c in chunks)),
             "chunk_count": len(chunks),
             "minimum_chunk_tokens": min(chunk_tokens) if chunk_tokens else 0,
@@ -100,24 +127,48 @@ class PdfManualParser:
 
         return document, chunks, warnings, manifest
 
-    def _extract_pages(self, path: Path) -> list[tuple[int, list[str]]]:
+    def _extract_pages(
+        self,
+        source_bytes: bytes,
+    ) -> tuple[list[tuple[int, list[str]]], list[dict[str, object]]]:
         try:
             import fitz
         except ModuleNotFoundError as error:
             raise RuntimeError("PyMuPDF is required to parse PDF manuals") from error
-        pages = []
-        with fitz.open(path) as document:
+        pages: list[tuple[int, list[str]]] = []
+        image_receipts: list[dict[str, object]] = []
+        with fitz.open(stream=source_bytes, filetype="pdf") as document:
             for index, page in enumerate(document):
                 # get_text("blocks") returns tuple: (x0, y0, x1, y1, text, block_no, block_type)
                 # We need to sort and keep block_type 0 (text)
                 blocks = page.get_text("blocks", sort=True)
                 text_blocks = [b[4].strip() for b in blocks if b[6] == 0 and b[4].strip()]
                 pages.append((index + 1, text_blocks))
-        return pages
+                structured = page.get_text("dict", sort=True)
+                structured_blocks = (
+                    structured.get("blocks", [])
+                    if isinstance(structured, dict)
+                    else []
+                )
+                page_image_index = 0
+                for block in structured_blocks:
+                    if not isinstance(block, dict) or block.get("type") != 1:
+                        continue
+                    image = block.get("image")
+                    if not isinstance(image, bytes) or not image:
+                        raise ValueError("PDF image block has no immutable source bytes")
+                    page_image_index += 1
+                    image_receipts.append(
+                        {
+                            "page": index + 1,
+                            "image_index": page_image_index,
+                            "sha256": hashlib.sha256(image).hexdigest(),
+                            "size_bytes": len(image),
+                        }
+                    )
+        return pages, image_receipts
 
     def _extract_manual_id(self, path: Path, text: str) -> str:
-        if "내부업무매뉴얼_통합본" in path.name:
-            return "MANUAL-COMBINED-001"
         match = MANUAL_ID_PATTERN.search(text) or MANUAL_ID_PATTERN.search(path.name)
         if match:
             return match.group(1)

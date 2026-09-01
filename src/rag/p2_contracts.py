@@ -1,3 +1,5 @@
+"""P2 RAG tool의 증거 유형·구현 Gate·공개 input/output schema를 정의한다."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -6,16 +8,22 @@ from typing import Any
 
 
 class EvidenceType(str, Enum):
+    """분석 SQL과 내부 문서 검색 evidence의 출처 유형을 구분한다."""
+
     SQL = "SQL_EVIDENCE"
     DOCUMENT = "DOCUMENT_EVIDENCE"
 
 
 class ImplementationState(str, Enum):
+    """RAG tool 구현이 운영 승인 전 어느 통합 단계인지 나타낸다."""
+
     INTEGRATED_RC = "INTEGRATED_RC"
 
 
 @dataclass(frozen=True)
 class P2GateStatus:
+    """제품 registry·자동 routing 활성화 전 기술·승인 상태를 공개한다."""
+
     implementation_state: str = ImplementationState.INTEGRATED_RC
     p2_gate: str = "TECHNICALLY_VALIDATED"
     tool_registration: str = "INTERNAL_HTTP_AVAILABLE"
@@ -25,6 +33,8 @@ class P2GateStatus:
 
 @dataclass(frozen=True)
 class RagToolContract:
+    """내부 지침 검색 tool의 이름·버전·route와 JSON schema를 고정한다."""
+
     tool_code: str = "internal-manual-search"
     tool_type: str = "RAG"
     semantic_version: str = "1.0.0-rc1"
@@ -42,9 +52,13 @@ class RagToolContract:
     evidence_type: str = EvidenceType.DOCUMENT
 
     def public_metadata(self) -> dict[str, Any]:
+        """비밀 설정 없이 client가 표시할 tool identity와 Gate 상태를 반환한다."""
+
         return asdict(self)
 
     def input_schema(self) -> dict[str, Any]:
+        """질문과 mult-turn 문맥에 허용되는 tool 입력 JSON schema를 반환한다."""
+
         return {
             "type": "object",
             "additionalProperties": False,
@@ -65,6 +79,8 @@ class RagToolContract:
         }
 
     def output_schema(self) -> dict[str, Any]:
+        """문서 evidence와 경고를 포함한 tool 출력 JSON schema를 반환한다."""
+
         return {
             "type": "object",
             "required": ["request_id", "document_evidence", "warnings"],
@@ -87,6 +103,8 @@ def build_retrieval_envelope(
     results: list[dict[str, Any]],
     trace_id: str | None = None,
 ) -> dict[str, Any]:
+    """검색 payload를 trace와 document evidence가 명시된 전달 envelope로 감싼다."""
+
     warnings = sorted(
         {str(item["warning"]) for item in results if item.get("warning")}
     )

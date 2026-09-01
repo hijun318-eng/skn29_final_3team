@@ -1,3 +1,5 @@
+"""동일 질문 묶음으로 RAG 검색 모드별 성공 호출 수와 지연시간 기준선을 측정한다."""
+
 import json
 import time
 from pathlib import Path
@@ -7,6 +9,12 @@ from .vector_application import VectorRagApplication
 
 
 class BaselineBenchmark:
+    """JSON 질문 파일을 읽어 하나의 RAG 애플리케이션에 검색 모드별로 반복 실행한다.
+
+    질문 파일이 없으면 빈 스위트로 계속하고, JSON 해석 오류는 호출자에게 전파한다.
+    이 기준선은 검색 정확도 평가가 아니라 호출 성공 여부와 지연시간 진단용이다.
+    """
+
     def __init__(self, app: VectorRagApplication, queries_path: Path):
         self.app = app
         self.queries_path = queries_path
@@ -21,10 +29,12 @@ class BaselineBenchmark:
             print(f"Warning: Test queries not found at {self.queries_path}")
 
     def run_benchmark(self, model_id: str, retrieval_modes: List[str]) -> Dict[str, Any]:
+        """각 검색 모드에서 비어 있지 않은 질문을 실행해 성공 호출의 지연시간을 집계한다.
+
+        개별 검색 예외는 오류로 출력하고 해당 호출을 집계에서 제외하며, 반환값에는
+        모델·모드별 실행 수, 합계·평균 지연시간과 성공 비율을 담는다.
         """
-        Runs benchmark across different retrieval modes for a specific model.
-        Calculates basic latency and retrieval stats.
-        """
+
         results = {}
 
         for mode in retrieval_modes:

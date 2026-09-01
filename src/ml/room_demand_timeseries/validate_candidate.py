@@ -1,3 +1,5 @@
+"""선택 후보를 private test 전에 validation 전용으로 재학습·평가한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -13,12 +15,20 @@ from .train import TimeSeriesTrainer
 
 
 class ValidationReporter:
+    """TRAIN만 적합에 사용하고 VALIDATION metric·gate 증거를 파일로 남긴다."""
+
     def run(
         self,
         trainer_dir: Path,
         model_manifest_path: Path,
         output_dir: Path,
     ) -> dict[str, Any]:
+        """manifest 선택 구성을 재학습해 validation report와 그룹 metric을 기록한다.
+
+        필수 trainer 파일·manifest field가 없거나 모델 평가가 실패하면 예외를
+        전달하며 test 또는 hidden 입력은 열지 않는다.
+        """
+
         train = pd.read_csv(
             trainer_dir / "train.csv.gz",
             parse_dates=["cutoff_date", "target_date"],
@@ -53,6 +63,8 @@ class ValidationReporter:
 
 
 def main() -> None:
+    """CLI 경로의 후보를 validation-only로 검사하고 결과 JSON을 출력한다."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--trainer-dir", type=Path, required=True)
     parser.add_argument("--model-manifest", type=Path, required=True)

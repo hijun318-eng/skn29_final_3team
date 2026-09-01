@@ -1,6 +1,7 @@
 /** 보고서 API의 versioned 명령·응답·도메인 타입을 정의하는 계약 모듈이다. */
 /** 보고서 응답·명령의 호환성 버전이다. */ export const REPORT_CONTRACT_VERSION = "REPORT-v1.0.0";
 /** 보고서 요청 header가 선언하는 OpenAPI 버전이다. */ export const REPORT_REQUEST_CONTEXT_VERSION = "OPENAPI-v1.0.0";
+/** 서버와 동일하게 보고서 블록 한 개에 허용하는 최대 문자 수다. */ export const REPORT_BLOCK_CONTENT_MAX_LENGTH = 4000;
 /** 서버 보고서 실행에서 허용되는 상태 집합이다. */ export const REPORT_RUN_STATUSES = ["queued", "running", "success", "partial", "failed", "cancelled"] as const;
 /** 보고서 실행 상태의 리터럴 타입이다. */ export type ReportRunStatus = typeof REPORT_RUN_STATUSES[number];
 
@@ -125,6 +126,15 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly orientation: ReportOrientation;
   readonly currencyDisplayUnit: ReportCurrencyDisplayUnit;
   readonly approvedAt?: string;
+  readonly archivedAt?: string;
+  readonly archivedBy?: string;
+}
+
+/** 보고서 정의 전체의 비파괴 보관 상태다. */ export interface ReportDefinitionLifecycle {
+  readonly definitionId: string;
+  readonly archived: boolean;
+  readonly archivedAt?: string;
+  readonly archivedBy?: string;
 }
 
 /** 정의 버전에 연결된 immutable 분석 artifact 참조다. */ export interface ReportArtifactVersion {
@@ -185,6 +195,15 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly orientation: ReportOrientation;
   readonly currency_display_unit: ReportCurrencyDisplayUnit;
   readonly approved_at: string | null;
+  readonly archived_at: string | null;
+  readonly archived_by: string | null;
+}
+
+/** 정의 보관·복원 명령의 wire 응답이다. */ export interface ReportDefinitionLifecycleResponse {
+  readonly definition_id: string;
+  readonly archived: boolean;
+  readonly archived_at: string | null;
+  readonly archived_by: string | null;
 }
 
 /** 최종 문서 API의 versioned wire envelope다. */ export interface ReportDocumentResponse {
@@ -280,20 +299,6 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   readonly run: ReportRunResponse | null;
 }
 
-/** 근거 artifact에서 생성된 assistant 초안과 trace 계약이다. */ export interface ReportAssistantDraftResponse {
-  readonly assistant_request_id: string;
-  readonly status: "success";
-  readonly definition: ReportDefinitionResponse;
-  readonly trace: {
-    readonly model_version: string;
-    readonly prompt_id: string;
-    readonly prompt_version: string;
-    readonly prompt_hash: string;
-    readonly attempts: number;
-    readonly duration_ms: number;
-  };
-}
-
 /** 서버가 소유하며 새로고침 후 복구할 수 있는 Report Assistant 단계다. */
 export type ReportAssistantPhase =
   | "ready"
@@ -316,7 +321,8 @@ export type ReportAssistantRequiredAction =
   | "REFRESH"
   | "REAUTHENTICATE"
   | "REOPEN_LATEST_REPORT"
-  | "CONTACT_ADMIN";
+  | "CONTACT_ADMIN"
+  | "REVIEW_EXTERNAL_TRANSFER";
 
 /** 사용자 승인 전에 질문·이유·조회 범위를 공개하는 분석 계획이다. */
 export interface ReportAssistantAnalysisPlan {
@@ -357,6 +363,55 @@ export interface ReportAssistantTurnHistoryItem {
   readonly content: string;
 }
 
+/** 외부 모델 전송 전에 서버가 확정해 공개하는 provider route 한 건이다. */
+export interface ReportAssistantExternalProviderRoute {
+  readonly node: "report_assistant" | "report_assistant_turn" | "report_assistant_review";
+  readonly route_id: string;
+  readonly route_label: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly data_boundary: "external" | "internal";
+  readonly destination_origin: string;
+}
+
+/** 외부 모델 요청에 포함될 수 있는 서버 승인 데이터 범위다. */
+export type ReportAssistantExternalTransferScope =
+  | "user_instruction"
+  | "assistant_turn_history"
+  | "report_metadata_layout"
+  | "report_block_content"
+  | "selected_artifact_metadata"
+  | "selected_artifact_narrative"
+  | "selected_artifact_metrics"
+  | "selected_artifact_chart_spec"
+  | "selected_artifact_table_snapshot"
+  | "pending_patch"
+  | "approved_new_analysis_artifact";
+
+/** 서버가 세션·route·전송 범위에 결속한 외부 전송 동의 공개문이다. */
+export interface ReportAssistantExternalTransferDisclosure {
+  readonly disclosure_id: string;
+  readonly assistant_request_id: string;
+  readonly policy_version: string;
+  readonly provider_routes: readonly ReportAssistantExternalProviderRoute[];
+  readonly data_scopes: readonly ReportAssistantExternalTransferScope[];
+  readonly excluded_data: readonly string[];
+  readonly content_warning: string;
+  readonly disclosure_hash: string;
+  readonly expires_at: string;
+  readonly consent_required: boolean;
+}
+
+/** 공개문 식별자만 승인한 뒤 서버가 반환하는 immutable 동의 receipt다. */
+export interface ReportAssistantExternalTransferConsentResponse {
+  readonly consent_id: string;
+  readonly assistant_request_id: string;
+  readonly policy_version: string;
+  readonly provider_routes: readonly ReportAssistantExternalProviderRoute[];
+  readonly data_scopes: readonly ReportAssistantExternalTransferScope[];
+  readonly consented_at: string;
+}
+
 /** 대화형 Assistant 세션의 서버 권위 상태 계약이다. */
 export interface ReportAssistantSessionResponse {
   readonly assistant_request_id: string;
@@ -367,6 +422,8 @@ export interface ReportAssistantSessionResponse {
   readonly base_revision: number;
   readonly artifact_id: string;
   readonly artifact_ids: readonly string[];
+  readonly exact_page_count: number | null;
+  readonly verified_page_count: number | null;
   readonly analysis_plan: ReportAssistantAnalysisPlan | null;
   readonly patch_request_id: string | null;
   readonly patch_summary: string | null;

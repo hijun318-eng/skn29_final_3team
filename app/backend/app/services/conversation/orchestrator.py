@@ -113,6 +113,7 @@ def _clarification_resolved_by_inheritance(
             partial.get("metric_resolution") == "missing"
             and slots.is_inherited_metric
             and bool(slots.metric_ids)
+            and ConversationSlotResolver.has_grounded_analysis_slot_delta(partial)
         )
     if error.code is ContextBuildErrorCode.PERIOD_REQUIRED:
         return (
@@ -869,6 +870,78 @@ class ConversationOrchestrator:
         ):
             raise ValueError("pre-admitted Conversation command가 요청과 일치하지 않습니다.")
 
+    @staticmethod
+    def _composite_public_fields_from_turn(turn: dict[str, Any]) -> dict[str, Any]:
+        """저장된 조합 receipt와 선택 Agent 결과만 replay 공개 계약으로 수화한다."""
+
+        slots = turn.get("resolved_slots")
+        composition = (
+            slots.get("supervisor_composition")
+            if isinstance(slots, dict)
+            else None
+        )
+        if composition is None:
+            return {}
+        if not isinstance(composition, dict):
+            raise ValueError("저장된 복합 Agent receipt가 올바르지 않습니다.")
+        agents = composition.get("agents")
+        evidence_refs = composition.get("evidence_refs")
+        if (
+            composition.get("schema_version")
+            != "SupervisorCompositionReceipt.v1"
+            or not isinstance(agents, list)
+            or not 2 <= len(agents) <= 3
+            or len(agents) != len(set(agents))
+            or any(
+                agent
+                not in {
+                    "ANALYSIS_WORKFLOW",
+                    "INTERNAL_GUIDELINE",
+                    "ML_PREDICTION",
+                }
+                for agent in agents
+            )
+            or composition.get("primary_agent") not in agents
+            or not isinstance(evidence_refs, list)
+            or not evidence_refs
+            or len(evidence_refs) != len(set(evidence_refs))
+            or any(not isinstance(ref, str) or not ref for ref in evidence_refs)
+            or not isinstance(composition.get("plan_ref"), str)
+            or composition["plan_ref"] not in evidence_refs
+        ):
+            raise ValueError("저장된 복합 Agent receipt가 올바르지 않습니다.")
+        return {
+            "type": "COMPOSITE",
+            "composition": dict(composition),
+            "rag_response": slots.get("rag"),
+            "ml_prediction": slots.get("ml_prediction"),
+        }
+
+    async def _hydrate_analysis_composite_replay(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """분석 대표 Turn의 보조 RAG·ML 결과를 멱등 replay에 복원한다."""
+
+        if result.get("status") != "SUCCESS" or not isinstance(
+            result.get("turn"),
+            dict,
+        ):
+            return result
+        fields = self._composite_public_fields_from_turn(result["turn"])
+        if not fields:
+            return result
+        return {
+            **result,
+            "conversation": await self._repo.get_conversation(
+                conversation_id,
+                user_id,
+            ),
+            **fields,
+        }
+
     async def _hydrate_internal_guideline_replay(
         self,
         conversation_id: UUID,
@@ -895,8 +968,10 @@ class ConversationOrchestrator:
                 "required_action": "CONTACT_SUPPORT",
                 "is_idempotent_replay": True,
             }
+        composite_fields = self._composite_public_fields_from_turn(turn)
         return {
             **result,
+            **composite_fields,
             "conversation": await self._repo.get_conversation(
                 conversation_id,
                 user_id,
@@ -1023,16 +1098,22 @@ class ConversationOrchestrator:
         internal_manual_query_service_factory: Callable[[], Any],
         *,
         route_resolver: "AgentRouteResolver | None" = None,
-        capability_routing_enabled: bool = False,
+        supervisor_planner_factory: Callable[[], Any] | None = None,
+        supervisor_routing_enabled: bool = False,
+        internal_guideline_capability_searcher_factory: Callable[[], Any]
+        | None = None,
         ml_prediction_service_factory: Callable[[], Any] | None = None,
+        ml_prediction_executor_factory: Callable[[Any], Any] | None = None,
     ) -> dict[str, Any]:
         """공통 admission 후 명시적으로 승인된 Supervisor 결정만 실행한다.
 
-        일반 입력은 기존 governed analysis 기본 route를 유지한다. 선택 기능은 feature
-        flag와 capability/readiness 영수증이 함께 유효한 명시 route에서만 실행한다.
+        Supervisor가 일반 입력을 계획하더라도 선택 Agent의 capability/readiness와
+        원본 command admission은 서버가 다시 검증한다. 명시 route는 모델을 우회한다.
         """
 
         from app.ports.agent import AgentRequest
+        from app.contracts import RuntimeFeature
+        from app.runtime_features import runtime_feature_enabled
         from app.services.agent_supervisor import AgentDispatchError
         from app.services.conversation_agent_ports import (
             analysis_agent_result,
@@ -1043,6 +1124,14 @@ class ConversationOrchestrator:
             build_conversation_agent_supervisor,
         )
         from app.services.langgraph_agent_runtime import LangGraphAgentRuntime
+        from app.services.ml_prediction_service import (
+            MLPredictionService,
+            MLRuntimeCapability,
+        )
+        from app.services.supervisor_planner import (
+            SupervisorCapabilityCatalog,
+            materialize_supervisor_plan,
+        )
 
         if not isinstance(request, AgentRequest):
             raise TypeError("dispatch_agent_command에는 AgentRequest가 필요합니다.")
@@ -1076,12 +1165,75 @@ class ConversationOrchestrator:
                     early_result,
                 )
                 return ml_prediction_agent_result(hydrated).payload
-            return analysis_agent_result(early_result).payload
+            hydrated = await self._hydrate_analysis_composite_replay(
+                request.conversation_id,
+                request.context.user_id,
+                early_result,
+            )
+            return analysis_agent_result(hydrated).payload
         if admission is None:
             raise RuntimeError("Agent command admission 결과가 없습니다.")
 
         admitted_request = request.model_copy(update={"context": admission.context})
         try:
+            materialized_plan = None
+            shared_ml_service = (
+                (ml_prediction_service_factory or MLPredictionService)()
+                if runtime_feature_enabled(RuntimeFeature.ML_PREDICTION)
+                else None
+            )
+            if (
+                supervisor_routing_enabled
+                and route_resolver is None
+                and request.command.requested_route is None
+            ):
+                if supervisor_planner_factory is None:
+                    raise AgentDispatchError(
+                        "AGENT_SUPERVISOR_CONFIGURATION_INVALID",
+                        "Supervisor planner가 구성되지 않았습니다.",
+                    )
+                ml_capability = None
+                if shared_ml_service is not None:
+                    try:
+                        ml_capability = MLRuntimeCapability.model_validate(
+                            await shared_ml_service.capabilities()
+                        )
+                    except Exception as error:
+                        logger.warning(
+                            "Supervisor ML capability is unavailable: error_type=%s",
+                            type(error).__name__,
+                        )
+                        ml_capability = None
+                catalog = SupervisorCapabilityCatalog.from_runtime(
+                    rag_enabled=runtime_feature_enabled(
+                        RuntimeFeature.INTERNAL_GUIDELINE
+                    ),
+                    ml_enabled=runtime_feature_enabled(
+                        RuntimeFeature.ML_PREDICTION
+                    ),
+                    ml_capability=ml_capability,
+                )
+                previous_turns = await self._repo.list_turns(
+                    request.conversation_id
+                )
+                previous_route = None
+                if previous_turns:
+                    raw_previous_route = previous_turns[-1].get("route")
+                    if isinstance(raw_previous_route, str) and raw_previous_route:
+                        previous_route = raw_previous_route
+                planner = supervisor_planner_factory()
+                planned = await planner.plan(
+                    admitted_request,
+                    catalog,
+                    previous_route=previous_route,
+                )
+                materialized_plan = materialize_supervisor_plan(
+                    admitted_request,
+                    planned,
+                    catalog,
+                )
+                if not materialized_plan.is_composite:
+                    admitted_request = materialized_plan.requests[0]
             try:
                 route_timeout_seconds = float(
                     os.getenv("CONVERSATION_AGENT_ROUTE_TIMEOUT_SECONDS", "15")
@@ -1100,14 +1252,34 @@ class ConversationOrchestrator:
                     "AGENT_ROUTE_TIMEOUT_INVALID",
                     "Agent route 제한 시간은 0초보다 크고 15초 이하여야 합니다.",
                 )
+            if materialized_plan is not None and materialized_plan.is_composite:
+                return await self._execute_composite_agent_plan(
+                    materialized_plan,
+                    admission,
+                    execution_gate,
+                    internal_manual_query_service_factory,
+                    internal_guideline_capability_searcher_factory,
+                    shared_ml_service,
+                    ml_prediction_executor_factory,
+                    route_timeout_seconds,
+                )
             supervisor = build_conversation_agent_supervisor(
                 self,
                 execution_gate,
                 internal_manual_query_service_factory,
                 route_resolver=route_resolver,
                 admission=admission,
-                capability_routing_enabled=capability_routing_enabled,
-                ml_prediction_service_factory=ml_prediction_service_factory,
+                capability_routing_enabled=supervisor_routing_enabled,
+                data_platform=self._data_platform,
+                internal_guideline_capability_searcher_factory=(
+                    internal_guideline_capability_searcher_factory
+                ),
+                ml_prediction_service_factory=(
+                    (lambda: shared_ml_service)
+                    if shared_ml_service is not None
+                    else None
+                ),
+                ml_prediction_executor_factory=ml_prediction_executor_factory,
             )
             route_lease_stop = asyncio.Event()
             route_lease_lost = asyncio.Event()
@@ -1179,6 +1351,262 @@ class ConversationOrchestrator:
             )
             raise
 
+    async def _execute_composite_agent_plan(
+        self,
+        materialized_plan: Any,
+        admission: _AdmittedConversationCommand,
+        execution_gate: ConcurrentExecutionGate,
+        internal_manual_query_service_factory: Callable[[], Any],
+        internal_guideline_capability_searcher_factory: Callable[[], Any]
+        | None,
+        shared_ml_service: Any | None,
+        ml_prediction_executor_factory: Callable[[Any], Any] | None,
+        route_timeout_seconds: float,
+    ) -> dict[str, Any]:
+        """여러 Agent의 검증·실행 결과를 대표 Turn 하나에 원자적으로 확정한다."""
+
+        from app.ports.agent import AgentKind
+        from app.services.agent_supervisor import AgentDispatchError
+        from app.services.composite_agent_execution import (
+            CompositeExecutionAugmentation,
+        )
+        from app.services.conversation_agent_registry import (
+            build_conversation_agent_supervisor,
+        )
+        from app.services.internal_manual_query import InternalManualQuery
+        from app.services.mcp_agent_tools import MCPMLPredictionExecutor
+        from app.services.supervisor_planner import MaterializedSupervisorPlan
+
+        if not isinstance(materialized_plan, MaterializedSupervisorPlan) or not (
+            materialized_plan.is_composite
+        ):
+            raise AgentDispatchError(
+                "AGENT_COMPOSITE_PLAN_INVALID",
+                "복합 Agent 계획 계약이 올바르지 않습니다.",
+            )
+        requests = materialized_plan.requests
+        by_agent = {request.target_agent: request for request in requests}
+        if len(by_agent) != len(requests) or None in by_agent:
+            raise AgentDispatchError(
+                "AGENT_COMPOSITE_PLAN_INVALID",
+                "복합 Agent 계획의 실행 대상이 올바르지 않습니다.",
+                evidence_refs=(materialized_plan.evidence_ref,),
+            )
+
+        primary_agent = (
+            AgentKind.ANALYSIS_WORKFLOW
+            if AgentKind.ANALYSIS_WORKFLOW in by_agent
+            else AgentKind.INTERNAL_GUIDELINE
+            if AgentKind.INTERNAL_GUIDELINE in by_agent
+            else None
+        )
+        if primary_agent is None:
+            raise AgentDispatchError(
+                "AGENT_COMPOSITE_PLAN_INVALID",
+                "복합 실행을 확정할 대표 Agent가 없습니다.",
+                evidence_refs=(materialized_plan.evidence_ref,),
+            )
+
+        shared_rag_service = (
+            internal_manual_query_service_factory()
+            if AgentKind.INTERNAL_GUIDELINE in by_agent
+            else None
+        )
+        rag_service_factory = (
+            (lambda: shared_rag_service)
+            if shared_rag_service is not None
+            else internal_manual_query_service_factory
+        )
+        supervisor = build_conversation_agent_supervisor(
+            self,
+            execution_gate,
+            rag_service_factory,
+            admission=admission,
+            capability_routing_enabled=True,
+            data_platform=self._data_platform,
+            internal_guideline_capability_searcher_factory=(
+                internal_guideline_capability_searcher_factory
+            ),
+            ml_prediction_service_factory=(
+                (lambda: shared_ml_service)
+                if shared_ml_service is not None
+                else None
+            ),
+            ml_prediction_executor_factory=ml_prediction_executor_factory,
+        )
+
+        route_lease_stop = asyncio.Event()
+        route_lease_lost = asyncio.Event()
+        renew_lease = getattr(self._repo, "renew_lease", None)
+        route_lease_task = (
+            asyncio.create_task(
+                self._renew_command_lease(
+                    requests[0].conversation_id,
+                    admission.command_id,
+                    route_lease_stop,
+                    route_lease_lost,
+                ),
+                name=f"conversation-composite-route-lease-{admission.command_id}",
+            )
+            if callable(renew_lease)
+            else None
+        )
+
+        async def _stop_route_lease() -> None:
+            route_lease_stop.set()
+            if route_lease_task is not None:
+                route_lease_task.cancel()
+                try:
+                    await route_lease_task
+                except asyncio.CancelledError:
+                    pass
+
+        try:
+            routings: dict[AgentKind, Any] = {}
+            evidence_refs: list[str] = []
+            for request in requests:
+                routing = await supervisor.route_with_state(
+                    request,
+                    timeout_seconds=route_timeout_seconds,
+                )
+                if route_lease_lost.is_set():
+                    raise AgentDispatchError(
+                        "AGENT_ROUTE_LEASE_LOST",
+                        "복합 Agent route 결정 중 command 소유권을 잃었습니다.",
+                        state=routing.state,
+                    )
+                await supervisor.readiness_for(request, routing.decision.agent)
+                routings[routing.decision.agent] = routing
+                evidence_refs.extend(routing.decision.evidence_refs)
+
+            rag_response: dict[str, Any] | None = None
+            if (
+                AgentKind.INTERNAL_GUIDELINE in by_agent
+                and primary_agent is not AgentKind.INTERNAL_GUIDELINE
+            ):
+                rag_request = by_agent[AgentKind.INTERNAL_GUIDELINE]
+                if shared_rag_service is None:
+                    raise AgentDispatchError(
+                        "AGENT_PORT_NOT_READY",
+                        "RAG 실행 서비스가 구성되지 않았습니다.",
+                    )
+                rag_response = dict(
+                    await shared_rag_service.execute(
+                        InternalManualQuery(
+                            question=rag_request.task_objective
+                            or rag_request.command.user_message,
+                            mode="DOCUMENT_ONLY",
+                            conversation_id=rag_request.conversation_id,
+                            expected_head_turn_id=(
+                                rag_request.command.expected_head_turn_id
+                            ),
+                            expected_head_turn_id_is_set=True,
+                            inherit_previous_context=False,
+                        ),
+                        admission.context,
+                        persist_turn=False,
+                    )
+                )
+                rag_response.pop("turn_id", None)
+                rag_tool_run_id = rag_response.get("mcp_tool_run_id")
+                if isinstance(rag_tool_run_id, str) and rag_tool_run_id:
+                    evidence_refs.append(f"mcp-tool-run:{rag_tool_run_id}")
+
+            ml_prediction: dict[str, Any] | None = None
+            if AgentKind.ML_PREDICTION in by_agent:
+                ml_request = by_agent[AgentKind.ML_PREDICTION]
+                invocation = ml_request.invocation
+                if shared_ml_service is None or invocation is None:
+                    raise AgentDispatchError(
+                        "AGENT_PORT_NOT_READY",
+                        "ML 예측 실행 서비스가 구성되지 않았습니다.",
+                    )
+                if ml_prediction_executor_factory is not None:
+                    ml_tool_executor = ml_prediction_executor_factory(
+                        shared_ml_service
+                    )
+                else:
+                    database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+                    if not database_url:
+                        raise AgentDispatchError(
+                            "AGENT_PORT_NOT_READY",
+                            "ML MCP 실행에 APP_RUNTIME_DATABASE_URL이 필요합니다.",
+                        )
+                    ml_tool_executor = MCPMLPredictionExecutor(
+                        database_url,
+                        shared_ml_service,
+                    )
+                try:
+                    ml_prediction = dict(
+                        await ml_tool_executor.execute(
+                            {
+                                "property_id": invocation.property_id,
+                                "as_of": invocation.as_of.isoformat(),
+                                "horizon_days": invocation.horizon_days,
+                            },
+                            subject_id=admission.context.user_id,
+                            role=admission.context.role,
+                            trace_id=admission.context.trace_id,
+                        )
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except ValueError as error:
+                    raise AgentDispatchError(
+                        "AGENT_ROUTE_NOT_RESOLVED",
+                        "요청한 ML 예측 범위는 현재 지원되지 않습니다.",
+                    ) from error
+                except Exception as error:
+                    raise AgentDispatchError(
+                        "AGENT_PORT_NOT_READY",
+                        "ML 예측 실행 서비스를 확인하지 못했습니다.",
+                    ) from error
+                ml_tool_run_id = ml_prediction.get("mcp_tool_run_id")
+                if isinstance(ml_tool_run_id, str) and ml_tool_run_id:
+                    evidence_refs.append(f"mcp-tool-run:{ml_tool_run_id}")
+
+            if route_lease_lost.is_set():
+                raise AgentDispatchError(
+                    "AGENT_ROUTE_LEASE_LOST",
+                    "복합 Agent 준비 중 command 소유권을 잃었습니다.",
+                    evidence_refs=tuple(dict.fromkeys(evidence_refs)),
+                )
+            await _stop_route_lease()
+
+            augmentation = CompositeExecutionAugmentation(
+                primary_agent=primary_agent,
+                agents=tuple(request.target_agent for request in requests),
+                plan_ref=materialized_plan.evidence_ref,
+                evidence_refs=tuple(dict.fromkeys(evidence_refs)),
+                rag_response=rag_response,
+                ml_prediction=ml_prediction,
+            )
+            execution_supervisor = build_conversation_agent_supervisor(
+                self,
+                execution_gate,
+                rag_service_factory,
+                admission=admission,
+                capability_routing_enabled=True,
+                data_platform=self._data_platform,
+                internal_guideline_capability_searcher_factory=(
+                    internal_guideline_capability_searcher_factory
+                ),
+                ml_prediction_service_factory=(
+                    (lambda: shared_ml_service)
+                    if shared_ml_service is not None
+                    else None
+                ),
+                ml_prediction_executor_factory=ml_prediction_executor_factory,
+                composite_augmentation=augmentation,
+            )
+            outcome = await execution_supervisor.execute_routed_with_state(
+                by_agent[primary_agent],
+                routings[primary_agent],
+            )
+            return outcome.result.payload
+        finally:
+            await _stop_route_lease()
+
     async def execute_internal_guideline_command(
         self,
         conversation_id: UUID,
@@ -1187,12 +1615,38 @@ class ConversationOrchestrator:
         executor: Callable[[RequestContext], Awaitable[dict[str, Any]]],
         *,
         admission: _AdmittedConversationCommand | None = None,
+        supervisor_plan_ref: str | None = None,
+        composite_augmentation: Any | None = None,
     ) -> dict[str, Any]:
         """RAG Agent를 기존 command idempotency·CAS·lease·terminal 계약으로 실행한다."""
 
         command = ConversationCommandRequest.model_validate(payload)
-        if command.requested_route != "INTERNAL_GUIDELINE":
-            raise ValueError("내부지침 command는 명시적 INTERNAL_GUIDELINE route가 필요합니다.")
+        explicit_route = command.requested_route == "INTERNAL_GUIDELINE"
+        planned_route = (
+            supervisor_plan_ref is not None
+            and command.requested_route is None
+            and command.ml_prediction is None
+        )
+        if explicit_route == planned_route:
+            raise ValueError(
+                "내부지침 command에는 명시 route 또는 검증된 Supervisor 계획 하나가 필요합니다."
+            )
+        if composite_augmentation is not None:
+            from app.ports.agent import AgentKind
+            from app.services.composite_agent_execution import (
+                CompositeExecutionAugmentation,
+            )
+
+            if (
+                not isinstance(
+                    composite_augmentation,
+                    CompositeExecutionAugmentation,
+                )
+                or composite_augmentation.primary_agent
+                is not AgentKind.INTERNAL_GUIDELINE
+                or composite_augmentation.plan_ref != supervisor_plan_ref
+            ):
+                raise ValueError("RAG 복합 실행 계약이 올바르지 않습니다.")
         early_result: dict[str, Any] | None = None
         if admission is None:
             admission, early_result = await self._admit_command(
@@ -1250,6 +1704,16 @@ class ConversationOrchestrator:
             if lease_lost.is_set():
                 raise RuntimeError("내부지침 command lease 소유권을 잃었습니다.")
             turn_id = uuid4()
+            composite_slots = (
+                composite_augmentation.resolved_slots()
+                if composite_augmentation is not None
+                else {}
+            )
+            terminal_writer = (
+                composite_augmentation.chain_terminal_writer(None)
+                if composite_augmentation is not None
+                else None
+            )
             await self._repo.commit_turn(
                 conversation_id=conversation_id,
                 command_id=admission.command_id,
@@ -1262,10 +1726,11 @@ class ConversationOrchestrator:
                 artifact_id=None,
                 view_spec_id=None,
                 report_definition_id=None,
-                resolved_slots={"rag": rag_response},
+                resolved_slots={"rag": rag_response, **composite_slots},
                 product_release_id=admission.product_release_id,
                 permission_snapshot_id=admission.permission_snapshot_id,
                 semantic_release_id=admission.semantic_release_id,
+                terminal_writer=terminal_writer,
             )
             updated_turns = await self._repo.list_turns(conversation_id)
             target_turn = next(
@@ -1286,6 +1751,11 @@ class ConversationOrchestrator:
                     "turn_id": str(turn_id),
                 },
                 "is_idempotent_replay": False,
+                **(
+                    composite_augmentation.public_fields()
+                    if composite_augmentation is not None
+                    else {}
+                ),
             }
         except asyncio.CancelledError:
             await _release_failure(
@@ -1342,15 +1812,27 @@ class ConversationOrchestrator:
         payload: dict[str, Any],
         context: RequestContext,
         executor: Callable[[RequestContext], Awaitable[dict[str, Any]]],
-        persister: Callable[[Any, dict[str, Any]], Awaitable[None]],
+        persister: Callable[[Any, dict[str, Any]], Awaitable[None]] | None,
         *,
         admission: _AdmittedConversationCommand | None = None,
+        supervisor_plan_ref: str | None = None,
     ) -> dict[str, Any]:
-        """typed ML 예측과 감사 이벤트·Conversation Turn을 하나의 terminal로 확정한다."""
+        """typed ML 예측과 Conversation Turn을 확정하고 legacy persister를 지원한다."""
 
         command = ConversationCommandRequest.model_validate(payload)
-        if command.requested_route != "ML_PREDICTION" or command.ml_prediction is None:
-            raise ValueError("ML command는 명시적 ML_PREDICTION action이 필요합니다.")
+        explicit_route = (
+            command.requested_route == "ML_PREDICTION"
+            and command.ml_prediction is not None
+        )
+        planned_route = (
+            supervisor_plan_ref is not None
+            and command.requested_route is None
+            and command.ml_prediction is None
+        )
+        if explicit_route == planned_route:
+            raise ValueError(
+                "ML command에는 명시 action 또는 검증된 Supervisor 계획 하나가 필요합니다."
+            )
         early_result: dict[str, Any] | None = None
         if admission is None:
             admission, early_result = await self._admit_command(
@@ -1396,8 +1878,13 @@ class ConversationOrchestrator:
             if lease_lost.is_set():
                 raise RuntimeError("ML command lease 소유권을 잃었습니다.")
 
-            async def _write_ml_terminal(session: Any) -> None:
-                await persister(session, prediction)
+            terminal_writer = None
+            if persister is not None:
+
+                async def _write_ml_terminal(session: Any) -> None:
+                    await persister(session, prediction)
+
+                terminal_writer = _write_ml_terminal
 
             turn_id = uuid4()
             await self._repo.commit_turn(
@@ -1416,7 +1903,7 @@ class ConversationOrchestrator:
                 product_release_id=admission.product_release_id,
                 permission_snapshot_id=admission.permission_snapshot_id,
                 semantic_release_id=admission.semantic_release_id,
-                terminal_writer=_write_ml_terminal,
+                terminal_writer=terminal_writer,
             )
             updated_turns = await self._repo.list_turns(conversation_id)
             target_turn = next(
@@ -1469,6 +1956,9 @@ class ConversationOrchestrator:
         cancel_check: Callable[[], bool] | None = None,
         analysis_gate: ConcurrentExecutionGate | None = None,
         analysis_queue_wait_seconds: float = 0.0,
+        supervisor_plan_ref: str | None = None,
+        task_objective: str | None = None,
+        composite_augmentation: Any | None = None,
     ) -> dict[str, Any]:
         """사용자의 멀티턴 명령을 멱등성 및 거버넌스 규칙에 따라 안전하게 실행합니다.
 
@@ -1495,6 +1985,29 @@ class ConversationOrchestrator:
             대화 턴 실행 결과 딕셔너리 (status, turn, conversation, disambiguation_options 등)
         """
         command = ConversationCommandRequest.model_validate(payload)
+        has_planned_execution = supervisor_plan_ref is not None
+        if has_planned_execution != (task_objective is not None):
+            raise ValueError(
+                "분석 command의 Supervisor 계획 영수증과 objective가 일치하지 않습니다."
+            )
+        if task_objective is not None and not 1 <= len(task_objective.strip()) <= 240:
+            raise ValueError("분석 command의 Supervisor objective가 올바르지 않습니다.")
+        if composite_augmentation is not None:
+            from app.ports.agent import AgentKind
+            from app.services.composite_agent_execution import (
+                CompositeExecutionAugmentation,
+            )
+
+            if (
+                not isinstance(
+                    composite_augmentation,
+                    CompositeExecutionAugmentation,
+                )
+                or composite_augmentation.primary_agent
+                is not AgentKind.ANALYSIS_WORKFLOW
+                or composite_augmentation.plan_ref != supervisor_plan_ref
+            ):
+                raise ValueError("분석 복합 실행 계약이 올바르지 않습니다.")
         early_result: dict[str, Any] | None = None
         if admission is None:
             admission, early_result = await self._admit_command(
@@ -1514,7 +2027,8 @@ class ConversationOrchestrator:
         if admission is None:
             raise RuntimeError("Conversation command admission 결과가 없습니다.")
 
-        user_message = command.user_message
+        persisted_user_message = command.user_message
+        user_message = task_objective.strip() if task_objective is not None else persisted_user_message
         context = admission.context
         command_id = admission.command_id
         current_product = admission.product_release_id
@@ -1567,7 +2081,7 @@ class ConversationOrchestrator:
                         command_id,
                         uuid4(),
                         len(previous_turns),
-                        user_message,
+                        persisted_user_message,
                         error_data,
                         request_id=context.request_id,
                         terminal_writer=_write_analysis_failure,
@@ -1594,7 +2108,7 @@ class ConversationOrchestrator:
                 command_id=command_id,
                 turn_id=turn_id,
                 turn_index=len(previous_turns),
-                user_message=user_message,
+                user_message=persisted_user_message,
                 route="OUT_OF_SCOPE",
                 source_turn_ids=[],
                 request_id=None,
@@ -1643,7 +2157,7 @@ class ConversationOrchestrator:
                     command_id=command_id,
                     turn_id=turn_id,
                     turn_index=len(previous_turns),
-                    user_message=user_message,
+                    user_message=persisted_user_message,
                     route="ANALYSIS",
                     source_turn_ids=[],
                     request_id=None,
@@ -1919,7 +2433,7 @@ class ConversationOrchestrator:
                         command_id=command_id,
                         turn_id=turn_id,
                         turn_index=len(previous_turns),
-                        user_message=user_message,
+                        user_message=persisted_user_message,
                         route="ANALYSIS",
                         source_turn_ids=[],
                         request_id=None,
@@ -2034,7 +2548,7 @@ class ConversationOrchestrator:
 
             # 6. 결정론적 슬롯/시간 리졸버로 슬롯 및 라우트 확정
             slots: ResolvedTurnSlots = ConversationSlotResolver.resolve(
-                user_message=user_message,
+                user_message=persisted_user_message,
                 node1_output=node1_res,
                 previous_turns=previous_turns,
                 as_of=context.as_of,
@@ -2327,13 +2841,22 @@ class ConversationOrchestrator:
                 else None
             )
 
+            composite_slots: dict[str, Any] = {}
+            composite_public: dict[str, Any] = {}
+            if composite_augmentation is not None and terminal_status == "SUCCEEDED":
+                composite_slots = composite_augmentation.resolved_slots()
+                composite_public = composite_augmentation.public_fields()
+                terminal_writer = composite_augmentation.chain_terminal_writer(
+                    terminal_writer
+                )
+
             # 8. 단일 DB 트랜잭션으로 Turn 영속화 및 Lease 해제
             await self._repo.commit_turn(
                 conversation_id=conversation_id,
                 command_id=command_id,
                 turn_id=turn_id,
                 turn_index=turn_index,
-                user_message=user_message,
+                user_message=persisted_user_message,
                 route=slots.route,
                 source_turn_ids=list(slots.source_turn_ids),
                 request_id=request_id,
@@ -2366,7 +2889,9 @@ class ConversationOrchestrator:
                         opt.model_dump(mode="json") if hasattr(opt, "model_dump") else opt
                         for opt in disambiguation_options
                     ] if is_clarification else [],
-                    "pending_user_message": user_message if is_clarification else None,
+                    "pending_user_message": (
+                        persisted_user_message if is_clarification else None
+                    ),
                     "is_inherited_metric": slots.is_inherited_metric,
                     "is_inherited_dimension": slots.is_inherited_dimension,
                     "is_inherited_period": slots.is_inherited_period,
@@ -2380,6 +2905,7 @@ class ConversationOrchestrator:
                         for change in slots.change_set
                     ],
                     "analysis_plan_observation": analysis_observation,
+                    **composite_slots,
                 },
                 product_release_id=current_product,
                 permission_snapshot_id=current_permission,
@@ -2436,6 +2962,7 @@ class ConversationOrchestrator:
                     getattr(preflight_clarification, "suggestions", ()) or ()
                 ) if preflight_clarification is not None else [],
                 "analysis_response": analysis_resp.model_dump(mode="json") if analysis_resp and hasattr(analysis_resp, "model_dump") else None,
+                **composite_public,
             }
 
         except asyncio.CancelledError:

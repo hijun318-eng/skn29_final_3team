@@ -1,10 +1,14 @@
+"""승인 artifact와 감사된 Trino history만 사용하는 객실 수요 추론 HTTP runtime이다."""
+
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import uuid
+import warnings
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -12,14 +16,25 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
+from sklearn.exceptions import InconsistentVersionWarning
 
 from ..room_demand_v3.trino_client import TrinoClient
+from ..runtime_trust import (
+    ML_RUNTIME_AUTH_MAX_BODY_BYTES,
+    MLRuntimeNonceGuard,
+    MLRuntimeTrustError,
+    response_auth_headers,
+    runtime_hmac_secret,
+    verify_request_auth,
+)
 from .contracts import FEATURE_COLUMNS
 from .features import TimeSeriesFeatureBuilder
 
 
+logger = logging.getLogger(__name__)
 IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 HISTORY_COLUMNS = [
     "property_id",
@@ -34,7 +49,7 @@ HISTORY_COLUMNS = [
 ]
 DEFAULT_RUNTIME_MAX_HORIZON_DAYS = 7
 ABSOLUTE_MAX_HORIZON_DAYS = 366
-ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v1"
+ML_RUNTIME_CAPABILITY_VERSION = "MLRuntimeCapability.v2"
 ML_PREDICTION_RESULT_VERSION = "MLRoomDemandPrediction.v1"
 
 
@@ -161,6 +176,8 @@ FROM (
 
 
 def sha256(path: Path) -> str:
+    """배포 artifact를 스트리밍해 release pin 검증용 SHA-256을 반환한다."""
+
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -168,7 +185,26 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def load_model_artifact(artifact: Path) -> Any:
+    """sklearn 직렬화 version이 runtime과 호환되는 artifact만 역직렬화한다.
+
+    version 경고는 ``RuntimeError``로 승격하며 파일 손상·class 누락 등 다른
+    joblib 오류도 호출자에게 전달해 대체 모델로 우회하지 않는다.
+    """
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", InconsistentVersionWarning)
+            return joblib.load(artifact)
+    except InconsistentVersionWarning as error:
+        raise RuntimeError(
+            "model artifact scikit-learn version is incompatible with ML runtime"
+        ) from error
+
+
 def safe_table(value: str) -> str:
+    """Trino history 이름을 정확한 catalog.schema.table 식별자로 검증한다."""
+
     parts = value.split(".")
     if len(parts) != 3 or any(not IDENTIFIER.fullmatch(part) for part in parts):
         raise RuntimeError("ML_HISTORY_TABLE must be catalog.schema.table")
@@ -176,10 +212,14 @@ def safe_table(value: str) -> str:
 
 
 def sql_literal(value: str) -> str:
+    """서버에서 검증한 문자열의 작은따옴표를 SQL 문자열 literal 형식으로 escape한다."""
+
     return "'" + value.replace("'", "''") + "'"
 
 
 class PredictionRequest(BaseModel):
+    """property, feature 기준일과 허용 범위의 예측 horizon을 검증하는 요청 계약이다."""
+
     property_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     as_of: date
     horizon_days: int = Field(
@@ -190,14 +230,40 @@ class PredictionRequest(BaseModel):
 
 
 class TimeSeriesRuntime:
+    """release hash·승인·HGBR·history 계약을 검증한 뒤 추론 상태를 소유한다.
+
+    필수 환경·artifact·Trino 증거가 없거나 서로 불일치하면 초기화가 실패하며
+    준비되지 않은 runtime은 예측 endpoint에 노출되지 않는다.
+    """
+
     def __init__(self) -> None:
+        self.hmac_secret = runtime_hmac_secret()
         artifact = Path(os.environ["ML_MODEL_ARTIFACT"])
         manifest_path = Path(os.environ["ML_MODEL_MANIFEST"])
         approval_path = Path(os.environ["ML_MODEL_APPROVAL"])
         feature_contract_path = Path(os.environ["ML_FEATURE_CONTRACT"])
         self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.approval = json.loads(approval_path.read_text(encoding="utf-8"))
-        feature_contract = json.loads(feature_contract_path.read_text(encoding="utf-8"))
+        feature_contract_bytes = feature_contract_path.read_bytes()
+        feature_contract = json.loads(feature_contract_bytes.decode("utf-8"))
+        synthetic_training_data = self.manifest.get("synthetic_training_data")
+        if type(synthetic_training_data) is not bool:
+            raise RuntimeError(
+                "ML release synthetic_training_data contract is invalid"
+            )
+        approval_data_is_synthetic = self.approval.get("data_is_synthetic")
+        if type(approval_data_is_synthetic) is not bool:
+            raise RuntimeError(
+                "ML approval data_is_synthetic contract is invalid"
+            )
+        if approval_data_is_synthetic != synthetic_training_data:
+            raise RuntimeError(
+                "ML approval and manifest synthetic modes do not match"
+            )
+        self.synthetic_training_data = synthetic_training_data
+        self.feature_contract_sha256 = hashlib.sha256(
+            feature_contract_bytes
+        ).hexdigest()
         model_versions = {
             self.manifest.get("model_version"),
             self.approval.get("model_version"),
@@ -239,7 +305,7 @@ class TimeSeriesRuntime:
             decision == "CONDITIONAL_PASS" and allow_conditional
         ):
             raise RuntimeError(f"model is not approved for serving: {decision}")
-        self.model = joblib.load(artifact)
+        self.model = load_model_artifact(artifact)
         if not hasattr(self.model, "predict_raw") or not hasattr(self.model, "predict"):
             raise RuntimeError("artifact is not a time-series demand model")
         self.model_type = str(self.manifest.get("model_type") or "").strip()
@@ -259,10 +325,16 @@ class TimeSeriesRuntime:
         self.history_source = validate_history_source(
             self.trino,
             self.history_table,
-            expected_synthetic=bool(self.manifest["synthetic_training_data"]),
+            expected_synthetic=self.synthetic_training_data,
         )
 
     def query_history(self, request: PredictionRequest) -> tuple[pd.DataFrame, str]:
+        """property와 as-of 이하의 Trino 일별 실적을 조회해 DataFrame과 query ID를 반환한다.
+
+        조회 행이 없으면 404로 실패하며 요청 property는 검증 후 대문자로
+        정규화해 SQL literal로 사용한다.
+        """
+
         sql = f"""
 SELECT {', '.join(HISTORY_COLUMNS)}
 FROM {self.history_table}
@@ -278,6 +350,12 @@ ORDER BY room_type_code, business_date
         return frame, result.query_id
 
     def capabilities(self) -> dict[str, Any]:
+        """release pin, 승인 상태, history 범위와 property별 허용 as-of를 반환한다.
+
+        Trino 조회 또는 날짜 변환이 실패하면 capability 생성을 실패시켜 오래된
+        정적 목록을 반환하지 않는다.
+        """
+
         sql = f"""
 SELECT property_id, min(business_date) AS min_date,
        max(business_date) AS max_date, count(*) AS history_rows
@@ -312,19 +390,27 @@ ORDER BY property_id
             "prediction_contract_version": ML_PREDICTION_RESULT_VERSION,
             "model_version": self.manifest["model_version"],
             "model_hash": self.model_hash,
+            "feature_contract_sha256": self.feature_contract_sha256,
             "model_type": self.model_type,
             "estimator_type": self.estimator_type,
             "approval": self.approval.get("final_decision"),
+            "approval_status": self.approval.get("approval_status"),
             "min_horizon_days": 1,
             "max_horizon_days": self.runtime_max_horizon_days,
             "model_max_horizon_days": self.model_max_horizon_days,
             "properties": properties,
-            "synthetic_training_data": bool(self.manifest["synthetic_training_data"]),
+            "synthetic_training_data": self.synthetic_training_data,
             "history_source": self.history_source,
             "query_id": result.query_id,
         }
 
     def predict(self, request: PredictionRequest) -> dict[str, Any]:
+        """history를 point-in-time feature로 바꿔 일별·room type별 예측과 provenance를 반환한다.
+
+        runtime 또는 모델 horizon을 넘으면 422, history가 없으면 404로 실패하며
+        응답에는 실제 model·feature hash와 Trino query ID를 포함한다.
+        """
+
         if request.horizon_days > self.runtime_max_horizon_days:
             raise HTTPException(
                 status_code=422,
@@ -350,15 +436,16 @@ ORDER BY property_id
         capacity = features["physical_rooms"].astype(float).to_numpy()
         details = []
         for index, row in features.reset_index(drop=True).iterrows():
-            available = float(capacity[index])
+            available = round(float(capacity[index]), 2)
+            predicted_rooms = round(float(final[index]), 2)
             details.append(
                 {
                     "target_date": pd.Timestamp(row["target_date"]).date().isoformat(),
                     "room_type_code": str(row["room_type_code"]),
-                    "available_rooms": round(available, 2),
+                    "available_rooms": available,
                     "predicted_rooms_raw": round(float(raw[index]), 4),
-                    "predicted_rooms": round(float(final[index]), 2),
-                    "occupancy_rate": round(float(final[index] / available), 6),
+                    "predicted_rooms": predicted_rooms,
+                    "occupancy_rate": round(predicted_rooms / available, 6),
                 }
             )
         daily = []
@@ -385,6 +472,7 @@ ORDER BY property_id
             "horizon_days": request.horizon_days,
             "model_version": self.manifest["model_version"],
             "model_hash": self.model_hash,
+            "feature_contract_sha256": self.feature_contract_sha256,
             "daily_forecasts": daily,
             "room_type_forecasts": details,
             "provenance": {
@@ -400,37 +488,171 @@ ORDER BY property_id
 
 app = FastAPI(title="Answervice Historical Room Demand Runtime", version="4.0.0")
 state: TimeSeriesRuntime | None = None
-startup_error: str | None = None
+_AUTHENTICATED_PATHS = frozenset({"/capabilities", "/predictions/room-demand"})
+_request_nonce_guard = MLRuntimeNonceGuard()
+
+
+def _declared_request_body_size(request: Request) -> int:
+    """본문을 읽기 전에 chunked·과대 인증 요청을 거부한다."""
+
+    if request.headers.get("transfer-encoding"):
+        raise MLRuntimeTrustError("chunked ML runtime requests are not allowed")
+    content_length = request.headers.get("content-length")
+    if content_length is None:
+        if request.method.upper() in {"GET", "HEAD"}:
+            return 0
+        raise MLRuntimeTrustError("ML runtime request Content-Length is required")
+    if not content_length.isdigit() or len(content_length) > 10:
+        raise MLRuntimeTrustError("ML runtime request Content-Length is invalid")
+    size = int(content_length)
+    if size > ML_RUNTIME_AUTH_MAX_BODY_BYTES:
+        raise MLRuntimeTrustError("ML runtime authenticated body is too large")
+    return size
+
+
+def _signed_runtime_error(
+    secret: bytes,
+    path: str,
+    status_code: int,
+    nonce: str,
+    detail: str,
+) -> Response:
+    """인증된 Backend에만 bounded generic runtime 오류를 서명해 반환한다."""
+
+    body = json.dumps(
+        {"detail": detail},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return Response(
+        content=body,
+        status_code=status_code,
+        headers=response_auth_headers(secret, path, status_code, nonce, body),
+        media_type="application/json",
+    )
+
+
+@app.middleware("http")
+async def authenticate_runtime_exchange(request: Request, call_next) -> Response:
+    """Backend 전용 endpoint의 요청을 검증하고 모든 응답을 같은 nonce에 서명한다."""
+
+    if request.url.path not in _AUTHENTICATED_PATHS:
+        return await call_next(request)
+    runtime = state
+    try:
+        declared_size = _declared_request_body_size(request)
+    except MLRuntimeTrustError:
+        return JSONResponse(status_code=413, content={"detail": "Request rejected"})
+    try:
+        secret = runtime.hmac_secret if runtime is not None else runtime_hmac_secret()
+    except MLRuntimeTrustError:
+        return JSONResponse(status_code=503, content={"detail": "Runtime unavailable"})
+    body = await request.body()
+    if len(body) != declared_size or len(body) > ML_RUNTIME_AUTH_MAX_BODY_BYTES:
+        return JSONResponse(status_code=413, content={"detail": "Request rejected"})
+    try:
+        nonce = verify_request_auth(
+            secret,
+            request.headers,
+            request.method,
+            request.url.path,
+            body,
+        )
+        _request_nonce_guard.consume(nonce)
+    except MLRuntimeTrustError:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    if runtime is None:
+        return _signed_runtime_error(
+            secret,
+            request.url.path,
+            503,
+            nonce,
+            "ML runtime is not ready",
+        )
+    try:
+        response = await call_next(request)
+        response_chunks: list[bytes] = []
+        response_size = 0
+        async for chunk in response.body_iterator:
+            encoded_chunk = chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+            response_size += len(encoded_chunk)
+            if response_size > ML_RUNTIME_AUTH_MAX_BODY_BYTES:
+                close_iterator = getattr(response.body_iterator, "aclose", None)
+                if callable(close_iterator):
+                    await close_iterator()
+                return _signed_runtime_error(
+                    secret,
+                    request.url.path,
+                    502,
+                    nonce,
+                    "Authenticated ML runtime response is too large",
+                )
+            response_chunks.append(encoded_chunk)
+    except Exception:
+        return _signed_runtime_error(
+            secret,
+            request.url.path,
+            500,
+            nonce,
+            "ML runtime request failed",
+        )
+    response_body = b"".join(response_chunks)
+    signed_headers = dict(response.headers)
+    signed_headers.pop("content-length", None)
+    signed_headers.update(
+        response_auth_headers(
+            secret,
+            request.url.path,
+            response.status_code,
+            nonce,
+            response_body,
+        )
+    )
+    return Response(
+        content=response_body,
+        status_code=response.status_code,
+        headers=signed_headers,
+        media_type=response.media_type,
+        background=response.background,
+    )
 
 
 @app.on_event("startup")
 def startup() -> None:
-    global state, startup_error
+    """프로세스 시작 시 모든 release·history 계약을 검증하고 실패하면 미준비 상태로 둔다."""
+
+    global state
     try:
         state = TimeSeriesRuntime()
-        startup_error = None
-    except Exception as exc:
+    except Exception:
         state = None
-        startup_error = str(exc)
+        logger.exception("ML runtime startup failed")
 
 
 def ready_state() -> TimeSeriesRuntime:
+    """초기화된 runtime을 반환하고 준비 실패 상태는 HTTP 503으로 차단한다."""
+
     if state is None:
-        raise HTTPException(status_code=503, detail=startup_error or "runtime not loaded")
+        raise HTTPException(status_code=503, detail="runtime not ready")
     return state
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """프로세스 생존 여부만 반환하며 모델 준비 완료를 주장하지 않는다."""
+
     return {"status": "ok"}
 
 
 @app.get("/readiness")
 def readiness() -> dict[str, Any]:
+    """준비된 모델의 hash·estimator·승인 증거를 반환하고 아니면 503으로 실패한다."""
+
     runtime = ready_state()
     return {
         "status": "ready",
         "model_hash": runtime.model_hash,
+        "feature_contract_sha256": runtime.feature_contract_sha256,
         "model_type": runtime.model_type,
         "estimator_type": runtime.estimator_type,
         "approval": runtime.approval.get("final_decision"),
@@ -439,9 +661,13 @@ def readiness() -> dict[str, Any]:
 
 @app.get("/capabilities")
 def capabilities() -> dict[str, Any]:
+    """인증된 호출에 현재 runtime이 동적으로 조회한 ML capability 계약을 반환한다."""
+
     return ready_state().capabilities()
 
 
 @app.post("/predictions/room-demand")
 def predict(request: PredictionRequest) -> dict[str, Any]:
+    """검증된 요청을 준비된 runtime에 위임해 서명 대상 예측 응답을 반환한다."""
+
     return ready_state().predict(request)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -9,8 +10,9 @@ import math
 import os
 import re
 import time
-from typing import Any
-from urllib.parse import quote
+import unicodedata
+from typing import Any, Mapping, NoReturn
+from urllib.parse import quote, unquote_to_bytes
 from uuid import UUID, uuid4
 
 import httpx
@@ -20,11 +22,159 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import session_scope
 
 
-RAG_TOOL_ID = UUID("8edce655-e454-5b76-b56f-5e49aa2884d4")
-RAG_TOOL_CODE = "rag.answer"
+RAG_TOOL_DESCRIPTOR: dict[str, Any] = {
+    "tool_id": UUID("8edce655-e454-5b76-b56f-5e49aa2884d4"),
+    "tool_code": "rag.answer",
+    "semantic_version": "1.2.0",
+    "title": "Answer from Internal Documents",
+    "description": (
+        "Answer only from approved internal documents with citation-bound evidence."
+    ),
+    "transport": "MCP_STREAMABLE_HTTP",
+    "timeout_seconds": 30,
+    "required_roles": ("analyst",),
+    "annotations": {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "minLength": 2, "maxLength": 500},
+            "selected_document_ids": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1, "maxLength": 100},
+                "maxItems": 10,
+                "uniqueItems": True,
+            },
+            "recent_utterances": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1, "maxLength": 500},
+                "maxItems": 3,
+            },
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+    "output_schema": {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "string",
+                "enum": ["ANSWER", "NO_EVIDENCE", "CONFLICT"],
+            },
+            "trace_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "answer": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+            "citations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "evidence_id": {"type": "string", "minLength": 1},
+                        "citation": {"type": "string"},
+                    },
+                    "required": ["evidence_id", "citation"],
+                    "additionalProperties": False,
+                },
+            },
+            "evidence_bundle": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "evidence_id": {"type": "string", "minLength": 1},
+                        "document_id": {"type": "string", "minLength": 1},
+                        "document_name": {"type": "string"},
+                        "section": {"type": "string"},
+                        "snippet": {"type": "string"},
+                        "score": {"type": "number", "minimum": 0},
+                    },
+                    "required": [
+                        "evidence_id",
+                        "document_id",
+                        "document_name",
+                        "section",
+                        "snippet",
+                        "score",
+                    ],
+                    "additionalProperties": False,
+                },
+            },
+            "conflicts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string", "minLength": 1},
+                        "evidence_ids": {
+                            "type": "array",
+                            "items": {"type": "string", "minLength": 1},
+                            "minItems": 2,
+                            "uniqueItems": True,
+                        },
+                    },
+                    "required": ["description", "evidence_ids"],
+                    "additionalProperties": False,
+                },
+                "minItems": 1,
+            },
+        },
+        "required": ["status", "trace_id", "evidence_bundle"],
+        "additionalProperties": False,
+        "allOf": [
+            {
+                "if": {
+                    "properties": {"status": {"enum": ["ANSWER", "NO_EVIDENCE"]}}
+                },
+                "then": {
+                    "required": ["answer", "citations"],
+                    "not": {"required": ["conflicts"]},
+                },
+            },
+            {
+                "if": {"properties": {"status": {"const": "CONFLICT"}}},
+                "then": {
+                    "required": ["conflicts"],
+                    "not": {
+                        "anyOf": [
+                            {"required": ["answer"]},
+                            {"required": ["citations"]},
+                        ]
+                    },
+                },
+            },
+        ],
+    },
+}
+RAG_TOOL_ID = RAG_TOOL_DESCRIPTOR["tool_id"]
+RAG_TOOL_CODE = RAG_TOOL_DESCRIPTOR["tool_code"]
+RAG_TOOL_SEMANTIC_VERSION = RAG_TOOL_DESCRIPTOR["semantic_version"]
+RAG_TOOL_TITLE = RAG_TOOL_DESCRIPTOR["title"]
+RAG_TOOL_DESCRIPTION = RAG_TOOL_DESCRIPTOR["description"]
+RAG_TOOL_TRANSPORT = RAG_TOOL_DESCRIPTOR["transport"]
+RAG_TOOL_TIMEOUT_SECONDS = RAG_TOOL_DESCRIPTOR["timeout_seconds"]
+RAG_TOOL_ROLES = RAG_TOOL_DESCRIPTOR["required_roles"]
+RAG_TOOL_ANNOTATIONS = RAG_TOOL_DESCRIPTOR["annotations"]
+RAG_TOOL_INPUT_SCHEMA = RAG_TOOL_DESCRIPTOR["input_schema"]
+RAG_TOOL_OUTPUT_SCHEMA = RAG_TOOL_DESCRIPTOR["output_schema"]
 RAG_CAPABILITY_CANDIDATE_VERSION = "RagCapabilityCandidate.v1"
 RAG_RUNTIME_RECEIPT_VERSION = "RagRuntimeReceipt.v1"
 RAG_MAX_EMBEDDING_DIMENSION = 65536
+RAG_SOURCE_MAX_BODY_BYTES = 32 * 1024 * 1024
+RAG_SOURCE_MEDIA_TYPES = {
+    "application/pdf": (".pdf", "inline"),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": (
+        ".docx",
+        "attachment",
+    ),
+}
 _RAG_MANUAL_ID_PATTERN = re.compile(r"[A-Z][A-Z0-9-]{1,99}")
 _ROLE_MAP = {
     "analyst": "STAFF",
@@ -69,6 +219,180 @@ class InternalManualAgent:
         """명시적 비교 또는 승인된 두 문서 snapshot을 최대 두 개까지 유지한다."""
         return 2 if intent == "COMPARISON" or len(selected_document_ids) > 1 else 1
 
+    @staticmethod
+    def public_tool_output(result: Mapping[str, Any]) -> dict[str, Any]:
+        """Conversation 표시 필드를 제외한 closed MCP 결과만 반환한다."""
+
+        def invalid() -> NoReturn:
+            raise RagToolError(
+                "RAG_PUBLIC_OUTPUT_INVALID",
+                "RAG 공개 결과 계약이 올바르지 않습니다.",
+                502,
+            )
+
+        if not isinstance(result, Mapping):
+            invalid()
+        status = result.get("status")
+        trace_id = result.get("trace_id")
+        raw_evidence = result.get("evidence_bundle")
+        if (
+            not isinstance(status, str)
+            or status not in {"ANSWER", "NO_EVIDENCE", "CONFLICT"}
+            or not isinstance(trace_id, str)
+            or not 1 <= len(trace_id) <= 128
+            or not isinstance(raw_evidence, list)
+            or len(raw_evidence) > 50
+        ):
+            invalid()
+
+        evidence_bundle: list[dict[str, Any]] = []
+        for item in raw_evidence:
+            if not isinstance(item, Mapping):
+                invalid()
+            evidence_id = item.get("evidence_id")
+            document_id = item.get("document_id")
+            document_name = item.get("document_name")
+            section = item.get("section")
+            snippet = item.get("snippet")
+            score = item.get("score")
+            if (
+                not isinstance(evidence_id, str)
+                or not evidence_id
+                or not isinstance(document_id, str)
+                or not document_id
+                or not isinstance(document_name, str)
+                or not isinstance(section, str)
+                or not isinstance(snippet, str)
+                or isinstance(score, bool)
+                or not isinstance(score, (int, float))
+                or not math.isfinite(float(score))
+                or float(score) < 0
+            ):
+                invalid()
+            evidence_bundle.append(
+                {
+                    "evidence_id": evidence_id,
+                    "document_id": document_id,
+                    "document_name": document_name,
+                    "section": section,
+                    "snippet": snippet,
+                    "score": score,
+                }
+            )
+
+        public: dict[str, Any] = {
+            "status": status,
+            "trace_id": trace_id,
+            "evidence_bundle": evidence_bundle,
+        }
+        if status in {"ANSWER", "NO_EVIDENCE"}:
+            raw_answer = result.get("answer")
+            raw_citations = result.get("citations")
+            if (
+                not isinstance(raw_answer, Mapping)
+                or not isinstance(raw_answer.get("text"), str)
+                or not isinstance(raw_citations, list)
+                or len(raw_citations) > 50
+            ):
+                invalid()
+            citations: list[dict[str, str]] = []
+            for item in raw_citations:
+                if (
+                    not isinstance(item, Mapping)
+                    or not isinstance(item.get("evidence_id"), str)
+                    or not item["evidence_id"]
+                    or not isinstance(item.get("citation"), str)
+                ):
+                    invalid()
+                citations.append(
+                    {
+                        "evidence_id": item["evidence_id"],
+                        "citation": item["citation"],
+                    }
+                )
+            public["answer"] = {"text": raw_answer["text"]}
+            public["citations"] = citations
+            return public
+
+        raw_conflicts = result.get("conflicts")
+        if not isinstance(raw_conflicts, list) or not 1 <= len(raw_conflicts) <= 50:
+            invalid()
+        conflicts: list[dict[str, Any]] = []
+        for item in raw_conflicts:
+            if not isinstance(item, Mapping):
+                invalid()
+            description = item.get("description")
+            evidence_ids = item.get("evidence_ids")
+            if (
+                not isinstance(description, str)
+                or not description
+                or not isinstance(evidence_ids, list)
+                or len(evidence_ids) < 2
+                or any(not isinstance(value, str) or not value for value in evidence_ids)
+                or len(evidence_ids) != len(set(evidence_ids))
+            ):
+                invalid()
+            conflicts.append(
+                {"description": description, "evidence_ids": list(evidence_ids)}
+            )
+        public["conflicts"] = conflicts
+        return public
+
+    @staticmethod
+    def _validate_search_contract(search: Mapping[str, Any]) -> dict[str, Any]:
+        """검색 결과가 현재 corpus release를 식별하는 closed v2 계약인지 확인한다."""
+
+        release = search.get("retrieval_release")
+        expected_keys = {
+            "schema_version",
+            "release_id",
+            "model_revision",
+            "embedding_dimension",
+            "corpus_manifest_sha256",
+            "processing_profile_sha256",
+        }
+        if not isinstance(release, dict) or set(release) != expected_keys:
+            raise RagToolError(
+                "RAG_OUTPUT_INVALID",
+                "RAG 검색 release 계약이 올바르지 않습니다.",
+                502,
+            )
+        release_id = release["release_id"]
+        try:
+            parsed_release_id = UUID(release_id) if isinstance(release_id, str) else None
+        except ValueError:
+            parsed_release_id = None
+        dimension = release["embedding_dimension"]
+        if (
+            release["schema_version"] != "RagRetrievalRelease.v2"
+            or parsed_release_id is None
+            or str(parsed_release_id) != release_id
+            or not isinstance(release["model_revision"], str)
+            or re.fullmatch(
+                r"[A-Za-z0-9._:/+-]{1,160}", release["model_revision"]
+            )
+            is None
+            or isinstance(dimension, bool)
+            or not isinstance(dimension, int)
+            or not 1 <= dimension <= RAG_MAX_EMBEDDING_DIMENSION
+            or not isinstance(release["corpus_manifest_sha256"], str)
+            or re.fullmatch(
+                r"[0-9a-f]{64}", release["corpus_manifest_sha256"]
+            )
+            is None
+            or not isinstance(release["processing_profile_sha256"], str)
+            or re.fullmatch(
+                r"[0-9a-f]{64}", release["processing_profile_sha256"]
+            )
+            is None
+        ):
+            raise RagToolError(
+                "RAG_OUTPUT_INVALID",
+                "RAG 검색 release 계약이 올바르지 않습니다.",
+                502,
+            )
+        return dict(release)
+
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
         self._base_url = os.getenv("RAG_API_URL", "http://rag-api:8000").rstrip("/")
@@ -91,6 +415,7 @@ class InternalManualAgent:
             raise RagToolError("RAG_CONFIG_INVALID", "RAG API 주소가 올바르지 않습니다.")
         if len(self._secret) < 32:
             raise RagToolError("RAG_CONFIG_INVALID", "RAG Gateway 서명이 구성되지 않았습니다.")
+        self._source_max_body_bytes = RAG_SOURCE_MAX_BODY_BYTES
 
     async def execute(
         self,
@@ -104,14 +429,72 @@ class InternalManualAgent:
         intent: str = "REGULATION_CHECK",
         selected_document_ids: tuple[str, ...] = (),
     ) -> dict[str, Any]:
-        """앱 역할을 검증해 검색·답변 도구를 호출하고 근거가 있는 결과만 반환한다."""
+        """legacy API 경로에서 registry·감사를 소유하고 순수 runtime을 호출한다."""
+
+        normalized = query.strip()
+        if not 2 <= len(normalized) <= 500:
+            raise RagToolError("RAG_INPUT_INVALID", "질문은 2자 이상 500자 이하여야 합니다.", 422)
+        if _ROLE_MAP.get(app_role) is None:
+            raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
+        started = time.perf_counter()
+        await self._assert_enabled(app_role)
+        try:
+            output = await self._execute_runtime(
+                query=query,
+                actor_id=actor_id,
+                app_role=app_role,
+                trace_id=trace_id,
+                recent_utterances=recent_utterances,
+                resolved_question=resolved_question,
+                domains=domains,
+                intent=intent,
+                selected_document_ids=selected_document_ids,
+            )
+        except RagToolError as error:
+            await self._record(
+                actor_id,
+                app_role,
+                trace_id,
+                normalized,
+                {},
+                started,
+                error.code,
+            )
+            raise
+        error_code = (
+            "RAG_DEPENDENCY_FAILED" if output.get("status") == "ERROR" else None
+        )
+        await self._record(
+            actor_id,
+            app_role,
+            trace_id,
+            normalized,
+            output if error_code is None else {},
+            started,
+            error_code,
+        )
+        return output
+
+    async def _execute_runtime(
+        self,
+        query: str,
+        actor_id: UUID,
+        app_role: str,
+        trace_id: str,
+        recent_utterances: tuple[str, ...] = (),
+        resolved_question: str | None = None,
+        domains: tuple[str, ...] = (),
+        intent: str = "REGULATION_CHECK",
+        selected_document_ids: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        """DB registry·감사와 분리된 서명 RAG runtime adapter를 실행한다."""
+
         normalized = query.strip()
         if not 2 <= len(normalized) <= 500:
             raise RagToolError("RAG_INPUT_INVALID", "질문은 2자 이상 500자 이하여야 합니다.", 422)
         rag_role = _ROLE_MAP.get(app_role)
         if rag_role is None:
             raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
-        started = time.perf_counter()
         recent = tuple(
             utterance.strip()
             for utterance in recent_utterances[-3:]
@@ -126,8 +509,8 @@ class InternalManualAgent:
         search_top_k = 10 if selected_ids else 8 if domains else 5
         contextual_query = (resolved_question or "\n".join(
             [*(f"이전 질문: {utterance}" for utterance in recent), f"현재 질문: {normalized}"]
-        ))[-500:]
-        await self._assert_enabled(app_role)
+        ))[-500:].strip()
+        actor_hash = hashlib.sha256(str(actor_id).encode("utf-8")).hexdigest()
         try:
             search = await self._signed_post(
                 "/v1/tools/internal-manual-search",
@@ -139,9 +522,31 @@ class InternalManualAgent:
                     "top_k": search_top_k,
                     "recent_utterances": list(recent),
                     "selected_document_ids": list(selected_ids),
+                    "trace_id": trace_id,
+                    "actor_hash": actor_hash,
                 },
                 rag_role,
             )
+            self._validate_search_contract(search)
+            answer_query = search.get("answer_query")
+            retrieval_request_id = str(search.get("request_id") or "")
+            try:
+                parsed_retrieval_request_id = UUID(retrieval_request_id)
+            except ValueError:
+                parsed_retrieval_request_id = None
+            if (
+                not isinstance(answer_query, str)
+                or answer_query != contextual_query
+                or not 2 <= len(answer_query) <= 500
+                or search.get("trace_id") != trace_id
+                or parsed_retrieval_request_id is None
+                or str(parsed_retrieval_request_id) != retrieval_request_id
+            ):
+                raise RagToolError(
+                    "RAG_OUTPUT_INVALID",
+                    "RAG 검색 답변 질문 계약이 올바르지 않습니다.",
+                    502,
+                )
             results = search.get("results") if isinstance(search, dict) else None
             if search.get("no_evidence") is True or not isinstance(results, list) or not results:
                 output = self._empty_answer_output(
@@ -151,7 +556,6 @@ class InternalManualAgent:
                     _NO_EVIDENCE_MESSAGE,
                     list(search.get("processing_steps") or []) + ["NO_EVIDENCE_RETURNED"],
                 )
-                await self._record(actor_id, app_role, trace_id, normalized, output, started)
                 return output
 
             evidence_blocks = [
@@ -159,19 +563,36 @@ class InternalManualAgent:
                 for item in results
                 if isinstance(item, dict)
             ]
-            evidence_blocks = [item for item in evidence_blocks if item["evidence_id"] and item["text"]]
-            if not evidence_blocks:
+            if not evidence_blocks or any(
+                not item[field].strip()
+                for item in evidence_blocks
+                for field in (
+                    "evidence_id",
+                    "text",
+                    "version",
+                    "document_type",
+                    "owner_team",
+                )
+            ):
                 raise RagToolError("RAG_OUTPUT_INVALID", "검색 근거 형식이 올바르지 않습니다.")
             answer = await self._signed_post(
                 "/v1/tools/internal-manual-answer",
                 {
-                    "query": contextual_query,
+                    "query": answer_query,
                     "evidence_blocks": evidence_blocks,
                     "intent": intent,
-                    "retrieval_request_id": str(search.get("request_id") or "") or None,
+                    "retrieval_request_id": retrieval_request_id,
+                    "trace_id": trace_id,
+                    "actor_hash": actor_hash,
                 },
                 rag_role,
             )
+            if answer.get("trace_id") != trace_id:
+                raise RagToolError(
+                    "RAG_OUTPUT_INVALID",
+                    "RAG 답변 추적 계약이 올바르지 않습니다.",
+                    502,
+                )
             answer_status = str(answer.get("status") or "")
             if answer_status == "NO_EVIDENCE":
                 output = self._empty_answer_output(
@@ -182,7 +603,6 @@ class InternalManualAgent:
                     list(search.get("processing_steps") or []) + ["ANSWER_EVIDENCE_REJECTED"],
                 )
                 output["answer_id"] = str(answer.get("request_id") or "")
-                await self._record(actor_id, app_role, trace_id, normalized, output, started)
                 return output
             if answer_status == "POTENTIAL_CONFLICT":
                 output = {
@@ -193,7 +613,6 @@ class InternalManualAgent:
                     "conflicts": list(answer.get("conflicts") or []),
                     "evidence_bundle": self._evidence_bundle(results),
                 }
-                await self._record(actor_id, app_role, trace_id, normalized, output, started)
                 return output
             if answer_status != "ANSWER":
                 raise RagToolError("RAG_ANSWER_FAILED", "근거 답변을 생성하지 못했습니다.")
@@ -287,13 +706,10 @@ class InternalManualAgent:
                     ),
                 },
             }
-            await self._record(actor_id, app_role, trace_id, normalized, output, started)
             return output
-        except RagToolError as error:
-            await self._record(actor_id, app_role, trace_id, normalized, {}, started, error.code)
+        except RagToolError:
             raise
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
-            await self._record(actor_id, app_role, trace_id, normalized, {}, started, "RAG_DEPENDENCY_FAILED")
             return self._empty_answer_output(
                 "ERROR",
                 trace_id,
@@ -301,6 +717,26 @@ class InternalManualAgent:
                 _DEPENDENCY_FAILURE_MESSAGE,
                 ["DEPENDENCY_FAILED"],
             )
+
+    async def execute_mcp_handler(
+        self,
+        query: str,
+        actor_id: UUID,
+        app_role: str,
+        trace_id: str,
+        recent_utterances: tuple[str, ...] = (),
+        selected_document_ids: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        """공용 MCP registry·dispatcher가 승인한 한 번의 RAG handler 실행이다."""
+
+        return await self._execute_runtime(
+            query=query,
+            actor_id=actor_id,
+            app_role=app_role,
+            trace_id=trace_id,
+            recent_utterances=recent_utterances,
+            selected_document_ids=selected_document_ids,
+        )
 
     async def search_capability(
         self,
@@ -323,28 +759,51 @@ class InternalManualAgent:
                 "RAG 검색 권한이 없습니다.",
                 403,
             )
-        await self._assert_enabled(app_role)
-        try:
-            search = await self._signed_post(
-                "/v1/tools/internal-manual-search",
-                {
-                    "query": normalized,
-                    "resolved_question": normalized,
-                    "domains": [],
-                    "intent": "REGULATION_CHECK",
-                    "top_k": 3,
-                    "recent_utterances": [],
-                    "selected_document_ids": [],
-                },
-                rag_role,
-            )
-        except RagToolError:
-            raise
-        except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+        trace_id = str(uuid4())
+        actor_hash = hashlib.sha256(b"RAG_CAPABILITY_PROBE").hexdigest()
+        payload = {
+            "query": normalized,
+            "resolved_question": normalized,
+            "domains": [],
+            "intent": "REGULATION_CHECK",
+            "top_k": 3,
+            "recent_utterances": [],
+            "selected_document_ids": [],
+            "trace_id": trace_id,
+            "actor_hash": actor_hash,
+        }
+        search: dict[str, Any] | None = None
+        for attempt in range(2):
+            try:
+                await self._assert_enabled(app_role)
+                search = await self._signed_post(
+                    "/v1/tools/internal-manual-search",
+                    payload,
+                    rag_role,
+                )
+                break
+            except RagToolError as error:
+                if error.code != "RAG_REGISTRY_UNAVAILABLE" or attempt > 0:
+                    raise
+            except httpx.HTTPError as error:
+                response = getattr(error, "response", None)
+                retryable = response is None or response.status_code >= 500
+                if not retryable or attempt > 0:
+                    raise RagToolError(
+                        "RAG_CAPABILITY_UNAVAILABLE",
+                        "RAG capability를 확인하지 못했습니다.",
+                    ) from error
+            except (ValueError, KeyError, TypeError) as error:
+                raise RagToolError(
+                    "RAG_CAPABILITY_UNAVAILABLE",
+                    "RAG capability를 확인하지 못했습니다.",
+                ) from error
+            await asyncio.sleep(0.05)
+        if search is None:
             raise RagToolError(
                 "RAG_CAPABILITY_UNAVAILABLE",
                 "RAG capability를 확인하지 못했습니다.",
-            ) from error
+            )
         return self._capability_candidate(
             search,
             expected_query_hash=self._capability_query_hash(normalized),
@@ -397,12 +856,14 @@ class InternalManualAgent:
 
         execution_state = search.get("execution_state")
         tool = search.get("tool")
-        retrieval_release = search.get("retrieval_release")
-        embedding_dimension = (
-            retrieval_release.get("embedding_dimension")
-            if isinstance(retrieval_release, dict)
-            else None
-        )
+        try:
+            retrieval_release = InternalManualAgent._validate_search_contract(search)
+        except RagToolError as error:
+            raise RagToolError(
+                "RAG_CAPABILITY_RELEASE_INVALID",
+                "RAG capability release 근거가 올바르지 않습니다.",
+            ) from error
+        embedding_dimension = retrieval_release["embedding_dimension"]
         if (
             not isinstance(execution_state, dict)
             or execution_state.get("p2_gate") != "TECHNICALLY_VALIDATED"
@@ -412,11 +873,6 @@ class InternalManualAgent:
             or tool.get("tool_code") != "internal-manual-search"
             or not isinstance(tool.get("semantic_version"), str)
             or not re.fullmatch(r"[A-Za-z0-9._+-]{1,80}", tool["semantic_version"])
-            or not isinstance(retrieval_release, dict)
-            or retrieval_release.get("schema_version")
-            != "RagRetrievalRelease.v1"
-            or not isinstance(retrieval_release.get("model_revision"), str)
-            or not retrieval_release["model_revision"].strip()
             or isinstance(embedding_dimension, bool)
             or not isinstance(embedding_dimension, int)
             or not 1 <= embedding_dimension <= RAG_MAX_EMBEDDING_DIMENSION
@@ -567,6 +1023,9 @@ class InternalManualAgent:
         execution_state = health.get("execution_state")
         tool = health.get("tool")
         dimension = health.get("expected_dimension")
+        corpus_manifest_sha256 = health.get("corpus_manifest_sha256")
+        processing_profile_sha256 = health.get("processing_profile_sha256")
+        active_corpus_release = health.get("active_corpus_release")
         documents = catalog.get("documents")
         if (
             health.get("status") != "healthy"
@@ -589,7 +1048,27 @@ class InternalManualAgent:
             or isinstance(dimension, bool)
             or not isinstance(dimension, int)
             or not 1 <= dimension <= RAG_MAX_EMBEDDING_DIMENSION
+            or not isinstance(corpus_manifest_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", corpus_manifest_sha256) is None
+            or not isinstance(processing_profile_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", processing_profile_sha256) is None
+            or not isinstance(active_corpus_release, dict)
+            or active_corpus_release.get("corpus_manifest_sha256")
+            != corpus_manifest_sha256
+            or active_corpus_release.get("processing_profile_sha256")
+            != processing_profile_sha256
+            or active_corpus_release.get("provider")
+            != health.get("embedding_provider")
+            or active_corpus_release.get("model") != health.get("model_id")
+            or active_corpus_release.get("dimensions") != dimension
+            or active_corpus_release.get("version") != health.get("model_revision")
+            or isinstance(active_corpus_release.get("approved_document_count"), bool)
+            or not isinstance(
+                active_corpus_release.get("approved_document_count"), int
+            )
+            or active_corpus_release["approved_document_count"] < 1
             or not isinstance(documents, list)
+            or not documents
         ):
             raise RagToolError(
                 "RAG_RUNTIME_RECEIPT_INVALID",
@@ -602,6 +1081,8 @@ class InternalManualAgent:
                 "tool_version": tool["semantic_version"],
                 "model_revision": health["model_revision"],
                 "embedding_dimension": dimension,
+                "corpus_manifest_sha256": corpus_manifest_sha256,
+                "processing_profile_sha256": processing_profile_sha256,
                 "document_count": len(documents),
             },
             ensure_ascii=False,
@@ -615,6 +1096,8 @@ class InternalManualAgent:
             "tool_version": tool["semantic_version"],
             "model_revision": health["model_revision"],
             "embedding_dimension": dimension,
+            "corpus_manifest_sha256": corpus_manifest_sha256,
+            "processing_profile_sha256": processing_profile_sha256,
             "capability_hash": hashlib.sha256(
                 canonical.encode("utf-8")
             ).hexdigest(),
@@ -643,14 +1126,20 @@ class InternalManualAgent:
         result = await self._signed_post("/v1/tools/internal-manual-catalog", {}, rag_role)
         return list(result.get("documents") or [])
 
-    async def fetch_pdf(self, manual_id: str, app_role: str) -> tuple[bytes, str]:
-        """문서 식별자와 역할을 검증한 뒤 허용된 PDF 원문을 내려받는다."""
-        if not re.fullmatch(r"[A-Z][A-Z0-9-]{1,99}", manual_id):
+    async def _source_role(self, manual_id: str, app_role: str) -> str:
+        """문서 ID와 App 역할을 검증하고 현재 Registry 승인까지 확인한다."""
+
+        if _RAG_MANUAL_ID_PATTERN.fullmatch(manual_id) is None:
             raise RagToolError("RAG_INPUT_INVALID", "문서 식별자가 올바르지 않습니다.", 422)
         rag_role = _ROLE_MAP.get(app_role)
         if rag_role is None:
             raise RagToolError("RAG_ACCESS_DENIED", "RAG 문서 열람 권한이 없습니다.", 403)
         await self._assert_enabled(app_role)
+        return rag_role
+
+    def _source_request_headers(self, manual_id: str, rag_role: str) -> dict[str, str]:
+        """Runtime 원문 요청에 사용할 canonical body digest와 HMAC header를 만든다."""
+
         canonical = json.dumps(
             {"manual_id": manual_id}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         )
@@ -659,26 +1148,201 @@ class InternalManualAgent:
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         message = f"{timestamp}\n{request_id}\n{rag_role}\n{digest}".encode("utf-8")
         signature = hmac.new(self._secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout, trust_env=False) as client:
-                response = await client.get(
-                    f"{self._base_url}/v1/documents/{quote(manual_id, safe='')}/source.pdf",
-                    headers={
-                        "X-Verified-Role": rag_role,
-                        "X-Request-Timestamp": timestamp,
-                        "X-Request-Id": request_id,
-                        "X-Request-Signature": signature,
-                    },
-                )
-                response.raise_for_status()
-            return response.content, response.headers.get(
-                "Content-Disposition", f'inline; filename="{manual_id}.pdf"'
+        return {
+            "X-Verified-Role": rag_role,
+            "X-Request-Timestamp": timestamp,
+            "X-Request-Id": request_id,
+            "X-Request-Signature": signature,
+        }
+
+    @staticmethod
+    def _source_filename(content_disposition: str | None) -> str | None:
+        """Content-Disposition에서 UTF-8 filename을 중복 없이 추출한다."""
+
+        if content_disposition is None:
+            return None
+        if "\r" in content_disposition or "\n" in content_disposition:
+            raise RagToolError(
+                "RAG_DOCUMENT_RESPONSE_INVALID",
+                "RAG 원본 문서 응답 header가 올바르지 않습니다.",
+                502,
             )
+        encoded_names = re.findall(
+            r"(?:^|;)\s*filename\*\s*=\s*([^;]*)",
+            content_disposition,
+            flags=re.IGNORECASE,
+        )
+        plain_names = re.findall(
+            r'(?:^|;)\s*filename(?!\*)\s*=\s*("[^"]*"|[^;]*)',
+            content_disposition,
+            flags=re.IGNORECASE,
+        )
+        if len(encoded_names) > 1 or len(plain_names) > 1:
+            raise RagToolError(
+                "RAG_DOCUMENT_RESPONSE_INVALID",
+                "RAG 원본 문서 파일명이 올바르지 않습니다.",
+                502,
+            )
+        try:
+            if encoded_names:
+                encoded = encoded_names[0].strip()
+                if not encoded.lower().startswith("utf-8''"):
+                    raise ValueError("unsupported filename encoding")
+                return unquote_to_bytes(encoded[7:]).decode("utf-8")
+            if plain_names:
+                plain = plain_names[0].strip()
+                return plain[1:-1] if plain.startswith('"') and plain.endswith('"') else plain
+        except (UnicodeDecodeError, ValueError) as error:
+            raise RagToolError(
+                "RAG_DOCUMENT_RESPONSE_INVALID",
+                "RAG 원본 문서 파일명이 올바르지 않습니다.",
+                502,
+            ) from error
+        raise RagToolError(
+            "RAG_DOCUMENT_RESPONSE_INVALID",
+            "RAG 원본 문서 파일명이 누락되었습니다.",
+            502,
+        )
+
+    @staticmethod
+    def _source_metadata(
+        manual_id: str,
+        media_type_header: str | None,
+        content_disposition: str | None,
+        allowed_media_types: frozenset[str],
+    ) -> tuple[str, str]:
+        """허용 MIME과 안전한 파일명만 수용해 새 Content-Disposition을 만든다."""
+
+        media_type = (media_type_header or "").split(";", 1)[0].strip().lower()
+        if media_type not in allowed_media_types or media_type not in RAG_SOURCE_MEDIA_TYPES:
+            raise RagToolError(
+                "RAG_DOCUMENT_MEDIA_TYPE_INVALID",
+                "RAG 원본 문서 형식이 허용되지 않았습니다.",
+                502,
+            )
+        suffix, disposition = RAG_SOURCE_MEDIA_TYPES[media_type]
+        filename = InternalManualAgent._source_filename(content_disposition)
+        if filename is None:
+            filename = f"{manual_id}{suffix}"
+        filename = unicodedata.normalize("NFC", filename).strip()
+        if (
+            not suffix
+            or not filename
+            or len(filename) > 180
+            or not filename.lower().endswith(suffix)
+            or len(filename) <= len(suffix)
+            or filename.endswith((".", " "))
+            or re.search(r'[<>:"/\\|?*]', filename) is not None
+            or any(unicodedata.category(character).startswith("C") for character in filename)
+        ):
+            raise RagToolError(
+                "RAG_DOCUMENT_RESPONSE_INVALID",
+                "RAG 원본 문서 파일명이 올바르지 않습니다.",
+                502,
+            )
+        return media_type, f"{disposition}; filename*=UTF-8''{quote(filename, safe='')}"
+
+    async def _fetch_source(
+        self,
+        manual_id: str,
+        rag_role: str,
+        source_path: str,
+        allowed_media_types: frozenset[str],
+    ) -> tuple[bytes, str, str]:
+        """Redirect 없이 원문을 읽고 body·MIME·파일명 경계를 모두 검증한다."""
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                async with client.stream(
+                    "GET",
+                    f"{self._base_url}/v1/documents/{quote(manual_id, safe='')}/{source_path}",
+                    headers=self._source_request_headers(manual_id, rag_role),
+                ) as response:
+                    if response.is_redirect:
+                        raise RagToolError(
+                            "RAG_DOCUMENT_REDIRECT_REJECTED",
+                            "RAG 원본 문서 redirect를 허용하지 않습니다.",
+                            502,
+                        )
+                    response.raise_for_status()
+                    media_type, disposition = self._source_metadata(
+                        manual_id,
+                        response.headers.get("Content-Type"),
+                        response.headers.get("Content-Disposition"),
+                        allowed_media_types,
+                    )
+                    declared_length = response.headers.get("Content-Length")
+                    if declared_length is not None:
+                        if (
+                            not declared_length.isdecimal()
+                            or int(declared_length) > self._source_max_body_bytes
+                        ):
+                            raise RagToolError(
+                                "RAG_DOCUMENT_TOO_LARGE",
+                                "RAG 원본 문서 크기가 허용 범위를 초과했습니다.",
+                                502,
+                            )
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in response.aiter_bytes():
+                        total += len(chunk)
+                        if total > self._source_max_body_bytes:
+                            raise RagToolError(
+                                "RAG_DOCUMENT_TOO_LARGE",
+                                "RAG 원본 문서 크기가 허용 범위를 초과했습니다.",
+                                502,
+                            )
+                        chunks.append(chunk)
+            content = b"".join(chunks)
+            if not content:
+                raise RagToolError(
+                    "RAG_DOCUMENT_RESPONSE_INVALID",
+                    "RAG 원본 문서가 비어 있습니다.",
+                    502,
+                )
+            return content, disposition, media_type
+        except RagToolError:
+            raise
         except httpx.HTTPStatusError as error:
             status = 404 if error.response.status_code == 404 else 503
-            raise RagToolError("RAG_DOCUMENT_UNAVAILABLE", "RAG 원본 PDF를 찾을 수 없습니다.", status) from error
+            raise RagToolError(
+                "RAG_DOCUMENT_UNAVAILABLE",
+                "RAG 원본 문서를 찾을 수 없습니다.",
+                status,
+            ) from error
         except httpx.HTTPError as error:
             raise RagToolError("RAG_DEPENDENCY_FAILED", "RAG 문서 서비스에 연결하지 못했습니다.") from error
+
+    async def fetch_document(
+        self,
+        manual_id: str,
+        app_role: str,
+    ) -> tuple[bytes, str, str]:
+        """승인된 PDF 또는 DOCX 원문을 generic Runtime 경로에서 중계한다."""
+
+        rag_role = await self._source_role(manual_id, app_role)
+        return await self._fetch_source(
+            manual_id,
+            rag_role,
+            "source",
+            frozenset(RAG_SOURCE_MEDIA_TYPES),
+        )
+
+    async def fetch_pdf(self, manual_id: str, app_role: str) -> tuple[bytes, str]:
+        """기존 PDF 전용 Runtime 경로와 App 반환 계약을 유지한다."""
+
+        rag_role = await self._source_role(manual_id, app_role)
+        content, disposition, _media_type = await self._fetch_source(
+            manual_id,
+            rag_role,
+            "source.pdf",
+            frozenset({"application/pdf"}),
+        )
+        return content, disposition
 
     async def _assert_enabled(self, app_role: str) -> None:
         try:
@@ -686,19 +1350,50 @@ class InternalManualAgent:
                 row = (
                     await session.execute(
                         text(
-                            "SELECT required_roles_json FROM tooling.tool_registry "
-                            "WHERE tool_id=:tool_id AND tool_code=:tool_code AND is_enabled=true"
+                            "SELECT tool_id, tool_code, semantic_version, title, description, "
+                            "input_schema_json, output_schema_json, annotations_json, transport, "
+                            "timeout_seconds, required_roles_json, is_enabled "
+                            "FROM tooling.tool_registry "
+                            "WHERE tool_id=:tool_id OR tool_code=:tool_code"
                         ),
                         {"tool_id": RAG_TOOL_ID, "tool_code": RAG_TOOL_CODE},
                     )
-                ).scalar_one_or_none()
+                ).mappings().one_or_none()
         except SQLAlchemyError as error:
             raise RagToolError("RAG_REGISTRY_UNAVAILABLE", "RAG Tool Registry를 확인하지 못했습니다.") from error
-        if row is None:
+        if not self._registry_contract_matches(row):
             raise RagToolError("RAG_TOOL_DISABLED", "RAG Tool이 승인되지 않았습니다.", 503)
-        roles = row if isinstance(row, list) else json.loads(row)
-        if app_role not in roles:
+        if app_role not in RAG_TOOL_ROLES:
             raise RagToolError("RAG_ACCESS_DENIED", "RAG 검색 권한이 없습니다.", 403)
+
+    @staticmethod
+    def _registry_contract_matches(row: Mapping[str, Any] | None) -> bool:
+        """활성 Registry 행이 canonical rag.answer descriptor 전체와 일치하는지 판정한다."""
+
+        if row is None:
+            return False
+        try:
+            roles = row["required_roles_json"]
+            if isinstance(roles, str):
+                roles = json.loads(roles)
+            return bool(
+                UUID(str(row["tool_id"])) == RAG_TOOL_ID
+                and row["tool_code"] == RAG_TOOL_CODE
+                and row["semantic_version"] == RAG_TOOL_SEMANTIC_VERSION
+                and row["title"] == RAG_TOOL_DESCRIPTOR["title"]
+                and row["description"] == RAG_TOOL_DESCRIPTION
+                and row["input_schema_json"] == RAG_TOOL_INPUT_SCHEMA
+                and row["output_schema_json"] == RAG_TOOL_OUTPUT_SCHEMA
+                and row["annotations_json"] == RAG_TOOL_DESCRIPTOR["annotations"]
+                and row["transport"] == RAG_TOOL_TRANSPORT
+                and type(row["timeout_seconds"]) is int
+                and row["timeout_seconds"] == RAG_TOOL_TIMEOUT_SECONDS
+                and type(roles) is list
+                and tuple(roles) == RAG_TOOL_ROLES
+                and row["is_enabled"] is True
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return False
 
     async def _record(
         self,
@@ -719,11 +1414,13 @@ class InternalManualAgent:
                 await session.execute(
                     text(
                         "INSERT INTO tooling.tool_runs "
-                        "(tool_run_id,tool_id,caller_user_id,caller_role,trace_id,input_hash,status,latency_ms,output_ref_json,error_code) "
-                        "VALUES (:run_id,:tool_id,:actor,:role,:trace,:input_hash,:status,:latency,CAST(:output AS jsonb),:error)"
+                        "(tool_run_id,tool_id,tool_semantic_version,caller_user_id,caller_role,trace_id,input_hash,status,latency_ms,output_ref_json,error_code) "
+                        "VALUES (:run_id,:tool_id,:tool_version,:actor,:role,:trace,:input_hash,:status,:latency,CAST(:output AS jsonb),:error)"
                     ),
                     {
-                        "run_id": uuid4(), "tool_id": RAG_TOOL_ID, "actor": actor_id, "role": role,
+                        "run_id": uuid4(), "tool_id": RAG_TOOL_ID,
+                        "tool_version": RAG_TOOL_SEMANTIC_VERSION,
+                        "actor": actor_id, "role": role,
                         "trace": trace_id, "input_hash": hashlib.sha256(query.encode("utf-8")).hexdigest(),
                         "status": "FAILED" if error_code else "SUCCEEDED",
                         "latency": max(0, round((time.perf_counter() - started) * 1000)),
@@ -756,13 +1453,17 @@ class InternalManualAgent:
 
     @staticmethod
     def _evidence_block(item: dict[str, Any]) -> dict[str, str]:
+        """검색 결과를 metadata 손실 없는 signed answer evidence로 투영한다."""
+
         return {
             "evidence_id": str(item.get("evidence_id") or ""),
             "text": str(item.get("content") or item.get("snippet") or ""),
             "title": str(item.get("title") or ""),
             "manual_id": str(item.get("manual_id") or ""),
+            "version": str(item.get("version") or ""),
+            "document_type": str(item.get("document_type") or ""),
+            "owner_team": str(item.get("owner_team") or ""),
             "section_title": str(item.get("section_title") or ""),
-            "page_start": str(item.get("page_start") or ""),
             "citation": str(item.get("citation") or ""),
         }
 

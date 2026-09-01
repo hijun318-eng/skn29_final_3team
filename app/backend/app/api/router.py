@@ -60,9 +60,14 @@ from app.api.analysis_router_runtime import (
     repository_call as _repository_call,
     routing_service as _routing_service,
 )
-from app.api.rag_router_runtime import internal_manual_query_service
+from app.api.rag_router_runtime import (
+    internal_manual_capability_searcher,
+    internal_manual_query_service,
+)
+from app.adapters.openai_supervisor import openai_supervisor_planner_from_env
 from app.api.analysis_router_support import (
     analysis_support_router,
+    archive_analysis_artifact,
     cancel_analysis_progress,
     cancel_analysis_progress_by_request,
     create_analysis_definition,
@@ -73,6 +78,7 @@ from app.api.analysis_router_support import (
     get_analysis_run_artifact,
     list_analysis_definitions,
     list_analysis_runs,
+    restore_analysis_artifact,
 )
 from app.controllers.analysis_controller import AnalysisController
 from app.ports.agent import (
@@ -96,6 +102,8 @@ from app.services.execution_control import ConcurrentExecutionGate
 from app.services.internal_manual_query import InternalManualQueryError
 from app.services.readiness import AppDatabaseReadiness
 from app.services.runtime_feature_availability import available_runtime_features
+from app.runtime_features import supervisor_feature_enabled
+from app.user_account_roles import UserAccountRole, public_user_account_role
 
 
 logger = logging.getLogger(__name__)
@@ -114,6 +122,21 @@ def _controller() -> AnalysisController:
 
 
 router = APIRouter()
+
+
+def _public_session_role(role: Role) -> UserAccountRole:
+    """사용자 세션 응답에서 내부·legacy Role 노출을 401로 닫는다."""
+
+    try:
+        return public_user_account_role(role)
+    except ValueError as error:
+        raise ContextValidationError(
+            ErrorCode.AUTHENTICATION_REQUIRED,
+            "인증 정보를 확인할 수 없습니다.",
+            401,
+        ) from error
+
+
 readiness = AppDatabaseReadiness(lambda: _controller().data_platform)
 execution_gate = ConcurrentExecutionGate()
 
@@ -193,9 +216,10 @@ async def authenticated_session(
     """검증된 세션의 role만 공개하며 자격 증명이 없을 때는 anonymous 상태를 반환한다."""
     if context is None:
         return SessionResponse(data=SessionData(status="anonymous"), meta=response_meta(request_context(request)))
+    public_role = _public_session_role(context.role)
     return SessionResponse(
         data=SessionData(
-            role=context.role,
+            role=public_role,
             capabilities=capabilities_for(context.role),
             enabled_features=(
                 await available_runtime_features(context.role)
@@ -233,6 +257,7 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
         role=principal.role,
     )
     request.state.context = context
+    public_role = _public_session_role(principal.role)
     response.set_cookie(
         SESSION_COOKIE,
         session_token,
@@ -244,7 +269,7 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
     )
     return LoginResponse(
         data=LoginData(
-            role=principal.role,
+            role=public_role,
             capabilities=capabilities_for(principal.role),
             enabled_features=(
                 await available_runtime_features(principal.role)
@@ -636,6 +661,11 @@ async def execute_conversation_command(
             agent_request,
             execution_gate,
             internal_manual_query_service,
+            internal_guideline_capability_searcher_factory=(
+                internal_manual_capability_searcher
+            ),
+            supervisor_planner_factory=openai_supervisor_planner_from_env,
+            supervisor_routing_enabled=supervisor_feature_enabled(),
         )
     except TimeoutError as error:
         execution_state = getattr(error, "agent_execution_state", None)

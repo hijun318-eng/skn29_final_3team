@@ -1,3 +1,5 @@
+"""서명된 내부 RAG 검색·답변·원문 조회를 FastAPI endpoint로 노출한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -24,6 +26,8 @@ from .p2_contracts import RagToolContract
 
 
 class ManualSearchRequest(BaseModel):
+    """검색 질문·typed intent·문맥·trace·actor hash의 HTTP 입력 계약이다."""
+
     query: str = Field(min_length=2, max_length=500)
     top_k: int = Field(default=5, ge=1, le=10)
     recent_utterances: list[str] = Field(default_factory=list, max_length=3)
@@ -31,16 +35,24 @@ class ManualSearchRequest(BaseModel):
     resolved_question: str | None = Field(default=None, min_length=2, max_length=500)
     domains: list[Literal["PRIVACY", "REPORT", "CUSTOMER_SERVICE", "ROOM", "RESERVATION_CHECKIN_PAYMENT", "CANCELLATION_REFUND_COMPENSATION", "FOOD_BEVERAGE", "LEISURE", "FACILITY", "SAFETY", "PARKING_EVENT_LOBBY"]] = Field(default_factory=list, max_length=3)
     intent: Literal["PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA", "REGULATION_CHECK", "COMPARISON", "SUMMARY"] = "REGULATION_CHECK"
+    trace_id: str = Field(min_length=1, max_length=128)
+    actor_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 
 class ManualAnswerRequest(BaseModel):
+    """retrieval receipt와 caller evidence를 포함하는 답변 HTTP 입력 계약이다."""
+
     query: str = Field(min_length=2, max_length=500)
-    evidence_blocks: list[dict] = Field(default_factory=list)
+    evidence_blocks: list[dict] = Field(min_length=1, max_length=50)
     intent: Literal["PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA", "REGULATION_CHECK", "COMPARISON", "SUMMARY"] = "REGULATION_CHECK"
-    retrieval_request_id: str | None = None
+    retrieval_request_id: str = Field(min_length=36, max_length=36)
+    trace_id: str = Field(min_length=1, max_length=128)
+    actor_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 def create_app(project_root: Path | None = None) -> FastAPI:
+    """HMAC 인증·nonce 감사·RAG application을 결합한 내부 API를 구성한다."""
+
     root = (project_root or Path.cwd()).resolve()
     service = VectorRagApplication(root)
     audit = SecurityAuditRepository(service.database_url)
@@ -61,6 +73,10 @@ def create_app(project_root: Path | None = None) -> FastAPI:
         status = service.status()
         if not status.get("embedding_api_configured"):
             raise HTTPException(status_code=503, detail="Embedding provider is not configured")
+        if status.get("status") != "healthy" or not status.get(
+            "active_corpus_release"
+        ):
+            raise HTTPException(status_code=503, detail="Active corpus release is not ready")
         return status
 
     @app.post("/v1/tools/internal-manual-search")
@@ -75,7 +91,15 @@ def create_app(project_root: Path | None = None) -> FastAPI:
         recent = tuple(request.recent_utterances)
         selected = tuple(request.selected_document_ids)
         signed_payload = canonical_search_request(
-            request.query, request.top_k, recent, selected, request.resolved_question, tuple(request.domains), request.intent
+            request.query,
+            request.top_k,
+            recent,
+            selected,
+            request.resolved_question,
+            tuple(request.domains),
+            request.intent,
+            trace_id=request.trace_id,
+            actor_hash=request.actor_hash,
         )
         try:
             role = authenticator.verify(
@@ -88,6 +112,8 @@ def create_app(project_root: Path | None = None) -> FastAPI:
                 role,
                 request.top_k,
                 request_id=str(request_id),
+                trace_id=request.trace_id,
+                actor_hash=request.actor_hash,
                 recent_utterances=recent,
                 selected_document_ids=selected,
                 resolved_question=request.resolved_question,
@@ -120,6 +146,8 @@ def create_app(project_root: Path | None = None) -> FastAPI:
             tuple(request.evidence_blocks),
             request.intent,
             request.retrieval_request_id,
+            trace_id=request.trace_id,
+            actor_hash=request.actor_hash,
         )
         try:
             role = authenticator.verify(
@@ -129,11 +157,13 @@ def create_app(project_root: Path | None = None) -> FastAPI:
                 raise GatewayAuthenticationError("Replayed gateway request")
             result = service.answer(
                 request_id=str(request_id),
-                trace_id=str(request_id),
+                trace_id=request.trace_id,
                 query=request.query,
                 evidence_blocks=request.evidence_blocks,
+                role=role,
                 intent=request.intent,
                 retrieval_request_id=request.retrieval_request_id,
+                actor_hash=request.actor_hash,
             )
             audit.record(
                 request_id,
@@ -189,5 +219,54 @@ def create_app(project_root: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=error.status_code, detail=str(error)) from error
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Manual PDF not found") from error
+
+    @app.get("/v1/documents/{manual_id}/source")
+    def source_document(
+        manual_id: str,
+        verified_role: Annotated[str | None, Header(alias="X-Verified-Role")] = None,
+        timestamp: Annotated[str | None, Header(alias="X-Request-Timestamp")] = None,
+        request_id: Annotated[str | None, Header(alias="X-Request-Id")] = None,
+        signature: Annotated[str | None, Header(alias="X-Request-Signature")] = None,
+    ) -> Response:
+        canonical = json.dumps(
+            {"manual_id": manual_id},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        try:
+            role = authenticator.verify(
+                verified_role,
+                timestamp,
+                request_id,
+                signature,
+                canonical,
+            )
+            if not audit.reserve_request_id(str(request_id)):
+                raise GatewayAuthenticationError("Replayed gateway request")
+            content, filename, media_type = service.source_document(manual_id, role)
+            audit.record(
+                request_id,
+                role,
+                hashlib.sha256(canonical.encode()).hexdigest(),
+                "AUTHORIZED",
+                "SIGNED_GATEWAY_REQUEST",
+            )
+            disposition = "inline" if media_type == "application/pdf" else "attachment"
+            return Response(
+                content=content,
+                media_type=media_type,
+                headers={
+                    "Content-Disposition": (
+                        f"{disposition}; filename*=UTF-8''{quote(filename)}"
+                    ),
+                    "Cache-Control": "private, no-store",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
+        except GatewayAuthenticationError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Document source not found") from error
 
     return app

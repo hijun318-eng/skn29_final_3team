@@ -47,9 +47,12 @@ export function ReportArtifactLibraryTile({ source, artifact, disabled = false, 
 export function ReportWholeArtifactBlock({ block, artifact, artifactState, currency, onRetry }) {
   const settings = wholeArtifactSettings(block);
   if (!settings) {
-    return <section className="report-whole-artifact report-api-state" role="alert">
-      <b>이전 합본 분석 요소는 표시할 수 없습니다.</b>
-      <span>요약·핵심 지표·차트·표 중 하나를 독립 블록으로 다시 추가해 주세요.</span>
+    return <section className="report-whole-artifact report-artifact-state is-legacy" role="status">
+      <AlertTriangle size={17} aria-hidden="true" />
+      <div>
+        <b>이전 형식의 합본 분석 요소입니다.</b>
+        <p>편집 화면에서 열면 제공 가능한 요약·핵심 지표·차트·표가 각각 독립 블록으로 정리됩니다.</p>
+      </div>
     </section>;
   }
   const view = settings.visibleViews[0];

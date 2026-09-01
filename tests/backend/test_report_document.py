@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from decimal import Decimal
+from importlib.util import find_spec
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,8 +21,11 @@ from app.api import report_router as report_api  # noqa: E402
 from app.contracts import RequestContext, Role  # noqa: E402
 from app.report_contracts import ApproveReportVersionRequest  # noqa: E402
 from app.services.report.document import (  # noqa: E402
+    _renderer_contract_fingerprint,
     approve_report_document,
     build_report_html,
+    report_renderer_contract_fingerprint,
+    render_report_page_count,
     render_report_document,
 )
 from app.services.report.layout import _paginate_layout  # noqa: E402
@@ -126,6 +130,107 @@ class _Repository:
 
 
 class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
+    def test_renderer_contract_fingerprint_binds_css_bytes_and_runtime_version(self):
+        sources = (
+            ("document.py", b"<style>.report{color:#123}</style>"),
+            ("layout.py", b"layout-v1"),
+        )
+
+        first = _renderer_contract_fingerprint("69.0", sources)
+
+        self.assertEqual(first, _renderer_contract_fingerprint("69.0", sources))
+        self.assertEqual(64, len(first))
+        self.assertTrue(all(character in "0123456789abcdef" for character in first))
+        self.assertNotEqual(
+            first,
+            _renderer_contract_fingerprint(
+                "69.0",
+                (("document.py", b"<style>.report{color:#124}</style>"), sources[1]),
+            ),
+        )
+        self.assertNotEqual(first, _renderer_contract_fingerprint("70.0", sources))
+
+    @unittest.skipUnless(
+        find_spec("weasyprint") is not None,
+        "실제 WeasyPrint runtime이 필요한 Report renderer integration test",
+    )
+    async def test_actual_weasyprint_candidate_and_final_source_have_page_parity(self):
+        definition_id = "00000000-0000-0000-0000-000000000077"
+        blocks = (
+            ReportBlock(
+                "00000000-0000-0000-0000-000000000078",
+                "첫 페이지",
+                None,
+                12,
+                None,
+                BlockType.TEXT,
+                0,
+                0,
+                12,
+                18,
+                "실제 WeasyPrint 후보 페이지 검증",
+            ),
+            ReportBlock(
+                "00000000-0000-0000-0000-000000000079",
+                "둘째 페이지",
+                None,
+                12,
+                None,
+                BlockType.TEXT,
+                0,
+                18,
+                12,
+                18,
+                "저장될 최종 source와 동일한 layout 계약",
+            ),
+        )
+        definition = ReportDefinitionVersion(
+            definition_id,
+            2,
+            DefinitionStatus.DRAFT,
+            "실제 renderer parity 보고서",
+            blocks,
+        )
+        final_source = {
+            "definition_id": definition_id,
+            "version": 3,
+            "title": definition.title,
+            "orientation": definition.orientation,
+            "currency_display_unit": definition.currency_display_unit,
+            "blocks": [
+                {
+                    "block_id": block.block_id,
+                    "title": block.title,
+                    "type": block.type.value,
+                    "x": block.x,
+                    "y": block.y,
+                    "w": block.w,
+                    "h": block.h,
+                    "content": block.content,
+                    "artifact": None,
+                }
+                for block in blocks
+            ],
+            "artifact_versions": [],
+        }
+
+        candidate_page_count = await report_api._candidate_report_page_count(
+            SimpleNamespace(), definition, (),
+        )
+        final_page_count = render_report_page_count(
+            final_source, definition.orientation, APPROVED_AT,
+        )
+        rendered = render_report_document(
+            final_source, definition.orientation, APPROVED_AT,
+        )
+
+        self.assertGreaterEqual(candidate_page_count, 2)
+        self.assertEqual(candidate_page_count, final_page_count)
+        self.assertTrue(rendered.pdf.startswith(b"%PDF-"))
+        fingerprint = report_renderer_contract_fingerprint()
+        self.assertEqual(64, len(fingerprint))
+        self.assertEqual(fingerprint, report_renderer_contract_fingerprint())
+
     def test_html_is_a4_self_contained_and_escapes_content(self):
         report_source = source()
         checksum = canonical_source_checksum(report_source, "landscape")
@@ -208,14 +313,34 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
             def __init__(self, **kwargs):
                 type(self).rendered_html = kwargs["string"]
 
-            def write_pdf(self, **kwargs):
-                return b"%PDF-1.7\nnumeric-string-chart"
+            def render(self):
+                return SimpleNamespace(
+                    pages=(object(), object()),
+                    write_pdf=lambda **kwargs: b"%PDF-1.7\nnumeric-string-chart",
+                )
 
         with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=CaptureHTML)}):
             rendered = render_report_document(report_source, "landscape", APPROVED_AT)
         self.assertTrue(rendered.pdf.startswith(b"%PDF-"))
         self.assertIn("<polyline", CaptureHTML.rendered_html)
         self.assertIn('data-rendered-points="12"', CaptureHTML.rendered_html)
+
+    def test_page_count_uses_one_weasyprint_layout_without_writing_pdf(self):
+        class CaptureHTML:
+            render_count = 0
+
+            def __init__(self, **kwargs):
+                self.url_fetcher = kwargs["url_fetcher"]
+
+            def render(self):
+                type(self).render_count += 1
+                return SimpleNamespace(pages=(object(), object(), object()))
+
+        with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=CaptureHTML)}):
+            page_count = render_report_page_count(source(), "portrait", APPROVED_AT)
+
+        self.assertEqual(3, page_count)
+        self.assertEqual(1, CaptureHTML.render_count)
 
     def test_table_uses_disclosed_even_sample_with_frozen_artifact_reference(self):
         report_source = deepcopy(source())
@@ -551,6 +676,29 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("<svg", html)
         self.assertNotIn("<table>", html)
 
+    def test_atomic_chart_and_table_do_not_synthesize_kpi_cards(self):
+        for block_type, expected_markup in (("chart", "<svg"), ("table", "<table>")):
+            with self.subTest(block_type=block_type):
+                report_source = source()
+                block = deepcopy(
+                    report_source["blocks"][1 if block_type == "chart" else 2]
+                )
+                block.update({
+                    "block_id": f"atomic-{block_type}",
+                    "type": block_type,
+                    "content": json.dumps({"visibleViews": [block_type]}),
+                    "w": 12,
+                })
+                report_source["blocks"] = [block]
+                checksum = canonical_source_checksum(report_source, "landscape")
+
+                html = build_report_html(
+                    report_source, "landscape", APPROVED_AT, checksum
+                )
+
+                self.assertIn(expected_markup, html)
+                self.assertNotIn('<div class="metrics">', html)
+
     def test_explicit_synthetic_source_is_disclosed_on_cover_and_artifact(self):
         report_source = deepcopy(source())
         report_source["blocks"] = [report_source["blocks"][1]]
@@ -605,7 +753,7 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
             def __init__(self, **kwargs):
                 pass
 
-            def write_pdf(self, **kwargs):
+            def render(self):
                 raise RuntimeError("renderer unavailable")
 
         repository = _Repository(source())
@@ -642,6 +790,13 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
             def __init__(self, **kwargs):
                 self.html = kwargs["string"]
 
+            @property
+            def pages(self):
+                return (object(),)
+
+            def render(self):
+                return self
+
             def write_pdf(self, **kwargs):
                 self.options = kwargs
                 return b"%PDF-1.7\nfixture"
@@ -669,6 +824,13 @@ class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
         class FakeHTML:
             def __init__(self, **kwargs):
                 pass
+
+            @property
+            def pages(self):
+                return (object(),)
+
+            def render(self):
+                return self
 
             def write_pdf(self, **kwargs):
                 return b"%PDF-1.7\ncontract"

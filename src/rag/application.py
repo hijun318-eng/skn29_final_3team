@@ -1,3 +1,9 @@
+"""참조 Markdown과 SQLite를 사용해 RAG ingest·검색 계약을 로컬에서 검증한다.
+
+이 모듈은 실제 PDF·DOCX 및 pgvector 운영 경로가 아니라 개발 검증용 보조 경로이며,
+상태 응답에도 실행하지 않은 임베딩과 운영 검색을 명시적으로 표시한다.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -20,6 +26,8 @@ def _snippet_limit() -> int:
 
 
 class LocalRagApplication:
+    """allowlist Markdown을 보안 검사해 SQLite에 적재하고 키워드 검색을 제공한다."""
+
     def __init__(self, project_root: Path) -> None:
         self._root = project_root.resolve()
         self._repository = SqliteRagRepository(
@@ -32,6 +40,12 @@ class LocalRagApplication:
         self._repository.initialize()
 
     def ingest(self) -> dict[str, object]:
+        """허용 문서를 검사·파싱·청킹해 로컬 DB와 ingestion 증거 JSON을 갱신한다.
+
+        비밀 패턴 문서는 ``REJECTED_SECRET``로 기록하고 적재하지 않으며 파일·JSON·DB
+        오류는 성공으로 숨기지 않고 호출자에게 전파한다.
+        """
+
         created_chunks = 0
         documents = self._load_allowlist()
         inspections: list[dict[str, object]] = []
@@ -71,6 +85,12 @@ class LocalRagApplication:
         top_k: int = 3,
         allow_unresolved_validity: bool = False,
     ) -> list[SearchResult]:
+        """역할·유효성 필터를 통과한 청크를 한글 n-gram 겹침으로 순위화한다.
+
+        상위 ``top_k`` 결과를 반환하고 질의 원문 대신 SHA-256과 결과 수를 감사 로그에
+        기록한다.
+        """
+
         query_terms = Counter(self._tokenizer.tokenize(query))
         rows = self._repository.list_searchable_chunks(role, allow_unresolved_validity)
         ranked: list[tuple[float, object]] = []
@@ -89,6 +109,8 @@ class LocalRagApplication:
         return results
 
     def status(self) -> dict[str, object]:
+        """로컬 SQLite 검증 경로에서 실제 실행한 검색·임베딩·문서 상태를 반환한다."""
+
         return {
             "database": "SQLite local validation store",
             "search": "KEYWORD_NGRAM",

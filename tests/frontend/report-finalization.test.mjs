@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createReportClient } from "../../app/frontend/src/api/reportClient.ts";
 import {
   normalizeReportDefinition,
+  normalizeReportDefinitionLifecycle,
   normalizeReportDocument,
 } from "../../app/frontend/src/contracts/report.ts";
 import { reportFeatureSource, reportSources, sourceSection } from "./report-source-contract.mjs";
@@ -21,8 +22,16 @@ const definition = {
   orientation: "landscape",
   currency_display_unit: "million",
   approved_at: "2026-08-14T09:30:00Z",
+  archived_at: null,
+  archived_by: null,
 };
 const draftDefinition = { ...definition, status: "draft", approved_at: null };
+const archivedAt = "2026-08-31T09:30:00+09:00";
+const archivedDefinition = {
+  ...definition,
+  archived_at: archivedAt,
+  archived_by: "00000000-0000-0000-0000-000000000011",
+};
 const documentMetadata = {
   definition_id: definition.definition_id,
   definition_version: 3,
@@ -117,6 +126,53 @@ assert.throws(
   () => normalizeReportDefinition({ ...definition, draft_revision: 0 }),
   /draft revision/,
 );
+assert.equal(normalizeReportDefinition(archivedDefinition).archivedAt, archivedAt);
+assert.throws(
+  () => normalizeReportDefinition({ ...definition, archived_at: archivedAt }),
+  /함께 제공/,
+);
+assert.throws(
+  () => normalizeReportDefinitionLifecycle({
+    definition_id: definition.definition_id,
+    archived: false,
+    archived_at: archivedAt,
+    archived_by: archivedDefinition.archived_by,
+  }),
+  /receipt가 일치/,
+);
+
+const archiveRequests = [];
+const archiveClient = createReportClient("http://backend.test", async (url, init) => {
+  archiveRequests.push({ url, init });
+  if (url.endsWith("?archived=true")) {
+    return Response.json({ contract_version: "REPORT-v1.0.0", items: [archivedDefinition] });
+  }
+  if (url.endsWith("/archive")) {
+    return Response.json({
+      definition_id: definition.definition_id,
+      archived: true,
+      archived_at: archivedAt,
+      archived_by: archivedDefinition.archived_by,
+    });
+  }
+  if (url.endsWith("/restore")) {
+    return Response.json({
+      definition_id: definition.definition_id,
+      archived: false,
+      archived_at: null,
+      archived_by: null,
+    });
+  }
+  return Response.json({ contract_version: "REPORT-v1.0.0", items: [definition] });
+}, "runtime-token");
+assert.equal((await archiveClient.listDefinitions())[0].archivedAt, undefined);
+assert.equal(archiveRequests.at(-1).url, "http://backend.test/reports/definitions");
+assert.equal((await archiveClient.listDefinitions(true))[0].archivedAt, archivedAt);
+assert.equal(archiveRequests.at(-1).url, "http://backend.test/reports/definitions?archived=true");
+assert.equal((await archiveClient.archiveDefinition(definition.definition_id)).archived, true);
+assert.equal(archiveRequests.at(-1).init.method, "POST");
+assert.equal((await archiveClient.restoreDefinition(definition.definition_id)).archived, false);
+assert.equal(archiveRequests.at(-1).init.method, "POST");
 
 const metadata = await client.getFinalDocument(definition.definition_id, 3);
 assert.equal(metadata.orientation, "landscape");
@@ -147,6 +203,31 @@ assert.doesNotMatch(reportFeatureSource, /현재 PDF에 포함되지 않아 확�
 assert.match(reportSources.documentView, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
 assert.match(reportSources.documentView, /PDF 새 탭에서 열기/);
 assert.match(reportSources.documentView, /PDF 다운로드/);
+assert.match(reportSources.listView, /report-collection-tabs/);
+assert.match(reportSources.listView, /활성 보고서/);
+assert.match(reportSources.listView, /보관함/);
+assert.match(reportSources.listView, /MoreHorizontal/);
+assert.match(reportSources.listView, /<dialog/);
+assert.match(reportSources.listView, /dialog\.showModal\(\)/);
+assert.match(reportSources.listView, /if \(pending\) event\.preventDefault\(\)/, "Escape must not close a pending archive command");
+assert.match(reportSources.listView, /dialogCancelRef\.current\?\.focus\(\)/, "opening the dialog must move focus inside");
+assert.match(reportSources.listView, /lifecycleDialog\.trigger\?\.focus\?\.\(\)/, "closing the dialog must restore focus");
+assert.match(reportSources.listView, /if \(result\) setLifecycleDialog\(null\)/, "a failed archive command must keep the dialog open");
+assert.match(reportSources.listView, /disabled=\{Boolean\(pending\)\}/, "pending archive commands must lock dismissal controls");
+assert.match(reportSources.documentView, /보관된 보고서 · 읽기 전용/);
+assert.match(reportSources.documentView, /!archived && <button onClick=\{onReturnToEditor\}/);
+assert.match(reportSources.documentView, /!archived && isAdmin && approved/);
+assert.match(reportSources.controller, /const isArchived = Boolean\(lifecycle\.selectedDefinition\?\.archivedAt\)/);
+assert.match(reportSources.controller, /if \(definition\.archivedAt\)/);
+assert.match(reportSources.lifecycle, /reportClient\.listDefinitions\(collection === "archived"\)/);
+assert.match(reportSources.lifecycle, /reportClient\.archiveDefinition\(definitionId\)/);
+assert.match(reportSources.lifecycle, /reportClient\.restoreDefinition\(definitionId\)/);
+assert.match(reportSources.lifecycle, /const ensureAssistantEditable/);
+assert.match(reportSources.lifecycle, /if \(!ensureAssistantEditable\(\)\) return null/);
+const createDefinitionSource = sourceSection(reportSources.lifecycle, "const createDefinition", "const createNextDraft");
+assert.match(createDefinitionSource, /block_id: createUuid\(\)/);
+assert.doesNotMatch(createDefinitionSource, /const blockId = createUuid\(\)/);
+assert.match(reportSources.controller, /const initialBlockId = createUuid\(\)/);
 assert.match(applicationStyles, /\.theme-light \[data-report-render-root="screen-preview"\] \.answer-report-canvas--preview/);
 assert.match(applicationStyles, /--answer-report-workbench:#e8eef6/);
 assert.doesNotMatch(applicationStyles, /\.theme-light \[data-report-render-root="print"\]/);
@@ -170,6 +251,16 @@ assert.doesNotMatch(
   "server revision title must remain authoritative when a local layout snapshot is restored",
 );
 const saveSource = sourceSection(reportSources.controller, "const saveDraft", "const approveDefinition");
+assert.ok(
+  saveSource.indexOf("const persistedBlocks = compactDraftLayout(draft.orderedBlocks)")
+    < saveSource.indexOf("const snapshot = createFrontendDraftSnapshot"),
+  "the recovery snapshot must be built from the exact compacted layout sent to the server",
+);
+assert.match(
+  saveSource,
+  /const snapshot = createFrontendDraftSnapshot\(\{[\s\S]*blocks: persistedBlocks,/,
+  "the browser recovery snapshot and server request must share the persisted block layout",
+);
 assert.ok(
   saveSource.indexOf("replaceDraftBlocks") < saveSource.indexOf("saveFrontendDraft"),
   "the browser recovery snapshot must only advance after the server accepts the draft",
@@ -197,6 +288,7 @@ const leaveSource = sourceSection(reportSources.controller, "const leaveEditor",
 assert.match(leaveSource, /openRequestRef\.current \+= 1/);
 assert.match(leaveSource, /artifacts\.invalidateLoads\(\)/);
 assert.match(leaveSource, /lifecycle\.loadFinalDocument\(null\)/);
+assert.match(leaveSource, /lifecycle\.clearFeedback\(\)/);
 assert.doesNotMatch(
   [reportSources.documentView, reportSources.lifecycle].join("\n"),
   /loadFrontendDraft|saveFrontendDraft|sessionStorage/,

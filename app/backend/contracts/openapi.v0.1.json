@@ -39,7 +39,12 @@
             "title": "Deleted At"
           },
           "role": {
-            "$ref": "#/components/schemas/Role"
+            "enum": [
+              "analyst",
+              "admin"
+            ],
+            "title": "Role",
+            "type": "string"
           },
           "subject": {
             "format": "uuid",
@@ -146,6 +151,51 @@
           "meta"
         ],
         "title": "AccountResponse",
+        "type": "object"
+      },
+      "AnalysisArtifactLifecycleResponse": {
+        "additionalProperties": false,
+        "description": "비파괴 보관·복원 후 Artifact ID와 현재 owner-scoped 상태를 반환한다.",
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "archived"
+        ],
+        "title": "AnalysisArtifactLifecycleResponse",
         "type": "object"
       },
       "AnalysisData": {
@@ -717,6 +767,35 @@
         "additionalProperties": false,
         "description": "정의 버전별 재실행 상태, 시간 근거, 추적·쿼리·산출물 ID와 완료 시각을 반환한다.",
         "properties": {
+          "artifact_archived": {
+            "default": false,
+            "title": "Artifact Archived",
+            "type": "boolean"
+          },
+          "artifact_archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Archived At"
+          },
+          "artifact_archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Archived By"
+          },
           "artifact_id": {
             "anyOf": [
               {
@@ -1810,7 +1889,7 @@
       },
       "CreateAccountRequest": {
         "additionalProperties": false,
-        "description": "정규화된 login ID, 초기 비밀번호와 현재 서비스 Role만 계정 생성에 허용한다.",
+        "description": "login ID, 초기 비밀번호와 분석 사용자·관리자 Role만 계정 생성에 허용한다.",
         "properties": {
           "password": {
             "format": "password",
@@ -1821,8 +1900,13 @@
             "writeOnly": true
           },
           "role": {
-            "$ref": "#/components/schemas/Role",
-            "default": "analyst"
+            "default": "analyst",
+            "enum": [
+              "analyst",
+              "admin"
+            ],
+            "title": "Role",
+            "type": "string"
           },
           "username": {
             "maxLength": 64,
@@ -1888,29 +1972,6 @@
           "idempotency_key"
         ],
         "title": "CreateManualRunRequest",
-        "type": "object"
-      },
-      "CreateReportAssistantDraftRequest": {
-        "additionalProperties": false,
-        "description": "검증된 분석 산출물과 500자 이하 편집 지시로 AI 보고서 초안 생성을 요청한다.",
-        "properties": {
-          "artifact_id": {
-            "format": "uuid",
-            "title": "Artifact Id",
-            "type": "string"
-          },
-          "instruction": {
-            "default": "경영 검토용 보고서 초안을 구성해 줘",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Instruction",
-            "type": "string"
-          }
-        },
-        "required": [
-          "artifact_id"
-        ],
-        "title": "CreateReportAssistantDraftRequest",
         "type": "object"
       },
       "CreateReportAssistantSessionRequest": {
@@ -2183,6 +2244,19 @@
             "title": "Disambiguation Options",
             "type": "array"
           },
+          "exact_page_count": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exact Page Count"
+          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -2216,6 +2290,18 @@
             "default": "",
             "title": "Trace Id",
             "type": "string"
+          },
+          "verified_page_count": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Page Count"
           }
         },
         "required": [
@@ -2250,8 +2336,11 @@
           "REPORT_ASSISTANT_MODEL_TRANSPORT_FAILED",
           "REPORT_ASSISTANT_MODEL_CONTRACT_INVALID",
           "REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+          "EXTERNAL_TRANSFER_OUTCOME_UNKNOWN",
           "REPORT_ASSISTANT_TURN_MODEL_FAILED",
           "REPORT_ASSISTANT_TURN_MODEL_INVALID",
+          "REPORT_ASSISTANT_PAGE_CONSTRAINT_UNSATISFIED",
+          "REPORT_ASSISTANT_PAGE_RENDER_FAILED",
           "CIRCUIT_OPEN",
           "INSUFFICIENT_CONTEXT",
           "UNREPAIRABLE",
@@ -2459,6 +2548,17 @@
               }
             ]
           },
+          "permission_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Snapshot Id"
+          },
           "policy_version": {
             "anyOf": [
               {
@@ -2494,6 +2594,17 @@
           },
           "sampling": {
             "$ref": "#/components/schemas/SamplingEvidence"
+          },
+          "semantic_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Release Id"
           },
           "snapshot": {
             "anyOf": [
@@ -2686,12 +2797,17 @@
           "role": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Role"
+                "enum": [
+                  "analyst",
+                  "admin"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Role"
           },
           "status": {
             "default": "authenticated",
@@ -2755,6 +2871,114 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "MLDailyForecast": {
+        "additionalProperties": false,
+        "description": "한 영업일의 객실 수요·잔여·점유율 예측을 동일 capacity에 결속한다.",
+        "properties": {
+          "predicted_available_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Available Rooms",
+            "type": "number"
+          },
+          "predicted_occupancy_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Predicted Occupancy Rate",
+            "type": "number"
+          },
+          "predicted_occupied_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Occupied Rooms",
+            "type": "number"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          },
+          "total_available_rooms": {
+            "exclusiveMinimum": 0.0,
+            "title": "Total Available Rooms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "target_date",
+          "total_available_rooms",
+          "predicted_occupied_rooms",
+          "predicted_available_rooms",
+          "predicted_occupancy_rate"
+        ],
+        "title": "MLDailyForecast",
+        "type": "object"
+      },
+      "MLHistorySourceCapability": {
+        "additionalProperties": false,
+        "description": "Runtime 시작 시 검증된 history source의 최소 영수증이다.",
+        "properties": {
+          "continuity_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Continuity Query Id",
+            "type": "string"
+          },
+          "max_date": {
+            "format": "date",
+            "title": "Max Date",
+            "type": "string"
+          },
+          "min_date": {
+            "format": "date",
+            "title": "Min Date",
+            "type": "string"
+          },
+          "property_count": {
+            "minimum": 1.0,
+            "title": "Property Count",
+            "type": "integer"
+          },
+          "row_count": {
+            "minimum": 1.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "series_count": {
+            "minimum": 1.0,
+            "title": "Series Count",
+            "type": "integer"
+          },
+          "summary_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Summary Query Id",
+            "type": "string"
+          },
+          "synthetic_only": {
+            "title": "Synthetic Only",
+            "type": "boolean"
+          },
+          "table": {
+            "maxLength": 256,
+            "minLength": 5,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Table",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "row_count",
+          "property_count",
+          "series_count",
+          "min_date",
+          "max_date",
+          "synthetic_only",
+          "summary_query_id",
+          "continuity_query_id"
+        ],
+        "title": "MLHistorySourceCapability",
+        "type": "object"
+      },
       "MLPredictionAction": {
         "additionalProperties": false,
         "description": "클라이언트가 명시적으로 요청하는 객실 수요 예측의 typed 입력이다.",
@@ -2784,6 +3008,397 @@
           "horizon_days"
         ],
         "title": "MLPredictionAction",
+        "type": "object"
+      },
+      "MLPredictionProvenance": {
+        "additionalProperties": false,
+        "description": "예측값이 승인 history 조회와 요청 기준일에서 생성됐음을 증명한다.",
+        "properties": {
+          "feature_as_of": {
+            "format": "date",
+            "title": "Feature As Of",
+            "type": "string"
+          },
+          "history_table": {
+            "maxLength": 256,
+            "minLength": 5,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "History Table",
+            "type": "string"
+          },
+          "rag_called": {
+            "const": false,
+            "title": "Rag Called",
+            "type": "boolean"
+          },
+          "request_as_of": {
+            "format": "date",
+            "title": "Request As Of",
+            "type": "string"
+          },
+          "source": {
+            "const": "TRINO_HISTORICAL_DAILY_FACTS",
+            "title": "Source",
+            "type": "string"
+          },
+          "trino_query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Trino Query Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "history_table",
+          "trino_query_id",
+          "feature_as_of",
+          "request_as_of",
+          "rag_called"
+        ],
+        "title": "MLPredictionProvenance",
+        "type": "object"
+      },
+      "MLPropertyCapability": {
+        "additionalProperties": false,
+        "description": "한 호텔의 예측 가능 기준일과 읽힌 history 범위를 고정한다.",
+        "properties": {
+          "feature_max_as_of": {
+            "format": "date",
+            "title": "Feature Max As Of",
+            "type": "string"
+          },
+          "history_rows": {
+            "minimum": 1.0,
+            "title": "History Rows",
+            "type": "integer"
+          },
+          "max_as_of": {
+            "format": "date",
+            "title": "Max As Of",
+            "type": "string"
+          },
+          "min_as_of": {
+            "format": "date",
+            "title": "Min As Of",
+            "type": "string"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "min_as_of",
+          "max_as_of",
+          "feature_max_as_of",
+          "history_rows"
+        ],
+        "title": "MLPropertyCapability",
+        "type": "object"
+      },
+      "MLRoomDemandPrediction": {
+        "additionalProperties": false,
+        "description": "Runtime의 전체 room-demand prediction wire contract를 검증한다.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "daily_forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/MLDailyForecast"
+            },
+            "minItems": 1,
+            "title": "Daily Forecasts",
+            "type": "array"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "feature_as_of": {
+            "format": "date",
+            "title": "Feature As Of",
+            "type": "string"
+          },
+          "feature_contract_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Feature Contract Sha256",
+            "type": "string"
+          },
+          "horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Horizon Days",
+            "type": "integer"
+          },
+          "model_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Model Hash",
+            "type": "string"
+          },
+          "model_version": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model Version",
+            "type": "string"
+          },
+          "property_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Property Id",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/MLPredictionProvenance"
+          },
+          "room_type_forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/MLRoomTypeForecast"
+            },
+            "minItems": 1,
+            "title": "Room Type Forecasts",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "MLRoomDemandPrediction.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "const": "SUCCEEDED",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "status",
+          "execution_id",
+          "property_id",
+          "as_of",
+          "feature_as_of",
+          "horizon_days",
+          "model_version",
+          "model_hash",
+          "feature_contract_sha256",
+          "daily_forecasts",
+          "room_type_forecasts",
+          "provenance"
+        ],
+        "title": "MLRoomDemandPrediction",
+        "type": "object"
+      },
+      "MLRoomTypeForecast": {
+        "additionalProperties": false,
+        "description": "일자·객실 유형별 raw·capacity-clipped 예측값을 보존한다.",
+        "properties": {
+          "available_rooms": {
+            "exclusiveMinimum": 0.0,
+            "title": "Available Rooms",
+            "type": "number"
+          },
+          "occupancy_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Occupancy Rate",
+            "type": "number"
+          },
+          "predicted_rooms": {
+            "minimum": 0.0,
+            "title": "Predicted Rooms",
+            "type": "number"
+          },
+          "predicted_rooms_raw": {
+            "title": "Predicted Rooms Raw",
+            "type": "number"
+          },
+          "room_type_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Room Type Code",
+            "type": "string"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_date",
+          "room_type_code",
+          "available_rooms",
+          "predicted_rooms_raw",
+          "predicted_rooms",
+          "occupancy_rate"
+        ],
+        "title": "MLRoomTypeForecast",
+        "type": "object"
+      },
+      "MLRuntimeCapability": {
+        "additionalProperties": false,
+        "description": "Backend가 호출할 수 있는 객실 수요 Runtime의 release receipt다.",
+        "properties": {
+          "approval": {
+            "enum": [
+              "APPROVED",
+              "CONDITIONAL_PASS"
+            ],
+            "title": "Approval",
+            "type": "string"
+          },
+          "approval_status": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "title": "Approval Status",
+            "type": "string"
+          },
+          "estimator_type": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Estimator Type",
+            "type": "string"
+          },
+          "feature_contract_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Feature Contract Sha256",
+            "type": "string"
+          },
+          "history_source": {
+            "$ref": "#/components/schemas/MLHistorySourceCapability"
+          },
+          "max_horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Max Horizon Days",
+            "type": "integer"
+          },
+          "min_horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Min Horizon Days",
+            "type": "integer"
+          },
+          "model_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Model Hash",
+            "type": "string"
+          },
+          "model_max_horizon_days": {
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Model Max Horizon Days",
+            "type": "integer"
+          },
+          "model_type": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model Type",
+            "type": "string"
+          },
+          "model_version": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model Version",
+            "type": "string"
+          },
+          "prediction_contract_version": {
+            "const": "MLRoomDemandPrediction.v1",
+            "title": "Prediction Contract Version",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/MLPropertyCapability"
+            },
+            "minItems": 1,
+            "title": "Properties",
+            "type": "array"
+          },
+          "query_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Query Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "MLRuntimeCapability.v2",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "synthetic_training_data": {
+            "title": "Synthetic Training Data",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "schema_version",
+          "prediction_contract_version",
+          "model_version",
+          "model_hash",
+          "feature_contract_sha256",
+          "model_type",
+          "estimator_type",
+          "approval",
+          "approval_status",
+          "min_horizon_days",
+          "max_horizon_days",
+          "model_max_horizon_days",
+          "properties",
+          "synthetic_training_data",
+          "history_source",
+          "query_id"
+        ],
+        "title": "MLRuntimeCapability",
+        "type": "object"
+      },
+      "MLRuntimeErrorDetail": {
+        "additionalProperties": false,
+        "description": "ML 기능·배포 정책·runtime 실패의 공개 가능한 코드와 안내 사유다.",
+        "properties": {
+          "code": {
+            "maxLength": 96,
+            "minLength": 1,
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "title": "Code",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "reason"
+        ],
+        "title": "MLRuntimeErrorDetail",
+        "type": "object"
+      },
+      "MLRuntimeErrorResponse": {
+        "additionalProperties": false,
+        "description": "FastAPI HTTPException이 반환하는 ML 오류 envelope다.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/MLRuntimeErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "MLRuntimeErrorResponse",
         "type": "object"
       },
       "ManualRunCommandResponse": {
@@ -3513,36 +4128,6 @@
         "title": "ReportAssistantApprovalRequest",
         "type": "object"
       },
-      "ReportAssistantDraftResponse": {
-        "additionalProperties": false,
-        "description": "AI 요청 ID, 성공 상태, 생성된 보고서 정의와 모델 호출 추적을 한 응답으로 반환한다.",
-        "properties": {
-          "assistant_request_id": {
-            "format": "uuid",
-            "title": "Assistant Request Id",
-            "type": "string"
-          },
-          "definition": {
-            "$ref": "#/components/schemas/ReportDefinitionResponse"
-          },
-          "status": {
-            "const": "success",
-            "title": "Status",
-            "type": "string"
-          },
-          "trace": {
-            "$ref": "#/components/schemas/ReportAssistantTraceResponse"
-          }
-        },
-        "required": [
-          "assistant_request_id",
-          "status",
-          "definition",
-          "trace"
-        ],
-        "title": "ReportAssistantDraftResponse",
-        "type": "object"
-      },
       "ReportAssistantEvaluationResponse": {
         "additionalProperties": false,
         "description": "원문 prompt·SQL 없이 한 Assistant 요청의 모델·승인·Revision 결과를 연결한다.",
@@ -3786,6 +4371,267 @@
           "evaluated_at"
         ],
         "title": "ReportAssistantEvaluationResponse",
+        "type": "object"
+      },
+      "ReportAssistantExternalTransferConsentRequest": {
+        "additionalProperties": false,
+        "description": "서버 생성 공개문 식별자·hash에 대한 명시적 수락만 입력받는다.",
+        "properties": {
+          "accepted": {
+            "const": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "disclosure_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Disclosure Hash",
+            "type": "string"
+          },
+          "disclosure_id": {
+            "format": "uuid",
+            "title": "Disclosure Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "disclosure_id",
+          "disclosure_hash",
+          "accepted"
+        ],
+        "title": "ReportAssistantExternalTransferConsentRequest",
+        "type": "object"
+      },
+      "ReportAssistantExternalTransferConsentResponse": {
+        "additionalProperties": false,
+        "description": "현재 owner·세션·route·scope에 결속된 append-only 동의 receipt를 반환한다.",
+        "properties": {
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "consent_id": {
+            "format": "uuid",
+            "title": "Consent Id",
+            "type": "string"
+          },
+          "consented_at": {
+            "format": "date-time",
+            "title": "Consented At",
+            "type": "string"
+          },
+          "data_scopes": {
+            "items": {
+              "enum": [
+                "user_instruction",
+                "assistant_turn_history",
+                "report_metadata_layout",
+                "report_block_content",
+                "selected_artifact_metadata",
+                "selected_artifact_narrative",
+                "selected_artifact_metrics",
+                "selected_artifact_chart_spec",
+                "selected_artifact_table_snapshot",
+                "pending_patch",
+                "approved_new_analysis_artifact"
+              ],
+              "type": "string"
+            },
+            "maxItems": 11,
+            "minItems": 1,
+            "title": "Data Scopes",
+            "type": "array"
+          },
+          "policy_version": {
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "provider_routes": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantProviderRoute"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Provider Routes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "consent_id",
+          "assistant_request_id",
+          "policy_version",
+          "provider_routes",
+          "data_scopes",
+          "consented_at"
+        ],
+        "title": "ReportAssistantExternalTransferConsentResponse",
+        "type": "object"
+      },
+      "ReportAssistantExternalTransferDisclosureResponse": {
+        "additionalProperties": false,
+        "description": "외부 provider 전송 전에 서버가 확정한 route·데이터 범위 공개문이다.",
+        "properties": {
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "consent_required": {
+            "title": "Consent Required",
+            "type": "boolean"
+          },
+          "content_warning": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Content Warning",
+            "type": "string"
+          },
+          "data_scopes": {
+            "items": {
+              "enum": [
+                "user_instruction",
+                "assistant_turn_history",
+                "report_metadata_layout",
+                "report_block_content",
+                "selected_artifact_metadata",
+                "selected_artifact_narrative",
+                "selected_artifact_metrics",
+                "selected_artifact_chart_spec",
+                "selected_artifact_table_snapshot",
+                "pending_patch",
+                "approved_new_analysis_artifact"
+              ],
+              "type": "string"
+            },
+            "maxItems": 11,
+            "minItems": 1,
+            "title": "Data Scopes",
+            "type": "array"
+          },
+          "disclosure_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Disclosure Hash",
+            "type": "string"
+          },
+          "disclosure_id": {
+            "format": "uuid",
+            "title": "Disclosure Id",
+            "type": "string"
+          },
+          "excluded_data": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Excluded Data",
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "policy_version": {
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "provider_routes": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAssistantProviderRoute"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Provider Routes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "disclosure_id",
+          "assistant_request_id",
+          "policy_version",
+          "provider_routes",
+          "data_scopes",
+          "excluded_data",
+          "content_warning",
+          "disclosure_hash",
+          "expires_at",
+          "consent_required"
+        ],
+        "title": "ReportAssistantExternalTransferDisclosureResponse",
+        "type": "object"
+      },
+      "ReportAssistantExternalTransferError": {
+        "additionalProperties": false,
+        "description": "428에서 동의 dialog 복구에 필요한 서버 공개문만 구조화해 반환한다.",
+        "properties": {
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "code": {
+            "const": "EXTERNAL_TRANSFER_CONSENT_REQUIRED",
+            "title": "Code",
+            "type": "string"
+          },
+          "disclosure": {
+            "$ref": "#/components/schemas/ReportAssistantExternalTransferDisclosureResponse"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "required_action": {
+            "const": "REVIEW_EXTERNAL_TRANSFER",
+            "title": "Required Action",
+            "type": "string"
+          },
+          "retryable": {
+            "const": false,
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "assistant_request_id",
+          "disclosure",
+          "required_action"
+        ],
+        "title": "ReportAssistantExternalTransferError",
+        "type": "object"
+      },
+      "ReportAssistantExternalTransferErrorResponse": {
+        "additionalProperties": false,
+        "description": "공통 meta와 외부 전송 공개문을 결합한 전용 428 error envelope다.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EmptyData"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ReportAssistantExternalTransferError"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "meta",
+          "error"
+        ],
+        "title": "ReportAssistantExternalTransferErrorResponse",
         "type": "object"
       },
       "ReportAssistantFailureListResponse": {
@@ -4234,6 +5080,69 @@
         "title": "ReportAssistantProposalResponse",
         "type": "object"
       },
+      "ReportAssistantProviderRoute": {
+        "additionalProperties": false,
+        "description": "credential·원문 endpoint를 제외하고 사용자에게 공개할 실제 모델 route다.",
+        "properties": {
+          "data_boundary": {
+            "enum": [
+              "external",
+              "internal"
+            ],
+            "title": "Data Boundary",
+            "type": "string"
+          },
+          "destination_origin": {
+            "pattern": "^https://[^/?#]+$",
+            "title": "Destination Origin",
+            "type": "string"
+          },
+          "model": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "node": {
+            "enum": [
+              "report_assistant",
+              "report_assistant_turn",
+              "report_assistant_review"
+            ],
+            "title": "Node",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "route_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Route Id",
+            "type": "string"
+          },
+          "route_label": {
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Route Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "route_id",
+          "route_label",
+          "provider",
+          "model",
+          "data_boundary",
+          "destination_origin"
+        ],
+        "title": "ReportAssistantProviderRoute",
+        "type": "object"
+      },
       "ReportAssistantRequiredAction": {
         "description": "실패한 Assistant 세션에서 사용자가 수행할 수 있는 안전한 다음 조치다.",
         "enum": [
@@ -4242,7 +5151,8 @@
           "REFRESH",
           "REAUTHENTICATE",
           "REOPEN_LATEST_REPORT",
-          "CONTACT_ADMIN"
+          "CONTACT_ADMIN",
+          "REVIEW_EXTERNAL_TRANSFER"
         ],
         "title": "ReportAssistantRequiredAction",
         "type": "string"
@@ -4413,13 +5323,16 @@
             "type": "string"
           },
           "artifact_ids": {
-            "default": [],
+            "description": "대표 artifact_id가 첫 번째인 중복 없는 결속 목록. 최초 선택 최대 5개와 새 데이터 결과 1개를 포함할 수 있습니다.",
             "items": {
               "format": "uuid",
               "type": "string"
             },
+            "maxItems": 6,
+            "minItems": 1,
             "title": "Artifact Ids",
-            "type": "array"
+            "type": "array",
+            "uniqueItems": true
           },
           "assistant_request_id": {
             "format": "uuid",
@@ -4449,6 +5362,19 @@
               }
             ],
             "title": "Error Code"
+          },
+          "exact_page_count": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exact Page Count"
           },
           "operation_scope": {
             "enum": [
@@ -4593,6 +5519,18 @@
             "maxItems": 12,
             "title": "Turn History",
             "type": "array"
+          },
+          "verified_page_count": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Page Count"
           }
         },
         "required": [
@@ -4602,7 +5540,8 @@
           "definition_id",
           "definition_version",
           "base_revision",
-          "artifact_id"
+          "artifact_id",
+          "artifact_ids"
         ],
         "title": "ReportAssistantSessionResponse",
         "type": "object"
@@ -4680,6 +5619,8 @@
           "artifact_id": {
             "anyOf": [
               {
+                "maxLength": 255,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4689,6 +5630,7 @@
             "title": "Artifact Id"
           },
           "block_id": {
+            "maxLength": 128,
             "minLength": 1,
             "title": "Block Id",
             "type": "string"
@@ -4708,6 +5650,7 @@
           },
           "content": {
             "default": "",
+            "maxLength": 4000,
             "title": "Content",
             "type": "string"
           },
@@ -4722,6 +5665,7 @@
           },
           "h": {
             "default": 1,
+            "maximum": 18.0,
             "minimum": 1.0,
             "title": "H",
             "type": "integer"
@@ -4729,6 +5673,8 @@
           "query_id": {
             "anyOf": [
               {
+                "maxLength": 255,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4738,6 +5684,7 @@
             "title": "Query Id"
           },
           "title": {
+            "maxLength": 255,
             "minLength": 1,
             "title": "Title",
             "type": "string"
@@ -4757,6 +5704,8 @@
           "view_spec_id": {
             "anyOf": [
               {
+                "maxLength": 255,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4787,6 +5736,7 @@
           },
           "y": {
             "default": 0,
+            "exclusiveMaximum": 1800.0,
             "minimum": 0.0,
             "title": "Y",
             "type": "integer"
@@ -4989,6 +5939,51 @@
         "title": "ReportBlockRunResponse",
         "type": "object"
       },
+      "ReportDefinitionLifecycleResponse": {
+        "additionalProperties": false,
+        "description": "비파괴 보관·복원 후 정의 ID와 현재 lifecycle metadata를 반환한다.",
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "archived"
+        ],
+        "title": "ReportDefinitionLifecycleResponse",
+        "type": "object"
+      },
       "ReportDefinitionListResponse": {
         "additionalProperties": false,
         "description": "계약 버전과 함께 접근 가능한 보고서 정의 버전 목록을 반환한다.",
@@ -5027,6 +6022,30 @@
               }
             ],
             "title": "Approved At"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "archived_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived By"
           },
           "blocks": {
             "items": {
@@ -5557,17 +6576,6 @@
         "title": "ResponseMeta",
         "type": "object"
       },
-      "Role": {
-        "description": "인증 주체에게 부여할 수 있는 분석·보고서·데이터 관리 역할의 허용 집합이다.",
-        "enum": [
-          "analyst",
-          "report_admin",
-          "data_admin",
-          "platform_admin"
-        ],
-        "title": "Role",
-        "type": "string"
-      },
       "RoomDemandRequest": {
         "additionalProperties": false,
         "description": "지원 대상·기준일·일 단위 horizon을 runtime capability 검증에 전달한다.",
@@ -5700,12 +6708,17 @@
           "role": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Role"
+                "enum": [
+                  "analyst",
+                  "admin"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Role"
           },
           "status": {
             "default": "authenticated",
@@ -5914,12 +6927,17 @@
           "role": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Role"
+                "enum": [
+                  "analyst",
+                  "admin"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Role"
           },
           "username": {
             "anyOf": [
@@ -7771,6 +8789,152 @@
         "summary": "Analysis"
       }
     },
+    "/analysis/artifacts/{artifact_id}/archive": {
+      "post": {
+        "description": "소유한 승인 Artifact를 비파괴 보관하며 진행 중 Assistant 충돌은 409로 닫는다.",
+        "operationId": "analysisArchiveArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisArtifactLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Archive Analysis Artifact"
+      }
+    },
+    "/analysis/artifacts/{artifact_id}/restore": {
+      "post": {
+        "description": "소유한 보관 Artifact를 active 목록과 신규 보고서 결속에 다시 노출한다.",
+        "operationId": "analysisRestoreArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisArtifactLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Restore Analysis Artifact"
+      }
+    },
     "/analysis/definitions": {
       "get": {
         "description": "현재 분석 주체가 저장한 definition만 생성 시각 역순으로 반환한다.",
@@ -8080,9 +9244,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Createmlanalysis",
-                  "type": "object"
+                  "$ref": "#/components/schemas/MLRoomDemandPrediction"
                 }
               }
             },
@@ -8097,6 +9259,26 @@
               }
             },
             "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML runtime 응답 계약 오류"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML 기능 또는 승인 runtime 사용 불가"
           }
         },
         "security": [
@@ -8339,7 +9521,7 @@
     },
     "/analysis/runs": {
       "get": {
-        "description": "현재 분석 주체의 run을 승인 여부와 서버 상한을 적용해 시작 시각 역순으로 반환한다.",
+        "description": "현재 분석 주체의 active 또는 명시한 archived run을 시작 시각 역순으로 반환한다.",
         "operationId": "analysisListRuns",
         "parameters": [
           {
@@ -8361,6 +9543,16 @@
             "schema": {
               "default": false,
               "title": "Approved Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archived",
               "type": "boolean"
             }
           },
@@ -8832,17 +10024,27 @@
       }
     },
     "/mcp": {
+      "delete": {
+        "description": "2026-07-28에서 제거된 protocol session 종료 요청을 405로 닫는다.",
+        "operationId": "mcpDelete",
+        "responses": {
+          "405": {
+            "description": "DELETE is not supported by stateless MCP"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Mcp Delete"
+      },
       "get": {
-        "description": "인증은 확인하되 MCP transport를 POST로만 제한하는 405 응답을 반환한다.",
+        "description": "2026-07-28에서 제거된 standalone GET stream을 405로 닫는다.",
         "operationId": "mcpGet",
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
+          "405": {
+            "description": "GET is not supported by stateless MCP"
           }
         },
         "security": [
@@ -8853,15 +10055,24 @@
         "summary": "Mcp Get"
       },
       "post": {
-        "description": "MCP JSON-RPC 요청의 origin·버전·header·도구 권한을 검증해 한 건을 실행한다.\n\n현재 주체가 소유한 분석 run만 조회하며 성공·거부·실패를 모두 tool audit에 남긴다.\n프로토콜 위반은 JSON-RPC 오류로, 저장소 장애는 도구 실행 오류로 닫힌다.",
+        "description": "MCP JSON-RPC 요청의 origin·버전·header·도구 권한을 검증해 한 건을 실행한다.\n\n현재 주체에게 승인된 exact registry Tool만 실행하며 성공·거부·실패를 모두\ntool audit에 남긴다. 프로토콜 위반은 JSON-RPC 오류로, 저장소·runtime 장애는\n도구 실행 오류로 닫힌다.",
         "operationId": "mcpPost",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Accept",
+            "required": true,
+            "schema": {
+              "example": "application/json, text/event-stream",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "MCP-Protocol-Version",
             "required": true,
             "schema": {
-              "title": "Mcp-Protocol-Version",
+              "const": "2026-07-28",
               "type": "string"
             }
           },
@@ -8870,7 +10081,6 @@
             "name": "Mcp-Method",
             "required": true,
             "schema": {
-              "title": "Mcp-Method",
               "type": "string"
             }
           },
@@ -8879,36 +10089,963 @@
             "name": "Mcp-Name",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Mcp-Name"
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "2026-07-28 stateless transport ignores this legacy header.",
+            "in": "header",
+            "name": "Mcp-Session-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "additionalProperties": true,
+                    "properties": {
+                      "id": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "jsonrpc": {
+                        "const": "2.0",
+                        "type": "string"
+                      },
+                      "method": {
+                        "const": "server/discover",
+                        "type": "string"
+                      },
+                      "params": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "_meta": {
+                            "additionalProperties": true,
+                            "properties": {
+                              "io.modelcontextprotocol/clientCapabilities": {
+                                "type": "object"
+                              },
+                              "io.modelcontextprotocol/clientInfo": {
+                                "additionalProperties": true,
+                                "properties": {
+                                  "name": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "version"
+                                ],
+                                "type": "object"
+                              },
+                              "io.modelcontextprotocol/protocolVersion": {
+                                "const": "2026-07-28",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "io.modelcontextprotocol/protocolVersion",
+                              "io.modelcontextprotocol/clientCapabilities"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "_meta"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "jsonrpc",
+                      "id",
+                      "method",
+                      "params"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": true,
+                    "properties": {
+                      "id": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "jsonrpc": {
+                        "const": "2.0",
+                        "type": "string"
+                      },
+                      "method": {
+                        "const": "tools/list",
+                        "type": "string"
+                      },
+                      "params": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "_meta": {
+                            "additionalProperties": true,
+                            "properties": {
+                              "io.modelcontextprotocol/clientCapabilities": {
+                                "type": "object"
+                              },
+                              "io.modelcontextprotocol/clientInfo": {
+                                "additionalProperties": true,
+                                "properties": {
+                                  "name": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "version"
+                                ],
+                                "type": "object"
+                              },
+                              "io.modelcontextprotocol/protocolVersion": {
+                                "const": "2026-07-28",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "io.modelcontextprotocol/protocolVersion",
+                              "io.modelcontextprotocol/clientCapabilities"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "_meta"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "jsonrpc",
+                      "id",
+                      "method",
+                      "params"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": true,
+                    "properties": {
+                      "id": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "jsonrpc": {
+                        "const": "2.0",
+                        "type": "string"
+                      },
+                      "method": {
+                        "const": "tools/call",
+                        "type": "string"
+                      },
+                      "params": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "_meta": {
+                            "additionalProperties": true,
+                            "properties": {
+                              "io.modelcontextprotocol/clientCapabilities": {
+                                "type": "object"
+                              },
+                              "io.modelcontextprotocol/clientInfo": {
+                                "additionalProperties": true,
+                                "properties": {
+                                  "name": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "version"
+                                ],
+                                "type": "object"
+                              },
+                              "io.modelcontextprotocol/protocolVersion": {
+                                "const": "2026-07-28",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "io.modelcontextprotocol/protocolVersion",
+                              "io.modelcontextprotocol/clientCapabilities"
+                            ],
+                            "type": "object"
+                          },
+                          "arguments": {
+                            "type": "object"
+                          },
+                          "name": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "_meta",
+                          "name"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "jsonrpc",
+                      "id",
+                      "method",
+                      "params"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        },
+                        "result": {
+                          "properties": {
+                            "_meta": {
+                              "type": "object"
+                            },
+                            "resultType": {
+                              "const": "complete",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resultType",
+                            "_meta"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "id",
+                        "result"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "JSON-RPC result or Tool-level error"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        },
+                        "result": {
+                          "properties": {
+                            "_meta": {
+                              "type": "object"
+                            },
+                            "resultType": {
+                              "const": "complete",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resultType",
+                            "_meta"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "id",
+                        "result"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Malformed JSON-RPC request or mirrored-header mismatch"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Origin or authorization denied"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        },
+                        "result": {
+                          "properties": {
+                            "_meta": {
+                              "type": "object"
+                            },
+                            "resultType": {
+                              "const": "complete",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resultType",
+                            "_meta"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "id",
+                        "result"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON-RPC method not found"
+          },
+          "406": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        },
+                        "result": {
+                          "properties": {
+                            "_meta": {
+                              "type": "object"
+                            },
+                            "resultType": {
+                              "const": "complete",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resultType",
+                            "_meta"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "id",
+                        "result"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Required response media types are not accepted"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        },
+                        "result": {
+                          "properties": {
+                            "_meta": {
+                              "type": "object"
+                            },
+                            "resultType": {
+                              "const": "complete",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resultType",
+                            "_meta"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "id",
+                        "result"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Request body is not application/json"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        },
+                        "result": {
+                          "properties": {
+                            "_meta": {
+                              "type": "object"
+                            },
+                            "resultType": {
+                              "const": "complete",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "resultType",
+                            "_meta"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "id",
+                        "result"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Tool call rate limited",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unhandled server failure"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "type": "integer"
+                            },
+                            "data": {},
+                            "message": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "jsonrpc": {
+                          "const": "2.0",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jsonrpc",
+                        "error"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Authentication, MCP registry, quota, Tool, or audit unavailable"
           }
         },
         "security": [
@@ -8928,13 +11065,31 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Getmlcapabilities",
-                  "type": "object"
+                  "$ref": "#/components/schemas/MLRuntimeCapability"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML runtime 응답 계약 오류"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MLRuntimeErrorResponse"
+                }
+              }
+            },
+            "description": "ML 기능 또는 승인 runtime 사용 불가"
           }
         },
         "security": [
@@ -8972,6 +11127,48 @@
           }
         ],
         "summary": "List Internal Manuals"
+      }
+    },
+    "/rag/documents/{manual_id}/source": {
+      "get": {
+        "description": "요청 주체가 열람할 수 있는 PDF 또는 DOCX 원문을 형식 그대로 중계한다.",
+        "operationId": "getInternalManualSource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "manual_id",
+            "required": true,
+            "schema": {
+              "title": "Manual Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {},
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Internal Manual Source"
       }
     },
     "/rag/documents/{manual_id}/source.pdf": {
@@ -9084,8 +11281,9 @@
     },
     "/reports/assistant/drafts": {
       "post": {
-        "description": "관리자 지시와 승인 artifact로 model 기반 보고서 draft를 생성하고 감사 trace를 반환한다.\n\nartifact 소유권, model 출력 schema, request 상태 기록은 지원 계층이 검증하며 실패 종류별\nHTTP 상태를 보존한다.",
-        "operationId": "reportAssistantCreateDraft",
+        "deprecated": true,
+        "description": "승인 경계를 우회하던 단발성 초안 API를 모델·저장소 접근 전에 영구 거부한다.",
+        "operationId": "reportAssistantLegacyDraftGone",
         "parameters": [
           {
             "in": "header",
@@ -9115,26 +11313,16 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateReportAssistantDraftRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReportAssistantDraftResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "외부 전송 동의와 단계별 승인을 우회하던 단발성 API는 폐기되었습니다. 세션 기반 Report Assistant API를 사용해야 합니다."
           },
           "422": {
             "content": {
@@ -9152,7 +11340,7 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Create Assistant Draft"
+        "summary": "Retired Assistant Draft"
       }
     },
     "/reports/assistant/operations/failures": {
@@ -9566,6 +11754,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantExternalTransferErrorResponse"
+                }
+              }
+            },
+            "description": "새 분석 Artifact 외부 전송 명시 동의 필요"
           }
         },
         "security": [
@@ -9720,6 +11918,160 @@
         "summary": "Get Assistant Evaluation"
       }
     },
+    "/reports/assistant/sessions/{assistant_request_id}/external-transfer-consent": {
+      "post": {
+        "description": "기본 미동의 공개문을 현재 세션 결속과 재검증한 뒤 명시 수락 receipt로 저장한다.",
+        "operationId": "reportAssistantAcceptExternalTransfer",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAssistantExternalTransferConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantExternalTransferConsentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Accept Assistant External Transfer Consent"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/external-transfer-disclosure": {
+      "get": {
+        "description": "새로고침 뒤 현재 owner 세션의 최신 미만료 외부 전송 공개문을 복구한다.",
+        "operationId": "reportAssistantGetExternalTransferDisclosure",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantExternalTransferDisclosureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant External Transfer Disclosure"
+      }
+    },
     "/reports/assistant/sessions/{assistant_request_id}/messages": {
       "post": {
         "description": "새 지시 또는 승인 대기 patch 재수정을 strict 모델 계약으로 처리한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
@@ -9792,6 +12144,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantExternalTransferErrorResponse"
+                }
+              }
+            },
+            "description": "외부 모델 전송 명시 동의 필요"
           }
         },
         "security": [
@@ -9865,6 +12227,16 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "페이지 수 제약 불일치 또는 Assistant 세션 상태 충돌"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -9874,6 +12246,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "후보 보고서 페이지 renderer 실패"
           }
         },
         "security": [
@@ -10035,6 +12417,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantExternalTransferErrorResponse"
+                }
+              }
+            },
+            "description": "외부 모델 전송 명시 동의 필요"
           }
         },
         "security": [
@@ -10047,9 +12439,19 @@
     },
     "/reports/definitions": {
       "get": {
-        "description": "분석가에게 자기 보고서만, 관리자에게 허용된 전체 definition version을 최신순으로 반환한다.",
+        "description": "기본 active 목록 또는 명시한 archived 목록을 역할 범위와 소유권에 맞게 반환한다.",
         "operationId": "reportListDefinitions",
         "parameters": [
+          {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archived",
+              "type": "boolean"
+            }
+          },
           {
             "in": "header",
             "name": "X-Trace-Id",
@@ -10177,6 +12579,150 @@
           }
         ],
         "summary": "Create Definition"
+      }
+    },
+    "/reports/definitions/{definition_id}/archive": {
+      "post": {
+        "description": "소유 보고서를 비파괴 보관하고 진행 중 실행·Assistant가 있으면 409로 거부한다.",
+        "operationId": "reportArchiveDefinition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDefinitionLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Archive Definition"
+      }
+    },
+    "/reports/definitions/{definition_id}/restore": {
+      "post": {
+        "description": "소유 보고서를 복원하되 보관 시 비활성화한 schedule은 자동으로 다시 켜지 않는다.",
+        "operationId": "reportRestoreDefinition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDefinitionLifecycleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Restore Definition"
       }
     },
     "/reports/definitions/{definition_id}/versions/{version}": {

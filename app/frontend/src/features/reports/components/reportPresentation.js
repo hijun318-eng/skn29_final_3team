@@ -4,6 +4,7 @@ import { Columns2, FileBarChart, Heading2, List, Quote, Sparkles, Table2, Type }
 import { compactDraftLayout, restoreDraftLayout } from "../../../contracts/report";
 import {
   artifactMetricCards,
+  canonicalDraftBlockContent,
   frontendTextBlockLayout,
 } from "../reportDraftV2";
 import { isCurrencyMetricUnit } from "../reportCurrency";
@@ -56,14 +57,14 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     h: 3,
   },
   {
-    id: "hotel-sales-report",
-    title: "호텔 매출 보고서",
-    description: "객실·F&B·연회 매출 구성",
+    id: "performance-outlook-report",
+    title: "성과·원인·전망 보고서",
+    description: "성과 변화와 원인·전망 구성",
     icon: FileBarChart,
-    blockTitle: "호텔 매출 보고서",
-    content: "## 호텔 매출 보고서\n\n객실·F&B·연회 부문의 주요 실적을 정리하세요.",
+    blockTitle: "성과·원인·전망",
+    content: "## 주요 성과\n\n핵심 성과와 변화 폭을 정리하세요.\n\n## 변동 원인\n\n승인된 근거에서 확인되는 변동 요인을 정리하세요.\n\n## 향후 전망\n\n승인된 예측 근거와 한계를 함께 정리하세요.",
     w: 8,
-    h: 3,
+    h: 7,
   },
   {
     id: "kpi",
@@ -274,7 +275,7 @@ export function draftLayoutSignature(blocks) {
       artifactId: block.artifactId,
       queryId: block.queryId,
       type: block.type,
-      content: block.content ?? "",
+      content: canonicalDraftBlockContent(block),
       x: block.x,
       y: block.y,
       w: block.w,

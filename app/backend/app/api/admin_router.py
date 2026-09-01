@@ -43,6 +43,7 @@ from app.context import ContextValidationError, session_context
 from app.contracts import Capability, ErrorCode, RequestContext, response_meta
 from app.database import get_database_session
 from app.services.admin_connections import probe_admin_connections
+from app.user_account_roles import internal_user_account_role
 
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
@@ -132,7 +133,7 @@ async def create_account(
         account = await AdminAccountRepository(session).create_account(
             username=payload.username,
             password=payload.password.get_secret_value(),
-            role=payload.role,
+            role=internal_user_account_role(payload.role),
             actor=context,
         )
     except (AdminAccountConflict, SQLAlchemyError) as error:
@@ -156,9 +157,12 @@ async def update_account(
     """username·Role·활성 상태를 변경하고 권한 변경 session을 즉시 폐기한다."""
 
     try:
+        changes = payload.model_dump(exclude_unset=True)
+        if "role" in changes:
+            changes["role"] = internal_user_account_role(changes["role"])
         account = await AdminAccountRepository(session).update_account(
             subject,
-            changes=payload.model_dump(exclude_unset=True),
+            changes=changes,
             actor=context,
         )
     except (AdminAccountNotFound, AdminAccountConflict, SQLAlchemyError) as error:

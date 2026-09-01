@@ -73,9 +73,23 @@ class McpToolRateLimitMigrationTest(unittest.TestCase):
                 namespace["downgrade"]()
 
         normalized = [" ".join(statement.upper().split()) for statement in statements]
-        self.assertIn("IF EXISTS (SELECT 1 FROM TOOLING.TOOL_RATE_LIMIT_WINDOWS)", normalized[0])
-        self.assertIn("MUST BE PRESERVED BEFORE DOWNGRADE", normalized[0])
-        self.assertTrue(normalized[-1].startswith("DROP TABLE TOOLING.TOOL_RATE_LIMIT_WINDOWS"))
+        program = "; ".join(normalized)
+        lock_at = program.index(
+            "LOCK TABLE TOOLING.TOOL_RATE_LIMIT_WINDOWS IN SHARE ROW EXCLUSIVE MODE"
+        )
+        emptiness_check_at = program.index(
+            "IF EXISTS (SELECT 1 FROM TOOLING.TOOL_RATE_LIMIT_WINDOWS)"
+        )
+        revoke_at = program.index(
+            "REVOKE SELECT, INSERT, UPDATE, DELETE "
+            "ON TOOLING.TOOL_RATE_LIMIT_WINDOWS FROM"
+        )
+        drop_at = program.index("DROP TABLE TOOLING.TOOL_RATE_LIMIT_WINDOWS")
+
+        self.assertLess(lock_at, emptiness_check_at)
+        self.assertLess(emptiness_check_at, revoke_at)
+        self.assertLess(revoke_at, drop_at)
+        self.assertIn("MUST BE PRESERVED BEFORE DOWNGRADE", program)
 
 
 if __name__ == "__main__":

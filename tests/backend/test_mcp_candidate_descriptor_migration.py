@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from types import ModuleType
 import unittest
+from unittest.mock import patch
 
 from jsonschema import Draft202012Validator, FormatChecker
 
 from app.api.mcp_router import _tool_registry
+from app.services.rag_gateway import (
+    RAG_TOOL_DESCRIPTION,
+    RAG_TOOL_ID,
+    RAG_TOOL_INPUT_SCHEMA,
+    RAG_TOOL_OUTPUT_SCHEMA,
+    RAG_TOOL_ROLES,
+    RAG_TOOL_SEMANTIC_VERSION,
+    RAG_TOOL_TIMEOUT_SECONDS,
+    RAG_TOOL_TRANSPORT,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +36,50 @@ def _load_migration() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _normalized_sql(statement: str) -> str:
+    return " ".join(statement.upper().split())
+
+
+def _capture_sql(module: ModuleType, direction: str) -> tuple[str, ...]:
+    statements: list[str] = []
+    with patch.object(module.op, "execute", side_effect=statements.append):
+        getattr(module, direction)()
+    return tuple(_normalized_sql(statement) for statement in statements)
+
+
+def _registry_lock_predicate(statement: str) -> str:
+    match = re.search(
+        r"PERFORM 1 FROM TOOLING\.TOOL_REGISTRY WHERE (.*?) FOR UPDATE;",
+        statement,
+    )
+    if match is None:
+        raise AssertionError("exact tooling.tool_registry row lock is missing")
+    return match.group(1)
+
+
+def _registry_mutation_predicate(statement: str, verb: str) -> str:
+    if verb == "UPDATE":
+        pattern = (
+            r"UPDATE TOOLING\.TOOL_REGISTRY SET .*? WHERE (.*?); "
+            r"GET DIAGNOSTICS"
+        )
+    elif verb == "DELETE":
+        pattern = (
+            r"DELETE FROM TOOLING\.TOOL_REGISTRY WHERE (.*?); "
+            r"GET DIAGNOSTICS"
+        )
+    else:
+        raise ValueError(f"unsupported registry mutation: {verb}")
+    match = re.search(pattern, statement)
+    if match is None:
+        raise AssertionError(f"tooling.tool_registry {verb.lower()} is missing")
+    return match.group(1)
+
+
+def _predicate_terms(predicate: str) -> set[str]:
+    return {term.strip(" ()") for term in predicate.split(" AND ")}
 
 
 def _assert_nested_objects_are_closed(test: unittest.TestCase, value: object) -> None:
@@ -62,10 +118,144 @@ class MCPCandidateDescriptorMigrationTest(unittest.TestCase):
         self.assertGreaterEqual(source.count("output_schema_json ="), 4)
         self.assertGreaterEqual(source.count("transport = 'MCP_STREAMABLE_HTTP'"), 3)
 
-        active_code_descriptors = tuple(
-            descriptor.name for descriptor in _tool_registry()._descriptors
-        )
+        with patch(
+            "app.api.mcp_router.runtime_feature_enabled",
+            return_value=False,
+        ):
+            active_code_descriptors = tuple(
+                descriptor.name for descriptor in _tool_registry()._descriptors
+            )
         self.assertEqual(("analysis.get_run",), active_code_descriptors)
+
+    def test_each_candidate_is_disabled_at_historical_revision(self) -> None:
+        """64 시점 candidate는 비활성이며 feature-off runtime에서도 노출되지 않는다."""
+
+        with patch(
+            "app.api.mcp_router.runtime_feature_enabled",
+            return_value=False,
+        ):
+            runtime_names = {
+                descriptor.name for descriptor in _tool_registry()._descriptors
+            }
+        statements = _capture_sql(self.migration, "upgrade")
+        candidates = (
+            (
+                "analysis.run",
+                self.migration.ANALYSIS_RUN_TOOL_ID,
+                "0.1.0-CANDIDATE",
+            ),
+            (
+                "rag.answer",
+                self.migration.RAG_ANSWER_TOOL_ID,
+                "1.2.0-CANDIDATE",
+            ),
+            (
+                "ml.predict",
+                self.migration.ML_PREDICT_TOOL_ID,
+                "0.1.0-CANDIDATE",
+            ),
+        )
+        for tool_code, tool_id, version in candidates:
+            with self.subTest(tool_code=tool_code):
+                self.assertNotIn(tool_code, runtime_names)
+                matching = tuple(
+                    statement
+                    for statement in statements
+                    if f"TOOL_ID = '{tool_id.upper()}'" in statement
+                    or f"'{tool_id.upper()}', '{tool_code.upper()}'" in statement
+                )
+                self.assertTrue(matching)
+                rendered = " ".join(matching)
+                self.assertIn(tool_code.upper(), rendered)
+                self.assertIn(version, rendered)
+                self.assertIn("IS_ENABLED", rendered)
+                self.assertRegex(
+                    rendered,
+                    r"IS_ENABLED = FALSE|IS_ENABLED\) VALUES \( .* FALSE \)",
+                )
+
+    def test_upgrade_locks_exact_rag_predecessor_before_run_check(self) -> None:
+        statements = _capture_sql(self.migration, "upgrade")
+        rag_update = next(
+            statement
+            for statement in statements
+            if "UPDATE TOOLING.TOOL_REGISTRY" in statement
+            and "TOOL_CODE = 'RAG.ANSWER'" in statement
+        )
+
+        lock_terms = _predicate_terms(_registry_lock_predicate(rag_update))
+        update_terms = _predicate_terms(
+            _registry_mutation_predicate(rag_update, "UPDATE")
+        )
+        self.assertEqual(update_terms, lock_terms)
+        self.assertIn(
+            f"TOOL_ID = '{self.migration.RAG_ANSWER_TOOL_ID.upper()}'",
+            lock_terms,
+        )
+        self.assertIn("TOOL_CODE = 'RAG.ANSWER'", lock_terms)
+        self.assertIn("SEMANTIC_VERSION = '1.1.0'", lock_terms)
+
+        lock_at = rag_update.index("FOR UPDATE;")
+        run_check_at = rag_update.index(
+            "FROM TOOLING.TOOL_RUNS "
+            f"WHERE TOOL_ID = '{self.migration.RAG_ANSWER_TOOL_ID.upper()}'"
+        )
+        update_at = rag_update.index("UPDATE TOOLING.TOOL_REGISTRY")
+        self.assertLess(lock_at, run_check_at)
+        self.assertLess(run_check_at, update_at)
+
+    def test_downgrade_locks_exact_receipts_and_checks_candidate_children(self) -> None:
+        statements = _capture_sql(self.migration, "downgrade")
+        rag_update = next(
+            statement
+            for statement in statements
+            if "UPDATE TOOLING.TOOL_REGISTRY" in statement
+            and "TOOL_CODE = 'RAG.ANSWER'" in statement
+        )
+        self.assertEqual(
+            _predicate_terms(_registry_mutation_predicate(rag_update, "UPDATE")),
+            _predicate_terms(_registry_lock_predicate(rag_update)),
+        )
+
+        for tool_id, tool_code in (
+            (self.migration.ANALYSIS_RUN_TOOL_ID, "analysis.run"),
+            (self.migration.ML_PREDICT_TOOL_ID, "ml.predict"),
+        ):
+            with self.subTest(tool_code=tool_code):
+                normalized_tool_id = tool_id.upper()
+                candidate_delete = next(
+                    statement
+                    for statement in statements
+                    if "DELETE FROM TOOLING.TOOL_REGISTRY" in statement
+                    and f"TOOL_ID = '{normalized_tool_id}'" in statement
+                )
+                lock_terms = _predicate_terms(
+                    _registry_lock_predicate(candidate_delete)
+                )
+                delete_terms = _predicate_terms(
+                    _registry_mutation_predicate(candidate_delete, "DELETE")
+                )
+                self.assertEqual(delete_terms, lock_terms)
+                self.assertIn(f"TOOL_ID = '{normalized_tool_id}'", lock_terms)
+                self.assertIn(f"TOOL_CODE = '{tool_code.upper()}'", lock_terms)
+                self.assertIn("SEMANTIC_VERSION = '0.1.0-CANDIDATE'", lock_terms)
+
+                lock_at = candidate_delete.index("FOR UPDATE;")
+                run_check_at = candidate_delete.index(
+                    "FROM TOOLING.TOOL_RUNS "
+                    f"WHERE TOOL_ID = '{normalized_tool_id}'"
+                )
+                quota_check_at = candidate_delete.index(
+                    "FROM TOOLING.TOOL_RATE_LIMIT_WINDOWS "
+                    f"WHERE TOOL_ID = '{normalized_tool_id}'"
+                )
+                delete_at = candidate_delete.index(
+                    "DELETE FROM TOOLING.TOOL_REGISTRY"
+                )
+                self.assertLess(lock_at, run_check_at)
+                self.assertLess(lock_at, quota_check_at)
+                self.assertLess(run_check_at, delete_at)
+                self.assertLess(quota_check_at, delete_at)
 
     def test_candidate_schemas_are_valid_and_recursively_closed(self) -> None:
         """Candidate input/output은 Draft 2020-12와 nested closed 계약을 만족한다."""
@@ -82,6 +272,27 @@ class MCPCandidateDescriptorMigrationTest(unittest.TestCase):
                 schema = getattr(self.migration, name)
                 Draft202012Validator.check_schema(schema)
                 _assert_nested_objects_are_closed(self, schema)
+
+    def test_rag_runtime_activation_descriptor_exactly_matches_migration(self) -> None:
+        """Runtime activation receipt cannot drift from the disabled DB candidate."""
+
+        self.assertEqual(str(RAG_TOOL_ID), self.migration.RAG_ANSWER_TOOL_ID)
+        self.assertEqual("1.2.0", RAG_TOOL_SEMANTIC_VERSION)
+        self.assertEqual(
+            self.migration.RAG_ANSWER_INPUT_SCHEMA,
+            RAG_TOOL_INPUT_SCHEMA,
+        )
+        self.assertEqual(
+            self.migration.RAG_ANSWER_OUTPUT_SCHEMA,
+            RAG_TOOL_OUTPUT_SCHEMA,
+        )
+        self.assertEqual(
+            "Answer only from approved internal documents with citation-bound evidence.",
+            RAG_TOOL_DESCRIPTION,
+        )
+        self.assertEqual("MCP_STREAMABLE_HTTP", RAG_TOOL_TRANSPORT)
+        self.assertEqual(30, RAG_TOOL_TIMEOUT_SECONDS)
+        self.assertEqual(("analyst",), RAG_TOOL_ROLES)
 
     def test_migration_json_does_not_create_sqlalchemy_bind_tokens(self) -> None:
         """JSON scalar 앞 공백을 보존해 ``:false``·``:16`` bind 오인을 막는다."""

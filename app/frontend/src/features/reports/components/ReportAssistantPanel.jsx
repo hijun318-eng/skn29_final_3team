@@ -58,7 +58,26 @@ const REQUIRED_ACTION_COPY = {
   REAUTHENTICATE: "다시 로그인한 뒤 권한을 확인해 주세요.",
   REOPEN_LATEST_REPORT: "최신 보고서 버전을 다시 열어 주세요.",
   CONTACT_ADMIN: "근거 자료 또는 권한 확인을 위해 관리자에게 문의해 주세요.",
+  REVIEW_EXTERNAL_TRANSFER: "외부 모델로 전송할 범위를 확인하고 동의 여부를 선택해 주세요.",
 };
+
+const EXTERNAL_TRANSFER_SCOPE_LABEL = {
+  user_instruction: "사용자가 입력한 변경 지시",
+  assistant_turn_history: "현재 Assistant 대화 이력",
+  report_metadata_layout: "보고서 제목·페이지·레이아웃 정보",
+  report_block_content: "보고서 블록 내용",
+  selected_artifact_metadata: "선택한 분석 결과의 제목·사용 가능한 보기",
+  selected_artifact_narrative: "선택한 분석 결과의 설명",
+  selected_artifact_metrics: "선택한 분석 결과의 지표",
+  selected_artifact_chart_spec: "선택한 분석 결과의 차트 설정",
+  selected_artifact_table_snapshot: "선택한 분석 결과의 표 스냅샷",
+  pending_patch: "검토 중인 변경안",
+  approved_new_analysis_artifact: "승인 후 생성된 새 분석 결과",
+};
+
+function externalTransferScopeLabel(scope) {
+  return EXTERNAL_TRANSFER_SCOPE_LABEL[scope] || "서버에서 승인한 보고서 처리 범위";
+}
 
 const PATCH_OPERATION_LABEL = {
   set_report_title: "보고서 제목 변경",
@@ -95,9 +114,13 @@ const REVIEW_CATEGORY_LABEL = {
 };
 
 const REPORT_TITLE_SUGGESTION_INSTRUCTION = "승인된 보고서 내용과 근거를 바탕으로 간결하고 구체적인 보고서 제목을 제안해 주세요.";
+const PAGE_CONSTRAINT_ERROR = "REPORT_ASSISTANT_PAGE_CONSTRAINT_UNSATISFIED";
 
 function assistantConversationMessage(result, titleOnly = false) {
   if (!result) return { role: "error" };
+  if (result.status === "external_transfer_declined") {
+    return { role: "assistant", text: result.message };
+  }
   if (result.status === "approval_required") {
     return { role: "assistant", text: "현재 분석 결과만으로는 요청을 완료할 수 없어 분석 계획을 준비했습니다." };
   }
@@ -184,6 +207,98 @@ function AssistantEvaluationReceipt({ evaluation }) {
   </article>;
 }
 
+/** 서버가 확정한 외부 provider·전송·비전송 범위만 표시하고 명시적 체크 전에는 승인하지 않는다. */
+function ExternalTransferConsentDialog({ disclosure, onAccept, onDecline, pending }) {
+  const [accepted, setAccepted] = useState(false);
+  const dialogRef = useRef(null);
+  const checkboxRef = useRef(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  useEffect(() => {
+    setAccepted(false);
+    const dialog = dialogRef.current;
+    if (!disclosure || !dialog || dialog.open) return;
+    const returnFocus = document.activeElement;
+    dialog.showModal();
+    requestAnimationFrame(() => checkboxRef.current?.focus());
+    return () => {
+      if (dialog.open) dialog.close();
+      requestAnimationFrame(() => {
+        if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus();
+      });
+    };
+  }, [disclosure?.disclosure_hash, disclosure?.disclosure_id]);
+  if (!disclosure) return null;
+  return <dialog
+    ref={dialogRef}
+    className="report-assistant-consent-dialog"
+    aria-labelledby={titleId}
+    aria-describedby={descriptionId}
+    onCancel={(event) => {
+      event.preventDefault();
+      if (!pending) onDecline();
+    }}
+  >
+    <header>
+      <span><ShieldCheck size={17} aria-hidden="true" /></span>
+      <div><small>외부 모델 전송 동의</small><h3 id={titleId}>요청을 계속하기 전에 전송 범위를 확인해 주세요</h3></div>
+      <button type="button" aria-label="외부 전송 동의 닫기" onClick={onDecline} disabled={pending}><X size={16} /></button>
+    </header>
+    <p id={descriptionId}>아래 범위만 표시된 처리 경로로 전송합니다. 비전송 항목은 모델 요청에 포함하지 않습니다.</p>
+    <div className="report-assistant-consent-body">
+      <section aria-labelledby={`${titleId}-routes`}>
+        <h4 id={`${titleId}-routes`}>처리 경로</h4>
+        <ul className="report-assistant-consent-routes">
+          {disclosure.provider_routes.map((route) => <li key={`${route.node}:${route.route_id}`}>
+            <span>
+              <b>{route.route_label}</b>
+              <small>{route.provider} · {route.model}</small>
+              <small className="report-assistant-consent-origin">전송 목적지 {route.destination_origin}</small>
+            </span>
+            <em>{route.data_boundary === "external" ? "외부 전송" : "내부 처리"}</em>
+          </li>)}
+        </ul>
+      </section>
+      <div className="report-assistant-consent-scopes">
+        <section aria-labelledby={`${titleId}-included`}>
+          <h4 id={`${titleId}-included`}>전송하는 정보</h4>
+          {disclosure.data_scopes.length
+            ? <ul>{disclosure.data_scopes.map((scope) => <li key={scope}>{externalTransferScopeLabel(scope)}</li>)}</ul>
+            : <p>전송 범위 없음</p>}
+        </section>
+        <section aria-labelledby={`${titleId}-excluded`}>
+          <h4 id={`${titleId}-excluded`}>전송하지 않는 정보</h4>
+          {disclosure.excluded_data.length
+            ? <ul>{disclosure.excluded_data.map((scope) => <li key={scope}>{scope}</li>)}</ul>
+            : <p>별도 제외 항목 없음</p>}
+        </section>
+      </div>
+      <p className="report-assistant-consent-warning" role="note">
+        <ShieldCheck size={14} aria-hidden="true" />
+        <span><b>콘텐츠의 민감정보를 확인해 주세요.</b><small>{disclosure.content_warning}</small></span>
+      </p>
+      <label className="report-assistant-consent-check">
+        <input
+          ref={checkboxRef}
+          type="checkbox"
+          checked={accepted}
+          onChange={(event) => setAccepted(event.target.checked)}
+          disabled={pending}
+        />
+        <span><b>이 Report Assistant 세션에서 동일 보고서 버전·근거·전송 범위의 외부 처리를 허용합니다.</b><small>보고서 버전·근거·전송 범위 또는 처리 경로가 바뀌면 다시 동의해야 합니다. 동의하지 않으면 요청을 실행하지 않습니다.</small></span>
+      </label>
+      <small className="report-assistant-consent-policy">정책 {disclosure.policy_version} · 동의 선택 가능 기한 {formatSeoulTime(disclosure.expires_at)}</small>
+    </div>
+    <footer>
+      <button type="button" onClick={onDecline} disabled={pending}>취소</button>
+      <button type="button" className={`primary ${pending ? "pending" : ""}`} onClick={onAccept} disabled={!accepted || pending}>
+        {pending ? <LoaderCircle size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
+        동의하고 요청 계속
+      </button>
+    </footer>
+  </dialog>;
+}
+
 /** 새 데이터 분석 계획과 서버 소유 실행 단계를 표시하고 승인·거절만 사용자에게 위임한다. */
 function AssistantApproval({ request, status, onApprove, onReject, pending, mutationBlocked }) {
   if (!request) return null;
@@ -196,9 +311,9 @@ function AssistantApproval({ request, status, onApprove, onReject, pending, muta
       <div><dt>필요 이유</dt><dd>{request.reason}</dd></div>
       <div><dt>조회 범위</dt><dd>{request.scope}</dd></div>
     </dl>
-    {(waiting || status === "saving_revision") && <nav aria-label="분석 계획 결정">
-      {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />거절</button>}
-      <button type="button" className="primary" onClick={onApprove} disabled={pending || mutationBlocked}><Check size={12} />{waiting ? "승인 후 분석" : "저장 재개"}</button>
+    {waiting && <nav aria-label="분석 계획 결정">
+      <button type="button" onClick={onReject} disabled={pending}><X size={12} />거절</button>
+      <button type="button" className="primary" onClick={onApprove} disabled={pending || mutationBlocked}><Check size={12} />승인 후 분석</button>
     </nav>}
   </section>;
 }
@@ -216,8 +331,9 @@ function PatchValue({ label, value }) {
 }
 
 /** 서버가 검증·dry-run한 제한 patch의 요약과 연산을 적용 전에 표시한다. */
-function AssistantPatchApproval({ preview, status, errorCode, onApprove, onReject, pending, mutationBlocked }) {
+function AssistantPatchApproval({ preview, status, errorCode, errorPageCounts, onApprove, onReject, pending, mutationBlocked }) {
   const [selectedIndexes, setSelectedIndexes] = useState([]);
+  const [errorSelectionKey, setErrorSelectionKey] = useState(null);
   const approvalRef = useRef(null);
   const operationIdPrefix = useId();
   useEffect(() => {
@@ -237,6 +353,9 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
   useEffect(() => {
     if (preview && errorCode) approvalRef.current?.focus();
   }, [errorCode, preview?.requestId]);
+  useEffect(() => {
+    setErrorSelectionKey(errorCode ? selectedIndexes.join(",") : null);
+  }, [errorCode, errorPageCounts?.exactPageCount, errorPageCounts?.verifiedPageCount, preview?.requestId]);
   if (!preview) return null;
   const waiting = status === "waiting_patch_approval";
   const titleOnly = preview.items.length === 1 && preview.items[0].operation === "set_report_title";
@@ -246,6 +365,23 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
   const evidenceRequired = selectedItems.filter((item) => item.evidence_required).length;
   const evidenceCited = selectedItems.filter((item) => item.evidence_required && item.evidence_count > 0).length;
   const hasDestructiveItems = preview.items.some((item) => item.impact_category === "DESTRUCTIVE");
+  const hasExactPageConstraint = Number.isInteger(preview.exactPageCount);
+  const allOperationsSelected = selectedIndexes.length === allIndexes.length
+    && allIndexes.every((index) => selectedIndexes.includes(index));
+  const pageConstraintNeedsRevalidation = hasExactPageConstraint && !allOperationsSelected;
+  const pageConstraintSatisfied = hasExactPageConstraint
+    && allOperationsSelected
+    && preview.verifiedPageCount === preview.exactPageCount;
+  const pageConstraintMismatched = hasExactPageConstraint
+    && allOperationsSelected
+    && !pageConstraintSatisfied;
+  const pageConstraintError = errorCode === PAGE_CONSTRAINT_ERROR
+    && errorSelectionKey === selectedIndexes.join(",");
+  const pageConstraintErrorReceipt = pageConstraintError
+    && Number.isSafeInteger(errorPageCounts?.exactPageCount)
+    && Number.isSafeInteger(errorPageCounts?.verifiedPageCount)
+    ? errorPageCounts
+    : null;
   const pageGroups = groupReportPatchItemsByPage(preview.items);
   const toggleOperation = (index) => setSelectedIndexes((current) => (
     current.includes(index)
@@ -261,6 +397,21 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
         ? <div><dt>사용 근거</dt><dd>{preview.evidenceRefs.map(reportEvidenceLabel).join(" · ")}</dd></div>
         : null}
     </dl>
+    {hasExactPageConstraint ? <div
+      className={`report-assistant-page-check ${pageConstraintNeedsRevalidation ? "pending" : pageConstraintSatisfied ? "matched" : "mismatched"}`}
+      role="status"
+      aria-label={`페이지 수 검증: 요청 ${preview.exactPageCount}페이지, 전체 변경안 렌더 ${preview.verifiedPageCount}페이지, ${pageConstraintNeedsRevalidation ? "선택 항목은 승인 시 다시 검증" : pageConstraintSatisfied ? "일치" : "조정 필요"}`}
+    >
+      <span><small>요청</small><b>{preview.exactPageCount}페이지</b></span>
+      <span aria-hidden="true">→</span>
+      <span><small>전체안 렌더</small><b>{preview.verifiedPageCount}페이지</b></span>
+      <strong>{pageConstraintNeedsRevalidation ? "승인 시 재검증" : pageConstraintSatisfied ? "일치" : "조정 필요"}</strong>
+    </div> : null}
+    {pageConstraintError ? <p className="report-assistant-page-error" role="alert">
+      {pageConstraintErrorReceipt
+        ? `선택한 변경안을 렌더한 결과가 요청 ${pageConstraintErrorReceipt.exactPageCount}페이지가 아닌 ${pageConstraintErrorReceipt.verifiedPageCount}페이지여서 저장하지 않았습니다. 변경안을 조정한 뒤 다시 검토해 주세요.`
+        : "요청한 페이지 수와 실제 렌더 결과가 일치하지 않아 저장하지 않았습니다. 변경안을 조정한 뒤 다시 검토해 주세요."}
+    </p> : null}
     <dl className="report-assistant-patch-impact" aria-label="선택한 변경 영향">
       <div><dt>변경 영향</dt><dd>{selectedItems.length}개 작업 · {impactCategories.map((category) => PATCH_IMPACT_LABEL[category]).join(" · ") || "선택 없음"}</dd></div>
       <div><dt>근거 연결</dt><dd>{evidenceRequired ? `${evidenceCited}/${evidenceRequired}개 연결` : "필요 없음"}</dd></div>
@@ -302,7 +453,16 @@ function AssistantPatchApproval({ preview, status, errorCode, onApprove, onRejec
     </div>
     <nav aria-label={titleOnly ? "제목 제안 결정" : "AI 변경안 결정"}>
       {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />취소</button>}
-      <button type="button" className="primary" onClick={() => onApprove(selectedIndexes)} disabled={pending || mutationBlocked || !selectedIndexes.length}><Check size={12} />{waiting ? titleOnly ? "제목 적용" : `선택 ${selectedIndexes.length}개 적용` : "저장 재개"}</button>
+      <button
+        type="button"
+        className="primary"
+        onClick={() => onApprove(selectedIndexes)}
+        disabled={pending || mutationBlocked || !selectedIndexes.length || pageConstraintMismatched}
+      ><Check size={12} />{waiting
+          ? pageConstraintMismatched
+            ? "분량 조정 필요"
+            : titleOnly ? "제목 적용" : `선택 ${selectedIndexes.length}개 적용`
+          : "저장 재개"}</button>
     </nav>
   </section>;
 }
@@ -316,12 +476,16 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   assistantArtifactIds = [],
   canEdit,
   evaluation = null,
+  externalTransferDisclosure = null,
+  externalTransferConsentPending = false,
   hasUnsavedChanges = false,
   instruction,
   onApproveDataRequest,
   onApprovePatch,
+  onAcceptExternalTransfer,
   onCancel,
   onInstructionChange,
+  onDeclineExternalTransfer,
   onRejectDataRequest,
   onRejectPatch,
   onReview,
@@ -340,6 +504,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   trace,
   workflowStatus = "",
   workflowError = "",
+  workflowErrorPageCounts = null,
   workflowRequiredAction = "NONE",
   workflowRetryable = false,
 }) {
@@ -458,6 +623,13 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
       >근거 변경{assistantArtifactIds.length > 1 ? ` · ${assistantArtifactIds.length}` : ""}</button>}
     </div>
 
+    <ExternalTransferConsentDialog
+      disclosure={externalTransferDisclosure}
+      onAccept={onAcceptExternalTransfer}
+      onDecline={onDeclineExternalTransfer}
+      pending={externalTransferConsentPending}
+    />
+
     {evidencePickerOpen && <dialog
       ref={evidencePickerRef}
       className="report-assistant-evidence-picker"
@@ -530,6 +702,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
         preview={patchPreview}
         status={workflowStatus}
         errorCode={workflowError}
+        errorPageCounts={workflowErrorPageCounts}
         onApprove={onApprovePatch}
         onReject={onRejectPatch}
         pending={Boolean(pending)}
@@ -546,7 +719,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
       />
       <AssistantCancelAction status={workflowStatus} onCancel={onCancel} pending={Boolean(pending)} />
       <AssistantEvaluationReceipt evaluation={evaluation} />
-      {waiting && <article className="report-assistant-message assistant pending"><LoaderCircle size={15} aria-hidden="true" /><p>근거를 유지하며 초안을 구성하고 있습니다.</p></article>}
+      {waiting && <article className="report-assistant-message assistant pending"><LoaderCircle size={15} aria-hidden="true" /><p>근거를 유지하며 검토할 변경안을 준비하고 있습니다.</p></article>}
     </div>
 
     <div className="report-assistant-quick" aria-label="빠른 요청">
@@ -574,9 +747,9 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
           placeholder={canRefinePatch ? "예: 차트 위치는 유지하고 요약만 두 문장으로 바꿔줘" : artifact ? "예: 핵심 요약을 세 문장으로 정리해줘" : "분석 결과를 선택하면 요청할 수 있습니다."}
           disabled={!canEdit || !artifact || Boolean(pending) || composerBlocked}
         />
-        <button type="submit" aria-label={canRefinePatch ? "변경안 수정 요청" : "AI 초안 요청 보내기"} disabled={disabled}>{waiting ? <LoaderCircle size={16} /> : <Send size={16} />}</button>
+        <button type="submit" aria-label={canRefinePatch ? "변경안 수정 요청" : "AI 변경안 요청 보내기"} disabled={disabled}>{waiting ? <LoaderCircle size={16} /> : <Send size={16} />}</button>
       </div>
-      <small>생성 결과는 AI 초안이며 확정 전에 검토가 필요합니다.</small>
+      <small>생성 결과는 적용 전 변경안이며, 승인해야 새 버전으로 저장됩니다.</small>
     </form>
   </aside>;
 });

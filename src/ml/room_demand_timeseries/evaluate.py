@@ -1,3 +1,5 @@
+"""trainer와 분리된 private label로 모델 성능을 계산하고 승인 gate를 판정한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -14,11 +16,19 @@ from .modeling import TimeSeriesDemandModel
 
 
 class IndependentEvaluator:
+    """비공개 feature·label을 일대일 결합해 모델 외부 평가 증거를 저장한다."""
+
     def load_private_split(
         self,
         evaluator_dir: Path,
         split_name: str,
     ) -> pd.DataFrame:
+        """지정 split의 feature와 label을 식별자로 결합해 완전한 평가표를 반환한다.
+
+        행이 빠지거나 중복되어 일대일 결합할 수 없으면 ``ValueError``로
+        평가를 중단한다.
+        """
+
         features = pd.read_csv(
             evaluator_dir / f"{split_name}_features.csv.gz",
             parse_dates=["cutoff_date", "target_date"],
@@ -43,6 +53,8 @@ class IndependentEvaluator:
         frame: pd.DataFrame,
         output_dir: Path,
     ) -> dict[str, Any]:
+        """모델을 평가해 전체·그룹 metric 파일을 쓰고 report 객체를 반환한다."""
+
         report, groups = evaluate_model(model, frame, bootstrap_samples=1000)
         output_dir.mkdir(parents=True, exist_ok=True)
         for name, group in groups.items():
@@ -55,6 +67,8 @@ class IndependentEvaluator:
 
 
 def gate(report: dict[str, Any]) -> dict[str, Any]:
+    """품질·baseline·범위 기준을 적용해 PASS, 조건부 통과 또는 거절을 반환한다."""
+
     hard_checks = {
         "wape_lte_18pct": report["metrics"]["wape"] <= 0.18,
         "baseline_improvement_gte_8pct": report[
@@ -99,6 +113,8 @@ def gate(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
+    """동결 모델의 두 private split을 평가하고 통합 승인 결정을 기록한다."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact-dir", type=Path, required=True)
     parser.add_argument("--evaluator-dir", type=Path, required=True)

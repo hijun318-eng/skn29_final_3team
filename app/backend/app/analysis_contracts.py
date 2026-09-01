@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.contracts import ChartSpec, Evidence, MetricValue, Scalar, TableResult
 
@@ -112,6 +112,9 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
     trace_id: str
     query_id: str | None = None
     artifact_id: UUID | None = None
+    artifact_archived: bool = False
+    artifact_archived_at: datetime | None = None
+    artifact_archived_by: UUID | None = None
     error_type: str | None = None
     started_at: datetime
     completed_at: datetime | None = None
@@ -120,6 +123,26 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
     period_end_exclusive: date | None = None
     snapshot_cutoff: date | None = None
     snapshot_selection: Literal["max_source_value_lt_as_of"] | None = None
+
+    @model_validator(mode="after")
+    def require_consistent_artifact_archive_projection(self) -> "AnalysisRunResponse":
+        """Artifact 존재 여부와 보관 flag·receipt가 한 lifecycle 상태만 표현하게 한다."""
+
+        has_receipt = (
+            self.artifact_archived_at is not None
+            and self.artifact_archived_by is not None
+        )
+        if (self.artifact_archived_at is None) != (
+            self.artifact_archived_by is None
+        ):
+            raise ValueError("Analysis Run Artifact archive receipt가 완전하지 않습니다.")
+        if self.artifact_archived != has_receipt:
+            raise ValueError("Analysis Run Artifact archive 상태가 일관되지 않습니다.")
+        if self.artifact_id is None and (
+            self.artifact_archived or has_receipt
+        ):
+            raise ValueError("Artifact가 없는 Analysis Run은 보관 상태를 가질 수 없습니다.")
+        return self
 
 
 class AnalysisRunListResponse(AnalysisPersistenceModel):
@@ -143,3 +166,23 @@ class AnalysisRunArtifactResponse(AnalysisPersistenceModel):
     artifact_id: UUID
     query_id: str
     artifact_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class AnalysisArtifactLifecycleResponse(AnalysisPersistenceModel):
+    """비파괴 보관·복원 후 Artifact ID와 현재 owner-scoped 상태를 반환한다."""
+
+    artifact_id: UUID
+    archived: bool
+    archived_at: datetime | None = None
+    archived_by: UUID | None = None
+
+    @model_validator(mode="after")
+    def require_consistent_archive_state(self) -> "AnalysisArtifactLifecycleResponse":
+        """archived flag와 receipt 쌍이 서로 다른 상태를 표현하지 못하게 한다."""
+
+        has_receipt = self.archived_at is not None and self.archived_by is not None
+        if self.archived != has_receipt:
+            raise ValueError("Analysis Artifact archive lifecycle 응답이 일관되지 않습니다.")
+        if (self.archived_at is None) != (self.archived_by is None):
+            raise ValueError("Analysis Artifact archive lifecycle metadata가 완전하지 않습니다.")
+        return self

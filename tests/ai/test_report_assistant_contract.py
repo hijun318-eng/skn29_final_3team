@@ -1,5 +1,7 @@
 import copy
+from decimal import Decimal
 import json
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -98,6 +100,7 @@ REPORT_ASSISTANT_TURN_RESPONSE = {
     },
     "patch": None,
     "suggestions": ["현재 보고서 제목을 더 간결하게 바꿔 줘"],
+    "exact_page_count": None,
 }
 
 REPORT_ASSISTANT_WIRE_OPERATION = {
@@ -138,6 +141,7 @@ REPORT_ASSISTANT_EXISTING_RESPONSE = {
         }],
     },
     "suggestions": ["승인 지표를 설명하는 텍스트 블록을 추가해 줘"],
+    "exact_page_count": None,
 }
 
 REPORT_ASSISTANT_CLARIFICATION_RESPONSE = {
@@ -146,6 +150,7 @@ REPORT_ASSISTANT_CLARIFICATION_RESPONSE = {
     "analysis_plan": None,
     "patch": None,
     "suggestions": [],
+    "exact_page_count": None,
 }
 
 REPORT_ASSISTANT_REVIEW_RESPONSE = {
@@ -218,6 +223,31 @@ class ReportAssistantContractTests(unittest.TestCase):
 
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_response", invalid)
+
+    def test_turn_contract_requires_nullable_exact_page_count_for_every_change_kind(self):
+        """정확한 페이지 요구는 모델이 언어별 추론 없이 구조화해 반환한다."""
+
+        responses = (
+            REPORT_ASSISTANT_CLARIFICATION_RESPONSE,
+            REPORT_ASSISTANT_EXISTING_RESPONSE,
+            REPORT_ASSISTANT_TURN_RESPONSE,
+        )
+        for page_count, response in zip((1, 20, None), responses, strict=True):
+            with self.subTest(change_kind=response["change_kind"], page_count=page_count):
+                candidate = copy.deepcopy(response)
+                candidate["exact_page_count"] = page_count
+                validate_payload("report_assistant_turn_response", candidate)
+
+        for page_count in (0, 21, True, "2"):
+            candidate = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+            candidate["exact_page_count"] = page_count
+            with self.subTest(page_count=page_count), self.assertRaises(ContractError):
+                validate_payload("report_assistant_turn_response", candidate)
+
+        missing = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        missing.pop("exact_page_count")
+        with self.assertRaises(ContractError):
+            validate_payload("report_assistant_turn_response", missing)
 
     def test_turn_operation_scope_is_required_and_typed(self):
         """모델 입력 범위는 서버 enum만 허용하고 누락·임의 문자열을 닫는다."""
@@ -300,7 +330,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         response["patch"]["operations"][0]["artifact_ref"] = "source_artifact_2"
         validate_payload("report_assistant_turn_response", response)
 
-        request["additional_artifacts"] *= 5
+        request["additional_artifacts"] *= 6
         with self.assertRaises(ContractError):
             validate_payload("report_assistant_turn_request", request)
 
@@ -600,7 +630,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 원자 Artifact view는 과거 clarification보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.13.0", prompt.version)
+        self.assertEqual("PROMPT-v1.15.0", prompt.version)
         self.assertIn("operation_scope is server-owned authority", prompt.text)
         self.assertIn("exactly one set_report_title operation", prompt.text)
         self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
@@ -610,7 +640,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         self.assertIn("Never emit view artifact", prompt.text)
         self.assertIn("wire title field to null", prompt.text)
         self.assertIn("Use set_report_orientation with portrait or landscape", prompt.text)
-        self.assertIn("two- or three-page composition", prompt.text)
+        self.assertIn("exact page count", prompt.text)
         self.assertIn("never emit dependency fields", prompt.text)
         self.assertIn("Never update, remove, duplicate, or reposition a page_break block", prompt.text)
         self.assertIn("page_count is server-owned renderer output", prompt.text)
@@ -730,6 +760,62 @@ class ReportAssistantContractTests(unittest.TestCase):
 
 class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
     """strict wire 연산이 서버 ReportPatch 타입으로 손실 없이 변환되는지 검증한다."""
+
+    def setUp(self):
+        """모델 어댑터 테스트에 명시적 비용 정책과 deterministic capacity를 제공한다."""
+
+        self._cost_environment = patch.dict(
+            os.environ,
+            {
+                "REPORT_ASSISTANT_INPUT_USD_PER_MILLION": "1",
+                "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION": "1",
+                "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD": "100",
+            },
+            clear=False,
+        )
+        self._cost_environment.start()
+        self.addCleanup(self._cost_environment.stop)
+        manifest = SimpleNamespace(
+            capacity_for=lambda *_args, **_kwargs: SimpleNamespace(
+                runtime_max_output_tokens=4096
+            )
+        )
+        self._runtime_manifest = patch(
+            "app.adapters.model_schemas.load_model_runtime_manifest",
+            return_value=manifest,
+        )
+        self._runtime_manifest.start()
+        self.addCleanup(self._runtime_manifest.stop)
+        self._invocation_contract = patch(
+            "app.adapters.report_assistant._validated_invocation",
+            side_effect=self._legacy_adapter_invocation,
+        )
+        self._invocation_contract.start()
+        self.addCleanup(self._invocation_contract.stop)
+
+    @staticmethod
+    def _legacy_adapter_invocation(_invocation, node, _payload):
+        """변환 전용 기존 테스트에 receipt 기록 가능한 test invocation을 제공한다."""
+
+        from app.adapters import report_assistant
+
+        route = report_assistant.active_route_for_node(
+            report_assistant.resolve_active_model_routes(), node
+        )
+        return SimpleNamespace(
+            node=node,
+            route=route,
+            payload_hash="a" * 64,
+            timeout=60.0,
+            max_attempts=2,
+            authorization=SimpleNamespace(
+                node=node,
+                route=route,
+                record_attempt=AsyncMock(),
+            ),
+            repository=object(),
+            model_execution_id="11111111-1111-4111-8111-111111111111",
+        )
 
     async def test_reposition_wire_operation_becomes_typed_patch(self):
         """nullable wire 필드를 제거하고 상대 배치 필드만 typed patch에 보존한다."""
@@ -863,10 +949,13 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("REPORT_ASSISTANT_MODEL_CONTRACT_INVALID", raised.exception.code)
         self.assertEqual(2, transport.await_count)
 
-    async def test_non_text_update_becomes_evidence_bound_text_addition(self):
-        """비-text 본문은 변조하지 않고 승인 대기 add_text로 정규화한다."""
+    async def test_non_text_update_retries_then_fails_closed(self):
+        """비-text update_text의 의미를 add_text로 바꾸지 않고 계약 실패로 닫는다."""
 
-        from app.adapters.report_assistant import generate_report_change_proposal
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            generate_report_change_proposal,
+        )
 
         response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
         response["patch"]["operations"] = [{
@@ -902,22 +991,13 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
                 new=transport,
             ),
         ):
-            proposal, _trace = await generate_report_change_proposal(
-                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
-            )
+            with self.assertRaises(ReportAssistantModelError) as raised:
+                await generate_report_change_proposal(
+                    copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+                )
 
-        self.assertEqual(
-            {
-                "op": "add_text",
-                "title": "핵심 요약",
-                "content": "승인된 근거를 세 문장으로 요약했습니다.",
-                "evidence_refs": ["artifact_narrative"],
-                "placement": {"after_block_id": "block-one", "width": "full"},
-            },
-            proposal["patch"]["operations"][0],
-        )
-        self.assertEqual(1, transport.await_count)
-        self.assertEqual(1, _trace["attempts"])
+        self.assertEqual("REPORT_ASSISTANT_MODEL_CONTRACT_INVALID", raised.exception.code)
+        self.assertEqual(2, transport.await_count)
 
     async def test_non_text_title_only_update_is_rejected(self):
         """비-text 제목 변경은 source label 변조가 되므로 재시도 후 계약 실패로 닫는다."""
@@ -1071,10 +1151,13 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             proposal["patch"]["operations"][0],
         )
 
-    async def test_add_text_with_content_but_no_title_gets_safe_default(self):
-        """모델이 add_text 제목만 누락해도 본문·근거는 보존하고 승인 대기로 보낸다."""
+    async def test_add_text_without_title_retries_then_fails_closed(self):
+        """모델이 add_text 제목을 누락하면 고정 제목을 만들지 않고 계약 실패로 닫는다."""
 
-        from app.adapters.report_assistant import generate_report_change_proposal
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            generate_report_change_proposal,
+        )
 
         response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
         response["patch"]["operations"] = [{
@@ -1107,25 +1190,16 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
                 new=transport,
             ),
         ):
-            proposal, trace = await generate_report_change_proposal(
-                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
-            )
+            with self.assertRaises(ReportAssistantModelError) as raised:
+                await generate_report_change_proposal(
+                    copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+                )
 
-        self.assertEqual(
-            {
-                "op": "add_text",
-                "title": "핵심 요약",
-                "content": "승인된 근거를 두 문장으로 요약했습니다.",
-                "placement": {"after_block_id": "block-one", "width": "full"},
-                "evidence_refs": ["artifact_narrative"],
-            },
-            proposal["patch"]["operations"][0],
-        )
-        self.assertEqual(1, transport.await_count)
-        self.assertEqual(1, trace["attempts"])
+        self.assertEqual("REPORT_ASSISTANT_MODEL_CONTRACT_INVALID", raised.exception.code)
+        self.assertEqual(2, transport.await_count)
 
-    async def test_english_patch_summary_gets_operation_based_korean_label(self):
-        """모델이 영문 변경 요약을 반환해도 사용자 검토 화면에는 한국어를 보낸다."""
+    async def test_nonblank_model_patch_summary_is_preserved(self):
+        """요약 언어를 판별·대체하지 않고 모델의 비어 있지 않은 요약을 그대로 쓴다."""
 
         from app.adapters.report_assistant import generate_report_change_proposal
 
@@ -1166,7 +1240,65 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
                 copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
             )
 
-        self.assertEqual("텍스트 블록 추가", proposal["patch"]["summary"])
+        self.assertEqual(
+            "Add a concise three-sentence summary below the selected artifact block.",
+            proposal["patch"]["summary"],
+        )
+
+    async def test_adapter_preserves_exact_page_count_for_every_change_kind(self):
+        """응답 종류와 무관하게 모델이 구조화한 정확 페이지 요구를 그대로 반환한다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1", token="test-token",
+            model="test-model", provider="openai",
+        )
+        cases = (
+            (REPORT_ASSISTANT_CLARIFICATION_RESPONSE, 2),
+            (REPORT_ASSISTANT_EXISTING_RESPONSE, 7),
+            (REPORT_ASSISTANT_TURN_RESPONSE, None),
+        )
+        for response, exact_page_count in cases:
+            with self.subTest(change_kind=response["change_kind"]):
+                model_response = copy.deepcopy(response)
+                model_response["exact_page_count"] = exact_page_count
+                with (
+                    patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+                    patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+                    patch(
+                        "app.adapters.report_assistant.openai_transport",
+                        new=AsyncMock(return_value=model_response),
+                    ),
+                ):
+                    proposal, _trace = await generate_report_change_proposal(
+                        copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+                    )
+
+                self.assertEqual(exact_page_count, proposal["exact_page_count"])
+
+    async def test_blank_model_patch_summary_is_rejected(self):
+        """strict schema의 공백 문자열도 adapter 경계에서 닫는다."""
+
+        from app.adapters.report_assistant import ReportAssistantModelError, generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["summary"] = "   "
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1", token="test-token",
+            model="test-model", provider="openai",
+        )
+        transport = AsyncMock(return_value=response)
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.openai_transport", new=transport),
+        ):
+            with self.assertRaises(ReportAssistantModelError) as raised:
+                await generate_report_change_proposal(copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST))
+
+        self.assertEqual("REPORT_ASSISTANT_MODEL_CONTRACT_INVALID", raised.exception.code)
+        self.assertEqual(2, transport.await_count)
 
     async def test_editor_setting_wire_operation_becomes_typed_patch(self):
         """GPT의 strict 차트 설정은 임의 settings 객체 없이 typed 서버 patch로 변환된다."""
@@ -1239,6 +1371,130 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("compact", operation["density"])
         self.assertTrue(operation["show_row_numbers"])
         self.assertIsNone(operation["chart_type"])
+
+    async def test_missing_cost_policy_blocks_proposal_and_review_transport(self):
+        """가격이나 상한이 없으면 생성·검토 transport를 한 번도 호출하지 않는다."""
+
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            prepare_report_assistant_model_invocation,
+        )
+
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+            nodes=("report_assistant_turn", "report_assistant_review"),
+            route_fingerprint="a" * 64,
+            data_boundary="external",
+        )
+        cases = (
+            ("report_assistant_turn", REPORT_ASSISTANT_TURN_REQUEST),
+            ("report_assistant_review", REPORT_ASSISTANT_TURN_REQUEST),
+        )
+        for node, payload in cases:
+            transport = AsyncMock()
+            with (
+                self.subTest(node=node),
+                patch.dict(os.environ, {}, clear=True),
+                patch(
+                    "app.adapters.report_assistant.openai_transport",
+                    new=transport,
+                ),
+            ):
+                with self.assertRaises(ReportAssistantModelError) as raised:
+                    prepare_report_assistant_model_invocation(
+                        node,
+                        copy.deepcopy(payload),
+                        authorization=SimpleNamespace(node=node, route=route),
+                        repository=object(),
+                    )
+
+            self.assertEqual(
+                "REPORT_ASSISTANT_MODEL_CONFIGURATION_INVALID",
+                raised.exception.code,
+            )
+            self.assertEqual(0, raised.exception.attempts)
+            transport.assert_not_awaited()
+
+    async def test_retry_worst_case_cost_blocks_proposal_and_review_transport(self):
+        """한 번은 허용돼도 두 내부 시도의 최대 비용이 상한을 넘으면 호출하지 않는다."""
+
+        from app.adapters.model_schemas import openai_payload
+        from app.adapters.report_assistant import (
+            ReportAssistantModelError,
+            prepare_report_assistant_model_invocation,
+        )
+
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+            nodes=("report_assistant_turn", "report_assistant_review"),
+            route_fingerprint="b" * 64,
+            data_boundary="internal",
+        )
+        cases = (
+            (
+                "report_assistant_turn",
+                REPORT_ASSISTANT_TURN_REQUEST,
+            ),
+            (
+                "report_assistant_review",
+                REPORT_ASSISTANT_TURN_REQUEST,
+            ),
+        )
+        for node, payload in cases:
+            provider_request = openai_payload(
+                route.model, node, copy.deepcopy(payload)
+            )
+            input_tokens = estimate_token_count(
+                json.dumps(
+                    provider_request,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            output_budget = int(provider_request["max_completion_tokens"])
+            single_attempt_cost = Decimal(input_tokens + output_budget) / Decimal(
+                1_000_000
+            )
+            transport = AsyncMock()
+            with (
+                self.subTest(node=node),
+                patch.dict(
+                    os.environ,
+                    {
+                        "REPORT_ASSISTANT_INPUT_USD_PER_MILLION": "1",
+                        "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION": "1",
+                        "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD": str(
+                            single_attempt_cost * Decimal("1.5")
+                        ),
+                        "REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS": "2",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "app.adapters.report_assistant.openai_transport",
+                    new=transport,
+                ),
+            ):
+                with self.assertRaises(ReportAssistantModelError) as raised:
+                    prepare_report_assistant_model_invocation(
+                        node,
+                        copy.deepcopy(payload),
+                        authorization=SimpleNamespace(node=node, route=route),
+                        repository=object(),
+                    )
+
+            self.assertEqual(
+                "ASSISTANT_COST_BUDGET_EXCEEDED", raised.exception.code
+            )
+            self.assertEqual(0, raised.exception.attempts)
+            transport.assert_not_awaited()
 
 
 if __name__ == "__main__":

@@ -4,10 +4,19 @@ import hashlib
 from pathlib import Path
 
 from scripts.check_code_documentation import (
+    PYTHON_ROOTS,
+    REPOSITORY_ROOT,
     _frontend_findings,
     _infrastructure_findings,
     _python_findings,
 )
+
+
+def test_rag_and_ml_production_roots_require_public_boundary_documentation() -> None:
+    """RAG·ML 공개 경계도 Backend와 같은 문서화 정책으로 검사한다."""
+
+    assert REPOSITORY_ROOT / "src" / "rag" in PYTHON_ROOTS
+    assert REPOSITORY_ROOT / "src" / "ml" in PYTHON_ROOTS
 
 
 def test_python_checker_requires_module_class_and_public_method_docs(tmp_path: Path) -> None:

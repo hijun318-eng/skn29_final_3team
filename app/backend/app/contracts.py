@@ -31,6 +31,7 @@ from app.contract_core import (
     _REQUIRED_ACTION_BY_ERROR,
     _RETRYABLE_ERROR_CODES,
 )
+from app.user_account_roles import UserAccountRole
 
 
 class ResponseMeta(ContractModel):
@@ -151,6 +152,8 @@ class Evidence(ContractModel):
     artifact_id: UUID | None = None
     context_release: str | None = None
     product_release_id: str | None = None
+    permission_snapshot_id: str | None = None
+    semantic_release_id: str | None = None
     evidence_cutoff: date | None = None
     policy_version: str | None = None
     model_version: str | None = None
@@ -253,7 +256,7 @@ class RuntimeFeature(str, Enum):
 class SessionData(ContractModel):
     """현재 인증 세션 상태와 서버가 확인한 역할·Capability를 반환한다."""
     status: str = "authenticated"
-    role: Role | None = None
+    role: UserAccountRole | None = None
     capabilities: tuple[Capability, ...] = ()
     enabled_features: tuple[RuntimeFeature, ...] = ()
 

@@ -55,6 +55,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """quota row가 남아 있으면 운영 상태 보존을 위해 table 제거를 거부한다."""
 
+    # emptiness 확인 뒤 concurrent writer가 row를 추가한 채 DROP에 포함되는 race를 막는다.
+    op.execute(
+        "LOCK TABLE tooling.tool_rate_limit_windows IN SHARE ROW EXCLUSIVE MODE"
+    )
     op.execute(
         """
         DO $$

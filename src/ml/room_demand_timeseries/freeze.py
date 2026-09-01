@@ -1,3 +1,5 @@
+"""학습 artifact를 외부 release 정책 계약과 묶어 재현 가능한 동결 묶음으로 만든다."""
+
 from __future__ import annotations
 
 import argparse
@@ -34,6 +36,8 @@ BLOCKED_FEATURES = [
 
 
 def sha256(path: Path) -> str:
+    """artifact 파일을 스트리밍해 SHA-256 16진수 digest를 계산한다."""
+
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -42,6 +46,8 @@ def sha256(path: Path) -> str:
 
 
 def source_attestation() -> dict[str, Any]:
+    """현재 ML Python 모듈별 hash와 정렬된 bundle hash를 반환한다."""
+
     module_dir = Path(__file__).resolve().parent
     files = {
         path.name: sha256(path)
@@ -56,7 +62,22 @@ def source_attestation() -> dict[str, Any]:
 
 
 class ArtifactFreezer:
-    def freeze(self, artifact_dir: Path, dataset_manifest_path: Path) -> dict[str, Any]:
+    """학습 결과와 dataset 증거를 검증하고 배포 전 동결 계약을 기록한다."""
+
+    def freeze(
+        self,
+        artifact_dir: Path,
+        dataset_manifest_path: Path,
+        *,
+        feature_version: str,
+        target_column: str,
+    ) -> dict[str, Any]:
+        """외부 feature/target 정책을 동결 파일에 반영하고 checksum manifest를 반환한다.
+
+        모델 버전·feature 순서·합성 및 미래 관측 계약이 잘못되면 파일 생성을
+        시작하기 전에 ``ValueError``로 실패한다.
+        """
+
         model_manifest = json.loads(
             (artifact_dir / "model_manifest.json").read_text(encoding="utf-8")
         )
@@ -67,10 +88,20 @@ class ArtifactFreezer:
             raise ValueError("model version does not match source contract")
         if model_manifest["feature_columns"] != FEATURE_COLUMNS:
             raise ValueError("model and source feature order differ")
+        feature_version = self._required_text(feature_version, "feature_version")
+        target_column = self._required_text(target_column, "target_column")
+        synthetic_training_data = model_manifest.get("synthetic_training_data")
+        observed_future_values_used = model_manifest.get(
+            "september_observed_values_used"
+        )
+        if type(synthetic_training_data) is not bool:
+            raise ValueError("synthetic_training_data must be a boolean")
+        if type(observed_future_values_used) is not bool:
+            raise ValueError("observed future value policy must be a boolean")
         feature_contract = {
-            "feature_version": "room-demand-historical-d1-d10-v2.0.0",
+            "feature_version": feature_version,
             "model_version": MODEL_VERSION,
-            "target": "rooms_sold",
+            "target": target_column,
             "grain": [
                 "property_id",
                 "target_date",
@@ -96,7 +127,7 @@ class ArtifactFreezer:
             },
             "future_observed_features": [],
             "booking_on_hand_required": False,
-            "september_observed_values_used": False,
+            "september_observed_values_used": observed_future_values_used,
             "feature_columns_ordered": FEATURE_COLUMNS,
         }
         self._write_json(artifact_dir / "feature_contract.json", feature_contract)
@@ -110,20 +141,20 @@ class ArtifactFreezer:
 
 ## Purpose
 
-Predict paid rooms sold for D+1 through D+10 from historical daily facts available at the end of the cutoff date.
+Predict {target_column} for D+1 through D+{MAX_HORIZON} from historical daily facts available at the end of the cutoff date.
 
 ## Training and validation
 
-- Training source: synthetic Walkerhill-structured world A daily facts
+- Training source: {'synthetic generated daily facts' if synthetic_training_data else 'declared operational daily facts'}
 - Training rows: {model_manifest['training_rows']:,}
 - Validation WAPE: {model_manifest['validation_selection']['metrics']['wape']:.4%}
 - Best baseline: {model_manifest['validation_selection']['best_baseline_name']}
 - Best baseline improvement: {model_manifest['validation_selection']['baseline_improvement']:.4%}
-- September observed values used: no
+- Post-cutoff observed target values used: {'yes' if observed_future_values_used else 'no'}
 
 ## Limitations
 
-- This is synthetic-data validation, not evidence of actual Walkerhill accuracy.
+- {'Synthetic-data validation is not operational accuracy evidence.' if synthetic_training_data else 'Accuracy evidence applies only to the declared dataset release.'}
 - Runtime feature parity and dynamic service E2E must pass before service approval.
 - Known TEST-A/B results are reproduction evidence only; a newly generated Hidden Test is required for independent performance evidence.
 """
@@ -171,13 +202,28 @@ Predict paid rooms sold for D+1 through D+10 from historical daily facts availab
             json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
+    @staticmethod
+    def _required_text(value: Any, field: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field} must be a non-empty string")
+        return value.strip()
+
 
 def main() -> None:
+    """필수 release 정책을 CLI에서 받아 artifact 동결 결과를 출력한다."""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact-dir", type=Path, required=True)
     parser.add_argument("--dataset-manifest", type=Path, required=True)
+    parser.add_argument("--feature-version", required=True)
+    parser.add_argument("--target-column", required=True)
     args = parser.parse_args()
-    result = ArtifactFreezer().freeze(args.artifact_dir, args.dataset_manifest)
+    result = ArtifactFreezer().freeze(
+        args.artifact_dir,
+        args.dataset_manifest,
+        feature_version=args.feature_version,
+        target_column=args.target_column,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

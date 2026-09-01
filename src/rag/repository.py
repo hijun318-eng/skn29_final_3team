@@ -1,3 +1,5 @@
+"""로컬 RAG 검증용 문서·청크·검색 감사를 SQLite 트랜잭션으로 보관한다."""
+
 from __future__ import annotations
 
 import json
@@ -10,11 +12,15 @@ from .models import Chunk, DocumentConfig
 
 
 class SqliteRagRepository:
+    """운영 pgvector와 분리된 로컬 검증 저장소의 스키마와 원자적 갱신을 담당한다."""
+
     def __init__(self, database_path: Path) -> None:
         self._database_path = database_path
         self._database_path.parent.mkdir(parents=True, exist_ok=True)
 
     def initialize(self) -> None:
+        """문서, 청크, 검색 감사 테이블이 없을 때 동일 스키마로 생성한다."""
+
         with self._connect() as connection:
             connection.executescript(
                 """
@@ -48,6 +54,12 @@ class SqliteRagRepository:
             )
 
     def upsert_document(self, config: DocumentConfig, checksum: str, chunks: list[Chunk]) -> int:
+        """checksum이 바뀐 문서와 전체 청크를 한 트랜잭션으로 교체하고 삽입 수를 반환한다.
+
+        기존 checksum과 같으면 저장 내용을 건드리지 않고 0을 반환하며 SQLite 오류는
+        연결 경계에서 rollback한 뒤 전파한다.
+        """
+
         with self._connect() as connection:
             previous = connection.execute(
                 "SELECT checksum FROM documents WHERE manual_id = ?", (config.manual_id,)
@@ -92,6 +104,8 @@ class SqliteRagRepository:
             return len(chunks)
 
     def list_searchable_chunks(self, role: str, allow_unresolved: bool) -> list[sqlite3.Row]:
+        """삭제되지 않은 작업지식 중 역할과 유효성 조건을 만족하는 청크 행을 조회한다."""
+
         with self._connect() as connection:
             return connection.execute(
                 """
@@ -105,6 +119,8 @@ class SqliteRagRepository:
             ).fetchall()
 
     def record_search(self, query_hash: str, role: str, result_count: int) -> None:
+        """원문 질의 대신 해시·역할·결과 수만 검색 감사 로그에 기록한다."""
+
         with self._connect() as connection:
             connection.execute(
                 "INSERT INTO retrieval_audit_logs(query_hash, role, result_count) VALUES (?, ?, ?)",
@@ -112,6 +128,8 @@ class SqliteRagRepository:
             )
 
     def counts(self) -> dict[str, int]:
+        """현재 로컬 저장소의 문서·청크·검색 감사 행 수를 반환한다."""
+
         with self._connect() as connection:
             return {
                 "documents": connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0],

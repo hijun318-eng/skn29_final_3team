@@ -35,6 +35,7 @@ from app.services.routing_service import RoutingService  # noqa: E402
 from app.services.analysis.semantic_request import (  # noqa: E402
     parse_approved_semantic_request_snapshot,
 )
+from src.analysis.domain import AnalysisArtifactLifecycle  # noqa: E402
 from tests.support.analysis_runtime_fixture import (  # noqa: E402
     AnalysisRuntimeMetadata,
     AnalysisRuntimeDataPlatformFake,
@@ -94,6 +95,7 @@ class FakeAnalysisRepository:
         self.finished = None
         self.context_receipts = []
         self.list_options = None
+        self.lifecycle_calls = []
         self.definition = {
             "contract_version": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
             "definition_id": self.definition_id,
@@ -179,8 +181,12 @@ class FakeAnalysisRepository:
             "period_end_exclusive": None,
         }
 
-    async def list_runs(self, *, limit=100, approved_only=False):
-        self.list_options = {"limit": limit, "approved_only": approved_only}
+    async def list_runs(self, *, limit=100, approved_only=False, archived=False):
+        self.list_options = {
+            "limit": limit,
+            "approved_only": approved_only,
+            "archived": archived,
+        }
         return [] if self.request_id is None else [await self.get_run(self.request_id)]
 
     async def get_run_artifact(self, request_id):
@@ -201,6 +207,18 @@ class FakeAnalysisRepository:
             "query_id": response.data.artifact.query_id,
             "artifact_checksum": "a" * 64,
         }
+
+    async def archive_artifact(self, artifact_id, *, actor_role, trace_id=None):
+        self.lifecycle_calls.append(("archive", artifact_id, actor_role, trace_id))
+        return AnalysisArtifactLifecycle(
+            str(artifact_id),
+            datetime(2026, 8, 31, tzinfo=timezone.utc),
+            str(self.owner_id),
+        )
+
+    async def restore_artifact(self, artifact_id, *, actor_role, trace_id=None):
+        self.lifecycle_calls.append(("restore", artifact_id, actor_role, trace_id))
+        return AnalysisArtifactLifecycle(str(artifact_id))
 
 
 def context(owner_id: UUID | None = None) -> RequestContext:
@@ -285,10 +303,43 @@ async def test_run_list_forwards_bounded_approved_artifact_filter():
             context(owner),
             limit=7,
             approved_only=True,
+            archived=True,
         )
 
     assert listed == {"items": []}
-    assert repository.list_options == {"limit": 7, "approved_only": True}
+    assert repository.list_options == {
+        "limit": 7,
+        "approved_only": True,
+        "archived": True,
+    }
+
+
+@async_test
+async def test_artifact_lifecycle_routes_forward_authenticated_actor_without_admin_override():
+    owner = uuid4()
+    artifact_id = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    request_context = context(owner)
+    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+        archived = await analysis_api.archive_analysis_artifact(
+            artifact_id, request_context
+        )
+        restored = await analysis_api.restore_analysis_artifact(
+            artifact_id, request_context
+        )
+
+    assert archived["artifact_id"] == str(artifact_id)
+    assert archived["archived"] is True
+    assert restored == {
+        "artifact_id": str(artifact_id),
+        "archived": False,
+        "archived_at": None,
+        "archived_by": None,
+    }
+    assert repository.lifecycle_calls == [
+        ("archive", artifact_id, "analyst", request_context.trace_id),
+        ("restore", artifact_id, "analyst", request_context.trace_id),
+    ]
 
 
 @async_test
@@ -324,15 +375,18 @@ async def test_repository_run_list_filters_approved_artifacts_before_lateral_lim
     )
     assert await repository.list_runs(limit=7, approved_only=True) == []
 
-    artifact_filter = "AND (NOT :approved_only OR status = 'APPROVED')"
+    artifact_filter = "AND (NOT :approved_only OR artifact.status = 'APPROVED')"
     assert artifact_filter in session.statement
     artifact_query = session.statement[session.statement.index(
         "FROM artifact.analysis_artifacts"
     ):]
     assert artifact_query.index(artifact_filter) < artifact_query.index("LIMIT 1")
     assert "AND a.artifact_id IS NOT NULL" in session.statement
+    assert "artifact.user_artifact_lifecycle" in session.statement
+    assert "request_id UNIQUE" in session.statement
     assert session.parameters["limit"] == 7
     assert session.parameters["approved_only"] is True
+    assert session.parameters["archived"] is False
 
 
 @async_test

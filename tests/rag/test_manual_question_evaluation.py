@@ -3,6 +3,8 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from src.rag.manual_question_evaluation import (
     ManualQuestion,
@@ -83,6 +85,69 @@ class MarkdownQuestionSuiteTest(unittest.TestCase):
             ManualEvaluationMetrics.gold_page_accuracy(items),
             "NOT_MEASURABLE_MISSING_GOLD_PAGE",
         )
+
+    def test_openai_release_evaluation_uses_openai_embedding_provider(self) -> None:
+        service = object.__new__(ManualQuestionEvaluationService)
+        service._settings = SimpleNamespace(  # type: ignore[attr-defined]
+            embedding_provider="openai",
+            embedding_api_key="test-key",
+            model_id="text-embedding-3-large",
+            dimension=1024,
+            embedding_endpoint="https://api.openai.com/v1/embeddings",
+            embedding_timeout_seconds=30.0,
+            embedding_maximum_attempts=3,
+        )
+        provider = object()
+
+        with (
+            patch(
+                "src.rag.manual_question_evaluation.OpenAIEmbeddingProvider",
+                return_value=provider,
+            ) as openai,
+            patch(
+                "src.rag.manual_question_evaluation.QwenEmbeddingProvider"
+            ) as qwen,
+        ):
+            selected = service._build_embedding_provider()
+
+        self.assertIs(selected, provider)
+        openai.assert_called_once_with(
+            "test-key",
+            "text-embedding-3-large",
+            1024,
+            "https://api.openai.com/v1/embeddings",
+            30.0,
+            3,
+        )
+        qwen.assert_not_called()
+
+    def test_qwen_release_evaluation_uses_qwen_embedding_provider(self) -> None:
+        service = object.__new__(ManualQuestionEvaluationService)
+        model_path = Path("models/Qwen3-Embedding-0.6B")
+        service._settings = SimpleNamespace(  # type: ignore[attr-defined]
+            embedding_provider="qwen",
+            model_path=model_path,
+            device="cpu",
+            dimension=1024,
+            max_sequence_length=2048,
+            query_prompt_name="query",
+        )
+        provider = object()
+
+        with (
+            patch(
+                "src.rag.manual_question_evaluation.OpenAIEmbeddingProvider"
+            ) as openai,
+            patch(
+                "src.rag.manual_question_evaluation.QwenEmbeddingProvider",
+                return_value=provider,
+            ) as qwen,
+        ):
+            selected = service._build_embedding_provider()
+
+        self.assertIs(selected, provider)
+        qwen.assert_called_once_with(model_path, "cpu", 1024, 2048, "query")
+        openai.assert_not_called()
 
 
 if __name__ == "__main__":

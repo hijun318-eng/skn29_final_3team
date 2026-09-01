@@ -23,6 +23,21 @@ const FOCUSABLE_SELECTOR = [
 ].join(",");
 
 
+/** ML API의 공개 오류 envelope에서 사용자에게 안전한 안내 문구만 선택한다. */
+export function mlResponseErrorMessage(payload) {
+  if (typeof payload?.error?.message === "string" && payload.error.message.trim()) {
+    return payload.error.message;
+  }
+  if (typeof payload?.detail === "string" && payload.detail.trim()) {
+    return payload.detail;
+  }
+  if (typeof payload?.detail?.reason === "string" && payload.detail.reason.trim()) {
+    return payload.detail.reason;
+  }
+  return "ML 요청을 처리하지 못했습니다.";
+}
+
+
 async function requestJson(path, options = {}) {
   const response = await fetch(API_PREFIX + path, {
     credentials: "include",
@@ -31,7 +46,7 @@ async function requestJson(path, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error?.message || payload.detail || "ML 요청을 처리하지 못했습니다.");
+    throw new Error(mlResponseErrorMessage(payload));
   }
   return payload;
 }

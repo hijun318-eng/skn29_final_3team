@@ -85,6 +85,13 @@ def test_operational_database_code_is_inside_the_lint_boundary() -> None:
     assert _is_source_file(REPOSITORY_ROOT / "scripts/lint_architectural_invariants.py")
 
 
+def test_rag_and_ml_production_code_is_inside_the_lint_boundary() -> None:
+    """교체형 runtime도 질문·SQL 하드코딩 금지 검사를 우회하지 못하게 한다."""
+
+    assert _is_source_file(REPOSITORY_ROOT / "src/rag/api.py")
+    assert _is_source_file(REPOSITORY_ROOT / "src/ml/room_demand_timeseries/runtime_api.py")
+
+
 def test_detects_long_multitable_generation_template() -> None:
     joins = " ".join(f"JOIN catalog.schema.table_{index} ON TRUE" for index in range(20))
     source = f"QUERY = '''SELECT * FROM catalog.schema.base {joins}'''"

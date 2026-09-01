@@ -2,13 +2,21 @@
 import { compactDraftLayout, isDraftLayoutValid } from "../../contracts/report.ts";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
+  ARTIFACT_BLOCK_SETTINGS_VERSION,
+  ATOMIC_ARTIFACT_VIEWS,
   DEFAULT_FRONTEND_CURRENCY_POLICY,
+  analysisArtifactTitle,
+  artifactViewTitle,
+  availableArtifactViews,
+  estimateArtifactBlockLayout,
+  estimateArtifactViewBlockLayout,
   fitFrontendArtifactBlock,
   fitFrontendArtifactViewBlock,
   frontendTextBlockLayout,
 } from "./reportDraftV2.js";
 import type {
   DraftArtifactData,
+  DraftArtifactSource,
   DraftBlockTemplate,
   DraftCurrencyPolicy,
   DraftInsertPosition,
@@ -60,6 +68,118 @@ export function fitAutoArtifactViewLayout(
           : block
       : block
   ))) as readonly DraftReportBlock[];
+}
+
+function legacyCompositeViews(block: DraftReportBlock): readonly string[] {
+  if (block.type !== "artifact") return [];
+  const settings = readDraftBlockSettings(block);
+  const requested = settings.visibleViews;
+  if (!Array.isArray(requested) || requested.length < 2) return [];
+  const supportedViews = new Set<string>(ATOMIC_ARTIFACT_VIEWS);
+  const views = requested.filter((view): view is string => (
+    typeof view === "string" && supportedViews.has(view)
+  ));
+  return views.length === requested.length && new Set(views).size === views.length
+    ? views
+    : [];
+}
+
+function atomicArtifactSettings(
+  view: string,
+  legacySettings: Record<string, unknown>,
+): Record<string, unknown> {
+  if (view === "chart") {
+    return {
+      visibleViews: [view],
+      sizeMode: "auto",
+      showLegend: legacySettings.showLegend !== false,
+      ...(typeof legacySettings.chartType === "string"
+        ? { chartType: legacySettings.chartType }
+        : {}),
+    };
+  }
+  if (view === "table") {
+    return {
+      visibleViews: [view],
+      sizeMode: "auto",
+      density: legacySettings.density === "compact" ? "compact" : "comfortable",
+      showRowNumbers: legacySettings.showRowNumbers === true,
+    };
+  }
+  return {
+    schemaVersion: ARTIFACT_BLOCK_SETTINGS_VERSION,
+    presentationMode: ["summary", "standard", "detail"].includes(
+      String(legacySettings.presentationMode),
+    ) ? legacySettings.presentationMode : "standard",
+    visibleViews: [view],
+    sizeMode: "auto",
+    ...(legacySettings.origin && typeof legacySettings.origin === "object"
+      ? { origin: legacySettings.origin }
+      : {}),
+  };
+}
+
+/**
+ * 이전 합본 Artifact를 실제 payload에 존재하는 원자 view 블록으로 분리한다.
+ *
+ * 합본 블록은 원자 view와 동일한 저장 정체성이 아니므로 각 view에 새 UUID를 사용한다.
+ * 손상되었거나 지원하지 않는 view가 섞인 설정은 조용히 추측하지 않고 원본을 보존한다.
+ */
+export function splitLegacyCompositeArtifactBlocks(
+  inputBlocks: readonly DraftReportBlock[],
+  artifacts: Readonly<Record<string, DraftArtifactData | undefined>>,
+  artifactSources: readonly DraftArtifactSource[],
+  orientation: "portrait" | "landscape",
+  createBlockId: () => string = createUuid,
+): { readonly blocks: readonly DraftReportBlock[]; readonly migratedSourceCount: number } {
+  let migratedSourceCount = 0;
+  const sourceTitles = new Map(artifactSources.flatMap((source) => {
+    const title = String(source.title || source.definitionTitle || "").trim();
+    return source.artifactId && title ? [[source.artifactId, title]] : [];
+  }));
+  const expanded = inputBlocks.flatMap((block) => {
+    const requestedViews = legacyCompositeViews(block);
+    const artifact = block.artifactId ? artifacts[block.artifactId] : undefined;
+    if (!requestedViews.length || !artifact) return [block];
+    const available = new Set<string>(availableArtifactViews(artifact));
+    const views = requestedViews.filter((view) => available.has(view));
+    if (!views.length) return [block];
+    migratedSourceCount += 1;
+    const legacySettings = readDraftBlockSettings(block);
+    // Artifact payload의 저장용 title(예: "Analysis result")이나 과거 블록에
+    // 복제된 보고서 제목을 표시 이름으로 재사용하지 않는다. library가 계산한
+    // 사용자용 제목을 우선하고, 없으면 동일한 지표·기간 규칙으로 복구한다.
+    const sourceTitle = sourceTitles.get(block.artifactId ?? "")
+      || analysisArtifactTitle(artifact);
+    return views.map((view) => {
+      const type = view === "summary" || view === "kpi" ? "artifact" : view;
+      const layout = type === "artifact"
+        ? estimateArtifactBlockLayout(artifact, { orientation, visibleViews: [view] })
+        : estimateArtifactViewBlockLayout(
+            { type, w: block.w, columns: block.columns },
+            artifact,
+            { orientation, autoWidth: true },
+          );
+      return {
+        ...block,
+        id: createBlockId(),
+        title: artifactViewTitle(sourceTitle, view),
+        type,
+        content: JSON.stringify(atomicArtifactSettings(view, legacySettings)),
+        viewSpecId: undefined,
+        columns: layout.width,
+        x: 0,
+        w: layout.width,
+        h: layout.height,
+      } as DraftReportBlock;
+    });
+  });
+  return {
+    blocks: migratedSourceCount
+      ? compactDraftLayout(expanded) as readonly DraftReportBlock[]
+      : inputBlocks,
+    migratedSourceCount,
+  };
 }
 
 /** template 문자열을 독립 Markdown draft 블록으로 생성한다. */

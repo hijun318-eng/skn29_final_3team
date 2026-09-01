@@ -1,3 +1,5 @@
+"""매뉴얼 PDF의 반복 기록 문구를 필드별 기록 목적 설명으로 안전하게 교체한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -141,6 +143,8 @@ FIELD_PURPOSES = {
 
 @dataclass(frozen=True)
 class Replacement:
+    """교체할 필드 설명과 PDF 텍스트 기준점 좌표를 나타내는 불변 항목이다."""
+
     field: str
     description: str
     x: float
@@ -148,12 +152,24 @@ class Replacement:
 
 
 class ManualRecordDescriptionRepairer:
+    """PDF content stream의 반복 문구만 제거하고 한글 필드 설명 overlay를 합성한다.
+
+    Malgun Gothic 글꼴이 없거나 필드·페이지·교체 수가 원문과 맞지 않으면 결과물을
+    확정하지 않고 예외로 종료한다.
+    """
+
     def __init__(self) -> None:
         if not FONT_PATH.is_file():
             raise FileNotFoundError(f"Korean font not found: {FONT_PATH}")
         pdfmetrics.registerFont(TTFont(FONT_NAME, str(FONT_PATH)))
 
     def repair(self, source: Path, target: Path) -> int:
+        """원본 PDF의 반복 문구를 교체해 대상 파일에 쓰고 검증된 교체 건수를 반환한다.
+
+        대상이 원본과 같으면 임시 파일을 검증한 뒤 원자적으로 교체하며, 남은 반복
+        문구나 누락된 설명이 발견되면 ``ValueError``를 발생시킨다.
+        """
+
         replacements = self._find_replacements(source)
         if not any(replacements):
             return 0
@@ -268,6 +284,8 @@ class ManualRecordDescriptionRepairer:
 
 
 def main() -> None:
+    """입력 디렉터리의 선택된 PDF를 일괄 보정하고 파일·교체 건수를 출력한다."""
+
     parser = argparse.ArgumentParser(description="매뉴얼 기록 목적 반복 문구를 필드별 설명으로 교체")
     parser.add_argument("manuals_dir", type=Path)
     parser.add_argument("output_dir", type=Path)

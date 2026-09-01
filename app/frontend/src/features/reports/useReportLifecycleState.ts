@@ -1,7 +1,7 @@
 /** 보고서 정의·실행·schedule·assistant·최종 asset API 수명주기를 관리하는 hook 모듈이다. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createAnalysisClient } from "../../api/analysisClient.ts";
-import { createReportClient } from "../../api/reportClient.ts";
+import { createReportClient, ReportApiError } from "../../api/reportClient.ts";
 import {
   seoulWallClockToIso,
   type ReportBlockRequest,
@@ -9,6 +9,7 @@ import {
   type ReportAssistantOperationScope,
   type ReportAssistantEvaluationResponse,
   type ReportAssistantReviewResponse,
+  type ReportAssistantExternalTransferDisclosure,
   type ReportDefinitionVersion,
   type ReportOrientation,
   type ReportRun,
@@ -21,6 +22,7 @@ import { reportAssistantSessionMatchesDefinition } from "./reportAssistantSessio
 import type {
   AssistantTrace,
   CreateDefinitionResult,
+  DefinitionCollection,
   DefinitionListState,
   DefinitionStatusFilter,
   FinalAssetFormat,
@@ -33,6 +35,39 @@ import type {
 } from "./reportLifecycleTypes.ts";
 import { useFinalReportDocument } from "./useFinalReportDocument.ts";
 
+const EXTERNAL_TRANSFER_ACTION_CANCELLED = Symbol("external-transfer-action-cancelled");
+
+type AssistantExternalTransferAcceptanceAttempt = {
+  readonly disclosureId: string;
+  readonly generation: number;
+};
+
+/** 비동기 동의 응답이 현재 화면의 같은 공개문과 Assistant 세대에 결속됐는지 확인한다. */
+export function matchesAssistantExternalTransferAcceptance(
+  disclosure: Pick<ReportAssistantExternalTransferDisclosure, "disclosure_id"> | null,
+  generation: number,
+  attempt: AssistantExternalTransferAcceptanceAttempt,
+): boolean {
+  return disclosure?.disclosure_id === attempt.disclosureId
+    && generation === attempt.generation;
+}
+
+/** 세션의 transient 결과 Artifact를 제외한 원래 근거 선택이 현재 선택과 같은지 검증한다. */
+export function matchesAssistantArtifactSelection(
+  session: Pick<ReportAssistantSessionResponse, "artifact_ids" | "result_artifact_id">,
+  artifactIds: readonly string[],
+): boolean {
+  const resultArtifactId = session.result_artifact_id;
+  if (resultArtifactId !== null && session.artifact_ids.at(-1) !== resultArtifactId) {
+    return false;
+  }
+  const boundArtifactIds = resultArtifactId === null
+    ? session.artifact_ids
+    : session.artifact_ids.slice(0, -1);
+  return boundArtifactIds.length === artifactIds.length
+    && boundArtifactIds.every((artifactId, index) => artifactId === artifactIds[index]);
+}
+
 /** 정의·실행·schedule·최종문서 API 상태를 operation ID로 직렬화하고 안정된 명령을 반환한다. */
 export function useReportLifecycleState(options: UseReportLifecycleStateOptions = {}) {
   const reportClient = useMemo(
@@ -43,7 +78,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     () => options.analysisClient ?? createAnalysisClient(fetch),
     [options.analysisClient],
   );
-  const isAdmin = options.isAdmin ?? ["report_admin", "platform_admin"].includes(options.role ?? "");
+  const isAdmin = options.isAdmin ?? options.role === "admin";
   const autoLoad = options.autoLoad ?? true;
 
   const [definitions, setDefinitions] = useState<readonly ReportDefinitionVersion[]>([]);
@@ -54,6 +89,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DefinitionStatusFilter>("all");
+  const [definitionCollection, setDefinitionCollectionState] = useState<DefinitionCollection>("active");
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
@@ -71,17 +107,36 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const [assistantSession, setAssistantSession] = useState<ReportAssistantSessionResponse | null>(null);
   const [assistantEvaluation, setAssistantEvaluation] = useState<ReportAssistantEvaluationResponse | null>(null);
   const [assistantReview, setAssistantReview] = useState<ReportAssistantReviewResponse | null>(null);
+  const [assistantActionError, setAssistantActionError] = useState("");
+  const [assistantActionPageCounts, setAssistantActionPageCounts] = useState<{
+    readonly exactPageCount: number;
+    readonly verifiedPageCount: number;
+  } | null>(null);
+  const [assistantExternalTransferDisclosure, setAssistantExternalTransferDisclosure] = useState<ReportAssistantExternalTransferDisclosure | null>(null);
+  const [assistantExternalTransferConsentPending, setAssistantExternalTransferConsentPending] = useState(false);
   const [assistantSuggestionSet, setAssistantSuggestionSet] = useState<{
     readonly selectedBlockId: string | null;
     readonly suggestions: readonly string[];
   } | null>(null);
 
   const definitionsRef = useRef(definitions);
+  const definitionCollectionRef = useRef<DefinitionCollection>(definitionCollection);
+  const definitionsRequestRef = useRef(0);
   const selectedDefinitionRef = useRef(selectedDefinition);
   const assistantSessionRef = useRef(assistantSession);
   const assistantRequestRef = useRef(0);
+  const assistantExternalTransferPendingRef = useRef<{
+    readonly assistantRequestId: string;
+    readonly disclosureId: string;
+    readonly generation: number;
+    readonly resume: () => void;
+    readonly resolveCancelled: () => void;
+  } | null>(null);
+  const assistantExternalTransferDisclosureRef = useRef<ReportAssistantExternalTransferDisclosure | null>(null);
+  const assistantExternalTransferAcceptingRef = useRef<AssistantExternalTransferAcceptanceAttempt | null>(null);
   const runsRequestRef = useRef("");
   definitionsRef.current = definitions;
+  definitionCollectionRef.current = definitionCollection;
   selectedDefinitionRef.current = selectedDefinition;
   assistantSessionRef.current = assistantSession;
 
@@ -108,12 +163,200 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     try {
       return await action();
     } catch (nextError) {
-      if (isCurrent()) setError(reportApiError(nextError));
+      if (isCurrent()) {
+        setError(reportApiError(nextError));
+        if (name === "assistant-patch-approval" && nextError instanceof ReportApiError) {
+          setAssistantActionError(nextError.code);
+          setAssistantActionPageCounts(
+            Number.isSafeInteger(nextError.exactPageCount)
+              && Number.isSafeInteger(nextError.verifiedPageCount)
+              ? {
+                  exactPageCount: nextError.exactPageCount as number,
+                  verifiedPageCount: nextError.verifiedPageCount as number,
+                }
+              : null,
+          );
+        }
+      }
       return null;
     } finally {
       endOperation(operationId);
     }
   }, [beginOperation, endOperation]);
+
+  const installAssistantExternalTransferDisclosure = useCallback((
+    disclosure: ReportAssistantExternalTransferDisclosure | null,
+  ) => {
+    assistantExternalTransferDisclosureRef.current = disclosure;
+    setAssistantExternalTransferDisclosure(disclosure);
+  }, []);
+
+  /** 428 공개문에 결속한 동일 API action을 메모리에 보관하고 명시적 동의 뒤 한 번만 재개한다. */
+  const runWithExternalTransferConsent = useCallback(async <T,>(
+    assistantRequestId: string,
+    generation: number,
+    action: () => Promise<T>,
+  ): Promise<T | typeof EXTERNAL_TRANSFER_ACTION_CANCELLED> => {
+    try {
+      return await action();
+    } catch (nextError) {
+      if (!(nextError instanceof ReportApiError)
+        || nextError.status !== 428
+        || nextError.code !== "EXTERNAL_TRANSFER_CONSENT_REQUIRED") {
+        throw nextError;
+      }
+      const disclosure = nextError.externalTransferDisclosure
+        ?? await reportClient.getAssistantExternalTransferDisclosure(
+          nextError.assistantRequestId || assistantRequestId,
+        );
+      if (disclosure.assistant_request_id !== assistantRequestId) {
+        throw new Error("외부 전송 공개문이 현재 Report Assistant 세션과 일치하지 않습니다.");
+      }
+      if (assistantRequestRef.current !== generation) return EXTERNAL_TRANSFER_ACTION_CANCELLED;
+      assistantExternalTransferPendingRef.current?.resolveCancelled();
+      return await new Promise<T | typeof EXTERNAL_TRANSFER_ACTION_CANCELLED>((resolve, reject) => {
+        const pending = {
+          assistantRequestId,
+          disclosureId: disclosure.disclosure_id,
+          generation,
+          resolveCancelled: () => resolve(EXTERNAL_TRANSFER_ACTION_CANCELLED),
+          resume: () => { void action().then(resolve, reject); },
+        };
+        assistantExternalTransferPendingRef.current = pending;
+        setAssistantExternalTransferConsentPending(false);
+        installAssistantExternalTransferDisclosure(disclosure);
+        setError("");
+        setNotice("");
+      });
+    }
+  }, [installAssistantExternalTransferDisclosure, reportClient]);
+
+  const clearAssistantExternalTransferConsent = useCallback(() => {
+    const pending = assistantExternalTransferPendingRef.current;
+    assistantExternalTransferPendingRef.current = null;
+    assistantExternalTransferAcceptingRef.current = null;
+    setAssistantExternalTransferConsentPending(false);
+    installAssistantExternalTransferDisclosure(null);
+    pending?.resolveCancelled();
+  }, [installAssistantExternalTransferDisclosure]);
+
+  const recoverAssistantExternalTransferDisclosure = useCallback(async (
+    assistantRequestId: string,
+    generation: number,
+    expectedCurrentDisclosureId?: string | null,
+  ) => {
+    const isCurrentRecovery = () => assistantRequestRef.current === generation
+      && (expectedCurrentDisclosureId === undefined
+        || (assistantExternalTransferDisclosureRef.current?.disclosure_id ?? null) === expectedCurrentDisclosureId);
+    try {
+      const disclosure = await reportClient.getAssistantExternalTransferDisclosure(assistantRequestId);
+      if (!isCurrentRecovery()) return null;
+      installAssistantExternalTransferDisclosure(disclosure);
+      return disclosure;
+    } catch (nextError) {
+      if (nextError instanceof ReportApiError && nextError.status === 404) return null;
+      if (isCurrentRecovery()) setError(reportApiError(nextError));
+      return null;
+    }
+  }, [installAssistantExternalTransferDisclosure, reportClient]);
+
+  const declineAssistantExternalTransferConsent = useCallback(() => {
+    clearAssistantExternalTransferConsent();
+    setNotice("외부 모델 전송에 동의하지 않아 요청을 실행하지 않았습니다.");
+  }, [clearAssistantExternalTransferConsent]);
+
+  const acceptAssistantExternalTransferConsent = useCallback(async () => {
+    const disclosure = assistantExternalTransferDisclosure;
+    if (!disclosure) return null;
+    const pendingAction = assistantExternalTransferPendingRef.current;
+    const acceptanceAttempt = {
+      disclosureId: disclosure.disclosure_id,
+      generation: pendingAction?.generation ?? assistantRequestRef.current,
+    };
+    if (!matchesAssistantExternalTransferAcceptance(
+      assistantExternalTransferDisclosureRef.current,
+      assistantRequestRef.current,
+      acceptanceAttempt,
+    )) return null;
+    if (pendingAction && (
+      pendingAction.assistantRequestId !== disclosure.assistant_request_id
+      || pendingAction.disclosureId !== disclosure.disclosure_id
+      || pendingAction.generation !== acceptanceAttempt.generation
+    )) return null;
+    if (assistantExternalTransferAcceptingRef.current
+      && matchesAssistantExternalTransferAcceptance(
+        assistantExternalTransferDisclosureRef.current,
+        assistantRequestRef.current,
+        assistantExternalTransferAcceptingRef.current,
+      )) return null;
+    assistantExternalTransferAcceptingRef.current = acceptanceAttempt;
+    setAssistantExternalTransferConsentPending(true);
+    let staleDisclosureResponse = false;
+    const isCurrentAcceptance = () => matchesAssistantExternalTransferAcceptance(
+      assistantExternalTransferDisclosureRef.current,
+      assistantRequestRef.current,
+      acceptanceAttempt,
+    );
+    const receipt = await mutate(
+      "assistant-external-consent",
+      async () => {
+        try {
+          return await reportClient.acceptAssistantExternalTransferConsent(
+            disclosure.assistant_request_id,
+            disclosure.disclosure_id,
+            disclosure.disclosure_hash,
+          );
+        } catch (nextError) {
+          if (nextError instanceof ReportApiError && [404, 409].includes(nextError.status)) {
+            staleDisclosureResponse = true;
+            return null;
+          }
+          throw nextError;
+        }
+      },
+      isCurrentAcceptance,
+    );
+    if (assistantExternalTransferAcceptingRef.current === acceptanceAttempt) {
+      assistantExternalTransferAcceptingRef.current = null;
+    }
+    if (!isCurrentAcceptance()) return receipt;
+    setAssistantExternalTransferConsentPending(false);
+    if (staleDisclosureResponse) {
+      if (assistantExternalTransferPendingRef.current === pendingAction && pendingAction) {
+        assistantExternalTransferPendingRef.current = null;
+        pendingAction.resolveCancelled();
+      }
+      installAssistantExternalTransferDisclosure(null);
+      setNotice("동의 정보가 변경되어 최신 공개문을 다시 확인합니다.");
+      const latestDisclosure = await recoverAssistantExternalTransferDisclosure(
+        disclosure.assistant_request_id,
+        acceptanceAttempt.generation,
+        null,
+      );
+      if (!latestDisclosure
+        && assistantRequestRef.current === acceptanceAttempt.generation
+        && assistantExternalTransferDisclosureRef.current === null) {
+        setNotice("동의 정보가 만료되어 요청을 취소했습니다. 요청을 다시 실행해 주세요.");
+      }
+      return null;
+    }
+    if (!receipt) return null;
+    if (assistantExternalTransferPendingRef.current === pendingAction && pendingAction) {
+      assistantExternalTransferPendingRef.current = null;
+      installAssistantExternalTransferDisclosure(null);
+      pendingAction.resume();
+    } else {
+      installAssistantExternalTransferDisclosure(null);
+      setNotice("외부 모델 전송 동의를 저장했습니다. 요청을 다시 실행해 주세요.");
+    }
+    return receipt;
+  }, [
+    assistantExternalTransferDisclosure,
+    installAssistantExternalTransferDisclosure,
+    mutate,
+    recoverAssistantExternalTransferDisclosure,
+    reportClient,
+  ]);
 
   const {
     finalDocument,
@@ -130,13 +373,27 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   }, []);
   const clearAssistantTrace = useCallback(() => {
     assistantRequestRef.current += 1;
+    clearAssistantExternalTransferConsent();
     assistantSessionRef.current = null;
     setAssistantTrace(null);
     setAssistantSession(null);
     setAssistantEvaluation(null);
     setAssistantReview(null);
     setAssistantSuggestionSet(null);
+    setAssistantActionError("");
     setAssistantInstruction("");
+  }, [clearAssistantExternalTransferConsent]);
+  useEffect(() => () => {
+    assistantExternalTransferPendingRef.current?.resolveCancelled();
+    assistantExternalTransferPendingRef.current = null;
+  }, []);
+  useEffect(() => {
+    if (!assistantActionError) setAssistantActionPageCounts(null);
+  }, [assistantActionError]);
+  const ensureAssistantEditable = useCallback(() => {
+    if (!selectedDefinitionRef.current?.archivedAt) return true;
+    setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 보고서를 복원해 주세요.");
+    return false;
   }, []);
 
   const selectDefinition = useCallback((definition: ReportDefinitionVersion | null) => {
@@ -156,20 +413,77 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return definition;
   }, []);
 
-  const loadDefinitions = useCallback(async () => {
+  const loadDefinitionsFor = useCallback(async (collection: DefinitionCollection) => {
+    const request = definitionsRequestRef.current + 1;
+    definitionsRequestRef.current = request;
+    definitionCollectionRef.current = collection;
+    setDefinitionCollectionState(collection);
+    if (collection === "archived") setCreateOpen(false);
     setDefinitionState("loading");
-    const items = await mutate("definitions", () => reportClient.listDefinitions());
+    const items = await mutate(
+      "definitions",
+      () => reportClient.listDefinitions(collection === "archived"),
+      () => definitionsRequestRef.current === request,
+    );
+    if (definitionsRequestRef.current !== request) return null;
     if (items === null) {
       setDefinitionState("error");
       return null;
     }
     const next = sortReportDefinitions(items);
+    definitionsRef.current = next;
     setDefinitions(next);
     setSelectedDefinition((current) => (
-      current ? next.find((item) => isSameReportDefinition(item, current)) ?? current : current
+      current ? next.find((item) => isSameReportDefinition(item, current)) ?? null : current
     ));
     setDefinitionState(next.length ? "ready" : "empty");
     return next;
+  }, [mutate, reportClient]);
+
+  const loadDefinitions = useCallback(
+    () => loadDefinitionsFor(definitionCollectionRef.current),
+    [loadDefinitionsFor],
+  );
+
+  const setDefinitionCollection = useCallback((collection: DefinitionCollection) => {
+    if (collection !== "active" && collection !== "archived") return Promise.resolve(null);
+    if (collection === definitionCollectionRef.current && definitionState !== "error") {
+      return Promise.resolve(definitionsRef.current);
+    }
+    clearFeedback();
+    setSelectedDefinition(null);
+    clearAssistantTrace();
+    return loadDefinitionsFor(collection);
+  }, [clearAssistantTrace, clearFeedback, definitionState, loadDefinitionsFor]);
+
+  const archiveDefinition = useCallback(async (definitionId: string) => {
+    const archived = await mutate(
+      `archive:${definitionId}`,
+      () => reportClient.archiveDefinition(definitionId),
+    );
+    if (!archived) return null;
+    const next = definitionsRef.current.filter((item) => item.definitionId !== definitionId);
+    definitionsRef.current = next;
+    setDefinitions(next);
+    setDefinitionState(next.length ? "ready" : "empty");
+    setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
+    setNotice("보고서를 보관했습니다. 보관함에서 확정 문서를 계속 열람할 수 있습니다.");
+    return archived;
+  }, [mutate, reportClient]);
+
+  const restoreDefinition = useCallback(async (definitionId: string) => {
+    const restored = await mutate(
+      `restore:${definitionId}`,
+      () => reportClient.restoreDefinition(definitionId),
+    );
+    if (!restored) return null;
+    const next = definitionsRef.current.filter((item) => item.definitionId !== definitionId);
+    definitionsRef.current = next;
+    setDefinitions(next);
+    setDefinitionState(next.length ? "ready" : "empty");
+    setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
+    setNotice("보고서를 복원했습니다. 활성 보고서에서 다시 편집할 수 있습니다.");
+    return restored;
   }, [mutate, reportClient]);
 
   const fetchDefinition = useCallback((definition: Pick<ReportDefinitionVersion, "definitionId" | "version">) => (
@@ -189,9 +503,8 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       return null;
     }
     const initialContent = newContent.trim();
-    const blockId = createUuid();
     const blocks: ReportBlockRequest[] = initialContent ? [{
-      block_id: blockId,
+      block_id: createUuid(),
       title: "운영 요약",
       columns: 12,
       type: "text",
@@ -213,10 +526,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setNewTitle("");
     setNewContent("");
     clearAssistantTrace();
-    return { definition, blockId, initialContent };
+    return { definition, initialContent };
   }, [clearAssistantTrace, mutate, newContent, newTitle, reportClient, upsertDefinition]);
 
   const createNextDraft = useCallback(async (definition: ReportDefinitionVersion) => {
+    if (definition.archivedAt) {
+      setError("보관된 보고서는 복원한 뒤 새 버전을 만들 수 있습니다.");
+      return null;
+    }
     if (definition.status !== "approved") return definition;
     const draft = await mutate("next-draft", () => reportClient.createNextDraft(
       definition.definitionId,
@@ -236,6 +553,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       blocks?: ReportDefinitionVersion["blocks"];
     } = {},
   ) => {
+    if (definition.archivedAt) {
+      setError("보관된 보고서는 복원한 뒤 확정할 수 있습니다.");
+      return null;
+    }
     if (definition.status !== "draft") return null;
     const approved = await mutate("approve", () => reportClient.approveDefinition(
       definition.definitionId,
@@ -309,6 +630,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     definition: ReportDefinitionVersion | null = selectedDefinitionRef.current,
     runOptions: ManualRunOptions = {},
   ): Promise<ManualRunResult | null> => {
+    if (definition?.archivedAt) {
+      setError("보관된 보고서는 실행할 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!definition || definition.status !== "approved") return null;
     const receipt = await mutate("run", () => reportClient.createManualRun({
       definition_id: definition.definitionId,
@@ -338,6 +663,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     override: Partial<ScheduleFormValues> = {},
   ) => {
     const values = { cadence, scheduleAt, ...override };
+    if (definition?.archivedAt) {
+      setError("보관된 보고서에는 예약을 만들 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!definition || definition.status !== "approved" || !values.scheduleAt) return null;
     const schedule = await mutate("schedule-create", () => reportClient.createSchedule({
       schedule_id: createUuid(),
@@ -366,27 +695,6 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return schedule;
   }, [mutate, reportClient]);
 
-  const requestAssistantDraft = useCallback(async (
-    artifactId: string,
-    instruction: string,
-    requestOptions: { upsert?: boolean } = {},
-  ) => {
-    const normalizedInstruction = instruction.trim();
-    if (!artifactId || !normalizedInstruction) return null;
-    const request = ++assistantRequestRef.current;
-    const result = await mutate(
-      "assistant",
-      () => reportClient.createAssistantDraft(artifactId, normalizedInstruction),
-      () => assistantRequestRef.current === request,
-    );
-    if (!result || assistantRequestRef.current !== request) return null;
-    if (requestOptions.upsert !== false) upsertDefinition(result.definition);
-    setAssistantTrace({ requestId: result.requestId, ...result.trace });
-    setAssistantInstruction("");
-    setNotice("AI 초안을 만들었습니다. 게시하거나 확정하기 전에 내용을 검토해 주세요.");
-    return result;
-  }, [mutate, reportClient, upsertDefinition]);
-
   const submitAssistantInstruction = useCallback(async (
     definition: ReportDefinitionVersion,
     artifactId: string,
@@ -396,7 +704,12 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     operationScope: ReportAssistantOperationScope = "full_report",
   ) => {
     const normalized = instruction.trim();
+    if (definition.archivedAt) {
+      setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!artifactId || !normalized || definition.status !== "draft") return null;
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
     setAssistantSuggestionSet(null);
     let session = assistantSessionRef.current;
@@ -405,7 +718,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       || session.definition_id !== definition.definitionId
       || session.definition_version !== definition.version
       || session.artifact_id !== artifactId
-      || session.artifact_ids.join(":") !== artifactIds.join(":")
+      || !matchesAssistantArtifactSelection(session, artifactIds)
       || ["completed", "failed", "cancelled"].includes(session.phase)
     ) {
       session = await mutate("assistant", () => reportClient.createAssistantSession(
@@ -417,14 +730,24 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       if (!session || assistantRequestRef.current !== request) return null;
       setAssistantSession(session);
     }
-    const proposal = await mutate("assistant", () => reportClient.submitAssistantMessage(
+    const proposal = await mutate("assistant", () => runWithExternalTransferConsent(
       session.assistant_request_id,
-      normalized,
-      session.phase === "waiting_patch_approval" ? session.patch_request_id : null,
-      selectedBlockId,
-      operationScope,
+      request,
+      () => reportClient.submitAssistantMessage(
+        session.assistant_request_id,
+        normalized,
+        session.phase === "waiting_patch_approval" ? session.patch_request_id : null,
+        selectedBlockId,
+        operationScope,
+      ),
     ), () => assistantRequestRef.current === request);
     if (assistantRequestRef.current !== request) return null;
+    if (proposal === EXTERNAL_TRANSFER_ACTION_CANCELLED) return {
+      status: "external_transfer_declined",
+      message: "외부 모델 전송에 동의하지 않아 요청을 실행하지 않았습니다.",
+      session: null,
+      definition: null,
+    };
     if (!proposal) {
       const recovered = await mutate(
         "assistant-recover",
@@ -455,7 +778,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       session: proposal.session,
       definition: null,
     };
-  }, [mutate, reportClient, upsertDefinition]);
+  }, [mutate, reportClient, runWithExternalTransferConsent, upsertDefinition]);
 
   const reviewAssistantReport = useCallback(async (
     definition: ReportDefinitionVersion,
@@ -463,6 +786,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     artifactIds: readonly string[] = [artifactId],
     selectedBlockId: string | null = null,
   ) => {
+    if (definition.archivedAt) {
+      setError("보관된 보고서에서는 AI 품질 검토를 실행할 수 없습니다. 먼저 복원해 주세요.");
+      return null;
+    }
     if (!artifactId || definition.status !== "draft") return null;
     const request = ++assistantRequestRef.current;
     setAssistantSuggestionSet(null);
@@ -472,7 +799,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       || session.definition_id !== definition.definitionId
       || session.definition_version !== definition.version
       || session.artifact_id !== artifactId
-      || session.artifact_ids.join(":") !== artifactIds.join(":")
+      || !matchesAssistantArtifactSelection(session, artifactIds)
       || ["completed", "failed", "cancelled"].includes(session.phase)
     ) {
       session = await mutate("assistant-review", () => reportClient.createAssistantSession(
@@ -487,9 +814,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     if (session.phase !== "ready") return null;
     const review = await mutate(
       "assistant-review",
-      () => reportClient.reviewAssistantSession(session.assistant_request_id, selectedBlockId),
+      () => runWithExternalTransferConsent(
+        session.assistant_request_id,
+        request,
+        () => reportClient.reviewAssistantSession(session.assistant_request_id, selectedBlockId),
+      ),
       () => assistantRequestRef.current === request,
     );
+    if (review === EXTERNAL_TRANSFER_ACTION_CANCELLED) return null;
     if (!review || assistantRequestRef.current !== request) return null;
     setAssistantReview(review);
     setAssistantSuggestionSet({ selectedBlockId, suggestions: review.suggestions });
@@ -497,12 +829,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       ? "AI 품질 검토를 마쳤습니다. 원하는 항목을 선택해 수정 지시를 확인해 주세요."
       : "AI 품질 검토에서 지원되는 문제를 찾지 못했습니다.");
     return review;
-  }, [mutate, reportClient]);
+  }, [mutate, reportClient, runWithExternalTransferConsent]);
 
   const restoreAssistantSession = useCallback(async (
     assistantRequestId: string,
     definition: Pick<ReportDefinitionVersion, "definitionId" | "version">,
   ) => {
+    if (!ensureAssistantEditable()) return null;
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
     const session = await mutate(
       "assistant-recover",
@@ -516,18 +850,28 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     ) return null;
     setAssistantSession(session);
     setAssistantSuggestionSet(null);
+    if (!["completed", "failed", "cancelled"].includes(session.phase)) {
+      await recoverAssistantExternalTransferDisclosure(session.assistant_request_id, request);
+    }
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, recoverAssistantExternalTransferDisclosure, reportClient]);
 
   const retryAssistantSession = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     if (!current?.retryable || current.phase !== "failed") return null;
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
     const session = await mutate(
       "assistant-retry",
-      () => reportClient.retryAssistantSession(current.assistant_request_id),
+      () => runWithExternalTransferConsent(
+        current.assistant_request_id,
+        request,
+        () => reportClient.retryAssistantSession(current.assistant_request_id),
+      ),
       () => assistantRequestRef.current === request,
     );
+    if (session === EXTERNAL_TRANSFER_ACTION_CANCELLED) return null;
     if (!session || assistantRequestRef.current !== request) return null;
     setAssistantSession(session);
     setAssistantEvaluation(null);
@@ -536,13 +880,15 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantInstruction("");
     setNotice("새 Assistant 세션을 열었습니다. 지시를 다시 입력해 주세요.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient, runWithExternalTransferConsent]);
 
   const cancelAssistantSession = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     if (!current || !["ready", "waiting_patch_approval", "waiting_approval"].includes(current.phase)) {
       return null;
     }
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
     const session = await mutate(
       "assistant-cancel",
@@ -555,35 +901,37 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSuggestionSet(null);
     setNotice("Report Assistant 요청을 취소했습니다. 보고서는 변경되지 않았습니다.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   const approveAssistantRequest = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.analysis_plan?.request_id;
     if (!current || !requestId) return null;
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
-    const session = await mutate("assistant-approval", () => reportClient.approveAssistantPlan(
+    const session = await mutate("assistant-approval", () => runWithExternalTransferConsent(
       current.assistant_request_id,
-      requestId,
+      request,
+      () => reportClient.approveAssistantPlan(
+        current.assistant_request_id,
+        requestId,
+      ),
     ), () => assistantRequestRef.current === request);
+    if (session === EXTERNAL_TRANSFER_ACTION_CANCELLED) return null;
     if (!session || assistantRequestRef.current !== request) return null;
     setAssistantSession(session);
     setAssistantSuggestionSet(null);
-    if (session.phase !== "completed" || !session.result_revision) return { session, definition: null };
-    const definition = await mutate("assistant-revision", () => reportClient.getDefinition(
-      session.definition_id,
-      session.result_revision as number,
-    ), () => assistantRequestRef.current === request);
-    if (!definition || assistantRequestRef.current !== request) return { session, definition: null };
-    upsertDefinition(definition);
-    setNotice(`AI가 검증된 Artifact를 반영한 v${definition.version} 초안을 만들었습니다.`);
-    return { session, definition };
-  }, [mutate, reportClient, upsertDefinition]);
+    setNotice("새 분석 결과를 반영한 변경안을 준비했습니다. 적용할 내용을 검토해 주세요.");
+    return { session, definition: null };
+  }, [ensureAssistantEditable, mutate, reportClient, runWithExternalTransferConsent]);
 
   const rejectAssistantRequest = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.analysis_plan?.request_id;
     if (!current || !requestId) return null;
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
     const session = await mutate("assistant-rejection", () => reportClient.rejectAssistantPlan(
       current.assistant_request_id,
@@ -594,12 +942,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSuggestionSet(null);
     setNotice("새 데이터 분석 계획을 거절했습니다.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   const approveAssistantPatch = useCallback(async (operationIndexes?: readonly number[]) => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.patch_request_id;
     if (!current || !requestId) return null;
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
     const session = await mutate("assistant-patch-approval", () => reportClient.approveAssistantPatch(
       current.assistant_request_id,
@@ -618,12 +968,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     upsertDefinition(definition);
     setNotice(`검토한 AI 변경안을 v${definition.version} 초안으로 저장했습니다.`);
     return { session, definition };
-  }, [mutate, reportClient, upsertDefinition]);
+  }, [ensureAssistantEditable, mutate, reportClient, upsertDefinition]);
 
   const rejectAssistantPatch = useCallback(async () => {
+    if (!ensureAssistantEditable()) return null;
     const current = assistantSessionRef.current;
     const requestId = current?.patch_request_id;
     if (!current || !requestId) return null;
+    setAssistantActionError("");
     const request = ++assistantRequestRef.current;
     const session = await mutate("assistant-patch-rejection", () => reportClient.rejectAssistantPatch(
       current.assistant_request_id,
@@ -634,7 +986,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setAssistantSuggestionSet(null);
     setNotice("AI 변경안을 취소했습니다. 보고서는 변경되지 않았습니다.");
     return session;
-  }, [mutate, reportClient]);
+  }, [ensureAssistantEditable, mutate, reportClient]);
 
   useEffect(() => {
     if (!autoLoad) return;
@@ -698,6 +1050,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     visibleDefinitions,
     query,
     statusFilter,
+    definitionCollection,
     createOpen,
     newTitle,
     newContent,
@@ -723,8 +1076,13 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     assistantEvaluation,
     assistantReview,
     assistantSuggestionSet,
+    assistantActionError,
+    assistantActionPageCounts,
+    assistantExternalTransferDisclosure,
+    assistantExternalTransferConsentPending,
     setQuery,
     setStatusFilter,
+    setDefinitionCollection,
     setCreateOpen,
     setNewTitle,
     setNewContent,
@@ -735,12 +1093,16 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setCadence,
     setScheduleAt,
     setAssistantInstruction,
+    acceptAssistantExternalTransferConsent,
+    declineAssistantExternalTransferConsent,
     clearFeedback,
     clearAssistantTrace,
     mutate,
     selectDefinition,
     upsertDefinition,
     loadDefinitions,
+    archiveDefinition,
+    restoreDefinition,
     fetchDefinition,
     findLatestDraft,
     createDefinition,
@@ -754,7 +1116,6 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     loadSchedules,
     createSchedule,
     setScheduleEnabled,
-    requestAssistantDraft,
     submitAssistantInstruction,
     reviewAssistantReport,
     restoreAssistantSession,
@@ -765,16 +1126,17 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     retryAssistantSession,
     cancelAssistantSession,
   }), [
-    analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, assistantInstruction,
-    assistantEvaluation, assistantReview, assistantSession, assistantSuggestionSet, assistantTrace, cadence,
+    acceptAssistantExternalTransferConsent, analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, archiveDefinition, assistantInstruction,
+    assistantActionError, assistantActionPageCounts, assistantEvaluation, assistantExternalTransferConsentPending, assistantExternalTransferDisclosure,
+    assistantReview, assistantSession, assistantSuggestionSet, assistantTrace, cadence,
     clearAssistantTrace, clearFeedback, createDefinition, createNextDraft, createOpen, createSchedule,
-    definitionState, definitions, error, fetchDefinition, filteredRuns, finalDocument,
+    declineAssistantExternalTransferConsent, definitionCollection, definitionState, definitions, error, fetchDefinition, filteredRuns, finalDocument,
     finalDocumentState, findLatestDraft, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
-    pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient, requestAssistantDraft,
-    restoreAssistantSession, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
+    pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient,
+    restoreAssistantSession, restoreDefinition, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
     runs, scheduleAt, schedules, selectedDefinition, selectedRun, selectedSchedules,
-    selectDefinition, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
+    selectDefinition, setDefinitionCollection, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
     reviewAssistantReport, submitAssistantInstruction, visibleDefinitions, visibleRunCount, visibleRuns,
   ]);
 }

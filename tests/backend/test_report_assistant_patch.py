@@ -931,6 +931,8 @@ class ReportAssistantPatchTest(unittest.TestCase):
                 "title": "차트",
             },
             {"op": "add_text", "title": "요약", "content": "내용", "evidence_refs": ["artifact_narrative"], "x": 0, "y": 0},
+            {"op": "add_text", "content": "내용", "evidence_refs": ["artifact_narrative"]},
+            {"op": "add_text", "title": "   ", "content": "내용", "evidence_refs": ["artifact_narrative"]},
             {"op": "update_text", "block_id": "summary"},
         )
         for operation in invalid_operations:

@@ -1,3 +1,5 @@
+"""corpus 본문에서 재현 가능한 긍정 질문과 고정된 범위 밖 품질 질문을 생성한다."""
+
 from __future__ import annotations
 
 import math
@@ -9,6 +11,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class QualityQuery:
+    """품질 평가 질문의 식별자·본문·기대 매뉴얼·질문 유형을 담는 불변 항목이다."""
+
     query_id: str
     query: str
     expected_manual_id: str | None
@@ -16,6 +20,8 @@ class QualityQuery:
 
 
 class SyntheticQualitySuite:
+    """문서별 특징적인 문장을 골라 제목·상황·문맥 검색 질문과 부정 질문을 만든다."""
+
     SEED = 20260803
     SCHEMA_VERSION = "1.1"
     NEGATIVE_QUERIES = (
@@ -28,6 +34,12 @@ class SyntheticQualitySuite:
     )
 
     def build(self, sources: list[dict[str, str]]) -> list[QualityQuery]:
+        """매뉴얼 원문 목록에서 seed가 고정된 문서별 긍정 3문항과 부정 문항을 반환한다.
+
+        본문 후보가 부족한 문서는 제목을 대체 문맥으로 사용하므로 문항 수와 순서는 같은
+        입력 corpus에 대해 항상 동일하다.
+        """
+
         randomizer = random.Random(self.SEED)
         candidates = {
             source["manual_id"]: self._body_sentences(

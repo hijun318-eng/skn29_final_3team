@@ -10,13 +10,21 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
         self.router = create_report_router(InMemoryReportRepository())
 
     def test_route_manifest_is_ready_for_r4_registration(self):
-        self.assertEqual(10, len(REPORT_ROUTES))
+        self.assertEqual(12, len(REPORT_ROUTES))
         self.assertIn(("POST", "/reports/definitions", "create_definition"), REPORT_ROUTES)
         self.assertIn(
             ("POST", "/reports/definitions/{definition_id}/versions/{version}/approve", "approve_version"),
             REPORT_ROUTES,
         )
         self.assertIn(("GET", "/reports/definitions", "list_definitions"), REPORT_ROUTES)
+        self.assertIn(
+            ("POST", "/reports/definitions/{definition_id}/archive", "archive_definition"),
+            REPORT_ROUTES,
+        )
+        self.assertIn(
+            ("POST", "/reports/definitions/{definition_id}/restore", "restore_definition"),
+            REPORT_ROUTES,
+        )
         self.assertIn(
             ("GET", "/reports/definitions/{definition_id}/versions/{version}", "get_version"),
             REPORT_ROUTES,
@@ -174,12 +182,97 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(409, immutable.exception.status_code)
         self.assertIn("Artifact view block 제목", str(immutable.exception.detail))
 
+        migrated = await self.router.replace_draft_blocks(
+            "report-artifact-title",
+            1,
+            {
+                "blocks": [{
+                    "block_id": "summary-atomic-1",
+                    "title": "객실 매출 분석 · 요약",
+                    "artifact_id": "artifact-1",
+                    "type": "artifact",
+                    "columns": 8,
+                    "w": 8,
+                    "h": 5,
+                    "content": '{"visibleViews":["summary"]}',
+                }],
+                "expected_draft_revision": 1,
+            },
+        )
+        self.assertEqual("summary-atomic-1", migrated["blocks"][0]["block_id"])
+        self.assertEqual("객실 매출 분석 · 요약", migrated["blocks"][0]["title"])
+
     async def test_router_rejects_unknown_fields(self):
         with self.assertRaises(ReportRouteError) as invalid:
             await self.router.create_definition({
                 "definition_id": "report-1", "title": "보고서", "blocks": [], "role": "admin",
             })
         self.assertEqual(422, invalid.exception.status_code)
+
+    async def test_archive_is_idempotent_read_only_and_explicitly_listed(self):
+        await self.router.create_definition({
+            "definition_id": "report-archive",
+            "title": "보관 계약 보고서",
+            "blocks": [],
+        })
+
+        archived = await self.router.archive_definition(
+            "report-archive", actor_role="analyst", trace_id="archive-trace"
+        )
+        repeated = await self.router.archive_definition(
+            "report-archive", actor_role="analyst", trace_id="archive-retry"
+        )
+
+        self.assertTrue(archived["archived"])
+        self.assertEqual(archived["archived_at"], repeated["archived_at"])
+        self.assertEqual([], (await self.router.list_definitions())["items"])
+        archived_items = (
+            await self.router.list_definitions(archived=True)
+        )["items"]
+        self.assertEqual(1, len(archived_items))
+        self.assertEqual("report-archive", archived_items[0]["definition_id"])
+        self.assertIsNotNone(
+            (await self.router.get_version("report-archive", 1))["archived_at"]
+        )
+        with self.assertRaises(ReportRouteError) as read_only:
+            await self.router.replace_draft_blocks(
+                "report-archive",
+                1,
+                {"blocks": [], "expected_draft_revision": 1},
+            )
+        self.assertEqual(409, read_only.exception.status_code)
+
+        restored = await self.router.restore_definition(
+            "report-archive", actor_role="analyst", trace_id="restore-trace"
+        )
+        repeated_restore = await self.router.restore_definition(
+            "report-archive", actor_role="analyst", trace_id="restore-retry"
+        )
+        self.assertFalse(restored["archived"])
+        self.assertEqual(restored, repeated_restore)
+        self.assertEqual(1, len((await self.router.list_definitions())["items"]))
+
+    async def test_archive_rejects_a_queued_manual_run(self):
+        await self.router.create_definition({
+            "definition_id": "report-running",
+            "title": "실행 대기 보고서",
+            "blocks": [],
+        })
+        approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
+        await self.router.approve_version("report-running", 1, approved_at)
+        await self.router.create_manual_run_command({
+            "definition_id": "report-running",
+            "version": 1,
+            "as_of": approved_at,
+            "idempotency_key": "archive-blocker",
+        })
+
+        with self.assertRaises(ReportRouteError) as blocked:
+            await self.router.archive_definition(
+                "report-running", actor_role="analyst", trace_id="blocked-trace"
+            )
+        self.assertEqual(409, blocked.exception.status_code)
+        self.assertEqual("REPORT_ARCHIVE_IN_PROGRESS", blocked.exception.detail)
 
     async def test_draft_revision_retries_are_idempotent_and_stale_changes_conflict(self):
         created = await self.router.create_definition({

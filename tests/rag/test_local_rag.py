@@ -147,16 +147,24 @@ class OperationalControlTest(unittest.TestCase):
             selected_document_ids=(),
             model_revision="text-embedding-3-large:d1024",
             embedding_dimension=1024,
+            corpus_release_id="11111111-1111-4111-8111-111111111111",
+            corpus_manifest_sha256="b" * 64,
+            processing_profile_sha256="c" * 64,
+            answer_query="정규화된 질문",
         )
 
         self.assertEqual(
             payload["retrieval_release"],
             {
-                "schema_version": "RagRetrievalRelease.v1",
+                "schema_version": "RagRetrievalRelease.v2",
+                "release_id": "11111111-1111-4111-8111-111111111111",
                 "model_revision": "text-embedding-3-large:d1024",
                 "embedding_dimension": 1024,
+                "corpus_manifest_sha256": "b" * 64,
+                "processing_profile_sha256": "c" * 64,
             },
         )
+        self.assertEqual(payload["answer_query"], "정규화된 질문")
 
     def test_approved_two_document_snapshot_wins_over_new_vector_rank(self) -> None:
         self.assertEqual(
@@ -198,26 +206,56 @@ class OperationalControlTest(unittest.TestCase):
         self.assertNotIn("role", properties)
         self.assertIn("recent_utterances", properties)
         self.assertIn("selected_document_ids", properties)
+        search_required = set(
+            schema["components"]["schemas"]["ManualSearchRequest"]["required"]
+        )
+        answer_required = set(
+            schema["components"]["schemas"]["ManualAnswerRequest"]["required"]
+        )
+        self.assertTrue({"trace_id", "actor_hash"}.issubset(search_required))
+        self.assertTrue({"trace_id", "actor_hash"}.issubset(answer_required))
 
     def test_search_signature_covers_context_and_document_selection(self) -> None:
-        base = canonical_search_request("그 다음은?", 3, ("예약 확인",), ())
-        changed_context = canonical_search_request("그 다음은?", 3, ("결제 확인",), ())
+        identity = {"trace_id": "trace-rag", "actor_hash": "a" * 64}
+        base = canonical_search_request(
+            "그 다음은?", 3, ("예약 확인",), (), **identity
+        )
+        changed_context = canonical_search_request(
+            "그 다음은?", 3, ("결제 확인",), (), **identity
+        )
         changed_selection = canonical_search_request(
-            "그 다음은?", 3, ("예약 확인",), ("SOP-FRT-003",)
+            "그 다음은?",
+            3,
+            ("예약 확인",),
+            ("SOP-FRT-003",),
+            **identity,
+        )
+        changed_identity = canonical_search_request(
+            "그 다음은?",
+            3,
+            ("예약 확인",),
+            (),
+            trace_id="trace-other",
+            actor_hash="a" * 64,
         )
         self.assertNotEqual(base, changed_context)
         self.assertNotEqual(base, changed_selection)
+        self.assertNotEqual(base, changed_identity)
 
     def test_answer_signature_covers_evidence_content_and_order(self) -> None:
+        identity = {"trace_id": "trace-rag", "actor_hash": "a" * 64}
         base = canonical_answer_request(
             "예약금 처리 기준",
             (
                 {"evidence_id": "E1", "text": "내용 A", "page": 1},
                 {"text": "내용 B", "evidence_id": "E2"},
             ),
+            **identity,
         )
         changed_text = canonical_answer_request(
-            "예약금 처리 기준", ({"evidence_id": "E1", "text": "내용 C"},)
+            "예약금 처리 기준",
+            ({"evidence_id": "E1", "text": "내용 C"},),
+            **identity,
         )
         reordered = canonical_answer_request(
             "예약금 처리 기준",
@@ -225,9 +263,20 @@ class OperationalControlTest(unittest.TestCase):
                 {"text": "내용 B", "evidence_id": "E2"},
                 {"evidence_id": "E1", "text": "내용 A", "page": 1},
             ),
+            **identity,
+        )
+        changed_actor = canonical_answer_request(
+            "예약금 처리 기준",
+            (
+                {"evidence_id": "E1", "text": "내용 A", "page": 1},
+                {"text": "내용 B", "evidence_id": "E2"},
+            ),
+            trace_id="trace-rag",
+            actor_hash="b" * 64,
         )
         self.assertNotEqual(base, changed_text)
         self.assertNotEqual(base, reordered)
+        self.assertNotEqual(base, changed_actor)
 
     def test_signed_gateway_request_is_verified_once(self) -> None:
         secret = "local-test-secret-with-at-least-32-characters"

@@ -14,15 +14,22 @@ from .domain import (
     REPORT_CONTRACT_VERSION,
     ReportBlock,
     ReportBlockRun,
+    ReportDefinitionLifecycle,
     ReportDefinitionVersion,
     ReportRun,
     RunStatus,
 )
-from .repository import ReportRepository, ReportRevisionConflict
+from .repository import (
+    ReportLifecycleConflict,
+    ReportRepository,
+    ReportRevisionConflict,
+)
 
 REPORT_ROUTES: Final = (
     ("POST", "/reports/definitions", "create_definition"),
     ("GET", "/reports/definitions", "list_definitions"),
+    ("POST", "/reports/definitions/{definition_id}/archive", "archive_definition"),
+    ("POST", "/reports/definitions/{definition_id}/restore", "restore_definition"),
     ("POST", "/reports/definitions/{definition_id}/versions/{version}/approve", "approve_version"),
     ("POST", "/reports/definitions/{definition_id}/versions/{version}/drafts", "create_next_draft"),
     ("GET", "/reports/definitions/{definition_id}/versions/{version}", "get_version"),
@@ -73,6 +80,23 @@ class ReportRouter:
             "orientation": version.orientation,
             "currency_display_unit": version.currency_display_unit,
             "draft_revision": version.draft_revision,
+            "archived_at": (
+                version.archived_at.isoformat() if version.archived_at else None
+            ),
+            "archived_by": version.archived_by,
+        }
+
+    @staticmethod
+    def _lifecycle_response(
+        lifecycle: ReportDefinitionLifecycle,
+    ) -> dict[str, Any]:
+        return {
+            "definition_id": lifecycle.definition_id,
+            "archived": lifecycle.archived,
+            "archived_at": (
+                lifecycle.archived_at.isoformat() if lifecycle.archived_at else None
+            ),
+            "archived_by": lifecycle.archived_by,
         }
 
     @staticmethod
@@ -185,13 +209,61 @@ class ReportRouter:
         except KeyError as error:
             raise ReportRouteError(404, str(error)) from error
 
-    async def list_definitions(self) -> dict[str, Any]:
-        """저장소가 허용한 정의 버전들을 계약 버전이 포함된 items 응답으로 직렬화한다."""
-        versions = await _repository_result(self.repository.list_definitions())
+    async def list_definitions(self, *, archived: bool = False) -> dict[str, Any]:
+        """기본 active 또는 명시한 archived 정의 버전을 계약 응답으로 직렬화한다."""
+        versions = await _repository_result(
+            self.repository.list_definitions(archived=archived)
+        )
         return {
             "contract_version": REPORT_CONTRACT_VERSION,
             "items": [self._response(version) for version in versions],
         }
+
+    async def archive_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """소유 보고서를 비파괴 보관하며 진행 상태 충돌과 미존재를 구분한다."""
+
+        try:
+            lifecycle = await _repository_result(
+                self.repository.archive_definition(
+                    definition_id,
+                    actor_role=actor_role,
+                    trace_id=trace_id,
+                )
+            )
+            return self._lifecycle_response(lifecycle)
+        except KeyError as error:
+            raise ReportRouteError(404, str(error.args[0])) from error
+        except (ReportLifecycleConflict, ValueError) as error:
+            raise ReportRouteError(409, str(error)) from error
+
+    async def restore_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """소유 보고서를 복원하고 schedule 비활성 상태는 그대로 보존한다."""
+
+        try:
+            lifecycle = await _repository_result(
+                self.repository.restore_definition(
+                    definition_id,
+                    actor_role=actor_role,
+                    trace_id=trace_id,
+                )
+            )
+            return self._lifecycle_response(lifecycle)
+        except KeyError as error:
+            raise ReportRouteError(404, str(error.args[0])) from error
+        except ValueError as error:
+            raise ReportRouteError(409, str(error)) from error
 
     async def replace_draft_blocks(
         self,

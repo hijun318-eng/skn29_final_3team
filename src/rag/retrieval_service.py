@@ -1,3 +1,5 @@
+"""query embedding과 접근 결정을 repository 검색·선택적 reranking으로 전달한다."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -8,6 +10,8 @@ from .vector_models import VectorSearchResult
 
 
 class VectorRetrievalService:
+    """HYBRID mode와 reranker 가용성을 검증해 반환 점수·개수 Gate를 적용한다."""
+
     def __init__(self, repository: PgVectorRepository, reranker: 'RerankerProvider | None' = None) -> None:
         self._repository = repository
         self._reranker = reranker
@@ -21,6 +25,10 @@ class VectorRetrievalService:
         retrieval_mode: str = "HYBRID",
         maximum_chunks_per_document: int = 1,
     ) -> list[VectorSearchResult]:
+        """질문·vector·role·score·문서 제한을 적용해 순위 검색 결과를 반환한다."""
+
+        if retrieval_mode == "HYBRID_RERANK" and self._reranker is None:
+            raise RuntimeError("RAG reranker is not configured in this runtime")
         # Handle rerank top_k logic
         db_top_k = decision.top_k
         if retrieval_mode == "HYBRID_RERANK":

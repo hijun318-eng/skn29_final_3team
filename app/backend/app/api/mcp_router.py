@@ -1,18 +1,21 @@
-"""MCP JSON-RPC tool 목록·호출을 origin/protocol/role 검증과 owner-scoped analysis 조회에 연결한다."""
+"""MCP JSON-RPC 목록·호출을 versioned Analysis·RAG·ML Tool 경계에 연결한다."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
+import logging
 import os
+import re
 import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC
-from typing import Annotated, Any
-from uuid import UUID, uuid4
+from typing import Annotated, Any, Literal
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import text
@@ -23,10 +26,17 @@ from app.adapters.mcp_tool_rate_limit_repository import (
 )
 from app.auth import AuthenticationError, Principal
 from app.context import TokenAuthenticator, bearer_auth, token_authenticator
+from app.contracts import RuntimeFeature
 from app.database import DatabaseConfigurationError, get_sessionmaker, session_scope
 from app.ports.mcp_tool import (
+    MCPToolDescriptor,
     MCPToolDispatchError,
     MCPToolInfrastructureError,
+)
+from app.runtime_features import runtime_feature_enabled
+from app.services.mcp_agent_tools import (
+    ml_predict_descriptor,
+    rag_answer_descriptor,
 )
 from app.services.mcp_tool_registry import (
     ANALYSIS_GET_RUN_ANNOTATIONS,
@@ -35,8 +45,10 @@ from app.services.mcp_tool_registry import (
     ANALYSIS_GET_RUN_NAME,
     ANALYSIS_GET_RUN_OUTPUT_SCHEMA,
     ANALYSIS_GET_RUN_SEMANTIC_VERSION,
+    ANALYSIS_GET_RUN_TITLE,
     ANALYSIS_GET_RUN_TIMEOUT_SECONDS,
     ANALYSIS_GET_RUN_TOOL_ID,
+    MCPToolAccess,
     MCPToolDispatcher,
     MCPToolRegistry,
     _analysis_get_run_output,
@@ -60,6 +72,7 @@ TOOL_RATE_LIMITED = 42900
 TOOL_ID = ANALYSIS_GET_RUN_TOOL_ID
 TOOL_NAME = ANALYSIS_GET_RUN_NAME
 TOOL_SEMANTIC_VERSION = ANALYSIS_GET_RUN_SEMANTIC_VERSION
+TOOL_TITLE = ANALYSIS_GET_RUN_TITLE
 TOOL_DESCRIPTION = ANALYSIS_GET_RUN_DESCRIPTION
 TOOL_TRANSPORT = "MCP_STREAMABLE_HTTP"
 TOOL_TIMEOUT_SECONDS = ANALYSIS_GET_RUN_TIMEOUT_SECONDS
@@ -70,6 +83,231 @@ TOOL_ANNOTATIONS = ANALYSIS_GET_RUN_ANNOTATIONS
 
 mcp_router = APIRouter()
 MCPInfrastructureError = MCPToolInfrastructureError
+MCP_REJECTED_TOOL_ACTION = "MCP_TOOL_CALL_REJECTED"
+_SAFE_AUDIT_TOOL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+MCPRejectedCallReason = Literal[
+    "UNKNOWN_TOOL",
+    "DISABLED_TOOL",
+    "REGISTRY_CONTRACT_DRIFT",
+]
+_REJECTED_CALL_REASONS = frozenset(
+    {"UNKNOWN_TOOL", "DISABLED_TOOL", "REGISTRY_CONTRACT_DRIFT"}
+)
+_REJECTED_CALL_BUCKET_PREFIX = "answervice:mcp:rejected-call:"
+_MCP_RESPONSE_MEDIA_TYPES = frozenset({"application/json", "text/event-stream"})
+logger = logging.getLogger(__name__)
+
+_MCP_REQUEST_ID_SCHEMA = {
+    "oneOf": [{"type": "string"}, {"type": "integer"}],
+}
+_MCP_REQUEST_META_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "io.modelcontextprotocol/protocolVersion": {
+            "type": "string",
+            "const": MCP_PROTOCOL_VERSION,
+        },
+        "io.modelcontextprotocol/clientCapabilities": {"type": "object"},
+        "io.modelcontextprotocol/clientInfo": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "version": {"type": "string", "minLength": 1},
+            },
+            "required": ["name", "version"],
+            "additionalProperties": True,
+        },
+    },
+    "required": [
+        "io.modelcontextprotocol/protocolVersion",
+        "io.modelcontextprotocol/clientCapabilities",
+    ],
+    "additionalProperties": True,
+}
+
+
+def _mcp_request_schema(method: str, params: Mapping[str, Any]) -> dict[str, Any]:
+    """OpenAPI에 실제로 수용하는 method별 JSON-RPC request shape를 만든다."""
+
+    return {
+        "type": "object",
+        "properties": {
+            "jsonrpc": {"type": "string", "const": "2.0"},
+            "id": _MCP_REQUEST_ID_SCHEMA,
+            "method": {"type": "string", "const": method},
+            "params": dict(params),
+        },
+        "required": ["jsonrpc", "id", "method", "params"],
+        "additionalProperties": True,
+    }
+
+
+_MCP_METADATA_ONLY_PARAMS_SCHEMA = {
+    "type": "object",
+    "properties": {"_meta": _MCP_REQUEST_META_SCHEMA},
+    "required": ["_meta"],
+    "additionalProperties": False,
+}
+_MCP_JSON_RPC_REQUEST_SCHEMA = {
+    "oneOf": [
+        _mcp_request_schema("server/discover", _MCP_METADATA_ONLY_PARAMS_SCHEMA),
+        _mcp_request_schema("tools/list", _MCP_METADATA_ONLY_PARAMS_SCHEMA),
+        _mcp_request_schema(
+            "tools/call",
+            {
+                "type": "object",
+                "properties": {
+                    "_meta": _MCP_REQUEST_META_SCHEMA,
+                    "name": {"type": "string", "minLength": 1},
+                    "arguments": {"type": "object"},
+                },
+                "required": ["_meta", "name"],
+                "additionalProperties": False,
+            },
+        ),
+    ]
+}
+_MCP_JSON_RPC_RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "jsonrpc": {"type": "string", "const": "2.0"},
+        "id": _MCP_REQUEST_ID_SCHEMA,
+        "result": {
+            "type": "object",
+            "properties": {
+                "resultType": {"type": "string", "const": "complete"},
+                "_meta": {"type": "object"},
+            },
+            "required": ["resultType", "_meta"],
+        },
+    },
+    "required": ["jsonrpc", "id", "result"],
+    "additionalProperties": False,
+}
+_MCP_JSON_RPC_ERROR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "jsonrpc": {"type": "string", "const": "2.0"},
+        "id": _MCP_REQUEST_ID_SCHEMA,
+        "error": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "integer"},
+                "message": {"type": "string"},
+                "data": {},
+            },
+            "required": ["code", "message"],
+            "additionalProperties": False,
+        },
+    },
+    "required": ["jsonrpc", "error"],
+    "additionalProperties": False,
+}
+_MCP_JSON_RPC_RESPONSE_SCHEMA = {
+    "oneOf": [_MCP_JSON_RPC_RESULT_SCHEMA, _MCP_JSON_RPC_ERROR_SCHEMA]
+}
+_MCP_POST_OPENAPI_EXTRA = {
+    "parameters": [
+        {
+            "name": "Accept",
+            "in": "header",
+            "required": True,
+            "schema": {
+                "type": "string",
+                "example": "application/json, text/event-stream",
+            },
+        },
+        {
+            "name": "MCP-Protocol-Version",
+            "in": "header",
+            "required": True,
+            "schema": {"type": "string", "const": MCP_PROTOCOL_VERSION},
+        },
+        {
+            "name": "Mcp-Method",
+            "in": "header",
+            "required": True,
+            "schema": {"type": "string"},
+        },
+        {
+            "name": "Mcp-Name",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string"},
+        },
+        {
+            "name": "Mcp-Session-Id",
+            "in": "header",
+            "required": False,
+            "deprecated": True,
+            "description": "2026-07-28 stateless transport ignores this legacy header.",
+            "schema": {"type": "string"},
+        },
+    ],
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {"schema": _MCP_JSON_RPC_REQUEST_SCHEMA},
+        },
+    },
+}
+_COMMON_ERROR_RESPONSE_SCHEMA = {"$ref": "#/components/schemas/ErrorResponse"}
+
+
+def _mcp_openapi_response(
+    description: str,
+    schema: Mapping[str, Any] = _MCP_JSON_RPC_RESPONSE_SCHEMA,
+) -> dict[str, Any]:
+    """한 HTTP 상태의 실제 JSON 응답 계약을 OpenAPI 항목으로 만든다."""
+
+    return {
+        "description": description,
+        "content": {"application/json": {"schema": dict(schema)}},
+    }
+
+
+_MCP_POST_RESPONSES = {
+    200: _mcp_openapi_response("JSON-RPC result or Tool-level error"),
+    400: _mcp_openapi_response(
+        "Malformed JSON-RPC request or mirrored-header mismatch"
+    ),
+    401: _mcp_openapi_response(
+        "Bearer authentication required",
+        _COMMON_ERROR_RESPONSE_SCHEMA,
+    ),
+    403: _mcp_openapi_response(
+        "Origin or authorization denied",
+        {
+            "oneOf": [
+                _MCP_JSON_RPC_ERROR_SCHEMA,
+                _COMMON_ERROR_RESPONSE_SCHEMA,
+            ]
+        },
+    ),
+    404: _mcp_openapi_response("JSON-RPC method not found"),
+    406: _mcp_openapi_response("Required response media types are not accepted"),
+    415: _mcp_openapi_response("Request body is not application/json"),
+    429: {
+        **_mcp_openapi_response("Tool call rate limited"),
+        "headers": {
+            "Retry-After": {"schema": {"type": "integer", "minimum": 1}},
+            "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+        },
+    },
+    500: _mcp_openapi_response(
+        "Unhandled server failure",
+        _COMMON_ERROR_RESPONSE_SCHEMA,
+    ),
+    503: _mcp_openapi_response(
+        "Authentication, MCP registry, quota, Tool, or audit unavailable",
+        {
+            "oneOf": [
+                _MCP_JSON_RPC_ERROR_SCHEMA,
+                _COMMON_ERROR_RESPONSE_SCHEMA,
+            ]
+        },
+    ),
+}
 
 
 def _database_url() -> str:
@@ -142,11 +380,69 @@ def _rpc_infrastructure_error(
     )
 
 
+def _rpc_rate_limited(
+    request_id: str | int,
+    quota: McpToolRateLimitDecision,
+) -> JSONResponse:
+    """Tool 종류를 노출하지 않는 공통 quota 거부 응답을 만든다."""
+
+    return _rpc_error(
+        request_id,
+        TOOL_RATE_LIMITED,
+        "Rate limit exceeded",
+        429,
+        {
+            "code": "RATE_LIMITED",
+            "limit": quota.limit,
+            "remaining": 0,
+            "retryAfterSeconds": quota.retry_after_seconds,
+            "resetAt": quota.window_end.astimezone(UTC)
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },
+        headers={
+            "Retry-After": str(quota.retry_after_seconds),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 def _origin_allowed(origin: str | None) -> bool:
     if origin is None:
         return True
     allowed = {item.strip() for item in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if item.strip()}
     return origin in allowed
+
+
+def _is_json_content_type(value: str | None) -> bool:
+    """Charset parameter를 허용하되 JSON 이외 request media type은 거부한다."""
+
+    if value is None:
+        return False
+    return value.split(";", 1)[0].strip().lower() == "application/json"
+
+
+def _accepts_mcp_response_types(value: str | None) -> bool:
+    """한 POST가 JSON과 request-scoped SSE 응답을 모두 수용하는지 확인한다."""
+
+    if value is None:
+        return False
+    accepted: set[str] = set()
+    for item in value.split(","):
+        segments = [segment.strip() for segment in item.split(";")]
+        if not segments or not segments[0]:
+            continue
+        quality = 1.0
+        for parameter in segments[1:]:
+            key, separator, raw_quality = parameter.partition("=")
+            if separator and key.strip().lower() == "q":
+                try:
+                    quality = float(raw_quality.strip())
+                except ValueError:
+                    quality = 0.0
+        if 0 < quality <= 1:
+            accepted.add(segments[0].lower())
+    return _MCP_RESPONSE_MEDIA_TYPES.issubset(accepted)
 
 
 def _valid_request_id(value: Any) -> bool:
@@ -260,8 +556,8 @@ async def _registry_rows() -> Sequence[Mapping[str, Any]]:
             result = await session.execute(
                 text(
                     """
-                    SELECT tool_id, tool_code, semantic_version, description,
-                           input_schema_json, output_schema_json, transport,
+                    SELECT tool_id, tool_code, semantic_version, title, description,
+                           input_schema_json, output_schema_json, annotations_json, transport,
                            timeout_seconds, required_roles_json, is_enabled
                     FROM tooling.tool_registry
                     """
@@ -278,9 +574,54 @@ def _tool_registry() -> MCPToolRegistry:
     """현재 handler가 구현된 descriptor만 runtime registry에 조립한다."""
 
     return MCPToolRegistry(
-        (analysis_get_run_descriptor(_database_url),),
+        _implemented_tool_descriptors(),
         _registry_rows,
     )
+
+
+def _implemented_tool_descriptors() -> tuple[MCPToolDescriptor, ...]:
+    """코드 handler와 feature flag가 함께 준비된 MCP Tool만 조립한다."""
+
+    descriptors = [analysis_get_run_descriptor(_database_url)]
+    if runtime_feature_enabled(RuntimeFeature.INTERNAL_GUIDELINE):
+        descriptors.append(rag_answer_descriptor(_database_url))
+    if runtime_feature_enabled(RuntimeFeature.ML_PREDICTION):
+        descriptors.append(ml_predict_descriptor(_database_url))
+    return tuple(descriptors)
+
+
+async def _tool_call_access(
+    tool_name: str,
+    principal: Principal,
+) -> tuple[MCPToolAccess, MCPRejectedCallReason | None, str | None]:
+    """한 registry snapshot으로 호출 허용 여부와 내부 거부 원인을 판정한다."""
+
+    descriptors = _implemented_tool_descriptors()
+    descriptor = next(
+        (item for item in descriptors if item.name == tool_name),
+        None,
+    )
+    if descriptor is None:
+        return MCPToolAccess(False, False, None), "UNKNOWN_TOOL", None
+
+    rows = tuple(await _registry_rows())
+
+    async def cached_rows() -> Sequence[Mapping[str, Any]]:
+        return rows
+
+    access = await MCPToolRegistry(descriptors, cached_rows).resolve(
+        tool_name,
+        principal.role,
+    )
+    if access.known:
+        return access, None, None
+    row = next(
+        (item for item in rows if item.get("tool_code") == descriptor.name),
+        None,
+    )
+    if row is not None and row.get("is_enabled") is False:
+        return access, "DISABLED_TOOL", descriptor.name
+    return access, "REGISTRY_CONTRACT_DRIFT", None
 
 
 async def _tool_access(principal: Principal) -> tuple[bool, bool]:
@@ -320,6 +661,39 @@ async def _consume_tool_quota(
         raise MCPInfrastructureError("MCP_RATE_LIMIT_UNAVAILABLE") from error
 
 
+def _rejected_call_quota_subject(principal_subject: UUID) -> UUID:
+    """실제 subject와 분리된 결정론적 pseudonymous 거부 호출 key를 만든다."""
+
+    return uuid5(
+        NAMESPACE_URL,
+        f"{_REJECTED_CALL_BUCKET_PREFIX}{principal_subject}",
+    )
+
+
+async def _consume_rejected_call_quota(
+    principal: Principal,
+) -> McpToolRateLimitDecision:
+    """동일 limit/window 정책의 별도 pseudonymous counter로 감사 증폭만 제한한다."""
+
+    try:
+        repository = PostgresMcpToolRateLimitRepository(
+            get_sessionmaker(_database_url())
+        )
+        return await McpToolRateLimitService.from_env(repository).consume(
+            principal_subject=_rejected_call_quota_subject(principal.subject),
+            # Table FK는 등록 Tool을 요구한다. principal keyspace를 분리했으므로
+            # 정상 analysis.get_run quota row는 절대로 함께 소비되지 않는다.
+            tool_id=TOOL_ID,
+        )
+    except (
+        MCPInfrastructureError,
+        DatabaseConfigurationError,
+        McpToolRateLimitConfigurationError,
+        McpToolRateLimitUnavailable,
+    ) as error:
+        raise MCPInfrastructureError("MCP_RATE_LIMIT_UNAVAILABLE") from error
+
+
 async def _record_run(
     principal: Principal,
     trace_id: str,
@@ -330,6 +704,7 @@ async def _record_run(
     error_code: str | None = None,
     *,
     tool_id: UUID = TOOL_ID,
+    tool_semantic_version: str = TOOL_SEMANTIC_VERSION,
 ) -> None:
     try:
         async with session_scope(_database_url()) as session:
@@ -337,14 +712,18 @@ async def _record_run(
                 text(
                     """
                     INSERT INTO tooling.tool_runs
-                        (tool_run_id, tool_id, caller_user_id, caller_role, trace_id,
-                         input_hash, status, latency_ms, output_ref_json, error_code)
-                    VALUES (:run_id, :tool_id, :user_id, :role, :trace_id,
+                        (tool_run_id, tool_id, tool_semantic_version,
+                         caller_user_id, caller_role, trace_id, input_hash,
+                         status, latency_ms, output_ref_json, error_code)
+                    VALUES (:run_id, :tool_id, :tool_semantic_version,
+                            :user_id, :role, :trace_id,
                             :input_hash, :status, :latency_ms, CAST(:output_ref AS jsonb), :error_code)
                     """
                 ),
                 {
-                    "run_id": uuid4(), "tool_id": tool_id, "user_id": principal.subject,
+                    "run_id": uuid4(), "tool_id": tool_id,
+                    "tool_semantic_version": tool_semantic_version,
+                    "user_id": principal.subject,
                     "role": principal.role.value, "trace_id": trace_id,
                     "input_hash": hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest(),
                     "status": status, "latency_ms": max(0, round((time.perf_counter() - started) * 1000)),
@@ -354,6 +733,90 @@ async def _record_run(
     except MCPInfrastructureError as error:
         raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
     except (DatabaseConfigurationError, SQLAlchemyError) as error:
+        raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
+
+
+def _canonical_input_hash(arguments: Any) -> str:
+    """원문을 보존하지 않고 결정론적 JSON 입력 영수증만 만든다."""
+
+    canonical = json.dumps(
+        arguments,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+async def _record_protocol_security_event(
+    principal: Principal,
+    trace_id: str,
+    tool_name: str,
+    arguments: Any,
+    rejection_reason: MCPRejectedCallReason,
+    canonical_disabled_name: str | None = None,
+) -> None:
+    """FK가 없는 governance 감사에 unknown·disabled 호출 시도만 기록한다."""
+
+    try:
+        if rejection_reason not in _REJECTED_CALL_REASONS:
+            raise ValueError("MCP rejection reason is invalid")
+        if rejection_reason == "DISABLED_TOOL":
+            if canonical_disabled_name is None or not _SAFE_AUDIT_TOOL_NAME.fullmatch(
+                canonical_disabled_name
+            ):
+                raise ValueError("disabled MCP canonical name is invalid")
+            safe_name = canonical_disabled_name
+        else:
+            if canonical_disabled_name is not None:
+                raise ValueError("MCP canonical name is not allowed for this rejection")
+            safe_name = None
+        name_hash = hashlib.sha256(tool_name.encode("utf-8")).hexdigest()
+        details = json.dumps(
+            {
+                "tool_name": safe_name,
+                "tool_name_sha256": name_hash,
+                "tool_name_length": len(tool_name),
+                "canonical_input_sha256": _canonical_input_hash(arguments),
+                "rejection_reason": rejection_reason,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        async with session_scope(_database_url()) as session:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO governance.audit_events
+                        (audit_event_id, actor_user_id, actor_role, action_code,
+                         object_type, object_id, details_json_redacted, trace_id)
+                    VALUES (:event_id, :actor_user_id, :actor_role, :action_code,
+                            :object_type, :object_id,
+                            CAST(:details_json_redacted AS jsonb), :trace_id)
+                    """
+                ),
+                {
+                    "event_id": uuid4(),
+                    "actor_user_id": principal.subject,
+                    "actor_role": principal.role.value,
+                    "action_code": MCP_REJECTED_TOOL_ACTION,
+                    "object_type": "MCP_TOOL",
+                    "object_id": f"sha256:{name_hash}",
+                    "details_json_redacted": details,
+                    "trace_id": trace_id,
+                },
+            )
+    except MCPInfrastructureError as error:
+        raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
+    except (
+        DatabaseConfigurationError,
+        SQLAlchemyError,
+        TypeError,
+        ValueError,
+        UnicodeError,
+    ) as error:
         raise MCPInfrastructureError("MCP_AUDIT_UNAVAILABLE") from error
 
 
@@ -368,6 +831,7 @@ async def _audit_or_error(
     error_code: str | None = None,
     *,
     tool_id: UUID = TOOL_ID,
+    tool_semantic_version: str = TOOL_SEMANTIC_VERSION,
 ) -> JSONResponse | None:
     """감사 저장에 실패하면 원래 Tool 결과 대신 JSON-RPC server error를 반환한다."""
 
@@ -381,10 +845,48 @@ async def _audit_or_error(
             output_ref,
             error_code,
             tool_id=tool_id,
+            tool_semantic_version=tool_semantic_version,
         )
     except MCPInfrastructureError as error:
         return _rpc_infrastructure_error(request_id, error)
     return None
+
+
+async def _record_cancelled_run(
+    principal: Principal,
+    trace_id: str,
+    arguments: Any,
+    started: float,
+    *,
+    tool_id: UUID,
+    tool_semantic_version: str,
+) -> None:
+    """요청 task 취소와 분리해 terminal cancellation receipt 저장을 끝낸다."""
+
+    audit_task = asyncio.create_task(
+        _record_run(
+            principal,
+            trace_id,
+            arguments,
+            "CANCELLED",
+            started,
+            {},
+            "REQUEST_CANCELLED",
+            tool_id=tool_id,
+            tool_semantic_version=tool_semantic_version,
+        )
+    )
+    try:
+        await asyncio.shield(audit_task)
+    except asyncio.CancelledError:
+        # 동시에 들어온 추가 cancel도 audit child task에는 전파하지 않는다.
+        try:
+            await audit_task
+        except Exception:
+            logger.exception("MCP cancellation audit failed", extra={"trace_id": trace_id})
+    except Exception:
+        # 끊어진 client에 응답할 수 없으므로 감사 저장 실패를 운영 log로 남긴다.
+        logger.exception("MCP cancellation audit failed", extra={"trace_id": trace_id})
 
 
 async def _audited_tool_error(
@@ -399,6 +901,7 @@ async def _audited_tool_error(
     status: str = "FAILED",
     protocol_error: bool = False,
     tool_id: UUID = TOOL_ID,
+    tool_semantic_version: str = TOOL_SEMANTIC_VERSION,
 ) -> JSONResponse:
     """실패 감사를 먼저 저장하고 공개 MCP 오류 형식으로 안전하게 변환한다."""
 
@@ -412,6 +915,7 @@ async def _audited_tool_error(
         {},
         error_code,
         tool_id=tool_id,
+        tool_semantic_version=tool_semantic_version,
     )
     if audit_error is not None:
         return audit_error
@@ -426,27 +930,65 @@ async def _audited_tool_error(
     )
 
 
-@mcp_router.get("/mcp", operation_id="mcpGet")
-async def mcp_get(_principal: Annotated[Principal, Security(_principal)]) -> Response:
-    """인증은 확인하되 MCP transport를 POST로만 제한하는 405 응답을 반환한다."""
+@mcp_router.get(
+    "/mcp",
+    operation_id="mcpGet",
+    status_code=405,
+    response_class=Response,
+    responses={405: {"description": "GET is not supported by stateless MCP"}},
+)
+async def mcp_get(
+    _authenticated: Annotated[Principal, Security(_principal)],
+) -> Response:
+    """2026-07-28에서 제거된 standalone GET stream을 405로 닫는다."""
     return Response(status_code=405, headers={"Allow": "POST"})
 
 
-@mcp_router.post("/mcp", operation_id="mcpPost")
+@mcp_router.delete(
+    "/mcp",
+    operation_id="mcpDelete",
+    status_code=405,
+    response_class=Response,
+    responses={405: {"description": "DELETE is not supported by stateless MCP"}},
+)
+async def mcp_delete(
+    _authenticated: Annotated[Principal, Security(_principal)],
+) -> Response:
+    """2026-07-28에서 제거된 protocol session 종료 요청을 405로 닫는다."""
+
+    return Response(status_code=405, headers={"Allow": "POST"})
+
+
+@mcp_router.post(
+    "/mcp",
+    operation_id="mcpPost",
+    openapi_extra=_MCP_POST_OPENAPI_EXTRA,
+    responses=_MCP_POST_RESPONSES,
+)
 async def mcp_post(
     request: Request,
     principal: Annotated[Principal, Security(_principal)],
-    protocol_version: Annotated[str, Header(alias="MCP-Protocol-Version")],
-    mcp_method: Annotated[str, Header(alias="Mcp-Method")],
-    mcp_name: Annotated[str | None, Header(alias="Mcp-Name")] = None,
 ) -> Response:
     """MCP JSON-RPC 요청의 origin·버전·header·도구 권한을 검증해 한 건을 실행한다.
 
-    현재 주체가 소유한 분석 run만 조회하며 성공·거부·실패를 모두 tool audit에 남긴다.
-    프로토콜 위반은 JSON-RPC 오류로, 저장소 장애는 도구 실행 오류로 닫힌다.
+    현재 주체에게 승인된 exact registry Tool만 실행하며 성공·거부·실패를 모두
+    tool audit에 남긴다. 프로토콜 위반은 JSON-RPC 오류로, 저장소·runtime 장애는
+    도구 실행 오류로 닫힌다.
     """
     if not _origin_allowed(request.headers.get("Origin")):
         return _rpc_error(None, -32600, "Origin is not allowed", 403)
+    if not _is_json_content_type(request.headers.get("Content-Type")):
+        return _rpc_error(None, -32600, "Content-Type must be application/json", 415)
+    if not _accepts_mcp_response_types(request.headers.get("Accept")):
+        return _rpc_error(
+            None,
+            -32600,
+            "Accept must list application/json and text/event-stream",
+            406,
+        )
+    protocol_version = request.headers.get("MCP-Protocol-Version")
+    mcp_method = request.headers.get("Mcp-Method")
+    mcp_name = request.headers.get("Mcp-Name")
     try:
         payload = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -572,15 +1114,46 @@ async def mcp_post(
         return _rpc_error(request_id, -32602, "Invalid tools/call params", 400)
     started = time.perf_counter()
     trace_id = request.state.trace_id
+    arguments = params.get("arguments", {})
     try:
-        access = await _tool_registry().resolve(str(params.get("name")), principal.role)
+        access, rejection_reason, canonical_disabled_name = await _tool_call_access(
+            str(params.get("name")),
+            principal,
+        )
     except MCPInfrastructureError as error:
         return _rpc_infrastructure_error(request_id, error)
     if not access.known or access.descriptor is None:
+        if rejection_reason is None:
+            return _rpc_infrastructure_error(
+                request_id,
+                MCPInfrastructureError("MCP_REGISTRY_INVALID"),
+            )
+        try:
+            rejected_quota = await _consume_rejected_call_quota(principal)
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
+        if not rejected_quota.allowed:
+            return _rpc_rate_limited(request_id, rejected_quota)
+        try:
+            await _record_protocol_security_event(
+                principal,
+                trace_id,
+                str(params.get("name")),
+                arguments,
+                rejection_reason,
+                canonical_disabled_name,
+            )
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
         return _rpc_error(request_id, -32602, "Unknown or disabled tool")
-    arguments = params.get("arguments", {})
     descriptor = access.descriptor
     if not access.authorized:
+        try:
+            rejected_quota = await _consume_rejected_call_quota(principal)
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
+        if not rejected_quota.allowed:
+            return _rpc_rate_limited(request_id, rejected_quota)
         return await _audited_tool_error(
             request_id,
             principal,
@@ -592,6 +1165,7 @@ async def mcp_post(
             status="DENIED",
             protocol_error=True,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
     try:
         quota = await _consume_tool_quota(principal, descriptor.tool_id)
@@ -606,43 +1180,32 @@ async def mcp_post(
             {},
             error.code,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
         if audit_error is not None:
             return audit_error
         return _rpc_infrastructure_error(request_id, error)
     if not quota.allowed:
-        audit_error = await _audit_or_error(
-            request_id,
-            principal,
-            trace_id,
-            arguments,
-            "DENIED",
-            started,
-            {},
-            "RATE_LIMITED",
-            tool_id=descriptor.tool_id,
-        )
-        if audit_error is not None:
-            return audit_error
-        return _rpc_error(
-            request_id,
-            TOOL_RATE_LIMITED,
-            "Rate limit exceeded",
-            429,
-            {
-                "code": "RATE_LIMITED",
-                "limit": quota.limit,
-                "remaining": 0,
-                "retryAfterSeconds": quota.retry_after_seconds,
-                "resetAt": quota.window_end.astimezone(UTC)
-                .isoformat()
-                .replace("+00:00", "Z"),
-            },
-            headers={
-                "Retry-After": str(quota.retry_after_seconds),
-                "Cache-Control": "no-store",
-            },
-        )
+        try:
+            rejected_quota = await _consume_rejected_call_quota(principal)
+        except MCPInfrastructureError as error:
+            return _rpc_infrastructure_error(request_id, error)
+        if rejected_quota.allowed:
+            audit_error = await _audit_or_error(
+                request_id,
+                principal,
+                trace_id,
+                arguments,
+                "DENIED",
+                started,
+                {},
+                "RATE_LIMITED",
+                tool_id=descriptor.tool_id,
+                tool_semantic_version=descriptor.semantic_version,
+            )
+            if audit_error is not None:
+                return audit_error
+        return _rpc_rate_limited(request_id, quota)
     try:
         result = await MCPToolDispatcher().dispatch(
             descriptor,
@@ -651,6 +1214,16 @@ async def mcp_post(
             trace_id=trace_id,
             arguments=arguments,
         )
+    except asyncio.CancelledError:
+        await _record_cancelled_run(
+            principal,
+            trace_id,
+            arguments,
+            started,
+            tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
+        )
+        raise
     except MCPInfrastructureError as error:
         audit_error = await _audit_or_error(
             request_id,
@@ -662,6 +1235,7 @@ async def mcp_post(
             {},
             error.code,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
         if audit_error is not None:
             return audit_error
@@ -677,6 +1251,7 @@ async def mcp_post(
             str(error),
             protocol_error=error.protocol_error,
             tool_id=descriptor.tool_id,
+            tool_semantic_version=descriptor.semantic_version,
         )
     audit_error = await _audit_or_error(
         request_id,
@@ -687,6 +1262,7 @@ async def mcp_post(
         started,
         dict(result.audit_output_ref),
         tool_id=descriptor.tool_id,
+        tool_semantic_version=descriptor.semantic_version,
     )
     if audit_error is not None:
         return audit_error

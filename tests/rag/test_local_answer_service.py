@@ -61,6 +61,79 @@ class EvidenceBoundAnswerComposerTest(unittest.TestCase):
         self.assertEqual(answer["answer_type"], "IMMEDIATE")
         self.assertEqual(answer["citations"][0]["evidence_id"], "EV-SAFETY")
 
+    def test_internal_report_uses_heading_and_table_evidence_without_articles(self) -> None:
+        answer = EvidenceBoundAnswerComposer().compose(build_answer_prompt(
+            "객실 매출 하락 근거를 요약해줘",
+            [{
+                "evidence_id": "EV-REPORT",
+                "manual_id": "REPORT-2026-08-ROOMS",
+                "title": "8월 객실 운영 보고서",
+                "version": "2026-08",
+                "document_type": "INTERNAL_REPORT",
+                "owner_team": "ROOMS",
+                "section_title": "[DOCX EXPLICIT_BREAK_SEGMENT 2] 객실 매출",
+                "page_start": 2,
+                "score": 0.82,
+                "document_status": "WORKING_KNOWLEDGE",
+                "approval_status": "APPROVED",
+                "validity_status": "VALID",
+                "citation": "[8월 객실 운영 보고서 v2026-08 explicit-segment.2 객실 매출]",
+                "content": (
+                    "[TABLE index=1 style=Grid]\n"
+                    "[r1c1 span=1] 월 | [r1c2 span=1] 객실 매출\n"
+                    "[r2c1 span=1] 2026-08 | [r2c2 span=1] 314.5억 원\n"
+                    "[/TABLE]"
+                ),
+            }],
+            "SUMMARY",
+        ))
+
+        self.assertEqual(answer["status"], "ANSWER")
+        self.assertEqual(answer["sections"][0]["article_number"], None)
+        self.assertEqual(answer["sections"][0]["document_id"], "REPORT-2026-08-ROOMS")
+        self.assertEqual(
+            answer["sections"][0]["claims"][0]["evidence_ids"],
+            ["EV-REPORT"],
+        )
+        self.assertEqual(answer["citations"][0]["evidence_id"], "EV-REPORT")
+        self.assertIn("객실 매출", answer["answer"])
+        self.assertNotIn("제3조", answer["answer"])
+
+    def test_internal_report_hides_docx_parser_markers_from_answer(self) -> None:
+        answer = EvidenceBoundAnswerComposer().compose(build_answer_prompt(
+            "2026년 8월 객실팀 보고서의 취소율과 취소 사유를 알려줘",
+            [{
+                "evidence_id": "EV-REPORT-ROOMS",
+                "manual_id": "REPORT-2026-08-ROOMS",
+                "title": "8월 객실 운영 보고서",
+                "version": "2026-08",
+                "document_type": "INTERNAL_REPORT",
+                "owner_team": "ROOMS",
+                "section_title": "[DOCX DOCUMENT_START 1] 객실 운영 결론",
+                "page_start": 1,
+                "score": 0.91,
+                "document_status": "WORKING_KNOWLEDGE",
+                "approval_status": "APPROVED",
+                "validity_status": "VALID",
+                "citation": "[8월 객실 운영 보고서 v2026-08 p.1 객실 운영 결론]",
+                "content": (
+                    "[DOCX DOCUMENT_START 1] [PARAGRAPH style=Title] 객실 운영보고서\n"
+                    "[PARAGRAPH style=UNSTYLED] 전체 취소율은 17.59%다.\n"
+                    "[TABLE index=1 style=Grid]\n"
+                    "[r1c1 span=1] 주요 취소 사유 | [r1c2 span=1] 비중\n"
+                    "[r2c1 span=1] 일정 변경 | [r2c2 span=1] 53.95%\n"
+                    "[/TABLE]"
+                ),
+            }],
+            "SUMMARY",
+        ))
+
+        self.assertEqual(answer["status"], "ANSWER")
+        self.assertIn("전체 취소율은 17.59%다.", answer["answer"])
+        self.assertIn("일정 변경 | 53.95%", answer["answer"])
+        for marker in ("[DOCX", "[PARAGRAPH", "[TABLE", "[/TABLE]", "[r1c1"):
+            self.assertNotIn(marker, answer["answer"])
+
 
 if __name__ == "__main__":
     unittest.main()

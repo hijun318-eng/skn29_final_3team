@@ -39,6 +39,39 @@
   --ml-shadow: 0 24px 72px rgba(31, 55, 86, 0.18);
 }
 
+/* 대화에서 실행한 ML 결과는 drawer와 같은 시각 계약을 쓰되 고정 배치를 상속하지 않는다. */
+.ml-conversation-result {
+  --ml-surface: #0f1724;
+  --ml-surface-raised: #141f2f;
+  --ml-surface-muted: #0b121c;
+  --ml-text: #f5f7fb;
+  --ml-text-muted: #9fb0c4;
+  --ml-line: #2a3a50;
+  --ml-accent: #4f9cf5;
+  --ml-accent-strong: #176fe5;
+  --ml-accent-soft: rgba(79, 156, 245, 0.13);
+  width: min(100%, 760px);
+  overflow: hidden;
+  color: var(--ml-text);
+  border: 1px solid var(--ml-line);
+  border-radius: 12px;
+  background: var(--ml-surface);
+}
+
+.theme-light .ml-conversation-result {
+  --ml-surface: var(--surface);
+  --ml-surface-raised: #f8fafc;
+  --ml-surface-muted: #eef3f8;
+  --ml-text: var(--charcoal);
+  --ml-text-muted: #50657d;
+  --ml-line: var(--border);
+  --ml-accent: #0f56b8;
+  --ml-accent-strong: var(--blue);
+  --ml-accent-soft: var(--blue-bg);
+}
+
+.ml-conversation-result .ml-workspace__result { padding: 16px; }
+
 .ml-workspace .ml-workspace__trigger {
   min-width: 146px;
   min-height: 52px;

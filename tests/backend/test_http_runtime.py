@@ -33,6 +33,8 @@ class FastApiRuntimeTest(unittest.TestCase):
             "http://localhost:5173,http://localhost:13000,"
             "http://192.168.0.15:13000"
         )
+        environment["ANSWERVICE_ACCEPTANCE_MODE"] = "phase10-p0-gold"
+        environment["ANSWERVICE_ACCEPTANCE_AS_OF"] = "2026-08-31"
         creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         cls.server = subprocess.Popen(
             [

@@ -1,3 +1,5 @@
+"""LLM HTTP·network·JSON·계약 실패를 비민감 retry 분류로 축약한다."""
+
 from __future__ import annotations
 
 import json
@@ -5,18 +7,32 @@ import socket
 import urllib.error
 from dataclasses import dataclass
 
+import httpx
+
 
 @dataclass(frozen=True)
 class LlmFailureDiagnostic:
+    """외부 호출 실패 코드와 안전한 재시도 가능 여부를 표현한다."""
+
     code: str
     retryable: bool
 
 
 class LlmFailureDiagnostics:
-    """Classify OpenAI-compatible LLM failures without preserving sensitive data."""
+    """OpenAI-compatible 실패를 원문 비밀 없이 안정된 진단 코드로 분류한다."""
 
     @staticmethod
     def from_exception(error: Exception) -> LlmFailureDiagnostic:
+        """httpx·legacy URL·timeout·decode 예외를 retry 정책이 있는 진단으로 변환한다."""
+
+        if isinstance(error, httpx.HTTPStatusError):
+            return LlmFailureDiagnostics._from_http_status(
+                error.response.status_code
+            )
+        if isinstance(error, httpx.TimeoutException):
+            return LlmFailureDiagnostic("CONNECT_TIMEOUT", True)
+        if isinstance(error, httpx.RequestError):
+            return LlmFailureDiagnostics._from_url_reason(error)
         if isinstance(error, urllib.error.HTTPError):
             return LlmFailureDiagnostics._from_http_status(error.code)
         if isinstance(error, (TimeoutError, socket.timeout)):

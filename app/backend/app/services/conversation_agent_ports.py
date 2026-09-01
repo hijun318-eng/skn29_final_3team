@@ -18,7 +18,7 @@ from app.services.internal_manual_query import (
     InternalManualQueryError,
     InternalManualQueryService,
 )
-from app.services.ml_prediction_service import MLPredictionService
+from app.services.mcp_agent_tools import MCPMLPredictionExecutor
 
 
 def analysis_agent_result(result: dict[str, Any]) -> AgentResult:
@@ -91,10 +91,12 @@ def internal_guideline_agent_result(command_result: dict[str, Any]) -> AgentResu
             "status": "SUCCESS",
             "data": {
                 "status": "COMPLETED",
-                "type": "INTERNAL_GUIDELINE",
+                "type": str(command_result.get("type") or "INTERNAL_GUIDELINE"),
                 "turn": command_result.get("turn"),
                 "conversation": command_result.get("conversation"),
                 "rag_response": command_result.get("rag_response"),
+                "ml_prediction": command_result.get("ml_prediction"),
+                "composition": command_result.get("composition"),
             },
         },
     )
@@ -137,11 +139,13 @@ class AnalysisWorkflowAgentPort:
         execution_gate: ConcurrentExecutionGate,
         progress_tracker: Any = analysis_progress,
         admission: Any | None = None,
+        composite_augmentation: Any | None = None,
     ) -> None:
         self._orchestrator = orchestrator
         self._execution_gate = execution_gate
         self._progress = progress_tracker
         self._admission = admission
+        self._composite_augmentation = composite_augmentation
 
     async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
         """공통 admission이 고정한 product·semantic release를 실행 근거로 사용한다."""
@@ -208,6 +212,15 @@ class AnalysisWorkflowAgentPort:
                 }
                 if self._admission is not None:
                     execution_options["admission"] = self._admission
+                if request.supervisor_plan_ref is not None:
+                    execution_options.update(
+                        supervisor_plan_ref=request.supervisor_plan_ref,
+                        task_objective=request.task_objective,
+                    )
+                if self._composite_augmentation is not None:
+                    execution_options["composite_augmentation"] = (
+                        self._composite_augmentation
+                    )
                 result = await self._orchestrator.execute_command(
                     request.conversation_id,
                     request.command.model_dump(mode="python"),
@@ -236,11 +249,13 @@ class InternalGuidelineAgentPort:
         orchestrator: Any,
         query_service_factory: Callable[[], InternalManualQueryService],
         admission: Any | None = None,
+        composite_augmentation: Any | None = None,
     ) -> None:
         self._orchestrator = orchestrator
         self._query_service_factory = query_service_factory
         self._query_service: InternalManualQueryService | None = None
         self._admission = admission
+        self._composite_augmentation = composite_augmentation
 
     def _service(self) -> InternalManualQueryService:
         if self._query_service is None:
@@ -279,7 +294,7 @@ class InternalGuidelineAgentPort:
         async def _execute(admitted_context: Any) -> dict[str, Any]:
             return await self._service().execute(
                 InternalManualQuery(
-                    question=command.user_message,
+                    question=request.task_objective or command.user_message,
                     mode="DOCUMENT_ONLY",
                     conversation_id=request.conversation_id,
                     expected_head_turn_id=command.expected_head_turn_id,
@@ -294,6 +309,12 @@ class InternalGuidelineAgentPort:
         execution_options = {}
         if self._admission is not None:
             execution_options["admission"] = self._admission
+        if request.supervisor_plan_ref is not None:
+            execution_options["supervisor_plan_ref"] = request.supervisor_plan_ref
+        if self._composite_augmentation is not None:
+            execution_options["composite_augmentation"] = (
+                self._composite_augmentation
+            )
         command_result = await self._orchestrator.execute_internal_guideline_command(
             request.conversation_id,
             command.model_dump(mode="python"),
@@ -312,17 +333,27 @@ class MLPredictionAgentPort:
     def __init__(
         self,
         orchestrator: Any,
-        service: MLPredictionService,
+        executor: MCPMLPredictionExecutor,
         admission: Any | None = None,
     ) -> None:
         self._orchestrator = orchestrator
-        self._service = service
+        self._executor = executor
         self._admission = admission
 
     async def readiness(self, request: AgentRequest) -> AgentPortReadiness:
         """모델 release와 capability가 모두 검증된 서비스 영수증을 반환한다."""
 
-        return await self._service.readiness()
+        try:
+            return await self._executor.readiness(request.context.role)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return AgentPortReadiness(
+                agent=self.agent,
+                status="not_ready",
+                capability_version="MCPToolDescriptor.v1",
+                reason="ML MCP Tool 또는 예측 runtime이 준비되지 않았습니다.",
+            )
 
     async def execute(self, request: AgentRequest) -> AgentResult:
         """자연어 재해석 없이 승인 resolver의 구조화 invocation을 실행한다."""
@@ -338,7 +369,12 @@ class MLPredictionAgentPort:
 
         async def _generate(_context: Any) -> dict[str, Any]:
             try:
-                return await self._service.generate_prediction(payload)
+                return await self._executor.execute(
+                    payload,
+                    subject_id=request.context.user_id,
+                    role=request.context.role,
+                    trace_id=request.context.trace_id,
+                )
             except ValueError as error:
                 raise AgentDispatchError(
                     "AGENT_ROUTE_NOT_RESOLVED",
@@ -352,26 +388,17 @@ class MLPredictionAgentPort:
                     "ML 예측 실행 서비스를 확인하지 못했습니다.",
                 ) from error
 
-        async def _persist(session: Any, prediction: dict[str, Any]) -> None:
-            try:
-                await self._service.persist_prediction(session, prediction)
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:
-                raise AgentDispatchError(
-                    "AGENT_PORT_NOT_READY",
-                    "ML 예측 감사 결과를 저장하지 못했습니다.",
-                ) from error
-
         execution_options = {}
         if self._admission is not None:
             execution_options["admission"] = self._admission
+        if request.supervisor_plan_ref is not None:
+            execution_options["supervisor_plan_ref"] = request.supervisor_plan_ref
         command_result = await self._orchestrator.execute_ml_prediction_command(
             request.conversation_id,
             request.command.model_dump(mode="python"),
             request.context,
             _generate,
-            _persist,
+            None,
             **execution_options,
         )
         return ml_prediction_agent_result(command_result)

@@ -17,6 +17,7 @@ import {
   artifactViewBlockSettings,
   artifactMetricCards,
   availableArtifactViews,
+  canonicalDraftBlockContent,
   createFrontendDraftSnapshot,
   deleteFrontendBlock,
   estimateArtifactBlockLayout,
@@ -37,6 +38,7 @@ import {
 } from "../../app/frontend/src/features/reports/reportDraftV2.js";
 import { reportEvidenceReady } from "../../app/frontend/src/features/reports/reportArtifactEvidence.ts";
 import { resizeDraftBlocks } from "../../app/frontend/src/features/reports/reportDraftMutations.ts";
+import { splitLegacyCompositeArtifactBlocks } from "../../app/frontend/src/features/reports/reportDraftMutations.ts";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
@@ -46,6 +48,19 @@ const textBlock = {
   id: "summary", title: "경영진 요약", type: "text", content: "핵심 변화", columns: 12,
   x: 0, y: 0, w: 12, h: 4,
 };
+const chartContentA = { ...textBlock, id: "chart-a", type: "chart", artifactId: "artifact-a", content: '{"visibleViews":["chart"],"sizeMode":"auto"}' };
+const chartContentB = { ...chartContentA, content: '{"sizeMode":"auto","visibleViews":["chart"]}' };
+assert.equal(
+  canonicalDraftBlockContent(chartContentA),
+  canonicalDraftBlockContent(chartContentB),
+  "server JSON key ordering must not create a false unsaved recovery state",
+);
+assert.notEqual(
+  canonicalDraftBlockContent(chartContentA),
+  canonicalDraftBlockContent({ ...chartContentB, content: '{"sizeMode":"manual","visibleViews":["chart"]}' }),
+  "a meaningful artifact setting change must remain dirty",
+);
+assert.match(reportSources.presentation, /content: canonicalDraftBlockContent\(block\)/);
 const sourceA = {
   artifactId: "artifact-a", queryId: "query-a", title: "객실 매출 분석",
   artifactChecksum: "sha256:a", sourceUrns: ["urn:rooms"],
@@ -83,6 +98,59 @@ assert.equal(artifactViewTitle("객실 매출 분석", "kpi"), "객실 매출 �
 const boundedArtifactTitle = artifactViewTitle("가".repeat(255), "kpi");
 assert.equal(Array.from(boundedArtifactTitle).length, 255);
 assert.match(boundedArtifactTitle, / · 핵심 지표$/);
+const legacyComposite = {
+  id: "legacy-composite", title: "보고서 제목과 같았던 이전 블록", type: "artifact",
+  artifactId: "artifact-a", viewSpecId: "legacy-view-spec", columns: 12,
+  x: 0, y: 0, w: 12, h: 12,
+  content: JSON.stringify({
+    schemaVersion: "ANSWER-ARTIFACT-BLOCK-v1",
+    presentationMode: "standard",
+    visibleViews: ["summary", "kpi", "chart", "table"],
+  }),
+};
+let migratedId = 0;
+const migratedComposite = splitLegacyCompositeArtifactBlocks(
+  [legacyComposite],
+  { "artifact-a": { ...atomicArtifact, title: "Analysis result" } },
+  [{
+    artifactId: "artifact-a",
+    title: "2026년 3월부터 8월 객실 매출 분석",
+    definitionTitle: "보고서 정의 제목",
+  }],
+  "landscape",
+  () => `migrated-${migratedId += 1}`,
+);
+assert.equal(migratedComposite.migratedSourceCount, 1);
+assert.deepEqual(
+  migratedComposite.blocks.map((block) => ({
+    id: block.id,
+    title: block.title,
+    type: block.type,
+    views: JSON.parse(block.content).visibleViews,
+    artifactId: block.artifactId,
+    viewSpecId: block.viewSpecId,
+  })),
+  [
+    { id: "migrated-1", title: "2026년 3월부터 8월 객실 매출 분석 · 요약", type: "artifact", views: ["summary"], artifactId: "artifact-a", viewSpecId: undefined },
+    { id: "migrated-2", title: "2026년 3월부터 8월 객실 매출 분석 · 핵심 지표", type: "artifact", views: ["kpi"], artifactId: "artifact-a", viewSpecId: undefined },
+    { id: "migrated-3", title: "2026년 3월부터 8월 객실 매출 분석 · 차트", type: "chart", views: ["chart"], artifactId: "artifact-a", viewSpecId: undefined },
+    { id: "migrated-4", title: "2026년 3월부터 8월 객실 매출 분석 · 표", type: "table", views: ["table"], artifactId: "artifact-a", viewSpecId: undefined },
+  ],
+  "legacy composite content must become newly identified immutable artifact views without reusing the report title or legacy block identity",
+);
+assert.equal(migratedComposite.blocks.every((block) => block.w <= 8 && block.h < 12), true);
+assert.equal(frontendBlocksToDocument({ ...report, blocks: migratedComposite.blocks }).ok, true);
+assert.deepEqual(
+  splitLegacyCompositeArtifactBlocks(
+    [{ ...legacyComposite, content: '{"visibleViews":["summary","unknown"]}' }],
+    { "artifact-a": atomicArtifact },
+    [],
+    "landscape",
+    () => "must-not-run",
+  ).blocks,
+  [{ ...legacyComposite, content: '{"visibleViews":["summary","unknown"]}' }],
+  "corrupt or unknown legacy view settings must remain fail-closed",
+);
 const atomicSummary = insertFrontendArtifact([textBlock], {
   ...sourceA,
   blockId: "atomic-summary",
@@ -376,6 +444,8 @@ const serverOnlyDefinition = normalizeReportDefinition({
   orientation: "landscape",
   currency_display_unit: "million",
   approved_at: null,
+  archived_at: null,
+  archived_by: null,
 });
 assert.equal(loadFrontendDraft({ getItem: () => null }, report.definitionId, report.version), null);
 assert.equal(serverOnlyDefinition.blocks[0].type, "artifact");
@@ -524,8 +594,8 @@ assert.match(reportSources.blockControls, /내용에 맞춤/);
 assert.match(reportSources.controller, /draftBridgeRef\.current\?\.fitHydratedArtifactViews\(artifactMap\)/);
 const hydratedFit = reportSources.draftState.match(/const fitHydratedArtifactViews[\s\S]*?const changeOrientation/)?.[0] || "";
 assert.match(hydratedFit, /savedBlocksRef\.current = copyDraftBlocks\(fittedSaved\)/);
-assert.match(hydratedFit, /setIsDirty\(draftChanged\(blocksRef\.current\)\)/);
-assert.doesNotMatch(hydratedFit, /commitBlocks\(/, "artifact hydration must not create user history or dirty state");
+assert.match(hydratedFit, /setIsDirty\(migrated\.migratedSourceCount > 0 \|\| draftChanged\(blocksRef\.current\)\)/);
+assert.doesNotMatch(hydratedFit, /commitBlocks\(/, "artifact hydration must not create user history; only an explicit legacy migration becomes dirty");
 assert.match(reportSources.draftState, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
 assert.match(reportSources.draftMutations, /const compacted = compactDraftLayout\(inputBlocks\)/);
 assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);

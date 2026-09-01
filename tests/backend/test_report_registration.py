@@ -35,6 +35,7 @@ from app.report_contracts import (  # noqa: E402
     CreateReportScheduleRequest,
     ReplaceReportBlocksRequest,
     ReportArtifactResponse,
+    ReportDefinitionLifecycleResponse,
     ReportDefinitionListResponse,
     UpdateReportScheduleRequest,
 )
@@ -385,6 +386,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             (),
             {
                 "__init__": lambda self, **kwargs: None,
+                "pages": (object(),),
+                "render": lambda self: self,
                 "write_pdf": lambda self, **kwargs: b"%PDF-1.7\naggregate",
             },
         )
@@ -585,6 +588,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 (),
                 {
                     "__init__": lambda self, **kwargs: None,
+                    "pages": (object(),),
+                    "render": lambda self: self,
                     "write_pdf": lambda self, **kwargs: b"%PDF-1.7\ncontract",
                 },
             )
@@ -658,12 +663,49 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         )
         schema = app.openapi()
         self.assertIn("/reports/definitions", schema["paths"])
+        self.assertIn(
+            "/reports/definitions/{definition_id}/archive", schema["paths"]
+        )
+        self.assertIn(
+            "/reports/definitions/{definition_id}/restore", schema["paths"]
+        )
         self.assertIn("/reports/runs/manual", schema["paths"])
         self.assertIn("/reports/schedules", schema["paths"])
         self.assertIn("/reports/schedules/{schedule_id}", schema["paths"])
         self.assertIn("/reports/schedules/{schedule_id}/run-due", schema["paths"])
         self.assertIn("/reports/assistant/drafts", schema["paths"])
         self.assertNotIn("post", schema["paths"]["/reports/runs"])
+
+    async def test_report_archive_api_returns_a_typed_owner_lifecycle(self):
+        proposal = create_report_router(InMemoryReportRepository())
+        report_context = context(Role.ANALYST)
+        with patch.object(report_api, "_router", return_value=proposal):
+            await report_api.create_definition(
+                CreateReportDefinitionRequest(
+                    definition_id="00000000-0000-0000-0000-000000000111",
+                    title="보관 API 보고서",
+                    blocks=[],
+                ),
+                report_context,
+            )
+            archived = ReportDefinitionLifecycleResponse.model_validate(
+                await report_api.archive_definition(
+                    "00000000-0000-0000-0000-000000000111",
+                    report_context,
+                )
+            )
+            self.assertTrue(archived.archived)
+            archived_items = await report_api.list_definitions(
+                report_context, archived=True
+            )
+            self.assertEqual(1, len(archived_items["items"]))
+            restored = ReportDefinitionLifecycleResponse.model_validate(
+                await report_api.restore_definition(
+                    "00000000-0000-0000-0000-000000000111",
+                    report_context,
+                )
+            )
+            self.assertFalse(restored.archived)
 
     def test_schedule_contract_requires_timezone_aware_instants(self):
         payload = {
@@ -714,7 +756,15 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_report_assistant_awaits_the_async_model_transport(self):
-        from app.adapters.report_assistant import generate_report_draft
+        from app.adapters.report_assistant import (
+            bind_report_assistant_model_execution,
+            generate_report_draft,
+            prepare_report_assistant_model_invocation,
+        )
+        from src.modelops.runtime_config import (
+            active_route_for_node,
+            resolve_active_model_routes,
+        )
 
         response = {
             "title": "Operations report",
@@ -727,9 +777,12 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             patch.dict(
                 os.environ,
                 {
-                    "OPENAI_ENDPOINT": "https://model.invalid",
+                    "OPENAI_ENDPOINT": "https://api.openai.com/test",
                     "OPENAI_API_KEY": "test-token",
                     "OPENAI_MODEL": "gpt-5.4-mini",
+                    "REPORT_ASSISTANT_INPUT_USD_PER_MILLION": "1",
+                    "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION": "1",
+                    "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD": "100",
                 },
             ),
             patch(
@@ -737,11 +790,32 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 transport,
             ),
         ):
-            proposal, trace = await generate_report_draft(report_assistant_request())
+            payload = report_assistant_request()
+            route = active_route_for_node(
+                resolve_active_model_routes(), "report_assistant"
+            )
+            authorization = SimpleNamespace(
+                node="report_assistant",
+                route=route,
+                record_attempt=AsyncMock(return_value="receipt-id"),
+            )
+            invocation = bind_report_assistant_model_execution(
+                prepare_report_assistant_model_invocation(
+                    "report_assistant",
+                    payload,
+                    authorization=authorization,
+                    repository=object(),
+                ),
+                "22222222-2222-4222-8222-222222222222",
+            )
+            proposal, trace = await generate_report_draft(
+                payload, invocation=invocation
+            )
 
         self.assertEqual(response, proposal)
         self.assertEqual("gpt-5.4-mini", trace["model_version"])
         transport.assert_awaited_once()
+        authorization.record_attempt.assert_awaited_once()
 
 
 @unittest.skipUnless(
@@ -749,10 +823,145 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
     "disposable temporary report DB is required",
 )
 class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
+    loop_factory = asyncio.SelectorEventLoop
+
     async def asyncTearDown(self):
         from app.database import dispose_database
 
         await dispose_database()
+
+    async def test_archive_restore_is_owner_scoped_idempotent_and_keeps_schedule_disabled(self):
+        from app.adapters.report_repository import PostgresReportRepository
+        from sqlalchemy import create_engine, make_url, text
+
+        database_url = os.environ["REPORT_DATABASE_URL"]
+        owner_id = uuid4()
+        definition_id = str(uuid4())
+        schedule_id = str(uuid4())
+        repository = PostgresReportRepository(database_url, owner_id)
+        outsider = PostgresReportRepository(database_url, uuid4())
+        manage_all_outsider = PostgresReportRepository(
+            database_url, uuid4(), manage_all=True
+        )
+        await repository.add_draft(
+            ReportDefinitionVersion(
+                definition_id,
+                1,
+                DefinitionStatus.DRAFT,
+                "비파괴 보관 검증 보고서",
+                (),
+            )
+        )
+        await repository.approve(
+            definition_id, 1, datetime.now(timezone.utc)
+        )
+        await repository.create_schedule(
+            schedule_id,
+            definition_id,
+            1,
+            "monthly",
+            "Asia/Seoul",
+            datetime(2026, 9, 1, tzinfo=timezone.utc),
+        )
+
+        archived = await repository.archive_definition(
+            definition_id, actor_role="analyst", trace_id="archive-contract"
+        )
+        repeated = await repository.archive_definition(
+            definition_id, actor_role="analyst", trace_id="archive-retry"
+        )
+        self.assertEqual(archived, repeated)
+        self.assertTrue((await repository.get_version(definition_id, 1)).is_archived)
+        self.assertEqual((), await repository.list_definitions())
+        self.assertEqual(
+            1, len(await repository.list_definitions(archived=True))
+        )
+        self.assertFalse((await repository.get_schedule(schedule_id))["enabled"])
+        with self.assertRaises(KeyError):
+            await repository.get_document_source(definition_id, 1)
+        with self.assertRaises(ValueError):
+            await repository.queue_manual_run(
+                definition_id,
+                1,
+                datetime.now(timezone.utc),
+                "archived-manual-run",
+            )
+        with self.assertRaises(KeyError):
+            await outsider.archive_definition(
+                definition_id, actor_role="analyst", trace_id="outsider"
+            )
+        with self.assertRaises(KeyError):
+            await manage_all_outsider.archive_definition(
+                definition_id, actor_role="platform_admin", trace_id="manage-all"
+            )
+
+        restored = await repository.restore_definition(
+            definition_id, actor_role="analyst", trace_id="restore-contract"
+        )
+        repeated_restore = await repository.restore_definition(
+            definition_id, actor_role="analyst", trace_id="restore-retry"
+        )
+        self.assertEqual(restored, repeated_restore)
+        self.assertFalse(restored.archived)
+        self.assertFalse((await repository.get_schedule(schedule_id))["enabled"])
+
+        sync_url = make_url(database_url).set(drivername="postgresql+psycopg")
+        engine = create_engine(sync_url)
+        self.addCleanup(engine.dispose)
+        with engine.connect() as connection:
+            actions = connection.execute(
+                text(
+                    "SELECT action_code, count(*) "
+                    "FROM governance.audit_events "
+                    "WHERE object_type = 'REPORT_DEFINITION' AND object_id = :object_id "
+                    "GROUP BY action_code ORDER BY action_code"
+                ),
+                {"object_id": definition_id},
+            ).all()
+        self.assertEqual(
+            [("REPORT_ARCHIVED", 1), ("REPORT_RESTORED", 1)],
+            [tuple(row) for row in actions],
+        )
+
+    async def test_archived_definition_keeps_final_document_readable(self):
+        from app.adapters.report_repository import PostgresReportRepository
+        from app.services.report.document import canonical_source_checksum
+
+        database_url = os.environ["REPORT_DATABASE_URL"]
+        repository = PostgresReportRepository(database_url, uuid4())
+        definition_id = str(uuid4())
+        await repository.add_draft(
+            ReportDefinitionVersion(
+                definition_id,
+                1,
+                DefinitionStatus.DRAFT,
+                "보관 후 확정 문서 열람 검증",
+                (),
+            )
+        )
+        source = await repository.get_document_source(definition_id, 1)
+        checksum = canonical_source_checksum(source, "portrait")
+        await repository.approve_with_document(
+            definition_id,
+            1,
+            datetime.now(timezone.utc),
+            "portrait",
+            "auto",
+            checksum,
+            "<html><body>immutable</body></html>",
+            b"%PDF-1.7\nimmutable",
+        )
+
+        archived = await repository.archive_definition(
+            definition_id, actor_role="analyst", trace_id="immutable-document-archive"
+        )
+        document = await repository.get_document(definition_id, 1)
+
+        self.assertTrue(archived.archived)
+        self.assertEqual(checksum, document["source_checksum"])
+        self.assertTrue(document["pdf_bytes"].startswith(b"%PDF-"))
+        with self.assertRaises(KeyError):
+            await repository.get_document_source(definition_id, 1)
 
     async def test_display_settings_survive_reload_and_immutable_pdf_approval(self):
         from app.adapters.report_repository import PostgresReportRepository

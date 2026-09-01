@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from src.report.domain import (
     DefinitionStatus,
     ManualRunCommand,
     ReportBlock,
+    ReportDefinitionLifecycle,
     ReportDefinitionVersion,
     ReportRun,
 )
-from src.report.repository import ReportRevisionConflict
+from src.report.repository import ReportLifecycleConflict, ReportRevisionConflict
 
 
 def _blocks_match(
@@ -38,7 +39,11 @@ def _blocks_match(
 class InMemoryReportRepository:
     """외부 DB 없이 router 상태 전이만 검증하며 운영 코드에서는 import하지 않는다."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        owner_id: str = "00000000-0000-0000-0000-000000000001",
+    ) -> None:
+        self._owner_id = owner_id
         self._versions: dict[tuple[str, int], ReportDefinitionVersion] = {}
         self._runs: dict[str, ReportRun] = {}
         self._commands: dict[str, ManualRunCommand] = {}
@@ -48,6 +53,11 @@ class InMemoryReportRepository:
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft만 저장할 수 있습니다.")
+        if any(
+            version.definition_id == draft.definition_id and version.is_archived
+            for version in self._versions.values()
+        ):
+            raise ValueError("보관된 Report definition에는 draft를 추가할 수 없습니다.")
         key = (draft.definition_id, draft.version)
         existing = self._versions.get(key)
         if existing and existing.status is DefinitionStatus.APPROVED:
@@ -62,8 +72,83 @@ class InMemoryReportRepository:
         except KeyError as error:
             raise KeyError("Report definition version을 찾을 수 없습니다.") from error
 
-    def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
-        return tuple(self._versions[key] for key in sorted(self._versions))
+    def list_definitions(
+        self,
+        *,
+        archived: bool = False,
+    ) -> tuple[ReportDefinitionVersion, ...]:
+        return tuple(
+            self._versions[key]
+            for key in sorted(self._versions)
+            if self._versions[key].is_archived is archived
+        )
+
+    def archive_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> ReportDefinitionLifecycle:
+        del actor_role, trace_id
+        versions = [
+            version
+            for version in self._versions.values()
+            if version.definition_id == definition_id
+        ]
+        if not versions:
+            raise KeyError("Report definition을 찾을 수 없습니다.")
+        if versions[0].is_archived:
+            return ReportDefinitionLifecycle(
+                definition_id,
+                versions[0].archived_at,
+                versions[0].archived_by,
+            )
+        if any(
+            command.definition_id == definition_id
+            and command.status.value in {"queued", "running"}
+            for command in self._commands.values()
+        ):
+            raise ReportLifecycleConflict("REPORT_ARCHIVE_IN_PROGRESS")
+        archived_at = datetime.now(timezone.utc)
+        for key, version in tuple(self._versions.items()):
+            if version.definition_id == definition_id:
+                self._versions[key] = replace(
+                    version,
+                    archived_at=archived_at,
+                    archived_by=self._owner_id,
+                )
+        return ReportDefinitionLifecycle(
+            definition_id,
+            archived_at,
+            self._owner_id,
+        )
+
+    def restore_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> ReportDefinitionLifecycle:
+        del actor_role, trace_id
+        versions = [
+            version
+            for version in self._versions.values()
+            if version.definition_id == definition_id
+        ]
+        if not versions:
+            raise KeyError("Report definition을 찾을 수 없습니다.")
+        if not versions[0].is_archived:
+            return ReportDefinitionLifecycle(definition_id, None, None)
+        for key, version in tuple(self._versions.items()):
+            if version.definition_id == definition_id:
+                self._versions[key] = replace(
+                    version,
+                    archived_at=None,
+                    archived_by=None,
+                )
+        return ReportDefinitionLifecycle(definition_id, None, None)
 
     def approve(
         self, definition_id: str, version: int, approved_at: datetime
@@ -189,6 +274,8 @@ class InMemoryReportRepository:
 
     def add_run(self, run: ReportRun) -> ReportRun:
         version = self.get_version(run.definition_id, run.definition_version)
+        if version.is_archived:
+            raise ValueError("보관된 Report definition은 실행할 수 없습니다.")
         if version.status is not DefinitionStatus.APPROVED:
             raise ValueError("승인된 Report definition version만 실행할 수 있습니다.")
         if run.run_id in self._runs:
@@ -216,7 +303,10 @@ class InMemoryReportRepository:
         as_of: datetime,
         idempotency_key: str,
     ) -> ManualRunCommand:
-        if self.get_version(definition_id, version).status is not DefinitionStatus.APPROVED:
+        definition = self.get_version(definition_id, version)
+        if definition.is_archived:
+            raise ValueError("보관된 Report definition은 실행할 수 없습니다.")
+        if definition.status is not DefinitionStatus.APPROVED:
             raise ValueError("승인된 Report definition version만 실행할 수 있습니다.")
         key = (definition_id, version, idempotency_key)
         if command_id := self._idempotency.get(key):

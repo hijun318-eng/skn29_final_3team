@@ -1,3 +1,5 @@
+"""actor·tool별 최근 호출 시각을 추적해 단일 프로세스 MCP 도구 호출량을 제한한다."""
+
 from __future__ import annotations
 
 import threading
@@ -24,6 +26,8 @@ class ProcessToolRateLimiter:
         self._lock = threading.Lock()
 
     def allow(self, actor_id: str, tool_code: str) -> bool:
+        """윈도우 밖 기록을 제거하고 한도 미만 호출만 기록·허용하며 초과 호출은 거부한다."""
+
         now = self._clock()
         key = (actor_id, tool_code)
         with self._lock:

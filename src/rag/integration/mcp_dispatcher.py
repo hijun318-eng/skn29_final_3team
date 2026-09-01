@@ -1,3 +1,5 @@
+"""네트워크 리스너 없이 MCP JSON-RPC tools/list·tools/call 요청을 Registry 서비스에 전달한다."""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +11,7 @@ from .tool_service import RegistryToolService
 
 
 class McpJsonRpcDispatcher:
-    """MCP 2025-06-18 tools/list and tools/call dispatcher without a network listener."""
+    """MCP 2025-06-18 요청 형식과 메서드·인자를 검증해 도구 목록 또는 호출 결과로 변환한다."""
 
     def __init__(self, service: RegistryToolService) -> None:
         self._service = service
@@ -19,6 +21,8 @@ class McpJsonRpcDispatcher:
         request: dict[str, Any],
         context: IntegrationContext,
     ) -> dict[str, Any]:
+        """JSON-RPC 요청과 호출 문맥을 받아 표준 result 또는 -32600~-32602 오류 객체를 반환한다."""
+
         request_id = request.get("id")
         if request.get("jsonrpc") != "2.0" or request_id is None:
             return self._error(request_id, -32600, "Invalid Request")

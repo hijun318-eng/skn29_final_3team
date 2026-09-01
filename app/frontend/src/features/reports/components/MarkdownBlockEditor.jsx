@@ -2,6 +2,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Bold, Heading2, Italic, Link2, List, ListChecks, Minus, Quote, Table2 } from "lucide-react";
 
+import { REPORT_BLOCK_CONTENT_MAX_LENGTH } from "../../../contracts/reportContract";
 import { MarkdownText } from "./ReportArtifactContent";
 
 /** toolbar와 키보드가 공유하는 안전한 Markdown 삽입 명령 집합이다. */ export const MARKDOWN_INSERT_COMMANDS = [
@@ -224,6 +225,7 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
               ? `${block.id}-slash-option-${slashCommands[slashIndex]?.id}`
               : undefined}
             disabled={disabled}
+            maxLength={REPORT_BLOCK_CONTENT_MAX_LENGTH}
             value={block.content || ""}
             onChange={(event) => {
               const record = !typingTransactionRef.current;

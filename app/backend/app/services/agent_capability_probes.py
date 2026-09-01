@@ -27,7 +27,11 @@ from app.services.agent_supervisor import (
     AgentCapabilityEvidence,
     AgentDispatchError,
 )
-from app.services.ml_prediction_service import MLRuntimeCapability
+from app.services.ml_prediction_service import (
+    MLDeploymentPolicyError,
+    MLRuntimeCapability,
+    require_deployed_ml_capability,
+)
 from app.services.rag_gateway import RAG_MAX_EMBEDDING_DIMENSION
 
 
@@ -115,7 +119,7 @@ class GovernedAnalysisCapabilityProbe:
 
         try:
             candidates = await self._data_platform.search_asset_candidates(
-                request.command.user_message,
+                request.task_objective or request.command.user_message,
                 request.context.model_dump(mode="json"),
             )
         except NoEntitledAssetsError:
@@ -216,7 +220,9 @@ class GovernedAnalysisCapabilityProbe:
             "as_of": context.as_of.isoformat(),
             "timezone": context.timezone,
             "question_sha256": hashlib.sha256(
-                request.command.user_message.encode("utf-8")
+                (request.task_objective or request.command.user_message).encode(
+                    "utf-8"
+                )
             ).hexdigest(),
             "matched": matched,
             "outcome": outcome,
@@ -277,7 +283,7 @@ class InternalGuidelineCapabilityProbe:
                 outcome="RAG_CAPABILITY_NOT_ENTITLED",
             )
         candidate = await self._searcher.search_capability(
-            request.command.user_message,
+            request.task_objective or request.command.user_message,
             request.context.role.value,
         )
         validated = self._validate_candidate(candidate)
@@ -385,7 +391,9 @@ class InternalGuidelineCapabilityProbe:
             "as_of": context.as_of.isoformat(),
             "timezone": context.timezone,
             "question_sha256": hashlib.sha256(
-                request.command.user_message.encode("utf-8")
+                (request.task_objective or request.command.user_message).encode(
+                    "utf-8"
+                )
             ).hexdigest(),
             "matched": matched,
             "outcome": outcome,
@@ -439,8 +447,16 @@ class MLPredictionCapabilityProbe:
                 ),
             )
         try:
-            capability = MLRuntimeCapability.model_validate(
-                await self._reader.capabilities()
+            capability = require_deployed_ml_capability(
+                MLRuntimeCapability.model_validate(
+                    await self._reader.capabilities()
+                )
+            )
+        except MLDeploymentPolicyError as error:
+            return self._evidence(
+                request,
+                matched=False,
+                outcome=error.code,
             )
         except Exception as error:
             raise AgentDispatchError(
@@ -546,7 +562,11 @@ class MLPredictionCapabilityProbe:
             reason=(
                 "ML_CAPABILITY_MATCH"
                 if matched
-                else "ML_CAPABILITY_NOT_MATCHED"
+                else (
+                    outcome
+                    if outcome.startswith("ML_")
+                    else "ML_CAPABILITY_NOT_MATCHED"
+                )
             ),
             evidence_refs=(f"{_ML_EVIDENCE_REFERENCE_PREFIX}{digest}",),
         )

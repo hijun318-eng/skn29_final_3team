@@ -6,7 +6,7 @@ import {
   normalizeAnalysisEvidence,
   normalizeAnalysisMetrics,
 } from "../contracts/analysis.ts";
-import { ragRun } from "./agentResponseMappers.js";
+import { mlPredictionRun, ragRun } from "./agentResponseMappers.js";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -174,6 +174,7 @@ export function hydrateTurnsFromServer(serverTurns) {
       const isReportAction = st.route === "REPORT_ACTION";
       const isOutOfScope = st.route === "OUT_OF_SCOPE";
       const ragResult = st.resolved_slots?.rag;
+      const mlPrediction = st.resolved_slots?.ml_prediction;
       const scopeRejection = st.resolved_slots?.scope_rejection;
       const userMessage = st.user_message || "";
       let run;
@@ -182,6 +183,8 @@ export function hydrateTurnsFromServer(serverTurns) {
         run = scopeNoticeRun(userMessage, scopeRejection?.message);
       } else if (ragResult) {
         run = ragRun(userMessage, ragResult);
+      } else if (mlPrediction && st.terminal_status === "SUCCEEDED") {
+        run = mlPredictionRun(userMessage, mlPrediction);
       } else if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
         const sourceQueryId = lastAnalysisRun?.artifact?.queryId;
@@ -309,7 +312,11 @@ export function hydrateTurnsFromServer(serverTurns) {
           ? (st.view_type || "TABLE")
           : isOutOfScope
             ? "CHAT"
-            : ragResult ? "RAG" : (st.resolved_slots?.target_chart_type || "SUMMARY"),
+            : ragResult
+              ? "RAG"
+              : mlPrediction
+                ? "ML_PREDICTION"
+                : (st.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
         reusePending: false,
         viewSpecId: isPresentation ? st.view_spec_id : null,

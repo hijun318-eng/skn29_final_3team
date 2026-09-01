@@ -1,3 +1,5 @@
+"""매뉴얼 PDF의 공통 상태전환 문구를 문서별 승인·보류·종결 통제로 교체한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -167,15 +169,29 @@ TRANSITION_CONTROLS = {
 }
 @dataclass(frozen=True)
 class Replacement:
+    """PDF에 덧그릴 문서별 상태전환 설명과 원문 기준점 좌표를 보존한다."""
+
     description: str
     x: float
     baseline_y: float
 class ManualTransitionControlRepairer:
+    """매뉴얼 ID에 승인된 전환 통제를 매핑해 PDF content stream과 overlay를 갱신한다.
+
+    지원되지 않는 매뉴얼 ID, 예상과 다른 전환 문구 수, 글꼴 부재 또는 출력 검증
+    실패는 예외로 종료해 일부 교체본을 정상 산출물로 사용하지 않게 한다.
+    """
+
     def __init__(self) -> None:
         if not FONT_PATH.is_file():
             raise FileNotFoundError(f"Korean font not found: {FONT_PATH}")
         pdfmetrics.registerFont(TTFont(FONT_NAME, str(FONT_PATH)))
     def repair(self, source: Path, target: Path) -> int:
+        """원본의 공통 전환 문구를 매뉴얼별 통제로 교체하고 검증된 건수를 반환한다.
+
+        원본을 덮어쓰는 경우 별도 임시 PDF를 먼저 검증하며, content stream에서 제거한
+        수와 삽입할 통제 수가 다르면 결과 파일을 확정하지 않는다.
+        """
+
         replacements = self._find_replacements(source)
         if not any(replacements):
             return 0
@@ -277,6 +293,8 @@ class ManualTransitionControlRepairer:
         if found < expected:
             raise ValueError(f"replacement text missing: {path.name}")
 def main() -> None:
+    """입력 디렉터리의 PDF를 문서별 전환 통제로 일괄 보정하고 처리 건수를 출력한다."""
+
     parser = argparse.ArgumentParser(description="매뉴얼 상태 전환 통제를 업무별 조건으로 교체")
     parser.add_argument("manuals_dir", type=Path)
     parser.add_argument("output_dir", type=Path)

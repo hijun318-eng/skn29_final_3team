@@ -51,6 +51,17 @@ capacity는 `src/modelops/model_runtime_manifest.v1.json`, 비활성 예시는
 `infrastructure/database/.env.example`을 따른다. 실제 endpoint와 token은 배포 환경에서만
 주입하며 일부만 선언하면 readiness와 adapter 생성이 모두 fail-closed한다.
 
+ML 예측은 `ML_FEATURE_ENABLED`가 켜진 요청 경계에서만 runtime 설정을 읽는다. 활성화할
+때는 Backend와 ML runtime에 같은 32-byte 이상 `ML_RUNTIME_HMAC_SECRET`을 주입하고,
+Backend에는 승인 배포의 `ML_APPROVED_MODEL_VERSION`, `ML_APPROVED_MODEL_SHA256`,
+`ML_APPROVED_FEATURE_CONTRACT_SHA256`을 함께 고정한다. Backend는 30초 timestamp·nonce와
+body hash에 결속된 요청·응답 서명을 검증하고 단일 runtime process 안의 nonce 재사용을
+거부한 뒤에도 runtime capability의 실제 artifact
+hash가 세 pin과 정확히 같지 않으면 readiness와 예측을 fail-closed한다.
+runtime은 chunked 요청과 1 MiB 초과 `Content-Length`를 본문 적재 전에 거부하고,
+인증 뒤 발생한 startup·처리 오류는 내부 원문 대신 서명된 generic 오류로 반환한다.
+다중 replica 배포에서는 process-local nonce guard를 공유 저장소 기반 guard로 교체해야 한다.
+
 일반 분석은 원문 질문을 `normalized_question`으로 전달하고 request ID는 추적 식별자로 분리한다. 실제 endpoint에는 node별 response schema를 전달하고 동일 schema를 다시 검증한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·circuit open은 분석 성공이나 Artifact로 저장하지 않는다.
 
 데이터 플랫폼은 요청마다 실제 Trino health와 DataHub dataset URN·name·승인 컬럼을 확인한다. DataHub가 반환한 원본 추가 컬럼은 Context나 응답에 노출하지 않는다. `POST /analysis`는 request, query evidence, G3 이후 Artifact를 한 흐름으로 영속화한다.

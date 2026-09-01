@@ -252,10 +252,11 @@ Revision conflict와 알 수 없는 오류는 fail-closed로 자동 재시도하
 | `GET` | `/reports/assistant/sessions/{assistant_request_id}/evaluation` | 자신의 안전한 실행 평가 조회 |
 | `GET` | `/reports/assistant/operations/summary` | 관리자 기간 품질·비용 집계 |
 | `GET` | `/reports/assistant/operations/failures` | 관리자 기간 실패 목록 |
-| `POST` | `/reports/assistant/drafts` | 기존 관리자용 단발성 AI draft 호환 API |
+| `POST` | `/reports/assistant/drafts` | 폐기된 단발성 API. 인증 후에도 body를 읽거나 모델을 호출하지 않고 `410 Gone` 반환 |
 
 모든 session endpoint는 기존 cookie 인증과 request context header 계약을 사용한다. 타인 또는
 미존재 session은 404로 숨기고, request/phase 충돌은 409, 권한 부족은 403으로 반환한다.
+외부 모델 전송은 세션 실행 경계와 사용자 승인을 거쳐야 하며, legacy 단발성 경로로 우회할 수 없다.
 
 ## 7. 주요 Backend 파일 위치
 
@@ -382,8 +383,16 @@ queue/outbox/worker를 추가하지 않았기 때문에 분석 실행 직전·�
 - `REPORT_ASSISTANT_MAX_INPUT_TOKENS`
 - `REPORT_ASSISTANT_MAX_OUTPUT_TOKENS`
 - `REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD`
+- `REPORT_ASSISTANT_INPUT_USD_PER_MILLION`
+- `REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION`
+- `REPORT_ASSISTANT_PAGE_RENDER_TIMEOUT_SECONDS` (0.05~120초, 기본 15초)
 - `REPORT_ASSISTANT_REQUESTS_PER_HOUR`
 - `REPORT_ASSISTANT_STALE_SECONDS`
+
+비용 단가 두 개와 최대 비용은 배포 환경에서 모두 명시해야 한다. 하나라도 누락되거나
+유효하지 않으면 Report Assistant는 system prompt·응답 schema를 포함한 입력 token 추정치와
+노드별 실제 출력 한도, 내부 재시도 횟수로 계산한 최대 비용을 확인한 뒤 transport 전에
+fail-closed한다. 모델 응답 뒤에는 provider가 반환한 실제 usage 기반 비용 상한도 다시 확인한다.
 
 ## 13. 다음 개발자가 진행할 순서
 

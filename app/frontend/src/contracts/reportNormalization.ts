@@ -11,12 +11,38 @@ import {
   type ReportBlockRequest,
   type ReportBlockResponse,
   type ReportDefinitionResponse,
+  type ReportDefinitionLifecycle,
+  type ReportDefinitionLifecycleResponse,
   type ReportDefinitionVersion,
   type ReportDocument,
   type ReportDocumentResponse,
   type ReportRun,
   type ReportRunResponse,
 } from "./reportContract.ts";
+
+function normalizeArchiveMetadata(value: {
+  readonly archived_at: string | null;
+  readonly archived_by: string | null;
+}): { readonly archivedAt?: string; readonly archivedBy?: string } {
+  if (!Object.hasOwn(value, "archived_at") || !Object.hasOwn(value, "archived_by")) {
+    throw new Error("Report 보관 상태 계약이 누락되었습니다.");
+  }
+  const archivedAt = value.archived_at;
+  const archivedBy = value.archived_by;
+  if ((archivedAt === null) !== (archivedBy === null)) {
+    throw new Error("Report 보관 상태와 처리 주체는 함께 제공되어야 합니다.");
+  }
+  if (archivedAt !== null && (
+    typeof archivedAt !== "string"
+    || Number.isNaN(Date.parse(archivedAt))
+    || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(archivedAt)
+    || typeof archivedBy !== "string"
+    || !archivedBy.trim()
+  )) {
+    throw new Error("Report 보관 상태 계약이 올바르지 않습니다.");
+  }
+  return archivedAt === null ? {} : { archivedAt, archivedBy };
+}
 
 function normalizeBlock(block: ReportBlockResponse): DraftLayoutBlock {
   if (!REPORT_BLOCK_TYPES.includes(block.type)) throw new Error(`지원하지 않는 Report block type입니다: ${block.type}`);
@@ -45,6 +71,7 @@ export function normalizeReportDefinition(response: ReportDefinitionResponse): R
   }
   assertReportOrientation(response.orientation);
   assertReportCurrencyDisplayUnit(response.currency_display_unit);
+  const archive = normalizeArchiveMetadata(response);
   return {
     definitionId: response.definition_id,
     version: response.version,
@@ -55,7 +82,25 @@ export function normalizeReportDefinition(response: ReportDefinitionResponse): R
     orientation: response.orientation,
     currencyDisplayUnit: response.currency_display_unit,
     approvedAt: response.approved_at ?? undefined,
+    ...archive,
   };
+}
+
+/** 보관·복원 응답의 boolean과 receipt 쌍을 검증해 화면 lifecycle 모델로 변환한다. */
+export function normalizeReportDefinitionLifecycle(
+  response: ReportDefinitionLifecycleResponse,
+): ReportDefinitionLifecycle {
+  if (typeof response.definition_id !== "string" || !response.definition_id.trim()) {
+    throw new Error("Report 보관 대상 ID가 올바르지 않습니다.");
+  }
+  if (typeof response.archived !== "boolean") {
+    throw new Error("Report 보관 상태가 올바르지 않습니다.");
+  }
+  const archive = normalizeArchiveMetadata(response);
+  if (response.archived !== Boolean(archive.archivedAt)) {
+    throw new Error("Report 보관 상태와 receipt가 일치하지 않습니다.");
+  }
+  return { definitionId: response.definition_id, archived: response.archived, ...archive };
 }
 
 /** 최종 문서 wire 응답의 checksum·표시 정책을 보존해 immutable 모델로 변환한다. */

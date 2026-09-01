@@ -96,9 +96,11 @@ def _receipt(
         "tool_id": str(descriptor.tool_id),
         "tool_code": descriptor.name,
         "semantic_version": descriptor.semantic_version,
+        "title": descriptor.title,
         "description": descriptor.description,
         "input_schema_json": public["inputSchema"],
         "output_schema_json": public["outputSchema"],
+        "annotations_json": public["annotations"],
         "transport": descriptor.transport,
         "timeout_seconds": descriptor.timeout_seconds,
         "required_roles_json": [role.value for role in descriptor.roles],
@@ -160,6 +162,41 @@ class MCPToolRegistryTest(IsolatedAsyncioTestCase):
                 self.assertFalse(access.known)
                 self.assertFalse(access.authorized)
                 self.assertIsNone(access.descriptor)
+
+    async def test_title_and_annotations_drift_are_hidden(self) -> None:
+        descriptor = _descriptor()
+        for field, value in (
+            ("title", "drifted title"),
+            ("annotations_json", {**_ANNOTATIONS, "readOnlyHint": False}),
+        ):
+            with self.subTest(field=field):
+                row = {**_receipt(descriptor), field: value}
+
+                async def rows() -> tuple[dict[str, object], ...]:
+                    return (row,)
+
+                access = await MCPToolRegistry((descriptor,), rows).resolve(
+                    descriptor.name,
+                    Role.ANALYST,
+                )
+                self.assertFalse(access.known)
+
+    async def test_nested_object_schema_must_also_be_closed(self) -> None:
+        nested_open_schema = {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
+                }
+            },
+            "required": ["value"],
+            "additionalProperties": False,
+        }
+
+        with self.assertRaisesRegex(ValueError, "must be a closed object"):
+            _descriptor(input_schema=nested_open_schema)
 
     async def test_common_input_validation_rejects_adapter_schema_omission(self) -> None:
         """Adapter가 추가 필드를 놓쳐도 dispatcher의 공통 schema 검증이 닫는다."""

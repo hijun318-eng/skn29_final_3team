@@ -179,15 +179,9 @@ def _block_html(block: Mapping[str, Any], currency_display_unit: str) -> str:
     elif block_type == "artifact":
         content = _artifact_html(block, artifact, currency_display_unit)
     elif block_type == "chart":
-        content = (
-            _metrics_html(artifact, currency_display_unit)
-            + _chart_svg(artifact, currency_display_unit, _block_chart_type(block, artifact))
-        )
+        content = _chart_svg(artifact, currency_display_unit, _block_chart_type(block, artifact))
     else:
-        content = (
-            _metrics_html(artifact, currency_display_unit)
-            + _table_html(artifact, currency_display_unit)
-        )
+        content = _table_html(artifact, currency_display_unit)
     if artifact and _artifact_is_synthetic(artifact):
         content = (
             f'<p class="synthetic-artifact-warning" role="note">{SYNTHETIC_WARNING}</p>'

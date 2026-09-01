@@ -29,7 +29,9 @@ PRODUCTION_PREFIXES = (
     "app/frontend/src/",
     "src/ai/",
     "src/data/",
+    "src/ml/",
     "src/modelops/",
+    "src/rag/",
     "src/report/",
     "scripts/",
     "infrastructure/database/datahub/",
@@ -103,6 +105,9 @@ ALLOWED_RUNTIME_JSON = {
     "config/rag/access_policy.json": "RAG role policy validated by SearchAccessPolicy tests",
     "config/rag/answer.json": "RAG answer safety limits validated by AnswerSafetySettings",
     "config/rag/benchmark.json": "RAG evaluation-only benchmark configuration",
+    "config/rag/corpus_manifest.json": (
+        "closed RAG corpus membership contract validated by CorpusManifest"
+    ),
     "config/rag/embedding.json": "versioned RAG embedding runtime configuration",
     "config/rag/embedding_models.json": "RAG evaluation-only embedding comparison matrix",
     "config/rag/vector_retrieval.json": "RAG retrieval limits validated by VectorSettings tests",

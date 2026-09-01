@@ -1,3 +1,5 @@
+"""승인된 route와 Tool Registry 정책에 따라 SQL·문서·ML 근거 호출과 부분 실패를 조정한다."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -15,27 +17,44 @@ from .routing import EvidenceRouter
 
 
 class ToolCallError(RuntimeError):
+    """도구 등록·승인·권한·입출력·의존성 실패를 안정된 코드로 상위 계층에 전달한다."""
+
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
 
 
 class SqlEvidencePort(Protocol):
-    def query(self, question: str, context: IntegrationContext) -> SqlEvidence: ...
+    """승인된 SQL 실행 경계가 구현해야 할 관측 근거 조회 규약이다."""
+
+    def query(self, question: str, context: IntegrationContext) -> SqlEvidence:
+        """질문과 호출 문맥을 받아 출처가 포함된 단일 SQL 근거를 반환한다."""
+
+        ...
 
 
 class DocumentEvidencePort(Protocol):
+    """역할과 기준일이 적용된 문서 검색 구현이 따라야 할 근거 조회 규약이다."""
+
     def search(
         self, question: str, context: IntegrationContext
-    ) -> tuple[DocumentEvidence, ...]: ...
+    ) -> tuple[DocumentEvidence, ...]:
+        """질문과 호출 문맥에 접근 가능한 문서 근거를 점수 순 tuple로 반환한다."""
+
+        ...
 
 
 class ModelPredictionPort(Protocol):
-    def predict(self, question: str, context: IntegrationContext) -> dict[str, object]: ...
+    """관측 사실과 구분되는 승인 모델 예측 구현의 호출 규약이다."""
+
+    def predict(self, question: str, context: IntegrationContext) -> dict[str, object]:
+        """질문과 추적 문맥을 모델 입력으로 해 예측 영수증 사전을 반환한다."""
+
+        ...
 
 
 class EvidenceCoordinator:
-    """Coordinates typed evidence only; answer generation is deliberately out of scope."""
+    """답변을 생성하지 않고 승인된 도구에서 typed SQL·문서·예측 근거만 수집한다."""
 
     SQL_TOOL = "answervice-sql"
     RAG_TOOL = "internal-manual-search"
@@ -56,6 +75,8 @@ class EvidenceCoordinator:
         self._model_port = model_port
 
     def execute(self, question: str, context: IntegrationContext) -> IntegrationResponse:
+        """승인 route의 도구를 권한 확인 후 실행하고 전체·부분·차단·실패 상태를 근거와 함께 반환한다."""
+
         try:
             plan = self._router.decide(
                 context.approved_route,

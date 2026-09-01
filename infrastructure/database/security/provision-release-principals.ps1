@@ -7,7 +7,7 @@ param(
     [Parameter(Mandatory)]
     [string]$PrincipalPath,
     [string]$AnalystUsername,
-    [ValidateSet('analyst', 'report_admin', 'data_admin', 'platform_admin')]
+    [ValidateSet('analyst', 'platform_admin')]
     [string]$AnalystRole,
     [int]$SessionTtlSeconds = 0,
     [switch]$PromptAnalystPassword,
@@ -155,10 +155,11 @@ $definitions = @(
         username_env = 'REPORT_ADMIN_LOGIN_ID'
         password_env = 'REPORT_ADMIN_LOGIN_PASSWORD'
         role_env = $null
-        default_role = 'report_admin'
+        default_role = 'platform_admin'
     }
 )
-$allowedRoles = @('analyst', 'report_admin', 'data_admin', 'platform_admin')
+$allowedRoles = @('analyst', 'platform_admin')
+$legacyRoles = @('report_admin', 'data_admin')
 $existing = @()
 if (Test-Path -LiteralPath $resolvedPrincipalPath) {
     try { $existing = @((Get-Content -Raw -LiteralPath $resolvedPrincipalPath | ConvertFrom-Json)) }
@@ -182,6 +183,13 @@ $principals = foreach ($definition in $definitions) {
     # Role 회전은 같은 사람의 저장 Analysis·Report 소유권을 끊지 않아야 한다. username은
     # principal 파일에서 unique하므로 기존 subject를 Role과 무관하게 보존한다.
     $matching = @($existing | Where-Object { $_.username -eq $username }) | Select-Object -First 1
+    # 기존 legacy Role은 이 provisioning 실행만으로 임의 승격하지 않는다. 신규 principal과
+    # 명시적인 허용 Role 입력만 두-role 계약을 따르며 실제 전환은 관리자 API에서 수행한다.
+    $storedRole = if ($matching -and ([string]$matching.role -in $legacyRoles)) {
+        [string]$matching.role
+    } else {
+        $role
+    }
     $salt = [byte[]]::new(16)
     $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
     $generator.GetBytes($salt)
@@ -192,7 +200,7 @@ $principals = foreach ($definition in $definitions) {
         password_hash = Get-PasswordHash $password $salt $iterations
         password_iterations = $iterations
         subject = if ($matching) { $matching.subject } else { [guid]::NewGuid().ToString() }
-        role = $role
+        role = $storedRole
         active = $true
     }
 }

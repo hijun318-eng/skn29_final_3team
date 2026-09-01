@@ -11,6 +11,7 @@ import type {
 /** 정의 목록의 독립 로딩 상태다. */ export type DefinitionListState = "loading" | "ready" | "empty" | "error";
 /** 최종문서 요청의 취소 가능한 상태다. */ export type FinalDocumentState = "idle" | "loading" | "ready" | "missing" | "error";
 /** 정의 목록에서 허용되는 상태 필터다. */ export type DefinitionStatusFilter = "all" | "draft" | "approved";
+/** 정의 목록의 비파괴 lifecycle 범위다. */ export type DefinitionCollection = "active" | "archived";
 /** 서버 schedule이 지원하는 반복 주기다. */ export type ScheduleCadence = "daily" | "weekly" | "monthly";
 /** 최종문서 다운로드에서 지원하는 asset 형식이다. */ export type FinalAssetFormat = "html" | "pdf";
 
@@ -29,7 +30,6 @@ import type {
 
 /** 새 정의 생성과 초기 draft를 묶은 명령 결과다. */ export interface CreateDefinitionResult {
   readonly definition: ReportDefinitionVersion;
-  readonly blockId: string;
   readonly initialContent: string;
 }
 

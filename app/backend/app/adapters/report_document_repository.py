@@ -30,6 +30,7 @@ class PostgresReportDocumentRepositoryMixin:
                 JOIN report_v1.report_definitions d USING (definition_id)
                 WHERE v.definition_id = :definition_id AND v.version = :version
                   AND (:manage_all OR d.owner_id = :owner_id)
+                  AND d.archived_at IS NULL
                 """
             ),
             {**self._scope_params(), "definition_id": definition_id, "version": version},
@@ -153,6 +154,7 @@ class PostgresReportDocumentRepositoryMixin:
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
                       AND (:manage_all OR d.owner_id = :owner_id)
+                      AND d.archived_at IS NULL
                     FOR UPDATE OF v
                     """
                 ),

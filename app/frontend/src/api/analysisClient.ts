@@ -55,6 +55,8 @@ export interface AnalysisClient {
   replayDefinition(definitionId: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisRun>;
   getRunArtifact(requestId: string): Promise<AnalysisRun>;
   listRuns(options?: AnalysisRunListOptions): Promise<SavedAnalysisRun[]>;
+  archiveArtifact(artifactId: string): Promise<AnalysisArtifactLifecycle>;
+  restoreArtifact(artifactId: string): Promise<AnalysisArtifactLifecycle>;
   createConversation(): Promise<{ conversation_id: string; created_at: string }>;
   getConversationTurns(conversationId: string): Promise<ConversationTurnWire[]>;
   executeTurnCommand(
@@ -73,6 +75,7 @@ export interface AnalysisClient {
 export interface AnalysisRunListOptions {
   limit?: number;
   approvedOnly?: boolean;
+  archived?: boolean;
 }
 
 /** 현재 세션 역할로 열람이 승인된 내부 문서의 공개 메타데이터다. */
@@ -191,9 +194,7 @@ export type LoginSession = SessionInfo;
 
 const SESSION_ROLES = new Set<ServiceRole>([
   "analyst",
-  "report_admin",
-  "data_admin",
-  "platform_admin",
+  "admin",
 ]);
 const SESSION_CAPABILITIES = new Set<ServiceCapability>(Object.values(CAPABILITY));
 /** 인증 세션이 UI에 공개할 수 있는 서버 활성 선택 기능 이름이다. */
@@ -239,12 +240,15 @@ export interface SavedAnalysisRun {
   request_id: string;
   definition_id: string;
   definition_version: number;
-  status: "RECEIVED" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "BLOCKED" | "CANCELLED";
+  status: "RECEIVED" | "CLARIFYING" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "BLOCKED" | "CANCELLED";
   as_of: string;
   timezone: string;
   trace_id: string;
   query_id: string | null;
   artifact_id: string | null;
+  artifact_archived: boolean;
+  artifact_archived_at: string | null;
+  artifact_archived_by: string | null;
   error_type: string | null;
   started_at: string;
   completed_at: string | null;
@@ -253,6 +257,14 @@ export interface SavedAnalysisRun {
   period_end_exclusive: string | null;
   snapshot_cutoff?: string | null;
   snapshot_selection?: "max_source_value_lt_as_of" | null;
+}
+
+/** Artifact 보관/복원 완료 뒤 서버가 확정해 돌려주는 owner-scoped lifecycle 영수증이다. */
+export interface AnalysisArtifactLifecycle {
+  artifact_id: string;
+  archived: boolean;
+  archived_at: string | null;
+  archived_by: string | null;
 }
 
 /** trace 기반 진행 조회가 반환하는 서버 관측 상태다. */
@@ -450,6 +462,86 @@ function normalizeInternalManuals(value: unknown): InternalManualSummary[] {
   });
 }
 
+function readRequiredString(value: Record<string, unknown>, field: string, message: string) {
+  if (typeof value[field] !== "string" || !value[field].trim()) throw new Error(message);
+  return value[field] as string;
+}
+
+function readNullableTimestamp(value: unknown, message: string) {
+  if (value === null) return null;
+  if (typeof value !== "string" || !value.trim() || Number.isNaN(Date.parse(value))) throw new Error(message);
+  return value;
+}
+
+/** 목록 projection의 Artifact 보관 receipt가 부분 상태·다른 Artifact 상태를 표현하지 않게 검증한다. */
+function normalizeSavedAnalysisRun(value: unknown): SavedAnalysisRun {
+  const message = "분석 실행 목록 API가 올바르지 않은 응답을 반환했습니다.";
+  if (!value || typeof value !== "object") throw new Error(message);
+  const run = value as Record<string, unknown>;
+  const artifactId = run.artifact_id;
+  const archived = run.artifact_archived;
+  const archivedAt = readNullableTimestamp(run.artifact_archived_at, message);
+  const archivedBy = run.artifact_archived_by;
+  if (!(typeof artifactId === "string" && artifactId.trim()) && artifactId !== null) throw new Error(message);
+  if (typeof archived !== "boolean") throw new Error(message);
+  if (!(typeof archivedBy === "string" && archivedBy.trim()) && archivedBy !== null) throw new Error(message);
+  const hasArchiveReceipt = archivedAt !== null && archivedBy !== null;
+  if ((archivedAt === null) !== (archivedBy === null) || archived !== hasArchiveReceipt || (!artifactId && (archived || hasArchiveReceipt))) {
+    throw new Error(message);
+  }
+  const nullableStrings = ["query_id", "error_type", "completed_at", "period_start", "period_end_exclusive", "snapshot_cutoff"] as const;
+  for (const field of nullableStrings) {
+    if (!(typeof run[field] === "string" && run[field].trim()) && run[field] !== null) throw new Error(message);
+  }
+  const status = run.status;
+  if (typeof status !== "string" || !["RECEIVED", "CLARIFYING", "SUCCEEDED", "PARTIAL", "FAILED", "BLOCKED", "CANCELLED"].includes(status)) throw new Error(message);
+  if (run.snapshot_selection !== undefined && run.snapshot_selection !== null && run.snapshot_selection !== "max_source_value_lt_as_of") throw new Error(message);
+  if (typeof run.definition_version !== "number" || !Number.isInteger(run.definition_version) || run.definition_version < 1) throw new Error(message);
+  for (const field of ["request_id", "definition_id", "as_of", "timezone", "trace_id", "started_at", "question"] as const) readRequiredString(run, field, message);
+  return {
+    request_id: run.request_id as string,
+    definition_id: run.definition_id as string,
+    definition_version: run.definition_version as number,
+    status: status as SavedAnalysisRun["status"],
+    as_of: run.as_of as string,
+    timezone: run.timezone as string,
+    trace_id: run.trace_id as string,
+    query_id: (run.query_id as string | null | undefined) ?? null,
+    artifact_id: artifactId as string | null,
+    artifact_archived: archived,
+    artifact_archived_at: archivedAt as string | null,
+    artifact_archived_by: archivedBy as string | null,
+    error_type: (run.error_type as string | null | undefined) ?? null,
+    started_at: run.started_at as string,
+    completed_at: (run.completed_at as string | null | undefined) ?? null,
+    question: run.question as string,
+    period_start: (run.period_start as string | null | undefined) ?? null,
+    period_end_exclusive: (run.period_end_exclusive as string | null | undefined) ?? null,
+    snapshot_cutoff: (run.snapshot_cutoff as string | null | undefined) ?? null,
+    snapshot_selection: (run.snapshot_selection as "max_source_value_lt_as_of" | null | undefined) ?? null,
+  };
+}
+
+/** lifecycle 명령의 성공 응답도 실행 목록과 같은 불변 receipt 규칙으로 닫는다. */
+function normalizeArtifactLifecycle(value: unknown): AnalysisArtifactLifecycle {
+  const message = "분석 Artifact 보관 상태 API가 올바르지 않은 응답을 반환했습니다.";
+  if (!value || typeof value !== "object") throw new Error(message);
+  const lifecycle = value as Record<string, unknown>;
+  const artifactId = readRequiredString(lifecycle, "artifact_id", message);
+  if (typeof lifecycle.archived !== "boolean") throw new Error(message);
+  const archivedAt = readNullableTimestamp(lifecycle.archived_at, message);
+  const archivedBy = lifecycle.archived_by;
+  if (!(typeof archivedBy === "string" && archivedBy.trim()) && archivedBy !== null) throw new Error(message);
+  const hasArchiveReceipt = archivedAt !== null && archivedBy !== null;
+  if ((archivedAt === null) !== (archivedBy === null) || lifecycle.archived !== hasArchiveReceipt) throw new Error(message);
+  return {
+    artifact_id: artifactId,
+    archived: lifecycle.archived,
+    archived_at: archivedAt as string | null,
+    archived_by: archivedBy as string | null,
+  };
+}
+
 /** 명시된 backend origin에만 cookie 인증 요청을 보내며 origin 누락 시 즉시 실패하는 분석 클라이언트다. */
 export function createHttpAnalysisClient(
   baseUrl = env.VITE_BACKEND_BASE_URL,
@@ -614,10 +706,27 @@ export function createHttpAnalysisClient(
       if (options.approvedOnly !== undefined) {
         search.set("approved_only", String(options.approvedOnly));
       }
+      if (options.archived !== undefined) search.set("archived", String(options.archived));
       const query = search.size ? `?${search.toString()}` : "";
-      return (await parse<{ items: SavedAnalysisRun[] }>(
+      const payload = await parse<{ items?: unknown }>(
         await request(endpoint(`/analysis/runs${query}`), { credentials: "include", headers: headers() }),
-      )).items;
+      );
+      if (!Array.isArray(payload?.items)) throw new Error("분석 실행 목록 API가 올바르지 않은 응답을 반환했습니다.");
+      return payload.items.map(normalizeSavedAnalysisRun);
+    },
+    async archiveArtifact(artifactId) {
+      const payload = await parse<unknown>(await request(
+        endpoint(`/analysis/artifacts/${encodeURIComponent(artifactId)}/archive`),
+        { method: "POST", credentials: "include", headers: headers(false) },
+      ));
+      return normalizeArtifactLifecycle(payload);
+    },
+    async restoreArtifact(artifactId) {
+      const payload = await parse<unknown>(await request(
+        endpoint(`/analysis/artifacts/${encodeURIComponent(artifactId)}/restore`),
+        { method: "POST", credentials: "include", headers: headers(false) },
+      ));
+      return normalizeArtifactLifecycle(payload);
     },
     async createConversation() {
       const payload = await parse<{ status: string; data: { conversation_id: string; created_at: string } }>(

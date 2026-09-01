@@ -380,7 +380,8 @@ try {
   assert.match(stylesSource, /\.chat-layout \.analysis-state--loading,\.chat-layout \.analysis-state--delayed\{[^}]*grid-template-columns:minmax\(0,1fr\) auto[^}]*border-radius:12px/);
   assert.doesNotMatch(stylesSource, /\.chat-layout \.run-history-panel\{/);
   assert.doesNotMatch(agentSource, /className="run-history-panel"/);
-  assert.match(stylesSource, /\.chat-layout \.conversation,\.chat-layout \.analysis-notice\{width:min\(100%,var\(--analysis-thread-width\)\)/);
+  assert.match(stylesSource, /\.chat-layout \.conversation\{width:min\(100%,var\(--analysis-thread-width\)\)/);
+  assert.match(stylesSource, /\.chat-layout \.analysis-notice\{max-width:min\(100%,var\(--analysis-thread-width\)\)/);
   assert.doesNotMatch(stylesSource, /\.chat-layout \.meta-strip/);
   assert.doesNotMatch(agentSource, /verified=\{/);
   assert.doesNotMatch(agentSource, /question-help/);
@@ -412,7 +413,10 @@ try {
   assert.match(stylesSource, /@media\(min-width:1201px\)\{\.chat-layout\.evidence-open\{grid-template-columns:205px minmax\(400px,1fr\) 340px\}/);
   assert.match(agentSource, /className="chat-scroll-region"/);
   assert.match(agentSource, /대화 결과를 덮지 않는 중앙 하단 입력 영역/);
-  assert.match(stylesSource, /html:has\(\.chat-layout\),body:has\(\.chat-layout\)\{overflow:hidden\}/);
+  assert.match(stylesSource, /html:has\(\.chat-layout\),body:has\(\.chat-layout\)\{height:100%;overflow:hidden\}/);
+  assert.match(stylesSource, /\.app-shell:has\(\.chat-layout\)\{height:100dvh;min-height:0;overflow:hidden\}/);
+  assert.match(stylesSource, /\.app-shell:has\(\.chat-layout\)>\.workspace\{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax\(0,1fr\);overflow:hidden\}/);
+  assert.match(stylesSource, /\.app-shell:has\(\.chat-layout\)>\.workspace>\.page-stage\{min-height:0;overflow:hidden\}/);
   assert.match(stylesSource, /\.chat-main\{padding:0;display:grid;grid-template-rows:minmax\(0,1fr\) auto;overflow:hidden\}/);
   assert.match(stylesSource, /\.chat-scroll-region\{[^}]*overflow:auto[^}]*overscroll-behavior:contain\}/);
   assert.match(stylesSource, /\.chat-scroll-region\{scrollbar-gutter:stable both-edges\}/);
@@ -420,7 +424,15 @@ try {
   assert.match(stylesSource, /\.chat-input\{position:static;min-width:0;width:100%;padding:10px 25px calc\(12px \+ env\(safe-area-inset-bottom\)\)\}/);
   assert.match(stylesSource, /\.chat-main>\.chat-input\{background:transparent\}/);
   assert.match(stylesSource, /\.question-field,\.analysis-input-error\{width:min\(100%,920px\);margin-inline:auto\}/);
-  assert.match(stylesSource, /@media\(max-width:650px\)\{\.chat-main\{height:calc\(100dvh - var\(--app-header-height\)\);min-height:0;padding:0\}\.chat-scroll-region\{padding:12px 12px 28px\}\.chat-input\{max-width:none;padding:10px 12px/);
+  assert.match(stylesSource, /@media\(max-width:650px\)\{\.app-shell:has\(\.chat-layout\) \.chat-layout,\.chat-main\{height:100%;min-height:0\}\.chat-main\{padding:0\}\.chat-scroll-region\{padding:12px 12px 28px\}\.chat-input\{max-width:none;padding:10px 12px/);
+  assert.doesNotMatch(agentSource, /AnalysisArtifactCollection|analysis-artifact-mobile|compactViewport/);
+  assert.match(agentSource, /<span>\{d\.question\}<small>다시 분석하기<\/small><\/span>/);
+  assert.doesNotMatch(agentSource, /<span>\{d\.title\}<small>다시 분석하기<\/small><\/span>/);
+  assert.match(agentSource, /!turnItem\.isArtifactReuse \? \(\) => void saveAnalysis/);
+  assert.match(agentSource, /analysis-notice--\$\{feedback\.tone\}/);
+  assert.match(agentSource, /feedback\.tone === "error" \? "alert" : "status"/);
+  assert.match(stylesSource, /\.analysis-notice--success/);
+  assert.match(stylesSource, /\.analysis-notice--error/);
   assert.match(agentSource, /prefers-reduced-motion: reduce/);
   assert.match(agentSource, /scrollIntoView\(\{[\s\S]*?block: "end"/);
   assert.match(agentSource, /className="conversation-end"/);

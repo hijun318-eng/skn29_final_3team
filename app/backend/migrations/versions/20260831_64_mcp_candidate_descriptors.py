@@ -377,6 +377,22 @@ def upgrade() -> None:
         DECLARE
             affected integer;
         BEGIN
+            PERFORM 1
+            FROM tooling.tool_registry
+            WHERE tool_id = '{RAG_ANSWER_TOOL_ID}'
+              AND tool_code = 'rag.answer'
+              AND semantic_version = '1.1.0'
+              AND description = 'Answer from approved internal manuals with citation-bound evidence.'
+              AND input_schema_json = '{old_input}'::jsonb
+              AND output_schema_json = '{old_output}'::jsonb
+              AND transport = 'MCP_STREAMABLE_HTTP'
+              AND timeout_seconds = 30
+              AND required_roles_json = '["analyst","platform_admin"]'::jsonb
+              AND is_enabled = false
+            FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'rag.answer candidate predecessor receipt is invalid';
+            END IF;
             IF EXISTS (
                 SELECT 1 FROM tooling.tool_runs
                 WHERE tool_id = '{RAG_ANSWER_TOOL_ID}'
@@ -423,6 +439,22 @@ def downgrade() -> None:
         DECLARE
             affected integer;
         BEGIN
+            PERFORM 1
+            FROM tooling.tool_registry
+            WHERE tool_id = '{RAG_ANSWER_TOOL_ID}'
+              AND tool_code = 'rag.answer'
+              AND semantic_version = '1.2.0-candidate'
+              AND description = 'Answer only from approved internal documents with citation-bound evidence.'
+              AND input_schema_json = '{rag_input}'::jsonb
+              AND output_schema_json = '{rag_output}'::jsonb
+              AND transport = 'MCP_STREAMABLE_HTTP'
+              AND timeout_seconds = 30
+              AND required_roles_json = '["analyst"]'::jsonb
+              AND is_enabled = false
+            FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'rag.answer candidate cannot be downgraded safely';
+            END IF;
             IF EXISTS (
                 SELECT 1 FROM tooling.tool_runs
                 WHERE tool_id = '{RAG_ANSWER_TOOL_ID}'
@@ -480,11 +512,33 @@ def downgrade() -> None:
             DECLARE
                 affected integer;
             BEGIN
+                PERFORM 1
+                FROM tooling.tool_registry
+                WHERE tool_id = '{tool_id}'
+                  AND tool_code = '{tool_code}'
+                  AND semantic_version = '{version}'
+                  AND description = '{description}'
+                  AND input_schema_json = '{expected_input}'::jsonb
+                  AND output_schema_json = '{expected_output}'::jsonb
+                  AND transport = 'MCP_STREAMABLE_HTTP'
+                  AND timeout_seconds = 30
+                  AND required_roles_json = '["analyst"]'::jsonb
+                  AND is_enabled = false
+                FOR UPDATE;
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION '{tool_code} candidate cannot be removed safely';
+                END IF;
                 IF EXISTS (
                     SELECT 1 FROM tooling.tool_runs
                     WHERE tool_id = '{tool_id}'
                 ) THEN
                     RAISE EXCEPTION '{tool_code} candidate runs must be preserved';
+                END IF;
+                IF EXISTS (
+                    SELECT 1 FROM tooling.tool_rate_limit_windows
+                    WHERE tool_id = '{tool_id}'
+                ) THEN
+                    RAISE EXCEPTION '{tool_code} candidate quota state must be preserved';
                 END IF;
                 DELETE FROM tooling.tool_registry
                 WHERE tool_id = '{tool_id}'

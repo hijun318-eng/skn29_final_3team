@@ -10,9 +10,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.mcp_router import (
@@ -22,23 +21,32 @@ from app.api.mcp_router import (
     TOOL_INPUT_SCHEMA,
     TOOL_ID,
     TOOL_NAME,
+    TOOL_ANNOTATIONS,
     TOOL_OUTPUT_SCHEMA,
     TOOL_REQUIRED_ROLES,
     TOOL_SEMANTIC_VERSION,
+    TOOL_TITLE,
     TOOL_TIMEOUT_SECONDS,
     TOOL_TRANSPORT,
     TOOL_RATE_LIMITED,
     UNSUPPORTED_PROTOCOL_VERSION,
     _decode_mcp_header,
+    _accepts_mcp_response_types,
+    _consume_rejected_call_quota,
     _consume_tool_quota,
     _discovery_result,
     _has_request_metadata,
     _origin_allowed,
+    _is_json_content_type,
+    _record_protocol_security_event,
+    _rejected_call_quota_subject,
     _registry_receipt_matches,
     _rpc_result,
     _structured_run_output,
     _tool_output_matches_schema,
     _valid_request_id,
+    mcp_delete,
+    mcp_get,
     mcp_post,
 )
 from app.auth import Principal
@@ -51,9 +59,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class _StubRequest:
-    def __init__(self, payload: object, *, origin: str | None = None) -> None:
+    def __init__(
+        self,
+        payload: object,
+        *,
+        headers: dict[str, str] | None = None,
+        origin: str | None = None,
+    ) -> None:
         self._payload = payload
-        self.headers = {} if origin is None else {"Origin": origin}
+        self.headers = dict(headers or {})
+        if origin is not None:
+            self.headers["Origin"] = origin
         self.state = SimpleNamespace(trace_id="mcp-test-trace")
 
     async def json(self) -> object:
@@ -90,9 +106,11 @@ def _registry_receipt(*, enabled: bool = True) -> dict[str, object]:
         "tool_id": "c4454392-2f92-54a4-ad13-b8cdaba45732",
         "tool_code": TOOL_NAME,
         "semantic_version": TOOL_SEMANTIC_VERSION,
+        "title": TOOL_TITLE,
         "description": "Get one persisted Analysis Run owned by the authenticated user.",
         "input_schema_json": TOOL_INPUT_SCHEMA,
         "output_schema_json": TOOL_OUTPUT_SCHEMA,
+        "annotations_json": TOOL_ANNOTATIONS,
         "transport": TOOL_TRANSPORT,
         "timeout_seconds": TOOL_TIMEOUT_SECONDS,
         "required_roles_json": list(TOOL_REQUIRED_ROLES),
@@ -178,6 +196,7 @@ class McpProtocolTest(unittest.TestCase):
 
         mismatches = {
             "semantic_version": "1.0.1",
+            "title": "Drifted title",
             "transport": "HTTP",
             "timeout_seconds": 6,
             "required_roles_json": [Role.PLATFORM_ADMIN.value],
@@ -187,6 +206,7 @@ class McpProtocolTest(unittest.TestCase):
                 **TOOL_OUTPUT_SCHEMA,
                 "additionalProperties": True,
             },
+            "annotations_json": {**TOOL_ANNOTATIONS, "readOnlyHint": False},
         }
         for field, value in mismatches.items():
             with self.subTest(field=field):
@@ -213,6 +233,21 @@ class McpProtocolTest(unittest.TestCase):
         self.assertTrue(_origin_allowed(None))
         self.assertFalse(_origin_allowed("https://evil.example"))
 
+    def test_transport_media_types_are_explicit_and_strict(self) -> None:
+        self.assertTrue(_is_json_content_type("application/json"))
+        self.assertTrue(_is_json_content_type("application/json; charset=utf-8"))
+        self.assertFalse(_is_json_content_type("text/plain"))
+        self.assertTrue(
+            _accepts_mcp_response_types("application/json, text/event-stream")
+        )
+        self.assertFalse(_accepts_mcp_response_types("application/json"))
+        self.assertFalse(_accepts_mcp_response_types("*/*"))
+        self.assertFalse(
+            _accepts_mcp_response_types(
+                "application/json, text/event-stream; q=0"
+            )
+        )
+
     def test_request_id_and_encoded_name_follow_wire_contract(self) -> None:
         self.assertTrue(_valid_request_id("request-1"))
         self.assertTrue(_valid_request_id(1))
@@ -226,7 +261,7 @@ class McpProtocolTest(unittest.TestCase):
         )
         self.assertIsNone(_decode_mcp_header("=?base64?invalid!?="))
 
-    def test_openapi_marks_standard_transport_headers_as_required(self) -> None:
+    def test_openapi_describes_transport_headers_and_json_rpc_envelopes(self) -> None:
         contract = json.loads(
             (ROOT / "app/backend/contracts/openapi.v0.1.json").read_text(
                 encoding="utf-8"
@@ -239,6 +274,64 @@ class McpProtocolTest(unittest.TestCase):
         }
         self.assertTrue(required["MCP-Protocol-Version"])
         self.assertTrue(required["Mcp-Method"])
+        self.assertTrue(required["Accept"])
+        self.assertFalse(required["Mcp-Session-Id"])
+        session = next(
+            parameter
+            for parameter in parameters
+            if parameter["name"] == "Mcp-Session-Id"
+        )
+        self.assertTrue(session["deprecated"])
+
+        post = contract["paths"]["/mcp"]["post"]
+        self.assertEqual(
+            ["application/json"],
+            list(post["requestBody"]["content"]),
+        )
+        request_schema = post["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+        self.assertEqual(3, len(request_schema["oneOf"]))
+        self.assertEqual(
+            {"server/discover", "tools/list", "tools/call"},
+            {
+                item["properties"]["method"]["const"]
+                for item in request_schema["oneOf"]
+            },
+        )
+        self.assertTrue(
+            {
+                "200",
+                "400",
+                "401",
+                "403",
+                "404",
+                "406",
+                "415",
+                "429",
+                "500",
+                "503",
+            }
+            <= set(post["responses"])
+        )
+        self.assertEqual(
+            "#/components/schemas/ErrorResponse",
+            post["responses"]["401"]["content"]["application/json"]["schema"][
+                "$ref"
+            ],
+        )
+        self.assertEqual(
+            "#/components/schemas/ErrorResponse",
+            post["responses"]["503"]["content"]["application/json"]["schema"][
+                "oneOf"
+            ][1]["$ref"],
+        )
+        self.assertIn("Retry-After", post["responses"]["429"]["headers"])
+        for method in ("get", "delete"):
+            self.assertEqual(
+                {"405"},
+                set(contract["paths"]["/mcp"][method]["responses"]),
+            )
 
     def test_cors_exposes_only_retry_after_for_rate_limit_response(self) -> None:
         source = (ROOT / "app/backend/app/main.py").read_text(encoding="utf-8")
@@ -282,21 +375,29 @@ class McpProtocolTest(unittest.TestCase):
 class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+        allowed_quota = McpToolRateLimitDecision(
+            allowed=True,
+            limit=30,
+            remaining=29,
+            retry_after_seconds=60,
+            window_start=window_start,
+            window_end=window_start + timedelta(seconds=60),
+        )
         self.quota_patcher = patch(
             "app.api.mcp_router._consume_tool_quota",
             new_callable=AsyncMock,
-            return_value=McpToolRateLimitDecision(
-                allowed=True,
-                limit=30,
-                remaining=29,
-                retry_after_seconds=60,
-                window_start=window_start,
-                window_end=window_start + timedelta(seconds=60),
-            ),
+            return_value=allowed_quota,
+        )
+        self.rejected_quota_patcher = patch(
+            "app.api.mcp_router._consume_rejected_call_quota",
+            new_callable=AsyncMock,
+            return_value=allowed_quota,
         )
         self.consume_quota = self.quota_patcher.start()
+        self.consume_rejected_quota = self.rejected_quota_patcher.start()
 
     async def asyncTearDown(self) -> None:
+        self.rejected_quota_patcher.stop()
         self.quota_patcher.stop()
 
     async def _post(
@@ -307,13 +408,24 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         method_header: str | None = "server/discover",
         name_header: str | None = None,
         role: Role = Role.ANALYST,
+        content_type: str | None = "application/json",
+        accept: str | None = "application/json, text/event-stream",
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[int, dict[str, object]]:
+        headers = dict(extra_headers or {})
+        if content_type is not None:
+            headers["Content-Type"] = content_type
+        if accept is not None:
+            headers["Accept"] = accept
+        if protocol_version is not None:
+            headers["MCP-Protocol-Version"] = protocol_version
+        if method_header is not None:
+            headers["Mcp-Method"] = method_header
+        if name_header is not None:
+            headers["Mcp-Name"] = name_header
         response = await mcp_post(
-            _StubRequest(payload),  # type: ignore[arg-type]
+            _StubRequest(payload, headers=headers),  # type: ignore[arg-type]
             Principal(uuid4(), role),
-            protocol_version,
-            method_header,
-            name_header,
         )
         self.last_response = response
         return response.status_code, json.loads(response.body)
@@ -348,19 +460,48 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             result["_meta"]["io.modelcontextprotocol/serverInfo"],
         )
 
-    async def test_fastapi_missing_header_error_uses_mcp_contract(self) -> None:
-        from app.main import validation_error
+    async def test_get_and_delete_are_post_only_405(self) -> None:
+        principal = Principal(uuid4(), Role.ANALYST)
+        for response in (await mcp_get(principal), await mcp_delete(principal)):
+            with self.subTest(status=response.status_code):
+                self.assertEqual(405, response.status_code)
+                self.assertEqual("POST", response.headers["Allow"])
 
-        request = SimpleNamespace(url=SimpleNamespace(path="/mcp"))
-        response = await validation_error(
-            request,  # type: ignore[arg-type]
-            RequestValidationError([]),
+    async def test_post_requires_json_and_both_response_media_types(self) -> None:
+        status, body = await self._post(
+            _request_payload(),
+            content_type="text/plain",
         )
-        body = json.loads(response.body)
-
-        self.assertEqual(400, response.status_code)
-        self.assertEqual(HEADER_MISMATCH, body["error"]["code"])
+        self.assertEqual(415, status)
+        self.assertEqual(-32600, body["error"]["code"])
         self.assertNotIn("id", body)
+
+        status, body = await self._post(
+            _request_payload(),
+            accept="application/json",
+        )
+        self.assertEqual(406, status)
+        self.assertEqual(-32600, body["error"]["code"])
+        self.assertNotIn("id", body)
+
+    async def test_legacy_session_id_is_ignored_and_never_echoed(self) -> None:
+        status, body = await self._post(
+            _request_payload(),
+            extra_headers={"Mcp-Session-Id": "legacy-session"},
+        )
+
+        self.assertEqual(200, status)
+        self.assertIn("result", body)
+        self.assertNotIn("Mcp-Session-Id", self.last_response.headers)
+
+    async def test_missing_mirrored_header_uses_mcp_contract(self) -> None:
+        status, body = await self._post(
+            _request_payload(),
+            method_header=None,
+        )
+
+        self.assertEqual(400, status)
+        self.assertEqual(HEADER_MISMATCH, body["error"]["code"])
 
     async def test_unidentified_invalid_request_omits_json_rpc_id(self) -> None:
         status, body = await self._post(_request_payload(request_id=True))
@@ -435,10 +576,16 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             **_registry_receipt(),
             "output_schema_json": {**TOOL_OUTPUT_SCHEMA, "required": []},
         }
-        with patch(
-            "app.api.mcp_router._registry_rows",
-            AsyncMock(return_value=(drifted,)),
-        ) as registry_rows:
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(drifted,)),
+            ) as registry_rows,
+            patch(
+                "app.api.mcp_router._record_protocol_security_event",
+                AsyncMock(),
+            ) as security_audit,
+        ):
             status, listed = await self._post(
                 _request_payload(method="tools/list"),
                 method_header="tools/list",
@@ -461,24 +608,341 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(200, call_status)
         self.assertEqual(-32602, called["error"]["code"])
         self.assertEqual(2, registry_rows.await_count)
+        security_audit.assert_awaited_once()
+        self.assertEqual(
+            "REGISTRY_CONTRACT_DRIFT",
+            security_audit.await_args.args[4],
+        )
+        self.assertIsNone(security_audit.await_args.args[5])
+        self.consume_rejected_quota.assert_awaited_once()
         self.consume_quota.assert_not_awaited()
 
-    async def test_unknown_tool_is_hidden_without_consuming_quota(self) -> None:
+    async def test_unknown_tool_is_hidden_without_consuming_normal_quota(self) -> None:
         payload = _request_payload(
             method="tools/call",
             extra_params={"name": "rag.answer", "arguments": {}},
         )
 
-        status, body = await self._post(
-            payload,
-            method_header="tools/call",
-            name_header="rag.answer",
-        )
+        with patch(
+            "app.api.mcp_router._record_protocol_security_event",
+            AsyncMock(),
+        ) as security_audit:
+            status, body = await self._post(
+                payload,
+                method_header="tools/call",
+                name_header="rag.answer",
+            )
 
         self.assertEqual(200, status)
         self.assertEqual(-32602, body["error"]["code"])
         self.assertEqual("Unknown or disabled tool", body["error"]["message"])
+        self.assertEqual("rag.answer", security_audit.await_args.args[2])
+        self.assertEqual({}, security_audit.await_args.args[3])
+        self.assertEqual("UNKNOWN_TOOL", security_audit.await_args.args[4])
+        self.assertIsNone(security_audit.await_args.args[5])
+        self.consume_rejected_quota.assert_awaited_once()
         self.consume_quota.assert_not_awaited()
+
+    async def test_disabled_tool_is_audited_without_consuming_normal_quota(self) -> None:
+        payload = _request_payload(
+            method="tools/call",
+            extra_params={"name": TOOL_NAME, "arguments": {}},
+        )
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(enabled=False),)),
+            ),
+            patch(
+                "app.api.mcp_router._record_protocol_security_event",
+                AsyncMock(),
+            ) as security_audit,
+        ):
+            status, body = await self._post(
+                payload,
+                method_header="tools/call",
+                name_header=TOOL_NAME,
+            )
+
+        self.assertEqual(200, status)
+        self.assertEqual(-32602, body["error"]["code"])
+        self.assertEqual(TOOL_NAME, security_audit.await_args.args[2])
+        self.assertEqual("DISABLED_TOOL", security_audit.await_args.args[4])
+        self.assertEqual(TOOL_NAME, security_audit.await_args.args[5])
+        self.consume_rejected_quota.assert_awaited_once()
+        self.consume_quota.assert_not_awaited()
+
+    async def test_unknown_tool_audit_failure_is_a_fail_closed_503(self) -> None:
+        payload = _request_payload(
+            method="tools/call",
+            extra_params={"name": "unknown.tool", "arguments": {"secret": "raw"}},
+        )
+        with (
+            patch(
+                "app.api.mcp_router._record_protocol_security_event",
+                AsyncMock(
+                    side_effect=MCPToolInfrastructureError("MCP_AUDIT_UNAVAILABLE")
+                ),
+            ),
+            patch(
+                "app.api.mcp_router.MCPToolDispatcher.dispatch",
+                AsyncMock(),
+            ) as dispatch,
+        ):
+            status, body = await self._post(
+                payload,
+                method_header="tools/call",
+                name_header="unknown.tool",
+            )
+
+        self.assertEqual(503, status)
+        self.assertEqual("MCP_AUDIT_UNAVAILABLE", body["error"]["data"]["code"])
+        self.consume_rejected_quota.assert_awaited_once()
+        dispatch.assert_not_awaited()
+        self.consume_quota.assert_not_awaited()
+
+    async def test_rejected_quota_is_consumed_before_security_audit(self) -> None:
+        order: list[str] = []
+        allowed = self.consume_rejected_quota.return_value
+
+        async def consume_first(_principal: Principal) -> McpToolRateLimitDecision:
+            order.append("quota")
+            return allowed
+
+        async def audit_second(*_args: object) -> None:
+            order.append("audit")
+
+        with (
+            patch(
+                "app.api.mcp_router._consume_rejected_call_quota",
+                side_effect=consume_first,
+            ),
+            patch(
+                "app.api.mcp_router._record_protocol_security_event",
+                side_effect=audit_second,
+            ),
+        ):
+            status, body = await self._post(
+                _request_payload(
+                    method="tools/call",
+                    extra_params={"name": "unknown.tool", "arguments": {}},
+                ),
+                method_header="tools/call",
+                name_header="unknown.tool",
+            )
+
+        self.assertEqual(200, status)
+        self.assertEqual(-32602, body["error"]["code"])
+        self.assertEqual(["quota", "audit"], order)
+        self.consume_quota.assert_not_awaited()
+
+    async def test_rejected_quota_denial_stops_audit_and_dispatch(self) -> None:
+        window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+        self.consume_rejected_quota.return_value = McpToolRateLimitDecision(
+            allowed=False,
+            limit=30,
+            remaining=0,
+            retry_after_seconds=17,
+            window_start=window_start,
+            window_end=window_start + timedelta(seconds=60),
+        )
+        with (
+            patch(
+                "app.api.mcp_router._record_protocol_security_event",
+                AsyncMock(),
+            ) as security_audit,
+            patch(
+                "app.api.mcp_router.MCPToolDispatcher.dispatch",
+                AsyncMock(),
+            ) as dispatch,
+        ):
+            unknown_status, unknown_body = await self._post(
+                _request_payload(
+                    method="tools/call",
+                    extra_params={"name": "unknown.tool", "arguments": {}},
+                ),
+                method_header="tools/call",
+                name_header="unknown.tool",
+            )
+            with patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(enabled=False),)),
+            ):
+                disabled_status, disabled_body = await self._post(
+                    _request_payload(
+                        method="tools/call",
+                        extra_params={"name": TOOL_NAME, "arguments": {}},
+                    ),
+                    method_header="tools/call",
+                    name_header=TOOL_NAME,
+                )
+
+        self.assertEqual(429, unknown_status)
+        self.assertEqual(429, disabled_status)
+        self.assertEqual(unknown_body, disabled_body)
+        self.assertEqual(TOOL_RATE_LIMITED, unknown_body["error"]["code"])
+        self.assertEqual("Rate limit exceeded", unknown_body["error"]["message"])
+        self.assertNotIn("unknown.tool", json.dumps(unknown_body))
+        self.assertNotIn(TOOL_NAME, json.dumps(disabled_body))
+        self.assertEqual("17", self.last_response.headers["Retry-After"])
+        self.assertEqual(2, self.consume_rejected_quota.await_count)
+        security_audit.assert_not_awaited()
+        dispatch.assert_not_awaited()
+        self.consume_quota.assert_not_awaited()
+
+    async def test_rejected_quota_failure_stops_audit_and_dispatch(self) -> None:
+        self.consume_rejected_quota.side_effect = MCPToolInfrastructureError(
+            "MCP_RATE_LIMIT_UNAVAILABLE"
+        )
+        with (
+            patch(
+                "app.api.mcp_router._record_protocol_security_event",
+                AsyncMock(),
+            ) as security_audit,
+            patch(
+                "app.api.mcp_router.MCPToolDispatcher.dispatch",
+                AsyncMock(),
+            ) as dispatch,
+        ):
+            status, body = await self._post(
+                _request_payload(
+                    method="tools/call",
+                    extra_params={"name": "unknown.tool", "arguments": {}},
+                ),
+                method_header="tools/call",
+                name_header="unknown.tool",
+            )
+
+        self.assertEqual(503, status)
+        self.assertEqual(
+            "MCP_RATE_LIMIT_UNAVAILABLE",
+            body["error"]["data"]["code"],
+        )
+        security_audit.assert_not_awaited()
+        dispatch.assert_not_awaited()
+        self.consume_quota.assert_not_awaited()
+
+    async def test_unknown_tool_audit_uses_governance_without_raw_input(self) -> None:
+        captured: dict[str, object] = {}
+
+        class RecordingSession:
+            async def execute(self, statement: object, parameters: object) -> None:
+                captured["statement"] = statement
+                captured["parameters"] = parameters
+
+        @asynccontextmanager
+        async def recording_session(*_args, **_kwargs):
+            yield RecordingSession()
+
+        principal = Principal(uuid4(), Role.ANALYST)
+        with (
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.session_scope",
+                side_effect=recording_session,
+            ),
+        ):
+            await _record_protocol_security_event(
+                principal,
+                "trace-security-1",
+                "unknown.tool",
+                {"z": 1, "secret": "must-not-be-stored", "a": 2},
+                "UNKNOWN_TOOL",
+            )
+
+        statement = str(captured["statement"])
+        parameters = captured["parameters"]
+        self.assertIsInstance(parameters, dict)
+        serialized = json.dumps(parameters, default=str)  # type: ignore[arg-type]
+        details = json.loads(parameters["details_json_redacted"])  # type: ignore[index]
+        self.assertIn("governance.audit_events", statement)
+        self.assertNotIn("tooling.tool_runs", statement)
+        self.assertIsNone(details["tool_name"])
+        self.assertEqual(12, details["tool_name_length"])
+        self.assertEqual("UNKNOWN_TOOL", details["rejection_reason"])
+        self.assertRegex(details["tool_name_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(details["canonical_input_sha256"], r"^[0-9a-f]{64}$")
+        self.assertNotIn("unknown.tool", serialized)
+        self.assertNotIn("must-not-be-stored", serialized)
+        self.assertEqual(principal.subject, parameters["actor_user_id"])  # type: ignore[index]
+        self.assertEqual("trace-security-1", parameters["trace_id"])  # type: ignore[index]
+
+    async def test_disabled_tool_audit_stores_only_registry_canonical_name(self) -> None:
+        captured: dict[str, object] = {}
+
+        class RecordingSession:
+            async def execute(self, _statement: object, parameters: object) -> None:
+                captured["parameters"] = parameters
+
+        @asynccontextmanager
+        async def recording_session(*_args, **_kwargs):
+            yield RecordingSession()
+
+        with (
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.session_scope",
+                side_effect=recording_session,
+            ),
+        ):
+            await _record_protocol_security_event(
+                Principal(uuid4(), Role.ANALYST),
+                "trace-security-disabled",
+                TOOL_NAME,
+                {},
+                "DISABLED_TOOL",
+                TOOL_NAME,
+            )
+
+        parameters = captured["parameters"]
+        self.assertIsInstance(parameters, dict)
+        details = json.loads(parameters["details_json_redacted"])  # type: ignore[index]
+        self.assertEqual(TOOL_NAME, details["tool_name"])
+        self.assertEqual("DISABLED_TOOL", details["rejection_reason"])
+
+    async def test_unknown_tool_audit_does_not_store_long_invalid_name(self) -> None:
+        captured: dict[str, object] = {}
+
+        class RecordingSession:
+            async def execute(self, _statement: object, parameters: object) -> None:
+                captured["parameters"] = parameters
+
+        @asynccontextmanager
+        async def recording_session(*_args, **_kwargs):
+            yield RecordingSession()
+
+        attacker_name = "invalid/" + ("x" * 4096)
+        with (
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.session_scope",
+                side_effect=recording_session,
+            ),
+        ):
+            await _record_protocol_security_event(
+                Principal(uuid4(), Role.ANALYST),
+                "trace-security-2",
+                attacker_name,
+                {},
+                "UNKNOWN_TOOL",
+            )
+
+        parameters = captured["parameters"]
+        self.assertIsInstance(parameters, dict)
+        details = json.loads(parameters["details_json_redacted"])  # type: ignore[index]
+        self.assertIsNone(details["tool_name"])
+        self.assertEqual(len(attacker_name), details["tool_name_length"])
+        self.assertRegex(details["tool_name_sha256"], r"^[0-9a-f]{64}$")
+        self.assertNotIn(attacker_name, json.dumps(parameters, default=str))
 
     async def test_registry_failure_uses_json_rpc_server_error(self) -> None:
         """Registry 장애가 FastAPI detail 응답으로 wire 계약을 이탈하지 않는다."""
@@ -551,6 +1015,34 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(-32602, body["error"]["code"])
         self.assertEqual("DENIED", record_run.await_args.args[3])
         self.assertEqual("ACCESS_DENIED", record_run.await_args.args[6])
+        self.consume_rejected_quota.assert_awaited_once()
+        self.consume_quota.assert_not_awaited()
+
+    async def test_repeated_permission_denial_stops_writing_audit(self) -> None:
+        window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+        self.consume_rejected_quota.return_value = McpToolRateLimitDecision(
+            allowed=False,
+            limit=30,
+            remaining=0,
+            retry_after_seconds=17,
+            window_start=window_start,
+            window_end=window_start + timedelta(seconds=60),
+        )
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch("app.api.mcp_router._record_run", AsyncMock()) as record_run,
+        ):
+            status, body = await self._call_tool(
+                {"request_id": str(uuid4())},
+                role=Role.REPORT_ADMIN,
+            )
+
+        self.assertEqual(429, status)
+        self.assertEqual(TOOL_RATE_LIMITED, body["error"]["code"])
+        record_run.assert_not_awaited()
         self.consume_quota.assert_not_awaited()
 
     async def test_invalid_tool_arguments_are_audited(self) -> None:
@@ -653,6 +1145,7 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         get_run.assert_not_awaited()
         self.assertEqual("DENIED", record_run.await_args.args[3])
         self.assertEqual("RATE_LIMITED", record_run.await_args.args[6])
+        self.consume_rejected_quota.assert_awaited_once()
 
     async def test_quota_denial_audit_failure_has_503_priority(self) -> None:
         window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
@@ -684,6 +1177,33 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(-32603, body["error"]["code"])
         self.assertEqual("MCP_AUDIT_UNAVAILABLE", body["error"]["data"]["code"])
         self.assertNotIn("Retry-After", self.last_response.headers)
+        self.consume_rejected_quota.assert_awaited_once()
+
+    async def test_repeated_quota_overage_stops_writing_audit_after_rejected_limit(self) -> None:
+        window_start = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+        denied = McpToolRateLimitDecision(
+            allowed=False,
+            limit=30,
+            remaining=0,
+            retry_after_seconds=17,
+            window_start=window_start,
+            window_end=window_start + timedelta(seconds=60),
+        )
+        self.consume_quota.return_value = denied
+        self.consume_rejected_quota.return_value = denied
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch("app.api.mcp_router._record_run", AsyncMock()) as record_run,
+        ):
+            status, body = await self._call_tool({"request_id": str(uuid4())})
+
+        self.assertEqual(429, status)
+        self.assertEqual(TOOL_RATE_LIMITED, body["error"]["code"])
+        record_run.assert_not_awaited()
+        self.consume_rejected_quota.assert_awaited_once()
 
     async def test_quota_storage_failure_is_audited_before_503(self) -> None:
         self.consume_quota.side_effect = MCPToolInfrastructureError(
@@ -838,8 +1358,8 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("FAILED", record_run.await_args.args[3])
         self.assertEqual("TOOL_EXECUTION_FAILED", record_run.await_args.args[6])
 
-    async def test_tool_cancellation_is_not_converted_to_a_failure(self) -> None:
-        """quota 소비 뒤 요청 취소는 실행 실패로 감사하지 않고 상위로 전파한다."""
+    async def test_tool_cancellation_records_terminal_receipt_then_propagates(self) -> None:
+        """quota 소비 뒤 요청 취소는 CANCELLED로 감사한 다음 상위로 전파한다."""
 
         with (
             patch(
@@ -862,11 +1382,100 @@ class McpTransportContractTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await self._call_tool({"request_id": str(uuid4())})
 
-        record_run.assert_not_awaited()
+        record_run.assert_awaited_once()
+        self.assertEqual("CANCELLED", record_run.await_args.args[3])
+        self.assertEqual("REQUEST_CANCELLED", record_run.await_args.args[6])
         self.consume_quota.assert_awaited_once()
+
+    async def test_client_cancellation_waits_for_terminal_audit_receipt(self) -> None:
+        """실제 task cancel도 shield된 receipt 완료 전에는 상위로 끝나지 않는다."""
+
+        dispatch_started = asyncio.Event()
+        audit_started = asyncio.Event()
+        audit_release = asyncio.Event()
+        recorded: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        async def blocking_dispatch(*_args: object, **_kwargs: object) -> object:
+            dispatch_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        async def blocking_audit(*args: object, **kwargs: object) -> None:
+            recorded.append((args, kwargs))
+            audit_started.set()
+            await audit_release.wait()
+
+        with (
+            patch(
+                "app.api.mcp_router._registry_rows",
+                AsyncMock(return_value=(_registry_receipt(),)),
+            ),
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch(
+                "app.api.mcp_router.MCPToolDispatcher.dispatch",
+                new=blocking_dispatch,
+            ),
+            patch("app.api.mcp_router._record_run", new=blocking_audit),
+        ):
+            call = asyncio.create_task(
+                self._call_tool({"request_id": str(uuid4())})
+            )
+            await asyncio.wait_for(dispatch_started.wait(), timeout=1)
+            call.cancel()
+            await asyncio.wait_for(audit_started.wait(), timeout=1)
+            self.assertFalse(call.done())
+            audit_release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await call
+
+        self.assertEqual(1, len(recorded))
+        self.assertEqual("CANCELLED", recorded[0][0][3])
+        self.assertEqual("REQUEST_CANCELLED", recorded[0][0][6])
 
 
 class McpRateLimitWiringTest(unittest.IsolatedAsyncioTestCase):
+    async def test_rejected_quota_uses_a_deterministic_separate_bucket(self) -> None:
+        first_subject = UUID("11111111-1111-4111-8111-111111111111")
+        second_subject = UUID("22222222-2222-4222-8222-222222222222")
+        first_key = _rejected_call_quota_subject(first_subject)
+
+        self.assertNotEqual(first_subject, first_key)
+        self.assertEqual(first_key, _rejected_call_quota_subject(first_subject))
+        self.assertNotEqual(first_key, _rejected_call_quota_subject(second_subject))
+
+        decision = McpToolRateLimitDecision(
+            allowed=True,
+            limit=30,
+            remaining=29,
+            retry_after_seconds=60,
+            window_start=datetime(2026, 8, 31, 0, 0, tzinfo=UTC),
+            window_end=datetime(2026, 8, 31, 0, 1, tzinfo=UTC),
+        )
+        consume = AsyncMock(return_value=decision)
+        service = SimpleNamespace(consume=consume)
+        principal = Principal(first_subject, Role.ANALYST)
+        with (
+            patch(
+                "app.api.mcp_router._database_url",
+                return_value="postgresql+psycopg://test:test@localhost/test",
+            ),
+            patch("app.api.mcp_router.get_sessionmaker", return_value=object()),
+            patch(
+                "app.api.mcp_router.McpToolRateLimitService.from_env",
+                return_value=service,
+            ),
+        ):
+            result = await _consume_rejected_call_quota(principal)
+
+        self.assertIs(decision, result)
+        consume.assert_awaited_once_with(
+            principal_subject=first_key,
+            tool_id=TOOL_ID,
+        )
+
     async def test_missing_quota_configuration_is_normalized_fail_closed(self) -> None:
         with (
             patch(

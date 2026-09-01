@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.admin_contracts import require_assignable_account_role
 from app.auth import create_password_verifier
 from app.contracts import RequestContext, Role
 
@@ -137,7 +138,10 @@ class AdminAccountRepository:
         """삭제되지 않은 계정을 login ID 순서로 검색하고 정확한 전체 건수를 반환한다."""
 
         normalized_search = search.strip().lower()
-        predicate = "(:search = '' OR strpos(username, :search) > 0)"
+        predicate = (
+            "role IN ('analyst', 'platform_admin') "
+            "AND (:search = '' OR strpos(username, :search) > 0)"
+        )
         parameters = {
             "search": normalized_search,
             "limit": page_size,
@@ -178,6 +182,7 @@ class AdminAccountRepository:
     ) -> dict[str, Any]:
         """새 UUID subject와 PBKDF2 verifier를 저장하고 같은 transaction에 감사를 추가한다."""
 
+        require_assignable_account_role(role)
         salt, digest, iterations = await create_password_verifier(password)
         subject = uuid4()
         try:
@@ -225,10 +230,22 @@ class AdminAccountRepository:
     ) -> dict[str, Any]:
         """계정 row를 잠그고 Role·활성 변경 시 session을 폐기한 뒤 감사를 기록한다."""
 
+        role = changes.get("role")
+        if role is not None:
+            require_assignable_account_role(role)
         await self._serialize_account_mutation()
         current = await self._locked_account(subject)
+        try:
+            current_role = Role(str(current["role"]))
+        except ValueError as error:
+            raise AdminAccountConflict(
+                "지원하지 않는 기존 역할 계정은 변경할 수 없습니다."
+            ) from error
+        if current_role not in {Role.ANALYST, Role.PLATFORM_ADMIN}:
+            raise AdminAccountConflict(
+                "지원하지 않는 기존 역할 계정은 변경할 수 없습니다."
+            )
         username = changes.get("username")
-        role = changes.get("role")
         active = changes.get("active")
         next_role = role.value if isinstance(role, Role) else str(current["role"])
         next_active = bool(active) if active is not None else bool(current["active"])

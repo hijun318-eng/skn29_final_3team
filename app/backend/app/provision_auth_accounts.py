@@ -17,7 +17,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
+from app.admin_contracts import require_assignable_account_role
 from app.contracts import Role
+from app.user_account_roles import (
+    internal_user_account_role,
+    public_user_account_role,
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +34,13 @@ class AccountDefinition:
     subject: UUID | None = None
 
 
+def _require_safe_existing_role(username: str, role: Role | None) -> None:
+    """legacy 계정을 provisioning으로 다른 권한에 자동 매핑하지 못하게 한다."""
+
+    if role in {Role.REPORT_ADMIN, Role.DATA_ADMIN}:
+        raise RuntimeError(f"legacy account {username} requires reviewed migration")
+
+
 def _parse_account(raw: str) -> AccountDefinition:
     parts = raw.split(":")
     if len(parts) not in {2, 3}:
@@ -37,7 +49,8 @@ def _parse_account(raw: str) -> AccountDefinition:
     if not re.fullmatch(r"[a-z0-9._-]{3,64}", username):
         raise argparse.ArgumentTypeError("username is invalid")
     try:
-        role = Role(parts[1].strip())
+        role = internal_user_account_role(parts[1].strip())
+        require_assignable_account_role(role)
         subject = UUID(parts[2]) if len(parts) == 3 else None
     except ValueError as exc:
         raise argparse.ArgumentTypeError("role or subject is invalid") from exc
@@ -80,6 +93,8 @@ def _provision(
     *,
     replace: bool,
 ) -> dict[str, object]:
+    for definition in definitions:
+        require_assignable_account_role(definition.role)
     engine = create_engine(_database_url())
     try:
         with engine.begin() as connection:
@@ -90,14 +105,20 @@ def _provision(
                 )
             )
             existing = {
-                row.username: UUID(str(row.subject))
+                row.username: (UUID(str(row.subject)), Role(str(row.role)))
                 for row in connection.execute(
-                    text("SELECT username, subject FROM security.auth_accounts FOR UPDATE")
+                    text(
+                        "SELECT username, subject, role "
+                        "FROM security.auth_accounts FOR UPDATE"
+                    )
                 )
             }
             resolved_subjects: dict[str, UUID] = {}
             for definition in definitions:
-                current_subject = existing.get(definition.username)
+                current = existing.get(definition.username)
+                current_subject = current[0] if current is not None else None
+                current_role = current[1] if current is not None else None
+                _require_safe_existing_role(definition.username, current_role)
                 if (
                     current_subject is not None
                     and definition.subject is not None
@@ -173,7 +194,7 @@ def _provision(
     return {
         "status": "PROVISIONED",
         "account_count": int(account_count),
-        "roles": [definition.role.value for definition in definitions],
+        "roles": [public_user_account_role(definition.role) for definition in definitions],
         "revoked_sessions": int(revoked),
         "password_storage": "PBKDF2-SHA256",
     }
@@ -188,7 +209,7 @@ def main() -> int:
         action="append",
         required=True,
         type=_parse_account,
-        help="USERNAME:ROLE[:SUBJECT]",
+        help="USERNAME:(analyst|admin)[:SUBJECT]",
     )
     parser.add_argument(
         "--replace",

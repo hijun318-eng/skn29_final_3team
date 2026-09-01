@@ -7,6 +7,16 @@ import numpy as np
 from src.rag.pgvector_repository import PgVectorRepository
 
 
+EMBEDDING = {
+    "provider": "test",
+    "model": "test-model",
+    "dimensions": 2,
+    "version": "test-model:d2",
+}
+MANIFEST_SHA256 = "a" * 64
+PROCESSING_SHA256 = "e" * 64
+
+
 def _row(
     manual_id: str,
     title: str,
@@ -68,7 +78,12 @@ def test_hybrid_search_uses_bm25_without_weakening_access_filters() -> None:
             _row("manual-parking", "시설 운영", "주차장 안전 점검 방법", 0.70),
         ]
     )
-    repository = PgVectorRepository("postgresql://test")
+    repository = PgVectorRepository(
+        "postgresql://test",
+        EMBEDDING,
+        MANIFEST_SHA256,
+        processing_profile_sha256=PROCESSING_SHA256,
+    )
 
     with patch(
         "src.rag.pgvector_repository.psycopg.connect",
@@ -95,6 +110,12 @@ def test_hybrid_search_uses_bm25_without_weakening_access_filters() -> None:
     assert "%s = ANY(d.role_scope)" in connection.sql
     assert "d.validity_status != 'UNRESOLVED'" in connection.sql
     assert connection.params[1:] == [
+        "test",
+        "test-model",
+        2,
+        "test-model:d2",
+        MANIFEST_SHA256,
+        PROCESSING_SHA256,
         "MANAGER",
         False,
         ["manual-refund"],
@@ -109,7 +130,12 @@ def test_vector_only_keeps_vector_threshold_and_ordering() -> None:
             _row("manual-parking", "시설 운영", "주차 안전", 0.70),
         ]
     )
-    repository = PgVectorRepository("postgresql://test")
+    repository = PgVectorRepository(
+        "postgresql://test",
+        EMBEDDING,
+        MANIFEST_SHA256,
+        processing_profile_sha256=PROCESSING_SHA256,
+    )
 
     with patch(
         "src.rag.pgvector_repository.psycopg.connect",

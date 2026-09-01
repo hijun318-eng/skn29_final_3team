@@ -34,9 +34,9 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     <ReportCurrencyControl
       value={draft.reportCurrencyPolicy.displayUnit}
       onChange={draft.changeCurrencyDisplayUnit}
-      disabled={lifecycle.selectedDefinition?.status === "approved"}
+      disabled
     />
-  ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit, lifecycle.selectedDefinition?.status]);
+  ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit]);
   const addChartBlock = useCallback(
     (chartType) => draft.addTemplateBlock("artifact-chart", null, { chartType }),
     [draft.addTemplateBlock],
@@ -45,15 +45,20 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   if (page.view === "list") {
     return <ReportListView
       createOpen={lifecycle.createOpen}
+      definitionCollection={lifecycle.definitionCollection}
       definitionState={lifecycle.definitionState}
       error={lifecycle.error}
       errorRef={page.errorRef}
       newContent={lifecycle.newContent}
       newTitle={lifecycle.newTitle}
+      notice={lifecycle.notice}
+      onArchive={lifecycle.archiveDefinition}
+      onCollectionChange={lifecycle.setDefinitionCollection}
       onCreate={page.createDefinition}
       onEdit={page.openEditor}
       onOpen={page.openPreview}
       onRefresh={lifecycle.loadDefinitions}
+      onRestore={lifecycle.restoreDefinition}
       pending={lifecycle.pending}
       query={lifecycle.query}
       setCreateOpen={lifecycle.setCreateOpen}
@@ -77,7 +82,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       isDirty={draft.isDirty}
       notice={lifecycle.notice}
       onApprove={page.approveDefinition}
-      onChangeOrientation={draft.changeOrientation}
       onLeave={page.leaveEditor}
       onOpenFinalAsset={lifecycle.openFinalAsset}
       onReloadFinalDocument={page.reloadFinalDocument}
@@ -165,8 +169,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     TemplateTile={ReportTemplateTile}
   /> : null;
   const workspace = <>
-    {lifecycle.error && <p ref={page.errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{lifecycle.error}</p>}
-    {lifecycle.notice && <p className="report-api-state notion-editor-notice" role="status"><Check size={17} />{lifecycle.notice}</p>}
+    {lifecycle.error && <p ref={page.errorRef} tabIndex={-1} className="report-api-state report-notice-shell error" role="alert"><AlertTriangle size={17} />{lifecycle.error}</p>}
+    {lifecycle.notice && <p className="report-api-state report-notice-shell notion-editor-notice" role="status"><Check size={17} />{lifecycle.notice}</p>}
     <ReportEditorCanvas
       activeArtifactTitle={page.activeArtifactSource ? `${page.activeArtifactSource.title} · ${page.activeInsert?.title}` : undefined}
       activeInsert={page.activeInsert}
@@ -223,7 +227,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
   />;
   const assistant = <ReportAssistantPanel
     key={`${lifecycle.selectedDefinition?.definitionId || ""}:${lifecycle.selectedDefinition?.version || ""}:${page.assistantArtifactIds.join(":")}:${lifecycle.assistantSession?.assistant_request_id || ""}`}
-    approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(lifecycle.assistantSession?.phase)
+    approvalRequest={["waiting_approval", "running_data_agent", "waiting_artifact"].includes(lifecycle.assistantSession?.phase)
       ? lifecycle.assistantSession?.analysis_plan && {
           ...lifecycle.assistantSession.analysis_plan,
           scope: [
@@ -238,12 +242,16 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     assistantArtifactIds={page.assistantArtifactIds}
     artifactTitle={page.assistantArtifactSource?.title}
     canEdit={page.canEdit}
+    externalTransferDisclosure={lifecycle.assistantExternalTransferDisclosure}
+    externalTransferConsentPending={lifecycle.assistantExternalTransferConsentPending}
     hasUnsavedChanges={draft.isDirty}
     instruction={lifecycle.assistantInstruction}
     onInstructionChange={lifecycle.setAssistantInstruction}
     onApproveDataRequest={page.approveAssistantDataRequest}
     onApprovePatch={page.approveAssistantPatch}
+    onAcceptExternalTransfer={lifecycle.acceptAssistantExternalTransferConsent}
     onCancel={lifecycle.cancelAssistantSession}
+    onDeclineExternalTransfer={lifecycle.declineAssistantExternalTransferConsent}
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
     onReview={page.reviewAssistantReport}
@@ -260,6 +268,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
           evidenceRefs: lifecycle.assistantSession.patch_evidence_refs,
           items: lifecycle.assistantSession.patch_preview,
           approvedIndexes: lifecycle.assistantSession.approved_operation_indexes,
+          exactPageCount: lifecycle.assistantSession.exact_page_count,
+          verifiedPageCount: lifecycle.assistantSession.verified_page_count,
         }
       : null}
     review={lifecycle.assistantReview}
@@ -273,7 +283,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       : []}
     trace={lifecycle.assistantTrace}
     workflowStatus={lifecycle.assistantSession?.phase || ""}
-    workflowError={lifecycle.assistantSession?.error_code || ""}
+    workflowError={lifecycle.assistantActionError || lifecycle.assistantSession?.error_code || ""}
+    workflowErrorPageCounts={lifecycle.assistantActionPageCounts}
     workflowRequiredAction={lifecycle.assistantSession?.required_action || "NONE"}
     workflowRetryable={Boolean(lifecycle.assistantSession?.retryable)}
   />;

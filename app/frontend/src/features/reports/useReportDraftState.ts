@@ -24,19 +24,37 @@ import {
   mergeDraftCurrencyPolicy,
   readDraftBlockSettings,
   resizeDraftBlocks,
+  splitLegacyCompositeArtifactBlocks,
 } from "./reportDraftMutations.ts";
 import type {
+  DraftCurrencyPolicy,
   DraftArtifactData,
   DraftInsertPosition,
   DraftReportBlock,
   ReportDraftHistory,
+  ReportDraftHistorySnapshot,
   ResetReportDraftInput,
   UseReportDraftStateOptions,
   UseReportDraftStateResult,
 } from "./reportDraftStateTypes.ts";
+import type { ReportOrientation } from "../../contracts/report.ts";
 
 const EMPTY_HISTORY: ReportDraftHistory = { past: [], future: [] };
 const HISTORY_LIMIT = 40;
+
+function createHistorySnapshot(
+  title: string,
+  blocks: readonly DraftReportBlock[],
+  orientation: ReportOrientation,
+  currencyPolicy: DraftCurrencyPolicy,
+): ReportDraftHistorySnapshot {
+  return {
+    title,
+    blocks: copyDraftBlocks(blocks),
+    orientation,
+    currencyPolicy: { ...currencyPolicy },
+  };
+}
 
 /** draft·history·layout·표시 정책을 불변 갱신하고 memo 소비자가 사용할 안정된 callback을 반환한다. */
 export function useReportDraftState(
@@ -138,10 +156,12 @@ export function useReportDraftState(
   const commitReportTitle = useCallback((previousTitle: string): boolean => {
     if (!optionsRef.current.editable || previousTitle === titleRef.current) return false;
     setHistory((value) => ({
-      past: [...value.past.slice(-(HISTORY_LIMIT - 1)), {
-        title: previousTitle,
-        blocks: copyDraftBlocks(blocksRef.current),
-      }],
+      past: [...value.past.slice(-(HISTORY_LIMIT - 1)), createHistorySnapshot(
+        previousTitle,
+        blocksRef.current,
+        orientationRef.current,
+        currencyPolicyRef.current,
+      )],
       future: [],
     }));
     return true;
@@ -155,10 +175,12 @@ export function useReportDraftState(
     const next = copyDraftBlocks(resolved);
     if (record) {
       setHistory((value) => ({
-        past: [...value.past.slice(-(HISTORY_LIMIT - 1)), {
-          title: titleRef.current,
-          blocks: copyDraftBlocks(current),
-        }],
+        past: [...value.past.slice(-(HISTORY_LIMIT - 1)), createHistorySnapshot(
+          titleRef.current,
+          current,
+          orientationRef.current,
+          currencyPolicyRef.current,
+        )],
         future: [],
       }));
     }
@@ -172,18 +194,25 @@ export function useReportDraftState(
     if (!optionsRef.current.editable) return;
     setHistory((value) => {
       if (!value.past.length) return value;
-      const current = {
-        title: titleRef.current,
-        blocks: copyDraftBlocks(blocksRef.current),
-      };
+      const current = createHistorySnapshot(
+        titleRef.current,
+        blocksRef.current,
+        orientationRef.current,
+        currencyPolicyRef.current,
+      );
       const previous = value.past.at(-1);
       if (!previous) return value;
       const previousBlocks = copyDraftBlocks(previous.blocks);
+      const previousPolicy = { ...previous.currencyPolicy };
       titleRef.current = previous.title;
       blocksRef.current = previousBlocks;
+      orientationRef.current = previous.orientation;
+      currencyPolicyRef.current = previousPolicy;
       setReportTitle(previous.title);
       setBlocks(previousBlocks);
-      setIsDirty(draftChanged(previousBlocks, currencyPolicyRef.current, orientationRef.current, previous.title));
+      setReportOrientation(previous.orientation);
+      setReportCurrencyPolicy(previousPolicy);
+      setIsDirty(draftChanged(previousBlocks, previousPolicy, previous.orientation, previous.title));
       return {
         past: value.past.slice(0, -1),
         future: [current, ...value.future].slice(0, HISTORY_LIMIT),
@@ -195,17 +224,24 @@ export function useReportDraftState(
     if (!optionsRef.current.editable) return;
     setHistory((value) => {
       if (!value.future.length) return value;
-      const current = {
-        title: titleRef.current,
-        blocks: copyDraftBlocks(blocksRef.current),
-      };
+      const current = createHistorySnapshot(
+        titleRef.current,
+        blocksRef.current,
+        orientationRef.current,
+        currencyPolicyRef.current,
+      );
       const [nextSnapshot, ...future] = value.future;
       const next = copyDraftBlocks(nextSnapshot.blocks);
+      const nextPolicy = { ...nextSnapshot.currencyPolicy };
       titleRef.current = nextSnapshot.title;
       blocksRef.current = next;
+      orientationRef.current = nextSnapshot.orientation;
+      currencyPolicyRef.current = nextPolicy;
       setReportTitle(nextSnapshot.title);
       setBlocks(next);
-      setIsDirty(draftChanged(next, currencyPolicyRef.current, orientationRef.current, nextSnapshot.title));
+      setReportOrientation(nextSnapshot.orientation);
+      setReportCurrencyPolicy(nextPolicy);
+      setIsDirty(draftChanged(next, nextPolicy, nextSnapshot.orientation, nextSnapshot.title));
       return { past: [...value.past, current].slice(-HISTORY_LIMIT), future };
     });
   }, [draftChanged]);
@@ -439,19 +475,34 @@ export function useReportDraftState(
   const fitHydratedArtifactViews = useCallback((artifactMap = optionsRef.current.artifacts ?? {}): boolean => {
     if (!optionsRef.current.editable) return false;
     const current = blocksRef.current;
-    const fitted = fitAutoArtifactViewLayout(current, artifactMap, orientationRef.current);
+    const migrated = splitLegacyCompositeArtifactBlocks(
+      current,
+      artifactMap,
+      optionsRef.current.artifactSources ?? [],
+      orientationRef.current,
+      createUuid,
+    );
+    const fitted = fitAutoArtifactViewLayout(migrated.blocks, artifactMap, orientationRef.current);
     if (JSON.stringify(fitted) === JSON.stringify(current)) return false;
     const fittedSaved = fitAutoArtifactViewLayout(savedBlocksRef.current, artifactMap, savedOrientationRef.current);
     blocksRef.current = copyDraftBlocks(fitted);
     savedBlocksRef.current = copyDraftBlocks(fittedSaved);
     setBlocks(blocksRef.current);
-    setIsDirty(draftChanged(blocksRef.current));
-    announce("차트와 표 높이를 실제 데이터에 맞춰 조정했습니다.");
+    setIsDirty(migrated.migratedSourceCount > 0 || draftChanged(blocksRef.current));
+    announce(migrated.migratedSourceCount > 0
+      ? `이전 합본 분석 요소 ${migrated.migratedSourceCount}개를 독립 블록으로 정리했습니다. 검토한 뒤 저장해 주세요.`
+      : "차트와 표 높이를 실제 데이터에 맞춰 조정했습니다.");
     return true;
   }, [announce, draftChanged]);
 
   const changeOrientation = useCallback((orientation: "portrait" | "landscape"): boolean => {
     if (!optionsRef.current.editable || orientation === orientationRef.current) return false;
+    const previousSnapshot = createHistorySnapshot(
+      titleRef.current,
+      blocksRef.current,
+      orientationRef.current,
+      currencyPolicyRef.current,
+    );
     const artifacts = optionsRef.current.artifacts ?? {};
     const contentSized = compactDraftLayout(blocksRef.current.map((block) => (
       block.type === "text"
@@ -467,16 +518,30 @@ export function useReportDraftState(
       optionsRef.current.onError?.(reflowed.errors?.[0] || "A4 방향에 맞게 보고서를 재배치하지 못했습니다.");
       return false;
     }
+    setHistory((value) => ({
+      past: [...value.past.slice(-(HISTORY_LIMIT - 1)), previousSnapshot],
+      future: [],
+    }));
     orientationRef.current = orientation;
     setReportOrientation(orientation);
-    commitBlocks(fitAutoArtifactViewLayout(reflowed.blocks, artifacts, orientation));
+    commitBlocks(fitAutoArtifactViewLayout(reflowed.blocks, artifacts, orientation), false);
     setIsDirty(draftChanged(blocksRef.current, currencyPolicyRef.current, orientation));
     return true;
   }, [commitBlocks, draftChanged, reportContext]);
 
   const changeCurrencyDisplayUnit = useCallback((displayUnit) => {
-    if (!optionsRef.current.editable) return;
+    if (!optionsRef.current.editable || displayUnit === currencyPolicyRef.current.displayUnit) return;
+    const previousSnapshot = createHistorySnapshot(
+      titleRef.current,
+      blocksRef.current,
+      orientationRef.current,
+      currencyPolicyRef.current,
+    );
     const next = { ...currencyPolicyRef.current, displayUnit };
+    setHistory((value) => ({
+      past: [...value.past.slice(-(HISTORY_LIMIT - 1)), previousSnapshot],
+      future: [],
+    }));
     currencyPolicyRef.current = next;
     setReportCurrencyPolicy(next);
     setIsDirty(draftChanged(blocksRef.current, next));

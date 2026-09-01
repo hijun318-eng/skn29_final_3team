@@ -26,6 +26,12 @@ const repaired = restoreDraftLayout(overlappingLegacyLayout);
 assert.equal(isDraftLayoutValid(repaired), true);
 assert.deepEqual(repaired.map(({ x, y, w, h }) => [x, y, w, h]), [[0, 0, 12, 4], [0, 4, 12, 5]]);
 
+const compactLegacyArtifact = restoreDraftLayout([
+  { id: "legacy", title: "이전 합본", columns: 12, type: "artifact", artifactId: "artifact-1", x: 0, y: 0, w: 12, h: 1 },
+  { id: "overlap", title: "본문", columns: 12, type: "text", content: "본문", x: 0, y: 0, w: 12, h: 4 },
+]);
+assert.equal(compactLegacyArtifact[0].h, 5, "legacy Artifact layout recovery must not recreate a 12-row empty block");
+
 const split = placeDraftBlock([
   { id: "full", title: "전체", columns: 12, type: "table", content: "{}", x: 0, y: 0, w: 12, h: 5 },
   { id: "incoming", title: "차트", columns: 12, type: "chart", content: "{}", x: 0, y: 5, w: 12, h: 7 },

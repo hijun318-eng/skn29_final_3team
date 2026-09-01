@@ -3,21 +3,37 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 from uuid import UUID
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 
 from app.contracts import ResponseContractModel, ResponseMeta, Role
 from app.contract_core import ContractModel
+from app.user_account_roles import UserAccountRole, public_user_account_role
+
+
+AssignableAccountRole: TypeAlias = UserAccountRole
+ASSIGNABLE_ACCOUNT_ROLES: tuple[Role, ...] = (
+    Role.ANALYST,
+    Role.PLATFORM_ADMIN,
+)
+
+
+def require_assignable_account_role(role: Role) -> Role:
+    """계정 writer가 분석 사용자·관리자 외 인증 Role을 새로 저장하지 못하게 한다."""
+
+    if role not in ASSIGNABLE_ACCOUNT_ROLES:
+        raise ValueError("계정 역할은 analyst 또는 platform_admin이어야 합니다.")
+    return role
 
 
 class CreateAccountRequest(ContractModel):
-    """정규화된 login ID, 초기 비밀번호와 현재 서비스 Role만 계정 생성에 허용한다."""
+    """login ID, 초기 비밀번호와 분석 사용자·관리자 Role만 계정 생성에 허용한다."""
 
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9._-]+$")
     password: SecretStr = Field(min_length=12, max_length=128)
-    role: Role = Role.ANALYST
+    role: AssignableAccountRole = "analyst"
 
     @field_validator("username", mode="before")
     @classmethod
@@ -36,7 +52,7 @@ class UpdateAccountRequest(ContractModel):
         max_length=64,
         pattern=r"^[a-z0-9._-]+$",
     )
-    role: Role | None = None
+    role: AssignableAccountRole | None = None
     active: bool | None = None
 
     @field_validator("username", mode="before")
@@ -68,12 +84,21 @@ class AccountData(ContractModel):
 
     subject: UUID
     username: str
-    role: Role
+    role: UserAccountRole
     active: bool
     created_at: datetime
     updated_at: datetime
     deactivated_at: datetime | None = None
     deleted_at: datetime | None = None
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_public_role(cls, value: object) -> object:
+        """저장용 platform_admin을 공개 admin으로 바꾸고 legacy Role은 거부한다."""
+
+        if not isinstance(value, (Role, str)):
+            raise ValueError("지원하지 않는 사용자 계정 역할입니다.")
+        return public_user_account_role(value)
 
 
 class AccountListData(ContractModel):

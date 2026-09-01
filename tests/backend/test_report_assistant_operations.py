@@ -5,8 +5,10 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 import json
 import os
+from base64 import urlsafe_b64encode
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -31,7 +33,30 @@ from app.report_contracts import (
 )
 from fastapi import HTTPException
 from evals.report_assistant_quality import evaluate_report_assistant_quality
-from src.report.domain import DefinitionStatus, ReportDefinitionVersion
+from src.report.domain import (
+    BlockType,
+    DefinitionStatus,
+    ReportDefinitionVersion,
+    normalize_report_block_content,
+)
+from tests.e2e.prepare_report_assistant_e2e import (
+    E2E_ATOMIC_CHART_CONTENT,
+    E2E_DATABASE,
+    E2E_FIXTURE_VERSION,
+    _analyst_account,
+)
+from tests.e2e.run_local_backend import (
+    E2E_DATABASE as RUNNER_E2E_DATABASE,
+    _require_read_only_environment,
+)
+
+
+PAGE_RENDERER_FINGERPRINT = "f" * 64
+MODEL_COST_ENVIRONMENT = {
+    "REPORT_ASSISTANT_INPUT_USD_PER_MILLION": "1",
+    "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION": "1",
+    "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD": "100",
+}
 
 
 class ReportAssistantOperationsTest(unittest.TestCase):
@@ -67,14 +92,16 @@ class ReportAssistantOperationsTest(unittest.TestCase):
         self.assertEqual({"ANALYSIS_FAILED": 0.5}, summary["failure_rate_by_error_code"])
         self.assertEqual(Decimal("0.01"), summary["estimated_cost_total"])
 
-    def test_cost_is_null_without_provider_price_configuration(self):
+    def test_cost_fails_closed_without_provider_price_configuration(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertIsNone(estimate_model_cost(10, 5))
+            with self.assertRaises(RuntimeError):
+                estimate_model_cost(10, 5)
 
     def test_cost_is_explicitly_estimated_from_configured_prices(self):
         with patch.dict(os.environ, {
             "REPORT_ASSISTANT_INPUT_USD_PER_MILLION": "2",
             "REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION": "8",
+            "REPORT_ASSISTANT_MAX_ESTIMATED_COST_USD": "1",
         }, clear=True):
             self.assertEqual(Decimal("0.00006"), estimate_model_cost(10, 5))
 
@@ -207,8 +234,120 @@ class ReportAssistantOperationsTest(unittest.TestCase):
         self.assertIn('print(f"E2E_MIGRATION_HEAD={head}")', source)
         self.assertNotIn('E2E_MIGRATION_HEAD=20260825_34', source)
 
+    def test_e2e_fixture_pins_atomic_v2_chart_content_and_readback(self):
+        source = Path("tests/e2e/prepare_report_assistant_e2e.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual("atomic-v2", E2E_FIXTURE_VERSION)
+        self.assertEqual(
+            E2E_ATOMIC_CHART_CONTENT,
+            normalize_report_block_content(BlockType.CHART, E2E_ATOMIC_CHART_CONTENT),
+        )
+        for contract in (
+            'uuid5(NAMESPACE, f"{E2E_FIXTURE_VERSION}:{name}")',
+            "e2e_query_report_assistant_atomic_v2",
+            "E2E_ATOMIC_CHART_CONTENT",
+            "b.block_type = 'chart'",
+            "b.artifact_id = a.artifact_id",
+            "b.content::jsonb = %s::jsonb",
+        ):
+            self.assertIn(contract, source)
+        self.assertNotIn("complete-receipt-v1", source)
+        concurrency_fixture = Path(
+            "tests/backend/test_report_assistant_postgres_concurrency.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("E2E_ATOMIC_CHART_CONTENT", concurrency_fixture)
+
+    def test_e2e_account_seed_accepts_only_the_production_verifier_shape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            principal_path = Path(directory) / "principals.json"
+            subject = str(uuid4())
+            account = {
+                "username": "analyst",
+                "password_salt": urlsafe_b64encode(b"0123456789abcdef").decode().rstrip("="),
+                "password_hash": "a" * 64,
+                "password_iterations": 210_000,
+                "subject": subject,
+                "role": "analyst",
+                "active": True,
+            }
+            principal_path.write_text(json.dumps([account]), encoding="utf-8")
+
+            loaded = _analyst_account({"AUTH_PRINCIPALS_HOST_FILE": str(principal_path)})
+
+            self.assertEqual("analyst", loaded["username"])
+            self.assertEqual(subject, str(loaded["subject"]))
+            self.assertNotIn("role", loaded)
+            self.assertNotIn("active", loaded)
+
+            for field, value in (
+                ("password_hash", "not-a-lowercase-sha256"),
+                ("password_salt", "short"),
+                ("password_iterations", True),
+            ):
+                invalid = {**account, field: value}
+                principal_path.write_text(json.dumps([invalid]), encoding="utf-8")
+                with self.subTest(field=field), self.assertRaisesRegex(
+                    RuntimeError, "verifier 형식"
+                ):
+                    _analyst_account({"AUTH_PRINCIPALS_HOST_FILE": str(principal_path)})
+
+    def test_read_only_e2e_backend_requires_isolated_db_without_model_credentials(self):
+        valid = f"postgresql://local:local@127.0.0.1:15432/{E2E_DATABASE}"
+        self.assertEqual(E2E_DATABASE, RUNNER_E2E_DATABASE)
+        with patch.dict(os.environ, {"APP_RUNTIME_DATABASE_URL": valid}, clear=True):
+            _require_read_only_environment()
+
+        for invalid in (
+            "",
+            "postgresql://local:local@127.0.0.1:15432/app_db",
+            f"postgresql://local:local@database.internal:5432/{E2E_DATABASE}",
+            f"sqlite:///{E2E_DATABASE}",
+        ):
+            with self.subTest(database_url=invalid), patch.dict(
+                os.environ, {"APP_RUNTIME_DATABASE_URL": invalid}, clear=True
+            ), self.assertRaisesRegex(RuntimeError, E2E_DATABASE):
+                _require_read_only_environment()
+
+        for credential in ("OPENAI_API_KEY", "NODE2_MODEL_API_TOKEN"):
+            with self.subTest(credential=credential), patch.dict(os.environ, {
+                "APP_RUNTIME_DATABASE_URL": valid,
+                credential: "configured-forbidden-secret",
+            }, clear=True), self.assertRaisesRegex(RuntimeError, credential):
+                _require_read_only_environment()
+
+        runner = Path("tests/e2e/run_local_backend.py").read_text(encoding="utf-8")
+        self.assertIn('lifespan="off"', runner)
+
 
 class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        """모델 흐름 테스트는 명시적인 저비용 provider 정책으로 실행한다."""
+
+        from app.adapters.report_assistant import ReportAssistantModelInvocation
+
+        self._cost_environment = patch.dict(
+            os.environ, MODEL_COST_ENVIRONMENT, clear=False
+        )
+        self._cost_environment.start()
+        self.addCleanup(self._cost_environment.stop)
+        self._test_model_invocation = ReportAssistantModelInvocation(
+            node="report_assistant_turn",
+            route=SimpleNamespace(data_boundary="internal"),
+            payload_hash="a" * 64,
+            timeout=60.0,
+            max_attempts=1,
+            authorization=object(),
+            repository=object(),
+        )
+        self._consent_gate = patch(
+            "app.api.report_router._consented_assistant_model_invocation",
+            new=AsyncMock(return_value=self._test_model_invocation),
+        )
+        self._consent_gate.start()
+        self.addCleanup(self._consent_gate.stop)
+
     def _ready_message_repository(self):
         assistant_request_id = uuid4()
         artifact_id = uuid4()
@@ -245,6 +384,10 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
             record_assistant_proposal=AsyncMock(return_value={
                 **session, "message_revision": 1,
             }),
+            claim_assistant_model_execution=AsyncMock(
+                return_value="33333333-3333-4333-8333-333333333333"
+            ),
+            release_assistant_model_execution=AsyncMock(return_value=True),
             fail_assistant_request=AsyncMock(return_value=True),
             upsert_assistant_evaluation=AsyncMock(),
         )
@@ -397,6 +540,7 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
             operation_scope="report_title",
             expected_phase="ready",
             expected_message_revision=0,
+            model_execution_id="33333333-3333-4333-8333-333333333333",
         )
         repository.record_assistant_proposal.assert_not_awaited()
 
@@ -554,6 +698,8 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
                 "patch_request_id": args[1],
                 "report_patch_json": args[8],
                 "patch_preview_json": args[9],
+                "verified_page_count": _kwargs["verified_page_count"],
+                "page_renderer_fingerprint": _kwargs["page_renderer_fingerprint"],
             })
             return dict(session)
 
@@ -592,6 +738,13 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
             patch(
                 "app.adapters.report_assistant.generate_report_change_proposal", new=model,
             ),
+            patch(
+                "app.services.report.document.render_report_page_count", return_value=1,
+            ),
+            patch(
+                "app.services.report.document.report_renderer_contract_fingerprint",
+                return_value=PAGE_RENDERER_FINGERPRINT,
+            ),
         ):
             await submit_assistant_message(
                 str(assistant_request_id),
@@ -628,7 +781,7 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
         title_saved = asyncio.Event()
         observed_scopes: list[str] = []
 
-        async def model(payload):
+        async def model(payload, **_kwargs):
             scope = payload["operation_scope"]
             observed_scopes.append(scope)
             if scope == "report_title":
@@ -695,22 +848,27 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("report_title", title_result["session"]["operation_scope"])
         self.assertEqual("report_title", session["operation_scope"])
         self.assertCountEqual(["report_title", "full_report"], observed_scopes)
-        repository.fail_assistant_request.assert_not_awaited()
+        repository.fail_assistant_request.assert_awaited_once_with(
+            str(assistant_request_id),
+            "ASSISTANT_STATE_CONFLICT",
+            operation_scope="full_report",
+            expected_phase="ready",
+            expected_message_revision=0,
+            model_execution_id="33333333-3333-4333-8333-333333333333",
+        )
 
     async def test_identical_concurrent_messages_have_one_canonical_save(self):
         """같은 문장이 같은 revision에서 겹쳐도 한 응답만 canonical turn으로 저장된다."""
 
         assistant_request_id, repository = self._ready_message_repository()
         session = repository.get_assistant_session.return_value
-        both_models_started = asyncio.Event()
+        first_claim_started = asyncio.Event()
+        claim_count = 0
         model_count = 0
 
-        async def model(_payload):
+        async def model(_payload, **_kwargs):
             nonlocal model_count
             model_count += 1
-            if model_count == 2:
-                both_models_started.set()
-            await both_models_started.wait()
             return ({
                 "change_kind": "clarification",
                 "message": "기간을 알려 주세요.",
@@ -724,6 +882,16 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
                 "input_tokens": None, "output_tokens": None,
             })
 
+        async def claim_once(*_args, **_kwargs):
+            nonlocal claim_count
+            claim_count += 1
+            if claim_count == 1:
+                first_claim_started.set()
+                await asyncio.sleep(0)
+                return "33333333-3333-4333-8333-333333333333"
+            await first_claim_started.wait()
+            raise ValueError("ASSISTANT_MODEL_EXECUTION_CONFLICT")
+
         async def save_once(*_args, **kwargs):
             if session["message_revision"] != kwargs["expected_message_revision"]:
                 raise ValueError("ASSISTANT_STATE_CONFLICT")
@@ -731,6 +899,7 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
             return dict(session)
 
         repository.record_assistant_proposal.side_effect = save_once
+        repository.claim_assistant_model_execution.side_effect = claim_once
         gate = SimpleNamespace(
             acquire=AsyncMock(return_value=True), release=unittest.mock.Mock(),
         )
@@ -758,6 +927,8 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
         conflicts = [result for result in results if isinstance(result, HTTPException)]
         self.assertEqual(1, len(conflicts))
         self.assertEqual(409, conflicts[0].status_code)
+        self.assertEqual("ASSISTANT_MODEL_EXECUTION_CONFLICT", conflicts[0].detail["code"])
+        self.assertEqual(1, model_count)
         self.assertEqual(1, session["message_revision"])
         self.assertEqual(1, repository.upsert_assistant_evaluation.await_count)
         observed = repository.upsert_assistant_evaluation.await_args.kwargs
@@ -841,6 +1012,7 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
             operation_scope="full_report",
             expected_phase="ready",
             expected_message_revision=0,
+            model_execution_id="33333333-3333-4333-8333-333333333333",
         )
         repository.record_assistant_proposal.assert_not_awaited()
         self.assertFalse(hasattr(repository, "finalize_existing_assistant_patch"))
@@ -887,6 +1059,7 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
             operation_scope="full_report",
             expected_phase="ready",
             expected_message_revision=0,
+            model_execution_id="33333333-3333-4333-8333-333333333333",
         )
         observed = repository.upsert_assistant_evaluation.await_args.kwargs
         self.assertEqual("existing_artifact", observed["route"])
@@ -946,7 +1119,7 @@ class ReportAssistantOperationsApiTest(unittest.IsolatedAsyncioTestCase):
         started = asyncio.Event()
         release = asyncio.Event()
 
-        async def late_failure(_payload):
+        async def late_failure(_payload, **_kwargs):
             started.set()
             await release.wait()
             raise ReportAssistantModelError(

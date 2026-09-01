@@ -50,6 +50,8 @@ class OpenApiContractTest(unittest.TestCase):
                 "/analysis/definitions",
                 "/analysis/definitions/{definition_id}",
                 "/analysis/definitions/{definition_id}/runs",
+                "/analysis/artifacts/{artifact_id}/archive",
+                "/analysis/artifacts/{artifact_id}/restore",
                 "/analysis/runs",
                 "/analysis/runs/{request_id}",
                 "/analysis/runs/{request_id}/artifact",
@@ -63,6 +65,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "/mcp",
                 "/ml/capabilities",
                 "/rag/documents",
+                "/rag/documents/{manual_id}/source",
                 "/rag/documents/{manual_id}/source.pdf",
                 "/rag/query",
                 "/readiness",
@@ -76,6 +79,8 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/definitions/{definition_id}/versions/{version}/drafts",
                 "/reports/definitions/{definition_id}/versions/{version}",
                 "/reports/definitions/{definition_id}/versions/{version}/blocks",
+                "/reports/definitions/{definition_id}/archive",
+                "/reports/definitions/{definition_id}/restore",
                 "/reports/runs",
                 "/reports/runs/manual",
                 "/reports/runs/{run_id}",
@@ -90,6 +95,8 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/assistant/sessions/{assistant_request_id}/approval",
                 "/reports/assistant/sessions/{assistant_request_id}/cancel",
                 "/reports/assistant/sessions/{assistant_request_id}/evaluation",
+                "/reports/assistant/sessions/{assistant_request_id}/external-transfer-consent",
+                "/reports/assistant/sessions/{assistant_request_id}/external-transfer-disclosure",
                 "/reports/assistant/sessions/{assistant_request_id}/messages",
                 "/reports/assistant/sessions/{assistant_request_id}/patch-approval",
                 "/reports/assistant/sessions/{assistant_request_id}/retry",
@@ -132,12 +139,15 @@ class OpenApiContractTest(unittest.TestCase):
                 "analysisListRuns",
                 "analysisGetRun",
                 "analysisGetRunArtifact",
+                "analysisArchiveArtifact",
+                "analysisRestoreArtifact",
                 "createConversation",
                 "getConversationTurns",
                 "executeConversationCommand",
                 "getMlCapabilities",
                 "queryInternalManual",
                 "listInternalManuals",
+                "getInternalManualSource",
                 "getInternalManualPdf",
                 "reportCreateDefinition",
                 "reportCreateDraftFromAnalysisArtifact",
@@ -150,6 +160,8 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportGetDefinitionVersion",
                 "reportGetArtifact",
                 "reportReplaceDraftBlocks",
+                "reportArchiveDefinition",
+                "reportRestoreDefinition",
                 "reportListRuns",
                 "reportCreateManualRunCommand",
                 "reportGetRun",
@@ -157,7 +169,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportListSchedules",
                 "reportUpdateSchedule",
                 "reportRunDueSchedule",
-                "reportAssistantCreateDraft",
+                "reportAssistantLegacyDraftGone",
                 "reportAssistantOperationsFailures",
                 "reportAssistantOperationsSummary",
                 "reportAssistantCreateSession",
@@ -165,16 +177,33 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportAssistantCancelSession",
                 "reportAssistantDecidePlan",
                 "reportAssistantGetEvaluation",
+                "reportAssistantGetExternalTransferDisclosure",
+                "reportAssistantAcceptExternalTransfer",
                 "reportAssistantReview",
                 "reportAssistantSubmitMessage",
                 "reportAssistantDecidePatch",
                 "reportAssistantRetrySession",
                 "mcpGet",
+                "mcpDelete",
                 "mcpPost",
             },
             operation_ids,
         )
         self.assertNotIn("post", committed["paths"]["/reports/runs"])
+
+    def test_generic_rag_source_advertises_pdf_and_docx_without_conversion(self) -> None:
+        """generic 원문 경로는 PDF와 DOCX를 서로 다른 media type으로 공개한다."""
+
+        response = app.openapi()["paths"]["/rag/documents/{manual_id}/source"][
+            "get"
+        ]["responses"]["200"]
+        self.assertEqual(
+            {
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+            set(response["content"]),
+        )
 
     def test_analysis_persistence_requests_reject_server_owned_fields(self) -> None:
         schemas = app.openapi()["components"]["schemas"]
@@ -218,6 +247,97 @@ class OpenApiContractTest(unittest.TestCase):
             with self.subTest(schema=name):
                 self.assertFalse(schemas[name]["additionalProperties"])
 
+    def test_report_assistant_page_receipts_and_internal_sixth_artifact_are_publicly_bounded(self) -> None:
+        """응답은 target/actual과 최대 5+result를 공개하고 요청에는 exact를 강요하지 않는다."""
+
+        schemas = app.openapi()["components"]["schemas"]
+        session = schemas["ReportAssistantSessionResponse"]["properties"]
+        self.assertEqual(1, session["artifact_ids"]["minItems"])
+        self.assertEqual(6, session["artifact_ids"]["maxItems"])
+        self.assertTrue(session["artifact_ids"]["uniqueItems"])
+        self.assertIn("첫 번째", session["artifact_ids"]["description"])
+        self.assertIn("exact_page_count", session)
+        self.assertIn("verified_page_count", session)
+        self.assertEqual(20, session["exact_page_count"]["anyOf"][0]["maximum"])
+        self.assertNotIn("maximum", session["verified_page_count"]["anyOf"][0])
+        error = schemas["ErrorBody"]["properties"]
+        self.assertEqual(20, error["exact_page_count"]["anyOf"][0]["maximum"])
+        self.assertEqual(1, error["verified_page_count"]["anyOf"][0]["minimum"])
+        self.assertNotIn("maximum", error["verified_page_count"]["anyOf"][0])
+        self.assertIn(
+            "REPORT_ASSISTANT_PAGE_CONSTRAINT_UNSATISFIED",
+            schemas["ErrorCode"]["enum"],
+        )
+        patch_approval = app.openapi()["paths"][
+            "/reports/assistant/sessions/{assistant_request_id}/patch-approval"
+        ]["post"]["responses"]
+        for status in ("409", "502"):
+            with self.subTest(status=status):
+                self.assertEqual(
+                    "#/components/schemas/ErrorResponse",
+                    patch_approval[status]["content"]["application/json"]["schema"]["$ref"],
+                )
+        for request_name in (
+            "CreateReportAssistantSessionRequest",
+            "ReportAssistantMessageRequest",
+            "ReportAssistantPatchApprovalRequest",
+        ):
+            with self.subTest(request=request_name):
+                self.assertNotIn(
+                    "exact_page_count", schemas[request_name]["properties"]
+                )
+
+    def test_report_assistant_external_transfer_consent_is_explicit_and_bounded(self) -> None:
+        """외부 전송은 서버 disclosure와 accepted=true만 받으며 모든 모델 경로가 428을 공개한다."""
+
+        schema = app.openapi()
+        schemas = schema["components"]["schemas"]
+        consent = schemas["ReportAssistantExternalTransferConsentRequest"]
+        self.assertFalse(consent["additionalProperties"])
+        self.assertEqual(
+            {"disclosure_id", "disclosure_hash", "accepted"},
+            set(consent["properties"]),
+        )
+        self.assertEqual(set(consent["required"]), set(consent["properties"]))
+        self.assertIs(consent["properties"]["accepted"]["const"], True)
+        self.assertEqual(
+            "^[0-9a-f]{64}$", consent["properties"]["disclosure_hash"]["pattern"]
+        )
+
+        paths = schema["paths"]
+        disclosure_path = (
+            "/reports/assistant/sessions/{assistant_request_id}"
+            "/external-transfer-disclosure"
+        )
+        consent_path = (
+            "/reports/assistant/sessions/{assistant_request_id}"
+            "/external-transfer-consent"
+        )
+        self.assertEqual(
+            "#/components/schemas/ReportAssistantExternalTransferDisclosureResponse",
+            paths[disclosure_path]["get"]["responses"]["200"]["content"]
+            ["application/json"]["schema"]["$ref"],
+        )
+        self.assertEqual(
+            "#/components/schemas/ReportAssistantExternalTransferConsentRequest",
+            paths[consent_path]["post"]["requestBody"]["content"]
+            ["application/json"]["schema"]["$ref"],
+        )
+        self.assertEqual(
+            "#/components/schemas/ReportAssistantExternalTransferConsentResponse",
+            paths[consent_path]["post"]["responses"]["200"]["content"]
+            ["application/json"]["schema"]["$ref"],
+        )
+        for action in ("messages", "review", "approval"):
+            with self.subTest(action=action):
+                response = paths[
+                    f"/reports/assistant/sessions/{{assistant_request_id}}/{action}"
+                ]["post"]["responses"]["428"]
+                self.assertEqual(
+                    "#/components/schemas/ReportAssistantExternalTransferErrorResponse",
+                    response["content"]["application/json"]["schema"]["$ref"],
+                )
+
     def test_analysis_schema_exposes_result_and_evidence(self) -> None:
         schema = app.openapi()
         analysis_data = schema["components"]["schemas"]["AnalysisData"]
@@ -230,6 +350,8 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertIn("evidence", analysis_result["properties"])
         evidence = schema["components"]["schemas"]["Evidence"]["properties"]
         self.assertIn("product_release_id", evidence)
+        self.assertIn("permission_snapshot_id", evidence)
+        self.assertIn("semantic_release_id", evidence)
         self.assertIn("evidence_cutoff", evidence)
         metric_reference = schema["components"]["schemas"]["MetricReference"]["properties"]
         self.assertIn("display_label", metric_reference)

@@ -1,3 +1,5 @@
+"""PDF 추출 문장을 summary·관련 지침·행동 기준의 화면 구조로 정규화한다."""
+
 from __future__ import annotations
 
 import re
@@ -16,6 +18,8 @@ class ManualResponseNormalizer:
     )
 
     def normalize(self, item: dict[str, Any]) -> dict[str, Any]:
+        """원본 evidence를 보존하면서 화면용 section과 문서 ID field를 추가한다."""
+
         content = " ".join(str(item.get("content") or item.get("snippet") or "").split())
         cleaned = content
         for footer in self._FOOTERS:
@@ -56,6 +60,8 @@ class ManualResponseNormalizer:
 
     @staticmethod
     def answer_points(answer: str) -> list[str]:
+        """표준 답변의 본문 영역에서 최대 네 개 가독성 단락만 추출한다."""
+
         body = answer.split("본문내용:\n", 1)[-1]
         body = body.rsplit("\n근거:", 1)[0].strip()
         paragraphs = [item.strip() for item in re.split(r"\n\s*\n", body) if item.strip()]

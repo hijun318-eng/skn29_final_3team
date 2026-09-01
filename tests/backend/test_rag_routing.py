@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import sys
+from uuid import uuid4
 
 from fastapi import HTTPException
 import pytest
@@ -24,6 +25,7 @@ from app.contracts import RequestContext
 from app.services.internal_manual_query import (
     InternalManualQuery,
     InternalManualQueryError,
+    InternalManualQueryService,
 )
 
 
@@ -121,6 +123,43 @@ def test_rag_runtime_factory_fails_closed_when_feature_is_disabled(
 
     assert captured.value.code == "RAG_FEATURE_DISABLED"
     assert captured.value.status_code == 503
+
+
+def test_feature_off_rejects_before_conversation_database_reads() -> None:
+    class Repository:
+        reads = 0
+
+        async def get_conversation(self, *_args: object):
+            self.reads += 1
+            return {}
+
+        async def list_turns(self, *_args: object):
+            self.reads += 1
+            return []
+
+    repository = Repository()
+    service = InternalManualQueryService(
+        repository,
+        lambda: object(),
+        enabled=False,
+    )
+
+    with pytest.raises(InternalManualQueryError) as captured:
+        asyncio.run(
+            service.execute(
+                InternalManualQuery(
+                    question="승인된 내부 문서를 검색해줘",
+                    mode="DOCUMENT_ONLY",
+                    conversation_id=uuid4(),
+                    inherit_previous_context=True,
+                ),
+                RequestContext(),
+            )
+        )
+
+    assert captured.value.code == "RAG_FEATURE_DISABLED"
+    assert captured.value.status_code == 503
+    assert repository.reads == 0
 
 
 def test_rag_document_endpoints_share_the_disabled_feature_boundary(

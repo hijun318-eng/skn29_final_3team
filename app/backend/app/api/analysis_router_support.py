@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.analysis_contracts import (
+    AnalysisArtifactLifecycleResponse,
     AnalysisDefinitionListResponse,
     AnalysisDefinitionResponse,
     AnalysisRunArtifactResponse,
@@ -228,14 +229,16 @@ async def list_analysis_runs(
     context: Annotated[RequestContext, Depends(analysis_context)],
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
     approved_only: bool = False,
+    archived: bool = False,
 ) -> dict[str, Any]:
-    """현재 분석 주체의 run을 승인 여부와 서버 상한을 적용해 시작 시각 역순으로 반환한다."""
+    """현재 분석 주체의 active 또는 명시한 archived run을 시작 시각 역순으로 반환한다."""
     repository = _analysis_repository(context)
     return {
         "items": await _repository_call(
             lambda: repository.list_runs(
                 limit=limit,
                 approved_only=approved_only,
+                archived=archived,
             )
         )
     }
@@ -274,3 +277,58 @@ async def get_analysis_run_artifact(
     """
     repository = _analysis_repository(context)
     return await _repository_call(lambda: repository.get_run_artifact(request_id))
+
+
+def _artifact_lifecycle_response(lifecycle) -> dict[str, Any]:
+    """도메인 lifecycle을 UUID 외 정보가 없는 공개 응답으로 투영한다."""
+
+    return {
+        "artifact_id": lifecycle.artifact_id,
+        "archived": lifecycle.archived,
+        "archived_at": lifecycle.archived_at,
+        "archived_by": lifecycle.archived_by,
+    }
+
+
+@analysis_support_router.post(
+    "/analysis/artifacts/{artifact_id}/archive",
+    operation_id="analysisArchiveArtifact",
+    response_model=AnalysisArtifactLifecycleResponse,
+)
+async def archive_analysis_artifact(
+    artifact_id: UUID,
+    context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict[str, Any]:
+    """소유한 승인 Artifact를 비파괴 보관하며 진행 중 Assistant 충돌은 409로 닫는다."""
+
+    repository = _analysis_repository(context)
+    lifecycle = await _repository_call(
+        lambda: repository.archive_artifact(
+            artifact_id,
+            actor_role=context.role.value,
+            trace_id=context.trace_id,
+        )
+    )
+    return _artifact_lifecycle_response(lifecycle)
+
+
+@analysis_support_router.post(
+    "/analysis/artifacts/{artifact_id}/restore",
+    operation_id="analysisRestoreArtifact",
+    response_model=AnalysisArtifactLifecycleResponse,
+)
+async def restore_analysis_artifact(
+    artifact_id: UUID,
+    context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict[str, Any]:
+    """소유한 보관 Artifact를 active 목록과 신규 보고서 결속에 다시 노출한다."""
+
+    repository = _analysis_repository(context)
+    lifecycle = await _repository_call(
+        lambda: repository.restore_artifact(
+            artifact_id,
+            actor_role=context.role.value,
+            trace_id=context.trace_id,
+        )
+    )
+    return _artifact_lifecycle_response(lifecycle)

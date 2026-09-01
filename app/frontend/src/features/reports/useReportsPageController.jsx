@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { compactDraftLayout, toReportBlockRequest } from "../../contracts/report";
+import { createUuid } from "../../utils/createUuid.ts";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
   createFrontendDraftSnapshot,
@@ -41,7 +42,7 @@ const ASSISTANT_SAVE_FIRST_MESSAGE = "AI로 보고서를 변경하기 전에 현
 
 /** 보고서 lifecycle·artifact·draft·DND를 화면 계약으로 합성하고 stale open generation을 폐기한다. */
 export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEditorMode }) {
-  const isAdmin = suppliedIsAdmin ?? ["report_admin", "platform_admin"].includes(role);
+  const isAdmin = suppliedIsAdmin ?? role === "admin";
   const lifecycle = useReportLifecycleState({ role, isAdmin });
   const [view, setView] = useState("list");
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
@@ -71,7 +72,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     }
   }, []);
   const isDraft = lifecycle.selectedDefinition?.status === "draft";
-  const canEdit = Boolean(isDraft && !lifecycle.pending);
+  const isArchived = Boolean(lifecycle.selectedDefinition?.archivedAt);
+  const canEdit = Boolean(isDraft && !isArchived && !lifecycle.pending);
   const draft = useReportDraftState({
     editable: canEdit,
     artifacts: artifacts.artifacts,
@@ -187,14 +189,15 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     if (!result) return;
     applyDefinition(result.definition, { currencyPolicy: DEFAULT_FRONTEND_CURRENCY_POLICY });
     if (!result.initialContent) {
+      const initialBlockId = createUuid();
       draft.resetDraft({
-        blocks: [{ id: result.blockId, title: "운영 요약", columns: 12, type: "text", content: "", x: 0, y: 0, w: 12, h: 4 }],
+        blocks: [{ id: initialBlockId, title: "운영 요약", columns: 12, type: "text", content: "", x: 0, y: 0, w: 12, h: 4 }],
         savedBlocks: [],
         title: result.definition.title,
         savedTitle: result.definition.title,
         orientation: result.definition.orientation,
         currencyPolicy: DEFAULT_FRONTEND_CURRENCY_POLICY,
-        selectedBlockId: result.blockId,
+        selectedBlockId: initialBlockId,
         dirty: true,
       });
     }
@@ -202,6 +205,10 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   }, [applyDefinition, draft.resetDraft, lifecycle.createDefinition]);
 
   const openPreview = useCallback(async (definition) => {
+    if (definition.archivedAt && definition.status !== "approved") {
+      lifecycle.setError("보관된 초안은 복원한 뒤 확인할 수 있습니다. 보관함에서는 확정 문서만 열람할 수 있습니다.");
+      return;
+    }
     const requestId = openRequestRef.current + 1;
     openRequestRef.current = requestId;
     const isCurrentRequest = () => openRequestRef.current === requestId;
@@ -209,6 +216,10 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     void lifecycle.loadFinalDocument(null);
     const current = await lifecycle.fetchDefinition(definition);
     if (!current || !isCurrentRequest()) return;
+    if (current.archivedAt && current.status !== "approved") {
+      lifecycle.setError("보관된 초안은 복원한 뒤 확인할 수 있습니다. 보관함에서는 확정 문서만 열람할 수 있습니다.");
+      return;
+    }
     lifecycle.clearAssistantTrace();
     applyDefinition(current);
     setView("document");
@@ -222,6 +233,10 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   }, [applyDefinition, artifacts, draft.resetDraft, lifecycle]);
 
   const openEditor = useCallback(async (definition) => {
+    if (definition.archivedAt) {
+      lifecycle.setError("보관된 보고서는 읽기 전용입니다. 보관함에서 복원한 뒤 편집해 주세요.");
+      return;
+    }
     const requestId = openRequestRef.current + 1;
     openRequestRef.current = requestId;
     const isCurrentRequest = () => openRequestRef.current === requestId;
@@ -229,6 +244,10 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     void lifecycle.loadFinalDocument(null);
     let current = await lifecycle.fetchDefinition(definition);
     if (!current || !isCurrentRequest()) return;
+    if (current.archivedAt) {
+      lifecycle.setError("보관된 보고서는 읽기 전용입니다. 보관함에서 복원한 뒤 편집해 주세요.");
+      return;
+    }
     if (current.status === "approved") {
       const existingDraft = lifecycle.findLatestDraft(current.definitionId);
       if (existingDraft) {
@@ -277,7 +296,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
 
   const saveDraft = useCallback(async () => {
     const definition = lifecycle.selectedDefinition;
-    if (!definition || !isDraft || lifecycle.pending) return;
+    if (!definition || !isDraft || isArchived || lifecycle.pending) return;
     const title = draft.titleRef.current.trim();
     if (!title || title.length > 255 || /[\u0000-\u001f\u007f]/.test(title)) {
       draft.markSaveFailed();
@@ -300,13 +319,14 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       )?.focus());
       return;
     }
+    const persistedBlocks = compactDraftLayout(draft.orderedBlocks);
     const snapshot = createFrontendDraftSnapshot({
       definitionId: definition.definitionId,
       version: definition.version,
       title,
       orientation: draft.reportOrientation,
       currencyPolicy: draft.reportCurrencyPolicy,
-      blocks: draft.orderedBlocks,
+      blocks: persistedBlocks,
     });
     if (!snapshot.ok) {
       draft.markSaveFailed();
@@ -314,7 +334,6 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       return;
     }
     draft.beginSave();
-    const persistedBlocks = compactDraftLayout(draft.orderedBlocks);
     const saved = await lifecycle.mutate("save", () => lifecycle.reportClient.replaceDraftBlocks(
       definition.definitionId,
       definition.version,
@@ -340,11 +359,11 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     lifecycle.setNotice(localSnapshotSaved
       ? "변경사항을 저장했습니다."
       : "서버에는 저장했지만 이 브라우저의 임시 복구본은 갱신하지 못했습니다.");
-  }, [applyDefinition, draft, isDraft, lifecycle]);
+  }, [applyDefinition, draft, isArchived, isDraft, lifecycle]);
 
   const approveDefinition = useCallback(async () => {
     const definition = lifecycle.selectedDefinition;
-    if (!definition || !isDraft) return;
+    if (!definition || !isDraft || isArchived) return;
     if (draft.isDirty) {
       lifecycle.setError("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요.");
       return;
@@ -358,9 +377,13 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     applyDefinition(approved);
     setView("document");
     await lifecycle.loadFinalDocument(approved);
-  }, [applyDefinition, draft.blocksRef, draft.isDirty, draft.reportOrientation, isDraft, lifecycle]);
+  }, [applyDefinition, draft.blocksRef, draft.isDirty, draft.reportOrientation, isArchived, isDraft, lifecycle]);
 
   const requireSavedAssistantDraft = useCallback(() => {
+    if (lifecycle.selectedDefinition?.archivedAt) {
+      lifecycle.setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 보고서를 복원해 주세요.");
+      return false;
+    }
     if (!draft.isDirty) return true;
     lifecycle.setError(ASSISTANT_SAVE_FIRST_MESSAGE);
     return false;
@@ -503,8 +526,9 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     openRequestRef.current += 1;
     artifacts.invalidateLoads();
     void lifecycle.loadFinalDocument(null);
+    lifecycle.clearFeedback();
     setView("list");
-  }, [artifacts.invalidateLoads, draft.isDirty, lifecycle.loadFinalDocument]);
+  }, [artifacts.invalidateLoads, draft.isDirty, lifecycle.clearFeedback, lifecycle.loadFinalDocument]);
   const previewEditor = useCallback(() => {
     if (draft.isDirty) {
       lifecycle.setError("변경사항을 저장한 뒤 HTML 초안을 확인해 주세요.");
@@ -517,6 +541,10 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     void artifacts.loadArtifacts({ ...definition, blocks: [...draft.blocks] });
   }, [artifacts.loadArtifacts, draft.blocks, draft.isDirty, lifecycle]);
   const returnToEditor = useCallback(() => {
+    if (lifecycle.selectedDefinition?.archivedAt) {
+      lifecycle.setError("보관된 보고서는 읽기 전용입니다. 복원한 뒤 편집해 주세요.");
+      return;
+    }
     const focus = () => focusReportBlock(dnd.pageCanvasRefs, draft.selectedBlockId);
     if (lifecycle.selectedDefinition?.status === "draft") {
       setView("editor");
@@ -651,6 +679,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     errorRef,
     handleEditorKeyDown,
     isAdmin,
+    isArchived,
     isDraft,
     leaveEditor,
     loadRuns,

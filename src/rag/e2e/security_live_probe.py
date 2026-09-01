@@ -1,19 +1,24 @@
+"""배포 RAG Gateway가 정상 서명만 허용하고 재사용·미등록 역할·만료 요청을 거부하는지 확인한다."""
+
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import time
 import uuid
 from dataclasses import asdict, dataclass
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+
+import httpx
 
 from src.rag.request_auth import GatewayRequestAuthenticator, canonical_search_request
 
 
 @dataclass(frozen=True)
 class SecurityCheckResult:
+    """하나의 실보안 시나리오 이름, 통과 여부, HTTP 상태와 비민감 진단을 기록한다."""
+
     name: str
     passed: bool
     status_code: int
@@ -21,6 +26,8 @@ class SecurityCheckResult:
 
 
 class LiveSecurityContractVerifier:
+    """동일 검색 payload에 정상·재사용·미등록 역할·만료 서명을 적용해 Gateway 경계를 검증한다."""
+
     def __init__(self, base_url: str, secret: str, query: str, role: str) -> None:
         self._base_url = base_url.rstrip("/")
         self._secret = secret
@@ -28,7 +35,14 @@ class LiveSecurityContractVerifier:
         self._role = role
 
     def verify(self) -> list[SecurityCheckResult]:
-        payload = {"query": self._query, "top_k": 3, "trace_id": str(uuid.uuid4())}
+        """네 가지 서명 시나리오를 실제 호출하고 각각의 허용·거부 결과 영수증을 반환한다."""
+
+        payload = {
+            "query": self._query,
+            "top_k": 3,
+            "trace_id": str(uuid.uuid4()),
+            "actor_hash": hashlib.sha256(b"RAG_SECURITY_LIVE_PROBE").hexdigest(),
+        }
         normal_headers = self._signed_headers(payload, self._role, int(time.time()))
         normal_status, normal_body = self._post(payload, normal_headers)
         results = [
@@ -52,7 +66,12 @@ class LiveSecurityContractVerifier:
     def _signed_headers(self, payload: dict[str, object], role: str, epoch_seconds: int) -> dict[str, str]:
         request_id = str(uuid.uuid4())
         timestamp = str(epoch_seconds)
-        canonical_request = canonical_search_request(self._query, int(payload["top_k"]))
+        canonical_request = canonical_search_request(
+            self._query,
+            int(payload["top_k"]),
+            trace_id=str(payload["trace_id"]),
+            actor_hash=str(payload["actor_hash"]),
+        )
         signature = GatewayRequestAuthenticator.build_signature(self._secret, timestamp, request_id, role, canonical_request)
         return {
             "Content-Type": "application/json",
@@ -63,24 +82,32 @@ class LiveSecurityContractVerifier:
         }
 
     def _post(self, payload: dict[str, object], headers: dict[str, str]) -> tuple[int, dict[str, object]]:
-        request = Request(
-            f"{self._base_url}/v1/tools/internal-manual-search",
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
+        endpoint = f"{self._base_url}/v1/tools/internal-manual-search"
         try:
-            with urlopen(request, timeout=45) as response:
-                return response.status, json.loads(response.read().decode("utf-8"))
-        except HTTPError as error:
-            raw = error.read().decode("utf-8", errors="replace")
-            try:
-                return error.code, json.loads(raw)
-            except json.JSONDecodeError:
-                return error.code, {}
+            with httpx.Client(
+                timeout=httpx.Timeout(45.0),
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                response = client.post(
+                    endpoint,
+                    content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    headers=headers,
+                )
+        except httpx.RequestError:
+            return 0, {}
+        if response.is_redirect:
+            return response.status_code, {}
+        try:
+            parsed = response.json()
+        except json.JSONDecodeError:
+            parsed = {}
+        return response.status_code, parsed if isinstance(parsed, dict) else {}
 
 
 def main() -> int:
+    """명령행·환경 설정으로 실보안 검증을 실행하고 모든 검사 통과 여부를 종료 코드로 노출한다."""
+
     parser = argparse.ArgumentParser(description="Verify live Manual/Policy RAG security contracts")
     parser.add_argument("--base-url", default=os.getenv("RAG_E2E_BASE_URL", "http://127.0.0.1:18082"))
     parser.add_argument("--query", default=os.getenv("RAG_E2E_QUERY", "?關釉?癰귣떯????됯컧"))

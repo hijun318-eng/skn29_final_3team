@@ -6,6 +6,7 @@ import os
 import runpy
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -86,6 +87,14 @@ KNOWN_REVISIONS = (
     "20260831_62",
     "20260831_63",
     "20260831_64",
+    "20260831_65",
+    "20260831_66",
+    "20260831_67",
+    "20260831_68",
+    "20260831_69",
+    "20260831_70",
+    "20260901_71",
+    "20260901_72",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -112,7 +121,7 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260831_64"], script.get_heads())
+        self.assertEqual(["20260901_72"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
@@ -130,7 +139,7 @@ class MigrationGraphTest(unittest.TestCase):
         self.assertIsNotNone(reconciliation)
         self.assertEqual("20260828_55", legacy.down_revision)
         self.assertEqual("20260827_41", reconciliation.down_revision)
-        self.assertEqual("20260831_64", script.get_current_head())
+        self.assertEqual("20260901_72", script.get_current_head())
 
     def test_unknown_revision_is_native_nonzero_before_database_start(self) -> None:
         result = alembic("upgrade", "20260803_03", "--sql")
@@ -151,6 +160,70 @@ class MigrationGraphTest(unittest.TestCase):
         )
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+
+class ReportAssistantPageConstraintMigrationContractTest(unittest.TestCase):
+    """원지시·페이지 renderer receipt migration의 fail-closed 계약을 고정한다."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.source = (
+            BACKEND
+            / "migrations"
+            / "versions"
+            / "20260831_67_report_assistant_page_constraint.py"
+        ).read_text(encoding="utf-8")
+
+    def test_upgrade_backfills_only_the_new_data_turn_and_closes_unsafe_phases(self) -> None:
+        """plan.question fallback 없이 실제 new_data user turn만 bounded backfill한다."""
+
+        for fragment in (
+            "ADD COLUMN source_instruction varchar(500)",
+            "ADD COLUMN exact_page_count smallint",
+            "ADD COLUMN verified_page_count integer",
+            "ADD COLUMN page_renderer_fingerprint varchar(64)",
+            "WITH active_chain_anchor AS",
+            "request.phase = 'ready' AND latest.change_kind = 'clarification'",
+            "turn.change_kind = 'new_data'",
+            "ORDER BY turn.turn_number DESC",
+            "boundary.change_kind <> 'clarification'",
+            "min(retained.turn_number)",
+            "bounds.first_retained_turn_number = 1",
+            "ORDER BY turn.turn_number ASC",
+            "LIMIT 1",
+            "ASSISTANT_EXECUTION_INTERRUPTED",
+            "request.phase = 'ready'",
+            "phase IN ('waiting_patch_approval', 'saving_revision')",
+        ):
+            self.assertIn(fragment, self.source)
+        self.assertNotIn("plan.question", self.source)
+        self.assertNotIn("phase = 'saving_revision' AND data_request_id IS NOT NULL", self.source)
+
+    def test_database_checks_bind_page_receipts_to_patch_and_phase(self) -> None:
+        """범위·source pair·waiting receipt·저장 일치 조건을 DB CHECK로 유지한다."""
+
+        for fragment in (
+            "exact_page_count BETWEEN 1 AND 20",
+            "verified_page_count IS NULL OR verified_page_count >= 1",
+            "length(page_renderer_fingerprint) = 64",
+            "translate(",
+            "(verified_page_count IS NULL) = (page_renderer_fingerprint IS NULL)",
+            "exact_page_count IS NULL OR source_instruction IS NOT NULL",
+            "report_patch_json IS NOT NULL",
+            "phase <> 'waiting_patch_approval' OR verified_page_count IS NOT NULL",
+            "phase NOT IN ('saving_revision', 'completed')",
+            "verified_page_count = exact_page_count",
+        ):
+            self.assertIn(fragment, self.source)
+
+    def test_downgrade_refuses_to_discard_live_page_receipts(self) -> None:
+        """receipt가 남은 환경은 역 migration으로 감사 근거를 잃지 않는다."""
+
+        self.assertIn(
+            "Report Assistant page constraint receipts must be preserved",
+            self.source,
+        )
+        self.assertNotIn("여섯 번째 결속", self.source)
 
 
 class SeungHeadReconciliationContractTest(unittest.TestCase):
@@ -286,7 +359,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         result = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual("20260831_64", self.revision(self.empty_database))
+        self.assertEqual("20260901_72", self.revision(self.empty_database))
         engine = create_engine(self.base_url.set(database=self.empty_database))
         with engine.connect() as connection:
             widths = connection.execute(
@@ -312,7 +385,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260831_64", self.revision(self.known_database))
+        self.assertEqual("20260901_72", self.revision(self.known_database))
 
     def test_report_head_upgrades_to_analysis_persistence_head(self) -> None:
         database = self.create_database("migration_report")
@@ -323,7 +396,131 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
+        self.assertEqual("20260901_72", self.revision(database))
+
+    def test_analysis_artifact_lifecycle_table_roundtrips_without_source_mutation(self) -> None:
+        database = self.create_database("migration_artifact_archive")
+        url = self.base_url.set(database=database).render_as_string(
+            hide_password=False
+        )
+        previous = alembic("upgrade", "20260831_65", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+        upgraded = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        self.assertEqual("20260901_72", self.revision(database))
+
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            lifecycle_columns = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'artifact' "
+                    "AND table_name = 'user_artifact_lifecycle' "
+                    "ORDER BY ordinal_position"
+                )
+            ).scalars().all()
+            source_archive_columns = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'artifact' "
+                    "AND table_name = 'analysis_artifacts' "
+                    "AND column_name IN ('archived_at', 'archived_by')"
+                )
+            ).scalars().all()
+            trigger_count = connection.execute(
+                text(
+                    "SELECT count(*) FROM information_schema.triggers "
+                    "WHERE event_object_schema = 'artifact' "
+                    "AND event_object_table = 'user_artifact_lifecycle' "
+                    "AND trigger_name = 'user_artifact_lifecycle_requires_owner'"
+                )
+            ).scalar_one()
+        self.assertEqual(
+            [
+                "owner_id",
+                "artifact_id",
+                "archived_at",
+                "archived_by",
+                "updated_at",
+            ],
+            lifecycle_columns,
+        )
+        self.assertEqual([], source_archive_columns)
+        self.assertEqual(2, trigger_count)
+        engine.dispose()
+
+        downgraded = alembic("downgrade", "20260831_65", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        self.assertEqual("20260831_65", self.revision(database))
+        replayed = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+        self.assertEqual("20260901_72", self.revision(database))
+
+    def test_report_archive_columns_and_write_guard_roundtrip(self) -> None:
+        database = self.create_database("migration_report_archive")
+        url = self.base_url.set(database=database).render_as_string(
+            hide_password=False
+        )
+        previous = alembic("upgrade", "20260831_64", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+        upgraded = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        self.assertEqual("20260901_72", self.revision(database))
+
+        engine = create_engine(self.base_url.set(database=database))
+        definition_id = uuid4()
+        owner_id = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO report_v1.report_definitions "
+                    "(definition_id, owner_id) VALUES (:definition_id, :owner_id)"
+                ),
+                {"definition_id": definition_id, "owner_id": owner_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO report_v1.report_definition_versions "
+                    "(definition_id, version, status, title) "
+                    "VALUES (:definition_id, 1, 'draft', '보관 migration 검증')"
+                ),
+                {"definition_id": definition_id},
+            )
+            connection.execute(
+                text(
+                    "UPDATE report_v1.report_definitions "
+                    "SET archived_at = now(), archived_by = :owner_id "
+                    "WHERE definition_id = :definition_id"
+                ),
+                {"definition_id": definition_id, "owner_id": owner_id},
+            )
+        with self.assertRaises(DBAPIError):
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE report_v1.report_definition_versions "
+                        "SET title = '차단되어야 함' "
+                        "WHERE definition_id = :definition_id AND version = 1"
+                    ),
+                    {"definition_id": definition_id},
+                )
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE report_v1.report_definitions "
+                    "SET archived_at = NULL, archived_by = NULL "
+                    "WHERE definition_id = :definition_id"
+                ),
+                {"definition_id": definition_id},
+            )
+        engine.dispose()
+
+        downgraded = alembic("downgrade", "20260831_64", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
         self.assertEqual("20260831_64", self.revision(database))
+        replayed = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+        self.assertEqual("20260901_72", self.revision(database))
 
     def test_report_assistant_message_contract_roundtrips_and_replays(self) -> None:
         database = self.create_database("migration_assistant_scope")
@@ -411,7 +608,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         replayed = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
-        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual("20260901_72", self.revision(database))
 
     def test_rag_candidate_registers_disabled_and_roundtrips(self) -> None:
         database = self.create_database("migration_rag_candidate")
@@ -446,7 +643,215 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         replayed = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
-        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual("20260901_72", self.revision(database))
+
+    def test_mcp_registry_metadata_and_cancellation_receipt_roundtrip(self) -> None:
+        database = self.create_database("migration_mcp_metadata")
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        previous = alembic("upgrade", "20260831_67", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+
+        upgraded = alembic("upgrade", "20260831_68", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            receipts = connection.execute(
+                text(
+                    "SELECT tool_id, tool_code, semantic_version, title, "
+                    "annotations_json, is_enabled "
+                    "FROM tooling.tool_registry ORDER BY tool_code"
+                )
+            ).all()
+        expected_receipts = {
+            "analysis.get_run": (
+                "c4454392-2f92-54a4-ad13-b8cdaba45732",
+                "1.0.0",
+                "Get Analysis Run",
+                True,
+            ),
+            "analysis.run": (
+                "399e1d6e-54d9-5061-b3ee-555dc3666c45",
+                "0.1.0-candidate",
+                "Run Approved Analysis",
+                False,
+            ),
+            "ml.predict": (
+                "3002d1d6-f681-5b5d-b0b6-0de795fb4c5c",
+                "0.1.0-candidate",
+                "Predict Room Demand",
+                False,
+            ),
+            "rag.answer": (
+                "8edce655-e454-5b76-b56f-5e49aa2884d4",
+                "1.2.0-candidate",
+                "Answer from Internal Documents",
+                False,
+            ),
+        }
+        self.assertEqual(set(expected_receipts), {row.tool_code for row in receipts})
+        for row in receipts:
+            with self.subTest(tool_code=row.tool_code):
+                expected_id, expected_version, expected_title, expected_enabled = (
+                    expected_receipts[row.tool_code]
+                )
+                self.assertEqual(expected_id, str(row.tool_id))
+                self.assertEqual(expected_version, row.semantic_version)
+                self.assertEqual(expected_title, row.title)
+                self.assertEqual(expected_enabled, row.is_enabled)
+                self.assertEqual(
+                    {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": False,
+                    },
+                    row.annotations_json,
+                )
+
+        downgraded = alembic("downgrade", "20260831_67", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        replayed = alembic("upgrade", "20260831_68", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+
+        cancelled_run_id = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO tooling.tool_runs "
+                    "(tool_run_id, tool_id, caller_user_id, caller_role, trace_id, "
+                    "input_hash, status, latency_ms, output_ref_json, error_code) "
+                    "VALUES (:run_id, :tool_id, :user_id, 'analyst', 'cancelled-trace', "
+                    ":input_hash, 'CANCELLED', 1, CAST('{}' AS jsonb), 'REQUEST_CANCELLED')"
+                ),
+                {
+                    "run_id": cancelled_run_id,
+                    "tool_id": "c4454392-2f92-54a4-ad13-b8cdaba45732",
+                    "user_id": uuid4(),
+                    "input_hash": "0" * 64,
+                },
+            )
+        blocked = alembic("downgrade", "20260831_67", database_url=url)
+        self.assertNotEqual(0, blocked.returncode)
+        self.assertIn(
+            "MCP cancelled Tool receipts must be preserved",
+            blocked.stdout + blocked.stderr,
+        )
+        self.assertEqual("20260831_68", self.revision(database))
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM tooling.tool_runs WHERE tool_run_id = :run_id"),
+                {"run_id": cancelled_run_id},
+            )
+            connection.execute(
+                text(
+                    "UPDATE tooling.tool_registry SET title = 'Changed title' "
+                    "WHERE tool_code = 'analysis.get_run'"
+                )
+            )
+        metadata_blocked = alembic("downgrade", "20260831_67", database_url=url)
+        self.assertNotEqual(0, metadata_blocked.returncode)
+        self.assertIn(
+            "MCP registry metadata must be preserved before downgrade",
+            metadata_blocked.stdout + metadata_blocked.stderr,
+        )
+        self.assertEqual("20260831_68", self.revision(database))
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE tooling.tool_registry SET title = 'Get Analysis Run' "
+                    "WHERE tool_code = 'analysis.get_run'"
+                )
+            )
+        engine.dispose()
+
+    def test_rag_and_ml_mcp_activation_roundtrips_from_candidate_receipts(self) -> None:
+        """비활성 candidate 두 건만 stable Tool로 승격하고 무실행 상태에서 replay한다."""
+
+        database = self.create_database("migration_mcp_agent_tools")
+        url = self.base_url.set(database=database).render_as_string(
+            hide_password=False
+        )
+        previous = alembic("upgrade", "20260901_71", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            candidates = connection.execute(
+                text(
+                    "SELECT tool_code, semantic_version, is_enabled "
+                    "FROM tooling.tool_registry "
+                    "WHERE tool_code IN ('rag.answer','ml.predict') "
+                    "ORDER BY tool_code"
+                )
+            ).all()
+        self.assertEqual(
+            [
+                ("ml.predict", "0.1.0-candidate", False),
+                ("rag.answer", "1.2.0-candidate", False),
+            ],
+            candidates,
+        )
+
+        candidate_run_id = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO tooling.tool_runs "
+                    "(tool_run_id, tool_id, caller_user_id, caller_role, trace_id, "
+                    "input_hash, status, latency_ms, output_ref_json) "
+                    "SELECT :run_id, tool_id, :caller_id, 'analyst', "
+                    "'candidate-rag-run', :input_hash, 'SUCCEEDED', 1, '{}'::jsonb "
+                    "FROM tooling.tool_registry WHERE tool_code = 'rag.answer'"
+                ),
+                {
+                    "run_id": candidate_run_id,
+                    "caller_id": uuid4(),
+                    "input_hash": "c" * 64,
+                },
+            )
+
+        upgraded = alembic("upgrade", "20260901_72", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        with engine.connect() as connection:
+            active = connection.execute(
+                text(
+                    "SELECT tool_code, semantic_version, is_enabled, output_schema_json "
+                    "FROM tooling.tool_registry "
+                    "WHERE tool_code IN ('rag.answer','ml.predict') "
+                    "ORDER BY tool_code"
+                )
+            ).all()
+            preserved_version = connection.execute(
+                text(
+                    "SELECT tool_semantic_version FROM tooling.tool_runs "
+                    "WHERE tool_run_id = :run_id"
+                ),
+                {"run_id": candidate_run_id},
+            ).scalar_one()
+        self.assertEqual(
+            [
+                ("ml.predict", "1.0.0", True),
+                ("rag.answer", "1.2.0", True),
+            ],
+            [(row.tool_code, row.semantic_version, row.is_enabled) for row in active],
+        )
+        ml_schema = active[0].output_schema_json
+        self.assertIn("feature_contract_sha256", ml_schema["required"])
+        self.assertIn("room_type_forecasts", ml_schema["required"])
+        self.assertEqual("1.2.0-candidate", preserved_version)
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM tooling.tool_runs WHERE tool_run_id = :run_id"),
+                {"run_id": candidate_run_id},
+            )
+
+        downgraded = alembic("downgrade", "20260901_71", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+        replayed = alembic("upgrade", "20260901_72", database_url=url)
+        self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
+        self.assertEqual("20260901_72", self.revision(database))
+        engine.dispose()
 
     def test_database_auth_accounts_roundtrips_from_previous_head(self) -> None:
         database = self.create_database("migration_auth_accounts")
@@ -571,7 +976,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         replayed = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
-        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual("20260901_72", self.revision(database))
 
     def test_analysis_head_roundtrips_through_context_registry_and_run_parameters(self) -> None:
         database = self.create_database("migration_context")
@@ -581,7 +986,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
-        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual("20260901_72", self.revision(database))
         downgrade = alembic("downgrade", "20260810_06", database_url=url)
         self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260810_06", self.revision(database))
@@ -613,7 +1018,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual((None, None, None, None, False, False), tuple(rolled_back))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual("20260901_72", self.revision(database))
 
     def test_approved_semantic_snapshot_59_60_roundtrip_and_db_guards(self) -> None:
         database = self.create_database("migration_semantic_snapshot")
@@ -1056,6 +1461,294 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual(0, replayed.returncode, replayed.stdout + replayed.stderr)
         self.assertFalse(registry_receipt()[5]["additionalProperties"])
 
+    def test_mcp_candidate_upgrade_waits_for_concurrent_rag_run_and_fails_closed(
+        self,
+    ) -> None:
+        """64는 registry lock 뒤 새 historical run을 보고 63에서 원자 중단한다."""
+
+        database = self.create_database("migration_mcp_candidate_race")
+        admin = create_engine(
+            self.base_url.set(database="postgres"),
+            isolation_level="AUTOCOMMIT",
+        )
+        try:
+            with admin.connect() as connection:
+                connection.exec_driver_sql(
+                    f'ALTER DATABASE "{database}" '
+                    "SET default_transaction_isolation TO 'repeatable read'"
+                )
+        finally:
+            admin.dispose()
+
+        database_url = self.base_url.set(database=database)
+        probe = create_engine(database_url)
+        try:
+            with probe.connect() as connection:
+                isolation = connection.execute(
+                    text("SHOW transaction_isolation")
+                ).scalar_one()
+            self.assertEqual("repeatable read", isolation)
+        finally:
+            probe.dispose()
+
+        url = database_url.render_as_string(hide_password=False)
+        previous = alembic("upgrade", "20260831_63", database_url=url)
+        self.assertEqual(0, previous.returncode, previous.stdout + previous.stderr)
+        self.assertEqual("20260831_63", self.revision(database))
+
+        rag_tool_id = "8edce655-e454-5b76-b56f-5e49aa2884d4"
+        tool_run_id = uuid4()
+        application_name = f"migration-rag-race-{uuid4().hex}"
+        session_engine = create_engine(database_url)
+        observer = create_engine(database_url, isolation_level="AUTOCOMMIT")
+        session_a = session_engine.connect()
+        session_a_transaction = session_a.begin()
+        process: subprocess.Popen[str] | None = None
+        try:
+            session_a.execute(
+                text(
+                    "INSERT INTO tooling.tool_runs "
+                    "(tool_run_id, tool_id, caller_user_id, caller_role, trace_id, "
+                    "input_hash, status, latency_ms, output_ref_json) "
+                    "VALUES (:run_id, CAST(:tool_id AS uuid), :caller_id, 'analyst', "
+                    "'migration-rag-race', :input_hash, 'SUCCEEDED', 0, '{}'::jsonb)"
+                ),
+                {
+                    "run_id": tool_run_id,
+                    "tool_id": rag_tool_id,
+                    "caller_id": uuid4(),
+                    "input_hash": "b" * 64,
+                },
+            )
+
+            environment = os.environ.copy()
+            migration_url = database_url.update_query_dict(
+                {
+                    "application_name": application_name,
+                    "options": "-c lock_timeout=12s -c statement_timeout=20s",
+                }
+            ).render_as_string(hide_password=False)
+            environment["APP_DATABASE_URL"] = migration_url
+            environment["APP_DB_USER"] = (
+                make_url(migration_url).username or "migration_test"
+            )
+            environment["APP_CATALOG_PUBLISHER_USER"] = environment["APP_DB_USER"]
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "alembic",
+                    "upgrade",
+                    "20260831_64",
+                ],
+                cwd=BACKEND,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            deadline = time.monotonic() + 8
+            blocked = None
+            last_state = None
+            premature_output = None
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    premature_output = process.communicate()
+                    break
+                with observer.connect() as connection:
+                    last_state = connection.execute(
+                        text(
+                            """
+                            SELECT activity.pid,
+                                   activity.wait_event_type,
+                                   activity.wait_event
+                            FROM pg_stat_activity activity
+                            WHERE activity.datname = current_database()
+                              AND activity.application_name = :application_name
+                            """
+                        ),
+                        {"application_name": application_name},
+                    ).mappings().one_or_none()
+                if (
+                    last_state is not None
+                    and last_state["wait_event_type"] == "Lock"
+                ):
+                    blocked = last_state
+                    break
+                time.sleep(0.05)
+
+            self.assertIsNone(
+                premature_output,
+                f"migration exited before registry lock wait: {premature_output}",
+            )
+            self.assertIsNotNone(
+                blocked,
+                f"migration did not reach the bounded registry lock wait: {last_state}",
+            )
+            self.assertIsNone(process.poll())
+
+            session_a_transaction.commit()
+            stdout, stderr = process.communicate(timeout=12)
+            self.assertNotEqual(0, process.returncode, stdout + stderr)
+            self.assertIn(
+                "rag.answer historical runs must be preserved",
+                stdout + stderr,
+            )
+        finally:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate(timeout=5)
+            if session_a_transaction.is_active:
+                session_a_transaction.rollback()
+            session_a.close()
+            observer.dispose()
+            session_engine.dispose()
+
+        self.assertEqual("20260831_63", self.revision(database))
+        verification = create_engine(database_url)
+        try:
+            with verification.connect() as connection:
+                preserved = connection.execute(
+                    text(
+                        """
+                        SELECT (
+                                   SELECT semantic_version
+                                   FROM tooling.tool_registry
+                                   WHERE tool_id = CAST(:rag_tool_id AS uuid)
+                               ),
+                               EXISTS (
+                                   SELECT 1 FROM tooling.tool_runs
+                                   WHERE tool_run_id = :tool_run_id
+                               ),
+                               EXISTS (
+                                   SELECT 1 FROM tooling.tool_registry
+                                   WHERE tool_code = 'analysis.run'
+                               ),
+                               EXISTS (
+                                   SELECT 1 FROM tooling.tool_registry
+                                   WHERE tool_code = 'ml.predict'
+                               )
+                        """
+                    ),
+                    {"rag_tool_id": rag_tool_id, "tool_run_id": tool_run_id},
+                ).one()
+        finally:
+            verification.dispose()
+        self.assertEqual(("1.1.0", True, False, False), tuple(preserved))
+
+    def test_mcp_candidate_downgrade_refuses_child_rows_atomically(self) -> None:
+        """64 downgrade 거부 시 revision, registry receipt, child row를 보존한다."""
+
+        database = self.create_database("migration_mcp_candidate_children")
+        url = self.base_url.set(database=database).render_as_string(
+            hide_password=False
+        )
+        upgraded = alembic("upgrade", "20260831_64", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+
+        analysis_tool_id = "399e1d6e-54d9-5061-b3ee-555dc3666c45"
+        rag_tool_id = "8edce655-e454-5b76-b56f-5e49aa2884d4"
+        ml_tool_id = "3002d1d6-f681-5b5d-b0b6-0de795fb4c5c"
+        engine = create_engine(self.base_url.set(database=database))
+
+        def registry_receipt() -> tuple[tuple[object, ...], ...]:
+            with engine.connect() as connection:
+                rows = connection.execute(
+                    text(
+                        "SELECT tool_id::text, tool_code, semantic_version, description, "
+                        "input_schema_json::text, output_schema_json::text, transport, "
+                        "timeout_seconds, required_roles_json::text, is_enabled "
+                        "FROM tooling.tool_registry "
+                        "WHERE tool_id IN (CAST(:analysis AS uuid), CAST(:rag AS uuid), "
+                        "CAST(:ml AS uuid)) ORDER BY tool_id"
+                    ),
+                    {
+                        "analysis": analysis_tool_id,
+                        "rag": rag_tool_id,
+                        "ml": ml_tool_id,
+                    },
+                ).all()
+            return tuple(tuple(row) for row in rows)
+
+        before = registry_receipt()
+        self.assertEqual(3, len(before))
+        tool_run_id = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO tooling.tool_runs "
+                    "(tool_run_id, tool_id, caller_user_id, caller_role, trace_id, "
+                    "input_hash, status, latency_ms, output_ref_json) "
+                    "VALUES (:run_id, CAST(:tool_id AS uuid), :caller_id, 'analyst', "
+                    "'migration-child-run', :input_hash, 'SUCCEEDED', 0, '{}'::jsonb)"
+                ),
+                {
+                    "run_id": tool_run_id,
+                    "tool_id": analysis_tool_id,
+                    "caller_id": uuid4(),
+                    "input_hash": "a" * 64,
+                },
+            )
+
+        refused_run = alembic("downgrade", "20260831_63", database_url=url)
+        self.assertNotEqual(0, refused_run.returncode)
+        self.assertIn(
+            "analysis.run candidate runs must be preserved",
+            refused_run.stdout + refused_run.stderr,
+        )
+        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual(before, registry_receipt())
+        with engine.connect() as connection:
+            preserved_run = connection.execute(
+                text(
+                    "SELECT count(*) FROM tooling.tool_runs "
+                    "WHERE tool_run_id = :run_id"
+                ),
+                {"run_id": tool_run_id},
+            ).scalar_one()
+        self.assertEqual(1, preserved_run)
+
+        principal_subject = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM tooling.tool_runs WHERE tool_run_id = :run_id"),
+                {"run_id": tool_run_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO tooling.tool_rate_limit_windows "
+                    "(principal_subject, tool_id, window_start, request_count, expires_at) "
+                    "VALUES (:subject, CAST(:tool_id AS uuid), date_trunc('minute', now()), "
+                    "1, date_trunc('minute', now()) + interval '10 minutes')"
+                ),
+                {"subject": principal_subject, "tool_id": ml_tool_id},
+            )
+
+        refused_quota = alembic("downgrade", "20260831_63", database_url=url)
+        self.assertNotEqual(0, refused_quota.returncode)
+        self.assertIn(
+            "ml.predict candidate quota state must be preserved",
+            refused_quota.stdout + refused_quota.stderr,
+        )
+        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual(before, registry_receipt())
+        with engine.connect() as connection:
+            preserved_quota = connection.execute(
+                text(
+                    "SELECT count(*) FROM tooling.tool_rate_limit_windows "
+                    "WHERE principal_subject = :subject "
+                    "AND tool_id = CAST(:tool_id AS uuid)"
+                ),
+                {"subject": principal_subject, "tool_id": ml_tool_id},
+            ).scalar_one()
+        engine.dispose()
+        self.assertEqual(1, preserved_quota)
+
     def test_phase1_downgrade_preserves_preexisting_manual_conversation_objects(self) -> None:
         database = self.create_database("migration_conversation_legacy")
         url = self.base_url.set(database=database).render_as_string(hide_password=False)
@@ -1239,7 +1932,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual("20260901_72", self.revision(database))
 
     def test_capability_evidence_contract_roundtrips_and_is_immutable(self) -> None:
         database = self.create_database("migration_evidence")
@@ -1355,7 +2048,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         self.assertEqual("20260820_28", self.revision(database))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
-        self.assertEqual("20260831_64", self.revision(database))
+        self.assertEqual("20260901_72", self.revision(database))
 
 
 if __name__ == "__main__":

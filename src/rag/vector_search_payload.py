@@ -1,3 +1,5 @@
+"""검색 입력 감사 hash와 release·정책·evidence 응답 payload를 구성한다."""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,6 +18,8 @@ def hash_search_input(
     domains: tuple[str, ...] = (),
     intent: str = "REGULATION_CHECK",
 ) -> str:
+    """질문·typed context·선택 문서를 canonical JSON으로 직렬화해 SHA를 반환한다."""
+
     audited_input = json.dumps(
         {
             "query": query,
@@ -48,18 +52,28 @@ def build_search_payload(
     resolved_with_context: bool = False,
     model_revision: str | None = None,
     embedding_dimension: int | None = None,
+    corpus_release_id: str | None = None,
+    corpus_manifest_sha256: str | None = None,
+    processing_profile_sha256: str | None = None,
+    answer_query: str | None = None,
 ) -> dict[str, object]:
+    """검색 결과를 tool Gate·release·정책·trace가 포함된 공개 payload로 감싼다."""
+
     return {
         "request_id": request_id,
         "trace_id": trace_id or request_id,
         "execution_state": asdict(P2GateStatus()),
         "tool": RagToolContract().public_metadata(),
         "retrieval_release": {
-            "schema_version": "RagRetrievalRelease.v1",
+            "schema_version": "RagRetrievalRelease.v2",
+            "release_id": corpus_release_id,
             "model_revision": model_revision,
             "embedding_dimension": embedding_dimension,
+            "corpus_manifest_sha256": corpus_manifest_sha256,
+            "processing_profile_sha256": processing_profile_sha256,
         },
         "query_hash": query_hash,
+        "answer_query": answer_query,
         "search_mode": retrieval_mode,
         "context": {
             "recent_utterance_count": recent_utterance_count,

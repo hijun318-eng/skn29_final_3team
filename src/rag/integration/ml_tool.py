@@ -1,3 +1,5 @@
+"""MCP 예측 도구의 입력 제한·시간 제한을 적용하고 모델 결과를 관측 근거와 분리한다."""
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
@@ -8,11 +10,16 @@ from .coordinator import ToolCallError
 
 
 class ModelPredictionExecutor(Protocol):
-    def execute_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]: ...
+    """검증된 모델 인자를 실제 예측 런타임에 전달하는 구현 규약이다."""
+
+    def execute_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """property·기준일·기간 인자를 실행해 모델 고유 예측 payload를 반환한다."""
+
+        ...
 
 
 class PredictionToolHandler:
-    """MCP adapter that keeps model predictions distinct from observed evidence."""
+    """정확한 예측 인자 스키마와 짧은 실행 제한을 적용해 ML 출력을 예측 근거로 감싼다."""
 
     DEFAULT_REQUIRED_ARGUMENTS = frozenset(
         {
@@ -36,6 +43,8 @@ class PredictionToolHandler:
     def call(
         self, arguments: dict[str, Any], context: IntegrationContext
     ) -> dict[str, Any]:
+        """property·as_of·1~7 horizon만 허용하고 시간 초과를 도구 오류로 변환해 예측 영수증을 반환한다."""
+
         if set(arguments) != self._required_arguments:
             raise ToolCallError("TOOL_INPUT_SCHEMA_INVALID")
         if (

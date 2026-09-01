@@ -1,3 +1,5 @@
+"""합성 RAG 질문과 실제 평가 JSON을 대조해 사람이 검수할 Markdown 보고서를 만든다."""
+
 from __future__ import annotations
 
 import json
@@ -7,9 +9,13 @@ from pathlib import Path
 from .evidence_repository import RagEvidenceRepository
 from .quality_evaluation import QualityQuery, SyntheticQualitySuite
 from .vector_settings import VectorSettings
+from .corpus_manifest import CorpusManifest
+from .processing_profile import processing_profile_sha256
 
 
 class EvaluationQuestionReportWriter:
+    """현재 corpus의 질문 스위트와 검색 증거를 ID·유형·기대 문서 기준으로 정합 확인한다."""
+
     TYPE_LABELS = {
         "TITLE_BASELINE": "제목 기준",
         "DISTINCT_BODY_SCENARIO": "본문 상황",
@@ -19,9 +25,33 @@ class EvaluationQuestionReportWriter:
 
     def __init__(self, project_root: Path) -> None:
         self._settings = VectorSettings.load(project_root)
-        self._repository = RagEvidenceRepository(self._settings.database_url)
+        manifest = CorpusManifest.load(
+            self._settings.corpus_manifest_path,
+            self._settings.manuals_dir,
+        )
+        self._repository = RagEvidenceRepository(
+            self._settings.database_url,
+            {
+                "provider": self._settings.embedding_provider,
+                "model": self._settings.model_id,
+                "dimensions": self._settings.dimension,
+                "version": self._settings.model_revision,
+            },
+            manifest.manifest_sha256,
+            manifest.included_document_checksums,
+            processing_profile_sha256(
+                self._settings.chunk_max_tokens,
+                self._settings.chunk_overlap_tokens,
+            ),
+        )
 
     def write(self) -> dict[str, object]:
+        """평가 질문과 결과를 검증해 실패 우선 목록과 전체 판정 표를 Markdown으로 쓴다.
+
+        질문 수·유형·기대 문서가 evidence와 다르거나 증거 파일이 없으면 예외로 중단하며,
+        성공 시 출력 경로와 긍정·부정 문항 수를 반환한다.
+        """
+
         suite = SyntheticQualitySuite()
         questions = suite.build(self._repository.evaluation_sources())
         evidence_path = self._settings.evidence_dir / "vector_quality_evaluation.json"

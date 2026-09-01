@@ -18,7 +18,13 @@ from app.agent_contracts import AgentDecisionSource
 from app.authorization import permission_snapshot_id
 from app.contracts import RequestContext, Role
 from app.conversation_contracts import ConversationCommandRequest
-from app.ports.agent import AgentKind, AgentRequest, MLPredictionInvocation
+from app.ports.agent import (
+    AgentKind,
+    AgentPortReadiness,
+    AgentRequest,
+    MLPredictionInvocation,
+)
+from app.ports.data_platform import NoEntitledAssetsError
 from app.services.agent_supervisor import (
     AgentDispatchError,
     CallableAgentPort,
@@ -31,15 +37,23 @@ from app.services.conversation_agent_registry import (
 from app.services.execution_control import ConcurrentExecutionGate
 
 
-def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
+def _ml_capability(
+    *,
+    max_horizon_days: int = 90,
+    approval: str = "APPROVED",
+    approval_status: str = "APPROVED",
+    synthetic_training_data: bool = False,
+) -> dict[str, object]:
     return {
-        "schema_version": "MLRuntimeCapability.v1",
+        "schema_version": "MLRuntimeCapability.v2",
         "prediction_contract_version": "MLRoomDemandPrediction.v1",
         "model_version": "approved-demand-release",
         "model_hash": "a" * 64,
+        "feature_contract_sha256": "b" * 64,
         "model_type": "daily-demand-forecast",
         "estimator_type": "ApprovedRegressor",
-        "approval": "APPROVED",
+        "approval": approval,
+        "approval_status": approval_status,
         "min_horizon_days": 1,
         "max_horizon_days": max_horizon_days,
         "model_max_horizon_days": max_horizon_days,
@@ -52,7 +66,7 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
                 "history_rows": 500,
             }
         ],
-        "synthetic_training_data": False,
+        "synthetic_training_data": synthetic_training_data,
         "history_source": {
             "table": "pms.ml_evaluation.approved_history",
             "row_count": 500,
@@ -60,7 +74,7 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
             "series_count": 1,
             "min_date": "2024-01-01",
             "max_date": "2026-08-28",
-            "synthetic_only": False,
+            "synthetic_only": synthetic_training_data,
             "summary_query_id": "summary-query",
             "continuity_query_id": "continuity-query",
         },
@@ -69,13 +83,48 @@ def _ml_capability(*, max_horizon_days: int = 90) -> dict[str, object]:
 
 
 class _MLService:
-    def __init__(self, *, max_horizon_days: int = 90) -> None:
-        self._capability = _ml_capability(max_horizon_days=max_horizon_days)
+    def __init__(
+        self,
+        *,
+        max_horizon_days: int = 90,
+        approval: str = "APPROVED",
+        approval_status: str = "APPROVED",
+        synthetic_training_data: bool = False,
+    ) -> None:
+        self._capability = _ml_capability(
+            max_horizon_days=max_horizon_days,
+            approval=approval,
+            approval_status=approval_status,
+            synthetic_training_data=synthetic_training_data,
+        )
         self.capability_calls = 0
 
     async def capabilities(self) -> dict[str, object]:
         self.capability_calls += 1
         return self._capability
+
+
+class _MLMCPExecutor:
+    """Registry unit test가 명시적으로 주입하는 MCP 경계 test double이다."""
+
+    def __init__(self, service: _MLService) -> None:
+        self._service = service
+
+    async def readiness(self, _role: Role) -> AgentPortReadiness:
+        capability = await self._service.capabilities()
+        return AgentPortReadiness(
+            agent=AgentKind.ML_PREDICTION,
+            status="ready",
+            capability_version=str(capability["schema_version"]),
+            release_refs=(f"ml-model:sha256:{capability['model_hash']}",),
+        )
+
+    async def execute(self, *_args, **_kwargs):
+        raise AssertionError("Registry test does not execute the ML MCP Tool")
+
+
+def _ml_mcp_executor_factory(service: _MLService) -> _MLMCPExecutor:
+    return _MLMCPExecutor(service)
 
 
 class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
@@ -98,6 +147,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=ml_factory,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         self.assertEqual(
@@ -120,6 +170,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=_MLService,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         self.assertEqual(
@@ -168,6 +219,7 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=lambda: service,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         routing = await supervisor.route_with_state(request)
@@ -225,12 +277,78 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
                 execution_gate=ConcurrentExecutionGate(),
                 internal_manual_query_service_factory=lambda: None,
                 ml_prediction_service_factory=lambda: service,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
             )
 
         with self.assertRaises(AgentDispatchError) as raised:
             await supervisor.route_with_state(request)
 
         self.assertEqual(raised.exception.code, "AGENT_ROUTE_NOT_RESOLVED")
+        self.assertEqual(service.capability_calls, 1)
+
+    async def test_explicit_ml_route_accepts_opted_in_synthetic_candidate(self) -> None:
+        service = _MLService(
+            approval="CONDITIONAL_PASS",
+            approval_status="VALIDATED_SYNTHETIC",
+            synthetic_training_data=True,
+        )
+        conversation_id = uuid4()
+        user_id = uuid4()
+        invocation = MLPredictionInvocation(
+            property_id="GRAND",
+            as_of="2026-08-28",
+            horizon_days=7,
+        )
+        request = AgentRequest(
+            conversation_id=conversation_id,
+            command=ConversationCommandRequest(
+                user_message="7일 객실 수요를 예측해줘",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=None,
+                requested_route="ML_PREDICTION",
+                ml_prediction={
+                    "property_id": invocation.property_id,
+                    "as_of": invocation.as_of,
+                    "horizon_days": invocation.horizon_days,
+                },
+            ),
+            context=RequestContext(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                role=Role.ANALYST,
+                command_id=uuid4(),
+                permission_snapshot_id=permission_snapshot_id(
+                    user_id,
+                    Role.ANALYST,
+                ),
+                product_release_id="product-release-v1",
+                semantic_release_id="semantic-release-v1",
+            ),
+            target_agent=AgentKind.ML_PREDICTION,
+            invocation=invocation,
+        )
+        with patch.dict(
+            "os.environ",
+            {
+                "RAG_FEATURE_ENABLED": "0",
+                "ML_FEATURE_ENABLED": "1",
+                "ML_ALLOW_CONDITIONAL": "true",
+            },
+        ):
+            supervisor = build_conversation_agent_supervisor(
+                orchestrator=object(),
+                execution_gate=ConcurrentExecutionGate(),
+                internal_manual_query_service_factory=lambda: None,
+                ml_prediction_service_factory=lambda: service,
+                ml_prediction_executor_factory=_ml_mcp_executor_factory,
+            )
+            routing = await supervisor.route_with_state(request)
+
+        self.assertEqual(routing.decision.agent, AgentKind.ML_PREDICTION)
+        self.assertEqual(
+            routing.decision.source,
+            AgentDecisionSource.CAPABILITY_EVIDENCE,
+        )
         self.assertEqual(service.capability_calls, 1)
 
     def test_registry_keeps_capability_routing_disabled_by_default(self) -> None:
@@ -313,6 +431,99 @@ class ConversationAgentRegistryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             routing.decision.source,
             AgentDecisionSource.CAPABILITY_EVIDENCE,
+        )
+
+    async def test_production_probe_registry_routes_unique_rag_match(self) -> None:
+        """자동 opt-in은 분석 미매칭과 승인 RAG 매칭 receipt를 함께 판정한다."""
+
+        class DataPlatform:
+            async def search_asset_candidates(self, *_args, **_kwargs):
+                raise NoEntitledAssetsError("no governed analysis candidate")
+
+        class Searcher:
+            calls = 0
+
+            async def search_capability(self, query: str, app_role: str):
+                self.calls += 1
+                self.assertions = (query, app_role)
+                return {
+                    "schema_version": "RagCapabilityCandidate.v1",
+                    "matched": True,
+                    "retrieval_request_id": str(uuid4()),
+                    "query_hash": "a" * 64,
+                    "tool_code": "internal-manual-search",
+                    "tool_version": "1.0.0-rc1",
+                    "model_revision": "text-embedding-3-large:d1024",
+                    "embedding_dimension": 1024,
+                    "evidence_ids": ["EV-ROOMS-1"],
+                    "document_ids": ["REPORT-2026-08-ROOMS"],
+                    "maximum_score": 0.82,
+                }
+
+        conversation_id = uuid4()
+        user_id = uuid4()
+        request = AgentRequest(
+            conversation_id=conversation_id,
+            command=ConversationCommandRequest(
+                user_message="8월 객실팀 보고서의 취소 사유를 알려줘",
+                idempotency_key="registry-auto-rag",
+                expected_head_turn_id=None,
+            ),
+            context=RequestContext(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                role=Role.ANALYST,
+                command_id=uuid4(),
+                permission_snapshot_id=permission_snapshot_id(
+                    user_id,
+                    Role.ANALYST,
+                ),
+                product_release_id="product-release-v1",
+                semantic_release_id="semantic-release-v1",
+            ),
+        )
+        searcher = Searcher()
+        with patch.dict(
+            "os.environ",
+            {"RAG_FEATURE_ENABLED": "1", "ML_FEATURE_ENABLED": "0"},
+        ):
+            supervisor = build_conversation_agent_supervisor(
+                orchestrator=object(),
+                execution_gate=ConcurrentExecutionGate(),
+                internal_manual_query_service_factory=lambda: None,
+                capability_routing_enabled=True,
+                data_platform=DataPlatform(),
+                internal_guideline_capability_searcher_factory=lambda: searcher,
+            )
+            routing = await supervisor.route_with_state(request)
+
+        self.assertEqual(routing.decision.agent, AgentKind.INTERNAL_GUIDELINE)
+        self.assertEqual(
+            routing.decision.source,
+            AgentDecisionSource.CAPABILITY_EVIDENCE,
+        )
+        self.assertEqual(searcher.calls, 1)
+        self.assertEqual(
+            searcher.assertions,
+            (request.command.user_message, "analyst"),
+        )
+
+    def test_automatic_registry_fails_closed_without_analysis_probe_dependency(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"RAG_FEATURE_ENABLED": "0", "ML_FEATURE_ENABLED": "0"},
+        ):
+            with self.assertRaises(AgentDispatchError) as raised:
+                build_conversation_agent_supervisor(
+                    orchestrator=object(),
+                    execution_gate=ConcurrentExecutionGate(),
+                    internal_manual_query_service_factory=lambda: None,
+                    capability_routing_enabled=True,
+                )
+
+        self.assertEqual(
+            raised.exception.code,
+            "AGENT_CAPABILITY_REGISTRY_INVALID",
         )
 
 

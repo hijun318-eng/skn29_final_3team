@@ -61,6 +61,25 @@ export function keyboardEndDropPosition(blocks, { pageId, width = 12, height = 4
   };
 }
 
+function canonicalJsonValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value).sort().map((key) => [key, canonicalJsonValue(value[key])]),
+  );
+}
+
+/** Artifact 설정 JSON의 의미가 같으면 key 순서와 무관하게 같은 dirty 비교값을 만든다. */
+export function canonicalDraftBlockContent(block) {
+  const content = block.content ?? "";
+  if (!["table", "chart", "artifact"].includes(block.type)) return content;
+  try {
+    return JSON.stringify(canonicalJsonValue(JSON.parse(content || "{}")));
+  } catch {
+    return content;
+  }
+}
+
 function modelBlock(block) {
   const base = {
     id: block.id,

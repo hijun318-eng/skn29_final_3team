@@ -46,7 +46,9 @@ class ReportExecutionRepositoryMixin:
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
                       AND v.status = 'approved'
+                      AND d.archived_at IS NULL
                       AND (:manage_all OR d.owner_id = :owner_id)
+                    FOR KEY SHARE OF d
                     """
                 ),
                 {
@@ -106,7 +108,8 @@ class ReportExecutionRepositoryMixin:
                      AND v.version = c.definition_version
                     WHERE c.command_id = :command_id
                       AND (:manage_all OR d.owner_id = :owner_id)
-                    FOR UPDATE OF c
+                      AND d.archived_at IS NULL
+                    FOR UPDATE OF c, d
                     """
                 ),
                 {**self._scope_params(), "command_id": command_uuid},

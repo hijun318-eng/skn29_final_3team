@@ -25,7 +25,9 @@ PYTHON_ROOTS = (
     REPOSITORY_ROOT / "scripts",
     REPOSITORY_ROOT / "src" / "ai",
     REPOSITORY_ROOT / "src" / "data",
+    REPOSITORY_ROOT / "src" / "ml",
     REPOSITORY_ROOT / "src" / "modelops",
+    REPOSITORY_ROOT / "src" / "rag",
     REPOSITORY_ROOT / "src" / "report",
 )
 FRONTEND_ROOTS = (

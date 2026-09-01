@@ -1,3 +1,5 @@
+"""Analysis→RAG 검색·답변→ML 예측의 실런타임 E2E 순서와 증거 보고서 저장을 조정한다."""
+
 from __future__ import annotations
 
 import json
@@ -17,7 +19,7 @@ from .contracts import DynamicE2EConfig, DynamicE2EReport, E2EStage, StageEviden
 
 
 class DynamicE2EOrchestrator:
-    """Runs the full path only through configured, real runtime endpoints."""
+    """설정된 실런타임만 호출해 단계 계약을 검증하고 성공·차단·실패 보고서를 만든다."""
 
     def __init__(self, config: DynamicE2EConfig) -> None:
         self._config = config
@@ -29,6 +31,8 @@ class DynamicE2EOrchestrator:
         self._ml = MlRuntimeClient(config, http)
 
     def run(self) -> DynamicE2EReport:
+        """세 런타임을 순차 검증하며 근거·trace·모델 승인 위반을 실패 단계로 기록한다."""
+
         report = DynamicE2EReport(
             request_id=self._config.request_id,
             trace_id=self._config.trace_id,
@@ -40,11 +44,38 @@ class DynamicE2EOrchestrator:
             self._record_health(report, E2EStage.RAG_SEARCH, self._rag_health, "rag")
             search = self._record_call(report, E2EStage.RAG_SEARCH, self._rag.search)
             evidence_blocks = self._extract_evidence_blocks(search.payload)
+            answer_query = search.payload.get("answer_query")
+            if (
+                not isinstance(answer_query, str)
+                or answer_query != self._config.rag_query
+            ):
+                raise RuntimeRequestError(
+                    code="RAG_ANSWER_QUERY_INVALID",
+                    message="RAG search did not return its normalized answer query",
+                    response=search.payload,
+                )
+            retrieval_request_id = str(search.payload.get("request_id") or "")
+            if not retrieval_request_id:
+                raise RuntimeRequestError(
+                    code="RAG_RETRIEVAL_RECEIPT_MISSING",
+                    message="RAG search did not return its retrieval request receipt",
+                    response=search.payload,
+                )
             answer = self._record_call(
                 report,
                 E2EStage.RAG_ANSWER,
-                lambda: self._rag.answer(evidence_blocks),
+                lambda: self._rag.answer(
+                    evidence_blocks,
+                    retrieval_request_id,
+                    answer_query,
+                ),
             )
+            if answer.payload.get("trace_id") != self._config.trace_id:
+                raise RuntimeRequestError(
+                    code="RAG_ANSWER_TRACE_INVALID",
+                    message="RAG answer did not preserve the signed trace",
+                    response=answer.payload,
+                )
             self._validate_answer_uses_search_evidence(answer.payload, evidence_blocks)
 
             health = self._record_call(report, E2EStage.ML_HEALTH, self._ml.health)
@@ -98,6 +129,8 @@ class DynamicE2EOrchestrator:
             return report
 
     def persist(self, report: DynamicE2EReport) -> Path:
+        """보고서를 임시 파일에 쓴 뒤 원자적으로 교체하고 최종 JSON 경로를 반환한다."""
+
         self._config.output_dir.mkdir(parents=True, exist_ok=True)
         destination = self._config.output_dir / f"dynamic-e2e-{report.request_id}.json"
         temporary = destination.with_suffix(".tmp")
@@ -165,9 +198,9 @@ class DynamicE2EOrchestrator:
                     message="The real RAG runtime returned a non-object search result",
                     response=payload,
                 )
-            evidence_id = result.get("chunk_id") or result.get("document_id") or result.get("manual_id")
+            evidence_id = result.get("evidence_id")
             citation = result.get("citation")
-            text = result.get("snippet") or result.get("content") or result.get("text")
+            text = result.get("content") or result.get("snippet") or result.get("text")
             if not all(isinstance(value, str) and value.strip() for value in (evidence_id, citation, text)):
                 raise RuntimeRequestError(
                     code="RAG_EVIDENCE_INCOMPLETE",
@@ -179,6 +212,9 @@ class DynamicE2EOrchestrator:
                     "evidence_id": evidence_id,
                     "citation": citation,
                     "text": text,
+                    "title": str(result.get("title") or ""),
+                    "manual_id": str(result.get("manual_id") or ""),
+                    "section_title": str(result.get("section_title") or ""),
                 }
             )
         return evidence_blocks

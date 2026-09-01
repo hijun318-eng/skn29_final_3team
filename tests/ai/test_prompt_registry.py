@@ -12,14 +12,14 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(len(first), 8)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.30.0",
+                "node1.normalize": "PROMPT-v1.31.0",
                 "node2.repair": "PROMPT-v1.4.0",
                 "node2.sql": "PROMPT-v1.8.0",
                 "node2.sql_only": "PROMPT-v1.2.0",
                 "node3.explain": "PROMPT-v1.3.0",
                 "report.assistant": "PROMPT-v1.0.0",
                 "report.assistant.review": "PROMPT-v1.2.1",
-                "report.assistant.turn": "PROMPT-v1.13.0",
+                "report.assistant.turn": "PROMPT-v1.15.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
         )
@@ -100,6 +100,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("Never drop a stated filter", prompts["node1.normalize"])
         self.assertIn("do not infer a more specific metric", prompts["node1.normalize"])
         self.assertIn("directional predecessor", prompts["node1.normalize"])
+        self.assertIn("Interpret temporal evidence independently", prompts["node1.normalize"])
+        self.assertIn("complete replacement interval", prompts["node1.normalize"])
         self.assertIn("'전부터'라고 쓰지 않는다", get_prompt("node3.explain").text)
 
     def test_unreleased_candidate_prompts_are_not_registered(self):

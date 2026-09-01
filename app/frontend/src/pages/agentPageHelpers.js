@@ -175,6 +175,7 @@ export function hydrateTurnsFromServer(serverTurns) {
       const isOutOfScope = st.route === "OUT_OF_SCOPE";
       const ragResult = st.resolved_slots?.rag;
       const mlPrediction = st.resolved_slots?.ml_prediction;
+      const supervisorComposition = st.resolved_slots?.supervisor_composition;
       const scopeRejection = st.resolved_slots?.scope_rejection;
       const userMessage = st.user_message || "";
       let run;
@@ -185,6 +186,7 @@ export function hydrateTurnsFromServer(serverTurns) {
         run = attachAgentResults(ragRun(userMessage, ragResult), userMessage, {
           ragResult,
           mlPrediction: st.terminal_status === "SUCCEEDED" ? mlPrediction : null,
+          supervisorComposition,
         });
       } else if (mlPrediction && st.terminal_status === "SUCCEEDED" && !st.data_snapshot_json) {
         run = mlPredictionRun(userMessage, mlPrediction);
@@ -299,6 +301,7 @@ export function hydrateTurnsFromServer(serverTurns) {
         run = attachAgentResults(run, userMessage, {
           ragResult,
           mlPrediction: st.terminal_status === "SUCCEEDED" ? mlPrediction : null,
+          supervisorComposition,
         });
         lastAnalysisRun = run;
       } else {

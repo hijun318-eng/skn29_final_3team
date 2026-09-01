@@ -228,7 +228,7 @@ try {
     ragEnabled: true,
     mlEnabled: true,
   }));
-  assert.match(capabilityHtml, /분석 Agent/);
+  assert.match(capabilityHtml, /Analysis Agent/);
   assert.match(capabilityHtml, /RAG Agent/);
   assert.match(capabilityHtml, /ML Agent/);
   assert.match(capabilityHtml, /HGBR 예측 Tool/);
@@ -248,14 +248,36 @@ try {
   const compositeRun = attachAgentResults(run, "복합 요청", {
     ragResult,
     mlPrediction: mlResult,
+    supervisorComposition: {
+      schema_version: "SupervisorCompositionReceipt.v1",
+      plan_ref: `model-supervisor:sha256:${"a".repeat(64)}`,
+      primary_agent: "ANALYSIS_WORKFLOW",
+      agents: ["ANALYSIS_WORKFLOW", "INTERNAL_GUIDELINE", "ML_PREDICTION"],
+      evidence_refs: [`model-supervisor:sha256:${"a".repeat(64)}`],
+    },
   });
   assert.deepEqual(agentKindsForRun(compositeRun), ["ANALYSIS", "RAG", "ML"]);
   assert.equal(compositeRun.rag.answer_text, "승인 문서 답변");
   assert.equal(compositeRun.mlPrediction, mlResult);
   const executionHtml = renderToStaticMarkup(createElement(AgentExecutionBar, { run: compositeRun }));
-  assert.match(executionHtml, /전문 Agent 협업/);
-  assert.match(executionHtml, /분석 Agent · RAG Agent · ML Agent/);
-  assert.match(executionHtml, /3개 Agent/);
+  assert.match(executionHtml, /Supervisor/);
+  assert.match(executionHtml, /3개 작업 완료/);
+  assert.match(executionHtml, /Analysis Agent/);
+  assert.match(executionHtml, /RAG Agent/);
+  assert.match(executionHtml, /ML Agent/);
+  assert.equal((executionHtml.match(/>완료</g) || []).length, 3);
+
+  for (const invalidReceipt of [
+    { ...compositeRun.supervisorComposition, schema_version: "invalid" },
+    { ...compositeRun.supervisorComposition, agents: ["ANALYSIS_WORKFLOW", "UNKNOWN"] },
+    { ...compositeRun.supervisorComposition, agents: ["ANALYSIS_WORKFLOW", "ANALYSIS_WORKFLOW"] },
+  ]) {
+    const fallbackHtml = renderToStaticMarkup(createElement(AgentExecutionBar, {
+      run: { ...compositeRun, supervisorComposition: invalidReceipt },
+    }));
+    assert.doesNotMatch(fallbackHtml, /Supervisor/);
+    assert.match(fallbackHtml, /전문 Agent 협업/);
+  }
   assert.deepEqual(agentKindsForRun(ragRun("질문", ragResult)), ["RAG"]);
   assert.deepEqual(agentKindsForRun(mlPredictionRun("질문", mlResult)), ["ML"]);
 

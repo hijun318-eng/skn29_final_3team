@@ -767,15 +767,20 @@ const hydratedComposite = hydrateTurnsFromServer([{
       evidence_bundle: [{ document_id: "REPORT-2026-08-ROOMS", document_name: "8월 객실 운영보고서" }],
     },
     supervisor_composition: {
+      schema_version: "SupervisorCompositionReceipt.v1",
+      plan_ref: `model-supervisor:sha256:${"b".repeat(64)}`,
+      primary_agent: "ANALYSIS_WORKFLOW",
       agents: ["ANALYSIS_WORKFLOW", "INTERNAL_GUIDELINE"],
+      evidence_refs: [`model-supervisor:sha256:${"b".repeat(64)}`],
     },
   },
 }]);
 assert.equal(hydratedComposite[0].viewType, "SUMMARY");
 assert.equal(hydratedComposite[0].run.requestId, "composite-request");
 assert.equal(hydratedComposite[0].run.rag.answer_text, "내부 보고서에서 확인한 하락 원인입니다.");
+assert.equal(hydratedComposite[0].run.supervisorComposition.schema_version, "SupervisorCompositionReceipt.v1");
 assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE"/);
-assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction/);
+assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction,[\s\S]*?supervisorComposition/);
 assert.match(source("pages/AgentPage.jsx"), /className="composite-agent-result"/);
 
 const mismatchedPresentation = hydrateTurnsFromServer([{

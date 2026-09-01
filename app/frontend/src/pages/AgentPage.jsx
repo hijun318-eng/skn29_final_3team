@@ -287,6 +287,8 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       const responseType = data?.type || "ANALYSIS";
       const ragResponse = data?.rag_response || serverTurn?.resolved_slots?.rag;
       const mlPrediction = data?.ml_prediction || serverTurn?.resolved_slots?.ml_prediction;
+      const supervisorComposition = data?.composition
+        || serverTurn?.resolved_slots?.supervisor_composition;
       const isPresentation = serverTurn?.route === "PRESENTATION";
       const isReportAction = serverTurn?.route === "REPORT_ACTION";
 
@@ -376,6 +378,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           finalRun = attachAgentResults(finalRun, normalized, {
             ragResult: ragResponse,
             mlPrediction,
+            supervisorComposition,
           });
         }
       } else if (responseType === "COMPOSITE" && (ragResponse || mlPrediction)) {
@@ -385,6 +388,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         finalRun = attachAgentResults(primaryRun, normalized, {
           ragResult: ragResponse,
           mlPrediction,
+          supervisorComposition,
         });
       } else if (data?.status === "PARTIAL") {
         finalRun = commandErrorRun(

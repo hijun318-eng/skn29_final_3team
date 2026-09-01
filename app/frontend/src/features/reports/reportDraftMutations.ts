@@ -212,6 +212,52 @@ export function createTextTemplateBlock(
   readonly announcement: string;
 }
 
+/** 상·좌 edge resize가 함께 바꾸는 선택 block의 grid 시작 좌표다. */
+export interface ResizeDraftBlockPosition {
+  readonly x?: number;
+  readonly y?: number;
+}
+
+function draftBlocksOverlap(left: DraftReportBlock, right: DraftReportBlock): boolean {
+  return left.x < right.x + right.w
+    && left.x + left.w > right.x
+    && left.y < right.y + right.h
+    && left.y + left.h > right.y;
+}
+
+/** resize된 block은 고정하고 충돌하는 block의 높이 대신 y만 아래로 이동한다. */
+function resolveResizeCollisions(
+  blocks: readonly DraftReportBlock[],
+  resizedBlockId: string,
+): readonly DraftReportBlock[] {
+  const anchor = blocks.find((block) => block.id === resizedBlockId);
+  if (!anchor) return blocks;
+  const originalOrder = new Map(blocks.map((block, index) => [block.id, index]));
+  const ordered = blocks
+    .filter((block) => block.id !== resizedBlockId)
+    .sort((left, right) => (
+      left.y - right.y
+      || left.x - right.x
+      || (originalOrder.get(left.id) ?? 0) - (originalOrder.get(right.id) ?? 0)
+    ));
+  const placed: DraftReportBlock[] = [anchor];
+  const resolved = new Map<string, DraftReportBlock>([[anchor.id, anchor]]);
+  for (const block of ordered) {
+    let candidate = block;
+    while (true) {
+      const collisions = placed.filter((placedBlock) => draftBlocksOverlap(candidate, placedBlock));
+      if (!collisions.length) break;
+      candidate = {
+        ...candidate,
+        y: Math.max(...collisions.map((placedBlock) => placedBlock.y + placedBlock.h)),
+      };
+    }
+    placed.push(candidate);
+    resolved.set(candidate.id, candidate);
+  }
+  return blocks.map((block) => resolved.get(block.id) ?? block);
+}
+
 /** grid 범위·충돌을 검증해 지정 블록 크기를 바꾸고 불가능하면 원본을 반환한다. */
 export function resizeDraftBlocks(
   current: readonly DraftReportBlock[],
@@ -224,13 +270,13 @@ export function resizeDraftBlocks(
   const source = current.find((block) => block.id === blockId);
   if (!source) return null;
   const minimumWidth = source.type === "text" ? 4 : 6;
-  const width = Math.max(minimumWidth, Math.min(12, requestedWidth));
+  let width = Math.max(minimumWidth, Math.min(12, requestedWidth));
   const textMinimum = source.type === "text"
     ? frontendTextBlockLayout({ ...source, w: width, columns: width, h: 4 }, orientation).minimumHeight
     : 4;
   const minimumHeight = source.type === "artifact" ? 5 : source.type === "chart" ? 7 : source.type === "table" ? 5 : textMinimum;
   const maximumHeight = ["artifact", "chart", "table"].includes(source.type ?? "") ? 18 : 14;
-  const height = requestedHeight === undefined
+  let height = requestedHeight === undefined
     ? Math.max(source.h, minimumHeight)
     : Math.max(minimumHeight, Math.min(maximumHeight, requestedHeight));
   if (width === source.w && height === source.h) return null;
@@ -247,7 +293,7 @@ export function resizeDraftBlocks(
         ? { content: JSON.stringify({ ...readDraftBlockSettings(block), sizeMode: "manual" }) }
         : {}),
     };
-    return resizeRow && block.y === source.y ? { ...block, h: height } : block;
+    return block;
   });
   if (requestedPosition && !isDraftLayoutValid(resized)) return null;
   return {

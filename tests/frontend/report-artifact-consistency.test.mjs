@@ -27,7 +27,7 @@ assert.match(
   reportSources.artifactContent,
   /전체 \{rows\.length\}행 중 \{visibleRows\.length\}개 대표 행을 첫·마지막 포함 균등 표시합니다/,
 );
-assert.match(reportSources.artifactContent, /전체 값은 원본 Artifact에서 확인할 수 있습니다/);
+assert.match(reportSources.artifactContent, /전체 값은 원본 분석 결과에서 확인할 수 있습니다/);
 
 const loadSource = sourceSection(reportSources.artifacts, "const loadArtifacts", "const retryArtifact");
 assert.match(loadSource, /const generation = loadGenerationRef\.current \+ 1/);

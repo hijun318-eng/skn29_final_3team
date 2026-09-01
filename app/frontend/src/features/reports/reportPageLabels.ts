@@ -13,12 +13,19 @@ export function reportApiError(error: unknown): string {
     if (error.code === "EXTERNAL_TRANSFER_DISCLOSURE_NOT_FOUND") {
       return "확인할 외부 전송 동의 요청을 찾지 못했습니다. Assistant 요청을 다시 실행해 주세요.";
     }
-    return error.message;
+    if (error.status === 401) return "로그인이 만료되었습니다. 다시 로그인해 주세요.";
+    if (error.status === 403) return "이 정보를 볼 권한이 없습니다. 관리자에게 권한을 확인해 주세요.";
+    if (error.status === 404) return "연결된 정보를 찾을 수 없습니다.";
+    if (error.status === 409) return "다른 변경 사항이 먼저 저장되었습니다. 최신 상태를 다시 불러와 주세요.";
+    if (error.status === 429) return "요청이 많아 잠시 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+    if (error.status >= 500) return "보고서 서비스가 응답하지 않습니다. 잠시 후 다시 시도해 주세요.";
+    if (error.status === 400 || error.status === 422) return "요청 내용을 확인해 주세요.";
+    return "보고서 요청을 처리하지 못했습니다. 다시 시도해 주세요.";
   }
   if (error instanceof TypeError) {
-    return "서버에 연결할 수 없습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.";
+    return "네트워크에 연결할 수 없습니다. 연결을 확인한 뒤 다시 시도해 주세요.";
   }
-  return error instanceof Error ? error.message : "보고서 요청을 처리하지 못했습니다.";
+  return "보고서 요청을 처리하지 못했습니다. 다시 시도해 주세요.";
 }
 
 /** 서버 requiredAction을 안전한 후속 조치 문구로 변환한다. */

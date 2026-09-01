@@ -26,6 +26,10 @@ import {
   resizeDraftBlocks,
   splitLegacyCompositeArtifactBlocks,
 } from "./reportDraftMutations.ts";
+import {
+  normalizeGeneratedArtifactViewTitle,
+  reportArtifactDefaultTitle,
+} from "./reportTimePresentation.js";
 import type {
   DraftCurrencyPolicy,
   DraftArtifactData,
@@ -296,9 +300,9 @@ export function useReportDraftState(
   const compactLayout = useCallback((): boolean => {
     const current = blocksRef.current;
     const compacted = compactDraftLayout(current) as readonly DraftReportBlock[];
-    if (JSON.stringify(compacted) === JSON.stringify(current)) { announce("블록이 이미 12열 격자에 맞게 정돈되어 있습니다."); return false; }
+    if (JSON.stringify(compacted) === JSON.stringify(current)) { announce("블록이 이미 읽는 순서대로 정리되어 있습니다."); return false; }
     const committed = commitBlocks(compacted);
-    if (committed) announce("블록을 기존 12열 격자와 시각 순서에 맞게 정돈했습니다.");
+    if (committed) announce("겹친 블록을 읽는 순서대로 정리했습니다.");
     return committed;
   }, [announce, commitBlocks]);
 
@@ -345,7 +349,9 @@ export function useReportDraftState(
       const view = template.view;
       if (!view || !["summary", "kpi", "chart", "table"].includes(view)) return false;
       const sources = optionsRef.current.artifactSources ?? [];
-      const source = sources.find((item) => item.artifactId === optionsRef.current.selectedArtifactId) ?? sources[0];
+      const source = sources.find((item) => item.artifactId === settings.artifactId)
+        ?? sources.find((item) => item.artifactId === optionsRef.current.selectedArtifactId)
+        ?? sources[0];
       if (!source?.artifactId) {
         optionsRef.current.onNotice?.("먼저 사용할 분석 원본을 선택해 주세요.");
         return false;
@@ -484,7 +490,11 @@ export function useReportDraftState(
     );
     const fitted = fitAutoArtifactViewLayout(migrated.blocks, artifactMap, orientationRef.current);
     if (JSON.stringify(fitted) === JSON.stringify(current)) return false;
-    const fittedSaved = fitAutoArtifactViewLayout(savedBlocksRef.current, artifactMap, savedOrientationRef.current);
+    const fittedSaved = fitAutoArtifactViewLayout(
+      normalizeTitles(savedBlocksRef.current),
+      artifactMap,
+      savedOrientationRef.current,
+    );
     blocksRef.current = copyDraftBlocks(fitted);
     savedBlocksRef.current = copyDraftBlocks(fittedSaved);
     setBlocks(blocksRef.current);

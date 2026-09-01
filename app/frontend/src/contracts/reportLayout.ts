@@ -141,13 +141,15 @@ export function compactDraftLayout(blocks: readonly ReportBlock[]): readonly Dra
   let rowY = 0;
   let rowX = 0;
   let rowHeight = 0;
+  let sourceRowY: number | null = null;
 
   const finishRow = () => {
-    for (const block of row) resolved.set(block.id, { ...block, h: rowHeight });
+    for (const block of row) resolved.set(block.id, block);
     rowY += rowHeight;
     row = [];
     rowX = 0;
     rowHeight = 0;
+    sourceRowY = null;
   };
 
   for (const { block } of ordered) {
@@ -158,8 +160,10 @@ export function compactDraftLayout(blocks: readonly ReportBlock[]): readonly Dra
       continue;
     }
     const width = block.w;
+    if (row.length && block.y !== sourceRowY) finishRow();
     if (rowX > 0 && width > 12 - rowX) finishRow();
 
+    if (!row.length) sourceRowY = block.y;
     const placed = { ...block, columns: width, x: rowX, y: rowY, w: width };
     row.push(placed);
     rowX += width;
@@ -195,16 +199,6 @@ export function placeDraftBlock(
     y: rawY,
   };
   let adjusted = normalized;
-  const sourceRowMates = normalized
-    .filter((block) => block.id !== blockId && block.y === source.y)
-    .sort((left, right) => left.x - right.x);
-  const remainingSourceRowWidth = sourceRowMates.reduce((total, block) => total + block.w, 0);
-  if (sourceRowMates.length && remainingSourceRowWidth < 12) {
-    const filler = sourceRowMates.at(-1)!;
-    adjusted = normalized.map((block) => block.id === filler.id
-      ? { ...block, columns: block.w + (12 - remainingSourceRowWidth), w: block.w + (12 - remainingSourceRowWidth) }
-      : block);
-  }
   if (target) {
     const sourceOnLeft = rawX < 6;
     candidate = { ...candidate, columns: 6, w: 6, x: sourceOnLeft ? 0 : 6, y: target.y };

@@ -15,6 +15,7 @@ import {
   wholeArtifactSettings,
 } from "./reportDraftV2";
 import { analysisTimeLabel } from "./reportAnalysisArtifacts";
+import { reportTimeRangeLabel } from "./reportTimePresentation.js";
 
 function shortSummary(summary) {
   const value = String(summary || "").trim();

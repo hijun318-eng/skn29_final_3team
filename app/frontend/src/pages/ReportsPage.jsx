@@ -41,6 +41,10 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     (chartType) => draft.addTemplateBlock("artifact-chart", null, { chartType }),
     [draft.addTemplateBlock],
   );
+  const addArtifactView = useCallback(
+    (artifactId, templateId) => draft.addTemplateBlock(templateId, null, { artifactId }),
+    [draft.addTemplateBlock],
+  );
 
   if (page.view === "list") {
     return <ReportListView
@@ -73,7 +77,6 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
 
   if (page.view === "document" && lifecycle.selectedDefinition) {
     return <ReportDocumentView
-      currencyControl={documentCurrencyControl}
       error={lifecycle.error}
       errorRef={page.errorRef}
       finalDocument={lifecycle.finalDocument}
@@ -143,13 +146,13 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     artifactOptions={artifacts.artifactOptions}
     artifactSelection={artifacts.artifactSelection}
     artifactStates={artifacts.artifactStates}
-    artifactTemplates={page.artifactTemplates}
     artifacts={artifacts.artifacts}
     assistantInstruction={lifecycle.assistantInstruction}
     canEdit={page.canEdit}
     evaluation={lifecycle.assistantEvaluation}
     isDraft={page.isDraft}
     onAddChart={addChartBlock}
+    onAddView={addArtifactView}
     onAddTemplate={draft.addTemplateBlock}
     onClose={page.closeToolPanel}
     onCreateAssistantDraft={page.createAssistantDraft}
@@ -213,7 +216,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
       visibleRunCount={lifecycle.visibleRunCount}
       visibleRuns={lifecycle.visibleRuns}
     />}
-    {lifecycle.assistantTrace && lifecycle.selectedDefinition?.status !== "approved" && <details className="card editor-advanced"><summary>AI 처리 정보</summary><p>초안 생성을 완료했습니다. · {(lifecycle.assistantTrace.duration_ms / 1000).toFixed(1)}초</p></details>}
+    {lifecycle.assistantTrace && lifecycle.selectedDefinition?.status !== "approved" && <details className="card editor-advanced"><summary>초안 생성 정보</summary><p>생성 완료 · {(lifecycle.assistantTrace.duration_ms / 1000).toFixed(1)}초</p></details>}
     <p className="sr-only" aria-live="polite">{draft.editorAnnouncement}</p>
   </>;
   const properties = <ReportPropertiesPanel

@@ -5,6 +5,23 @@ import { HelpCircle, PanelRightClose, Settings2, Sparkles } from "lucide-react";
 import { ReportShortcutHelp } from "./ReportShortcutHelp";
 import "./report-builder-v2.css";
 
+/** 브라우저 미디어 쿼리의 현재 일치 여부를 변경 시점마다 동기화한다. */
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() => (
+    typeof window !== "undefined" && window.matchMedia(query).matches
+  ));
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const sync = () => setMatches(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, [query]);
+
+  return matches;
+}
+
 /** 파생된 A4 페이지를 별도 저장 상태 없이 탐색하고 V2 로컬 화면 상태만 관리한다. */
 export const ReportBuilderV2 = memo(function ReportBuilderV2({
   assistant,
@@ -226,6 +243,6 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
         <div className="builder-inspector-view" hidden={rightPanel !== "properties"}>{properties}</div>
       </div>}
     </div>
-    <ReportShortcutHelp open={shortcutHelpOpen} onClose={closeShortcutHelp} />
+    <ReportShortcutHelp open={shortcutHelpOpen} onClose={closeShortcutHelp} theme={theme} />
   </div>;
 });

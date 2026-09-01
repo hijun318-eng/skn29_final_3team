@@ -607,7 +607,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
     setMessages((current) => [...current, assistantConversationMessage(result, true)]);
   }, [artifact, canEdit, hasUnsavedChanges, instruction, onInstructionChange, onSuggestTitle, pending, workflowActive]);
 
-  return <aside className="report-assistant-panel" aria-label="보고서 AI Assistant">
+  return <aside className="report-assistant-panel" aria-label="보고서 도우미">
     <header>
       <span className="report-assistant-mark"><Sparkles size={15} aria-hidden="true" /></span>
       <div><p>REPORT ASSISTANT</p><h2>보고서 AI Assistant</h2><small title={selectedBlock?.title || "선택 없음"}>선택된 블록 · {selectedBlock?.title || "선택 없음"}</small></div>
@@ -680,7 +680,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
     <div className="report-assistant-thread" aria-live="polite">
       <article className="report-assistant-message assistant">
         <Bot size={15} aria-hidden="true" />
-        <p>보고서 초안을 열었습니다. 요약 수정, 블록 구성, 데이터 표현 방식을 요청할 수 있습니다.</p>
+        <p>요약, 블록 구성, 데이터 표현 방식을 요청할 수 있습니다.</p>
       </article>
       {!messages.length && trace && <article className="report-assistant-message assistant"><AssistantReceipt trace={trace} /></article>}
       {messages.map((message, index) => message.role === "user"
@@ -711,7 +711,6 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
       <AssistantQualityReview review={review} onSelect={onInstructionChange} pending={Boolean(pending)} />
       <AssistantWorkflowStatus
         status={workflowStatus}
-        errorCode={workflowError}
         requiredAction={workflowRequiredAction}
         retryable={workflowRetryable}
         onRetry={onRetry}

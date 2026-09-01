@@ -64,11 +64,12 @@ function ChartFallback({ title = "차트를 표시할 수 없습니다.", childr
 }
 
 /** 활성 payload의 검증된 series만 값 formatter와 함께 표시한다. */
-function ChartTooltip({ active, label, payload, series, valueFormatter }) {
+function ChartTooltip({ active, label, payload, series, valueFormatter, categoryDetailFormatter }) {
   if (!active || !payload?.length) return null;
   const visible = payload.filter((item) => item.value !== undefined && item.value !== null);
   if (!visible.length) return null;
-  const heading = label ?? visible[0]?.payload?.category;
+  const rawHeading = label ?? visible[0]?.payload?.category;
+  const heading = categoryDetailFormatter ? categoryDetailFormatter(rawHeading) : rawHeading;
   return <div className="enterprise-chart-tooltip" role="status">
     <small>{heading}</small>
     {visible.map((item) => {
@@ -99,6 +100,8 @@ export function EnterpriseChart({
   valueFormatter = (value, item) => formatMetricValue(value, { unit: item?.unit }),
   axisFormatter = formatCompactNumber,
   labelFormatter = formatCompactNumber,
+  categoryFormatter,
+  categoryDetailFormatter,
   ariaLabel,
   description,
 }) {
@@ -147,7 +150,7 @@ export function EnterpriseChart({
   }
 
   const circularData = isCircular ? chartRows.map((row, index) => ({
-    category: String(row[xKey] ?? "—"),
+    category: String(categoryFormatter ? categoryFormatter(row[xKey]) : row[xKey] ?? "—"),
     definition: normalizedSeries[0],
     fill: seriesColor(index),
     value: row[normalizedSeries[0].key],
@@ -163,22 +166,25 @@ export function EnterpriseChart({
   const isStacked = chartType === "stacked-bar";
   const barValueDomain = isBar ? resolveBarValueDomain(chartRows, normalizedSeries) : undefined;
   const categoryLength = isHorizontal ? 18 : chartRows.length > 8 ? 8 : chartRows.length > 4 ? 10 : 14;
-  const categoryFormatter = (value) => categoryLabel(value, categoryLength);
+  const formatCategory = (value) => categoryLabel(
+    categoryFormatter ? categoryFormatter(value) : value,
+    categoryLength,
+  );
   const margin = isHorizontal
     ? { top: commonUnit ? 26 : 16, right: showLabels && normalizedSeries.length === 1 ? 82 : 28, bottom: 10, left: 8 }
     : { top: showLabels && chartType === "bar" ? 32 : commonUnit ? 26 : 16, right: 24, bottom: 10, left: 18 };
-  const categoryAxisWidth = Math.min(160, Math.max(76, Math.max(...chartRows.map((row) => [...categoryFormatter(row[xKey])].length)) * 7.4));
+  const categoryAxisWidth = Math.min(160, Math.max(76, Math.max(...chartRows.map((row) => [...formatCategory(row[xKey])].length)) * 7.4));
   const axes = isHorizontal ? <>
     <XAxis className="enterprise-chart-axis enterprise-chart-axis--value" type="number" axisLine={{ stroke: "var(--chart-axis)" }} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} domain={barValueDomain} />
-    <YAxis className="enterprise-chart-axis enterprise-chart-axis--category" type="category" dataKey={xKey} name={xLabel} width={categoryAxisWidth} axisLine={false} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={11} interval={0} tickFormatter={categoryFormatter} />
+    <YAxis className="enterprise-chart-axis enterprise-chart-axis--category" type="category" dataKey={xKey} name={xLabel} width={categoryAxisWidth} axisLine={false} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={11} interval={0} tickFormatter={formatCategory} />
   </> : <>
-    <XAxis className="enterprise-chart-axis enterprise-chart-axis--category" dataKey={xKey} name={xLabel} height={40} axisLine={{ stroke: "var(--chart-axis)" }} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={12} minTickGap={chartRows.length > 8 ? 34 : 24} interval="preserveStartEnd" tickFormatter={categoryFormatter} padding={{ left: 14, right: 14 }} />
+    <XAxis className="enterprise-chart-axis enterprise-chart-axis--category" dataKey={xKey} name={xLabel} height={40} axisLine={{ stroke: "var(--chart-axis)" }} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={12} minTickGap={chartRows.length > 8 ? 34 : 24} interval="preserveStartEnd" tickFormatter={formatCategory} padding={{ left: 14, right: 14 }} />
     <YAxis className="enterprise-chart-axis enterprise-chart-axis--value" width={82} axisLine={false} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} domain={barValueDomain} />
   </>;
   const common = <>
     <CartesianGrid strokeDasharray="2 6" horizontal={!isHorizontal} vertical={isHorizontal} />
     {axes}
-    <Tooltip cursor={isBar ? { fill: "var(--chart-cursor-fill)" } : { stroke: "var(--chart-cursor-stroke)", strokeDasharray: "3 4" }} content={<ChartTooltip series={normalizedSeries} valueFormatter={valueFormatter} />} />
+    <Tooltip cursor={isBar ? { fill: "var(--chart-cursor-fill)" } : { stroke: "var(--chart-cursor-stroke)", strokeDasharray: "3 4" }} content={<ChartTooltip series={normalizedSeries} valueFormatter={valueFormatter} categoryDetailFormatter={categoryDetailFormatter || categoryFormatter} />} />
   </>;
 
   let chart;

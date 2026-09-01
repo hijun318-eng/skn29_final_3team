@@ -334,7 +334,8 @@ assert.match(reportA4Styles, /\.answer-report-page \.report-data-provenance/);
 assert.match(reportSources.page, /onDragMove=\{dnd\.handleDragMove\}/);
 assert.match(reportSources.editorToolbar, /저장되지 않은 변경/);
 assert.match(reportSources.editorToolbar, /저장 실패/);
-assert.match(reportSources.draftMutations, /resizeRow && block\.y === source\.y/);
+assert.doesNotMatch(reportSources.draftMutations, /resizeRow && block\.y === source\.y/);
+assert.doesNotMatch(reportSources.presentation, /h: height, sourceBlock/);
 assert.match(reportSources.editorBlock, /event\.buttons & 1/);
 assert.match(reportSources.controller, /await artifacts\.loadArtifacts\(current\)/);
 assert.match(reportSources.editorBlock, /<ReportArtifactContent/);
@@ -421,7 +422,7 @@ const movedOutOfPair = placeDraftBlock([
 assert.deepEqual(
   movedOutOfPair.map(({ id, x, y, w }) => ({ id, x, y, w })),
   [
-    { id: "pair-left", x: 0, y: 0, w: 12 },
+    { id: "pair-left", x: 0, y: 0, w: 6 },
     { id: "pair-right", x: 0, y: 4, w: 6 },
     { id: "full-target", x: 6, y: 4, w: 6 },
   ],
@@ -431,7 +432,7 @@ const splitFullRow = placeDraftBlock([
   { id: "table", title: "표", columns: 12, type: "table", x: 0, y: 0, w: 12, h: 5 },
   { id: "chart", title: "차트", columns: 12, type: "chart", x: 0, y: 0, w: 12, h: 6 },
 ], "chart", 6, 2);
-assert.deepEqual(splitFullRow.map((block) => [block.x, block.y, block.w, block.h]), [[0, 0, 6, 6], [6, 0, 6, 6]]);
+assert.deepEqual(splitFullRow.map((block) => [block.x, block.y, block.w, block.h]), [[0, 0, 6, 5], [6, 0, 6, 6]]);
 
 const gaplessRows = compactDraftLayout([
   { id: "summary", title: "요약", columns: 12, type: "text", x: 0, y: 9, w: 12, h: 4 },

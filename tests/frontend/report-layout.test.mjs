@@ -17,6 +17,21 @@ assert.equal(isDraftLayoutValid(validSavedLayout), true);
 assert.deepEqual(restoreDraftLayout(validSavedLayout), validSavedLayout);
 assert.deepEqual(restoreDraftLayout(restoreDraftLayout(validSavedLayout)), validSavedLayout);
 
+const independentRowHeights = compactDraftLayout([
+  { id: "row-summary", title: "요약", columns: 6, type: "text", content: "요약", x: 0, y: 9, w: 6, h: 4 },
+  { id: "row-chart", title: "차트", columns: 6, type: "chart", content: "{}", x: 6, y: 9, w: 6, h: 8 },
+  { id: "next-row", title: "다음", columns: 12, type: "table", content: "{}", x: 0, y: 30, w: 12, h: 5 },
+]);
+assert.deepEqual(
+  independentRowHeights.map(({ id, x, y, w, h }) => [id, x, y, w, h]),
+  [
+    ["row-summary", 0, 0, 6, 4],
+    ["row-chart", 6, 0, 6, 8],
+    ["next-row", 0, 8, 12, 5],
+  ],
+);
+assert.equal(isDraftLayoutValid(independentRowHeights), true);
+
 const overlappingLegacyLayout = [
   { id: "a", title: "A", columns: 12, type: "text", content: "A", x: 0, y: 0, w: 12, h: 4 },
   { id: "b", title: "B", columns: 12, type: "table", content: "{}", x: 0, y: 2, w: 12, h: 5 },

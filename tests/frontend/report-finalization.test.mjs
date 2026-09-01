@@ -197,8 +197,10 @@ const finalSignal = new AbortController().signal;
 await client.getFinalDocument(definition.definition_id, 3, finalSignal);
 assert.equal(requests.at(-1).init.signal, finalSignal, "final-document cancellation must reach fetch");
 
-assert.match(reportSources.documentView, /저장된 HTML 초안을 확인하세요/);
-assert.match(reportSources.controller, /수정할 수 없는 PDF를 생성할까요/);
+assert.match(reportSources.documentView, /보고서 내용을 확인하세요/);
+assert.match(reportSources.controller, /저장된 보고서 버전.*PDF가 생성되며/);
+assert.doesNotMatch(reportSources.documentView, /HTML 초안|확정하고 PDF 생성|보고서 실행/);
+assert.match(reportSources.documentView, /최신 데이터로 다시 생성/);
 assert.doesNotMatch(reportFeatureSource, /현재 PDF에 포함되지 않아 확정할 수 없습니다|pdfUnsupportedBlocks/);
 assert.match(reportSources.documentView, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
 assert.match(reportSources.documentView, /PDF 새 탭에서 열기/);

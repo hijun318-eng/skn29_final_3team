@@ -1,6 +1,6 @@
 /** governed artifact의 summary·KPI·chart·table과 Markdown block을 렌더링하는 모듈이다. */
 import { memo, useState } from "react";
-import { AlertTriangle, ArrowUpDown, Inbox, LoaderCircle, RotateCcw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Inbox, LoaderCircle, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -22,6 +22,10 @@ import {
 import { ReportWholeArtifactBlock } from "../ReportWholeArtifactBlock";
 import { reportEvidenceLabel } from "../../../contracts/report";
 import { sampleReportTableRows } from "../reportTableRows";
+import {
+  normalizeGeneratedArtifactViewTitle,
+  reportTimeCategoryPresentation,
+} from "../reportTimePresentation.js";
 import {
   artifactMetric,
   blockSettings,
@@ -91,7 +95,7 @@ export const DataProvenanceBadge = memo(function DataProvenanceBadge({ artifact 
 });
 
 /** artifact hydration의 loading/error/empty 상태와 허용된 재시도 명령을 표시한다. */
-function ArtifactState({ artifactState, onRetry }) {
+function ArtifactState({ artifactState, onRemove, onRetry }) {
   if (!artifactState || artifactState.status === "loading") {
     return (
       <div className="report-artifact-state is-loading" role="status" aria-busy="true">
@@ -107,12 +111,11 @@ function ArtifactState({ artifactState, onRetry }) {
         <AlertTriangle size={17} aria-hidden="true" />
         <div>
           <b>이 블록의 분석 데이터를 불러오지 못했습니다.</b>
-          <p>{artifactState.message || "다른 블록은 계속 확인할 수 있습니다."}</p>
-          {onRetry && artifactState.requiredAction === "RETRY" && (
-            <button type="button" onClick={onRetry}>
-              <RotateCcw size={13} aria-hidden="true" />다시 불러오기
-            </button>
-          )}
+          <p>{artifactState.message || "잠시 후 다시 시도해 주세요."}</p>
+          <div className="report-artifact-state-actions">
+            {onRetry && <button type="button" onClick={onRetry}><RotateCcw size={13} aria-hidden="true" />다시 불러오기</button>}
+            {onRemove && <button type="button" className="danger" onClick={onRemove}><Trash2 size={13} aria-hidden="true" />블록 삭제</button>}
+          </div>
         </div>
       </div>
     );
@@ -123,7 +126,8 @@ function ArtifactState({ artifactState, onRetry }) {
         <Inbox size={17} aria-hidden="true" />
         <div>
           <b>조건에 맞는 데이터가 없습니다.</b>
-          <p>오류가 아니라 유효한 빈 분석 결과입니다.</p>
+          <p>기간이나 조건을 바꾼 분석 결과를 연결해 주세요.</p>
+          {onRemove && <div className="report-artifact-state-actions"><button type="button" className="danger" onClick={onRemove}><Trash2 size={13} aria-hidden="true" />블록 삭제</button></div>}
         </div>
       </div>
     );
@@ -132,13 +136,14 @@ function ArtifactState({ artifactState, onRetry }) {
 }
 
 /** 지원되지 않거나 상세 표가 없는 artifact를 데이터 합성 없이 명시적으로 표시한다. */
-function UnsupportedArtifact({ missingTable = false }) {
+function UnsupportedArtifact({ missingTable = false, onRemove }) {
   return (
     <div className="report-artifact-state is-error" role="alert">
       <AlertTriangle size={missingTable ? 17 : 16} aria-hidden="true" />
       <div>
-        <b>{missingTable ? "지원할 수 없는 분석 데이터 형식입니다." : "이 블록으로 표시할 데이터가 없습니다."}</b>
-        <p>{missingTable ? "원본을 임의로 해석하지 않았습니다." : "표 블록으로 원본 데이터를 확인하거나 블록 설정을 검토해 주세요."}</p>
+        <b>{missingTable ? "이 분석 결과에는 표 데이터가 없습니다." : "이 블록에 표시할 데이터가 없습니다."}</b>
+        <p>{missingTable ? "다른 분석 결과를 연결하거나 블록을 삭제해 주세요." : "분석 결과 연결과 블록 설정을 확인해 주세요."}</p>
+        {onRemove && <div className="report-artifact-state-actions"><button type="button" className="danger" onClick={onRemove}><Trash2 size={13} aria-hidden="true" />블록 삭제</button></div>}
       </div>
     </div>
   );
@@ -152,14 +157,15 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
   currency,
   editor = false,
   paper = false,
+  onRemove,
   onRetry,
 }) {
   const [sorting, setSorting] = useState({ column: "", direction: "" });
-  const state = <ArtifactState artifactState={artifactState} onRetry={onRetry} />;
+  const state = <ArtifactState artifactState={artifactState} onRemove={onRemove} onRetry={onRetry} />;
   if (!artifactState || ["loading", "error", "empty"].includes(artifactState.status)) {
     return state;
   }
-  if (!artifact?.table) return <UnsupportedArtifact missingTable />;
+  if (!artifact?.table) return <UnsupportedArtifact missingTable onRemove={onRemove} />;
 
   if (block.type === "table") {
     const settings = blockSettings(block);
@@ -167,6 +173,10 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
     const mobileFit = artifact.table.columns.length + Number(showRowNumbers) <= 3;
     const rows = sortedTableRows(artifact.table.rows, sorting);
     const visibleRows = sampleReportTableRows(rows);
+    const timePresentations = new Map(artifact.table.columns.map((column) => [
+      column,
+      reportTimeCategoryPresentation(artifact, column),
+    ]));
     const tableClass = [
       "analysis-table generated-report-table",
       editor ? "editor-artifact-table" : "",
@@ -224,9 +234,12 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
                 {showRowNumbers && <th scope="row">{sourceIndex + 1}</th>}
                 {artifact.table.columns.map((column) => {
                   const sourceUnit = artifactMetric(artifact, column)?.unit;
-                  const value = isCurrencyMetricUnit(sourceUnit)
-                    ? formatCurrencyAmount(row[column], currency.unit, currency.policy)
-                    : formatMetricValue(row[column], { includeUnit: false });
+                  const timePresentation = timePresentations.get(column);
+                  const value = timePresentation
+                    ? timePresentation.detail(row[column])
+                    : isCurrencyMetricUnit(sourceUnit)
+                      ? formatCurrencyAmount(row[column], currency.unit, currency.policy)
+                      : formatMetricValue(row[column], { includeUnit: false });
                   return (
                     <td className={isNumericValue(row[column]) ? "is-numeric" : ""} key={column}>
                       {value}
@@ -240,7 +253,7 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
         {rows.length > visibleRows.length && (
           <p className="report-table-sample-note" role="note">
             전체 {rows.length}행 중 {visibleRows.length}개 대표 행을 첫·마지막 포함 균등 표시합니다.
-            전체 값은 원본 Artifact에서 확인할 수 있습니다.
+            전체 값은 원본 분석 결과에서 확인할 수 있습니다.
           </p>
         )}
       </div>
@@ -251,6 +264,7 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
     const settings = blockSettings(block);
     const chartType = settings.chartType || artifact.chart.chart_type || artifact.chart.type || "bar";
     const showLegend = settings.showLegend !== false;
+    const timePresentation = reportTimeCategoryPresentation(artifact, artifact.chart.x_field);
     const series = artifact.chart.y_fields.map((field, index) => {
       const metric = artifactMetric(artifact, field);
       const sourceUnit = metric?.unit;
@@ -270,7 +284,7 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
     });
     const allCurrency = series.every((item) => item.currencyMetric);
     const chartLabel = REPORT_CHART_OPTIONS.find(([value]) => value === chartType)?.[1] || "차트";
-    const description = `${artifact.table.rows.length}개 데이터 행을 ${chartLabel}로 표시합니다. 같은 Artifact의 표 보기에서 원본 값을 확인할 수 있습니다.`;
+    const description = `${artifact.table.rows.length}개 데이터 행을 ${chartLabel}로 표시합니다. 같은 분석 결과의 표에서 원본 값을 확인할 수 있습니다.`;
     const chartHeight = paper
       ? Math.max(112, Math.min(210, (block.h ?? 7) * 19))
       : editor ? 240 : 280;
@@ -298,6 +312,8 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
                 displayUnit: item?.displayUnit,
               })}
           {...currencyFormatters}
+          categoryFormatter={timePresentation?.axis}
+          categoryDetailFormatter={timePresentation?.detail}
           ariaLabel={`${block.title} ${chartLabel}`}
           description={description}
         />
@@ -306,7 +322,7 @@ export const ReportArtifactContent = memo(function ReportArtifactContent({
     );
   }
 
-  return <UnsupportedArtifact />;
+  return <UnsupportedArtifact onRemove={onRemove} />;
 });
 
 /** 최종/미리보기 블록을 표시 정책에 맞춰 렌더링하고 입력 객체가 같으면 재사용한다. */
@@ -321,6 +337,7 @@ export const GeneratedReportBlock = memo(function GeneratedReportBlock({
   onRetry,
 }) {
   const isArtifactView = block.type === "table" || block.type === "chart";
+  const displayTitle = normalizeGeneratedArtifactViewTitle(block.title, artifact, block.type);
   const textLayout = frontendTextBlockLayout(block, orientation);
   let content = <MarkdownText content={block.content} />;
   if (isArtifactView) {
@@ -369,7 +386,7 @@ export const GeneratedReportBlock = memo(function GeneratedReportBlock({
     >
       <header>
         <span>{String(number).padStart(2, "0")}</span>
-        <div><small>보고서 섹션</small><h2>{block.title}</h2></div>
+        <div><h2>{displayTitle}</h2></div>
         {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
       </header>
       {content}

@@ -413,10 +413,10 @@ assert.deepEqual(adaptedSnapshotArtifact.evidence.snapshot, {
   cutoff: "2026-08-20",
   selection: "max_source_value_lt_as_of",
 });
-assert.equal(analysisTimeLabel(adaptedSnapshotArtifact.evidence), "2026-08-20 이전 최신 스냅샷");
+assert.equal(analysisTimeLabel(adaptedSnapshotArtifact.evidence), "2026-08-20 이전 최신 데이터");
 assert.equal(
   analysisArtifactTitle(adaptedSnapshotArtifact),
-  "2026-08-20 이전 최신 스냅샷 객실 매출 분석",
+  "2026-08-20 이전 최신 데이터 객실 매출 분석",
 );
 assert.equal(reportEvidenceReady(adaptedSnapshotArtifact), true);
 
@@ -554,7 +554,7 @@ const fittedMonthlyRow = compactDraftLayout([
   fittedLegacyChart,
   fitFrontendArtifactViewBlock(legacyMonthlyTable, monthlyArtifact, { orientation: "landscape" }),
 ]);
-assert.deepEqual(fittedMonthlyRow.map(({ id, h }) => [id, h]), [["legacy-chart", 10], ["legacy-monthly-table", 10]]);
+assert.deepEqual(fittedMonthlyRow.map(({ id, h }) => [id, h]), [["legacy-chart", 8], ["legacy-monthly-table", 10]]);
 assert.deepEqual(fitFrontendArtifactViewBlock(structuredClone(fittedLegacyChart), monthlyArtifact, { orientation: "landscape" }), fittedLegacyChart, "saved auto sizing must be idempotent on re-entry");
 assert.equal(fitFrontendArtifactViewBlock(structuredClone(fittedLegacyChart), monthlyArtifact, { orientation: "portrait" }).h, 9);
 const denseSeriesChart = { ...monthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["a", "b", "c", "d"] } };

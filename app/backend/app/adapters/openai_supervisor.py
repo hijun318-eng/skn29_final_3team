@@ -49,7 +49,8 @@ ANALYSIS_WORKFLOW는 승인된 정형 지표 분석과 이전 분석의 표·차
 INTERNAL_GUIDELINE은 내부 문서 근거가 필요한 질문에 사용합니다.
 ML_PREDICTION은 제공된 ML scope 안의 미래 객실 수요 예측에만 사용하고 구조화 입력을 채웁니다.
 각 objective는 사용자 문장에서 해당 Agent가 처리할 범위만 간결하게 다시 쓰며 새 사실을 추가하지 마세요.
-직전 route는 생략된 후속 요청의 문맥을 판정할 때만 사용하세요.
+직전 route와 previous_analysis는 생략된 후속 요청의 문맥을 판정할 때만 사용하세요.
+previous_analysis는 서버가 확정한 이전 분석 지표·기간이며 새 사실로 간주하지 마세요.
 필수 입력이 없거나 필요한 Agent가 unavailable이면 다른 Agent로 대체하지 말고
 status=UNAVAILABLE, tasks=[]와 사유를 반환하세요. 실행 가능하면 status=EXECUTABLE로 반환하세요."""
 
@@ -142,6 +143,11 @@ class OpenAISupervisorPlanner:
             "request_as_of": request.context.as_of.isoformat(),
             "timezone": request.context.timezone,
             "previous_route": previous_route,
+            "previous_analysis": (
+                request.previous_analysis.model_dump(mode="json")
+                if request.previous_analysis is not None
+                else None
+            ),
             "available_capabilities": [
                 {
                     "agent": agent.value,

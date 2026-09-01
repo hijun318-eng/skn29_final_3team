@@ -3912,6 +3912,149 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("2026-06-01", request.resolved_slots.period_end_exclusive)
         self.assertEqual(2, len(self.submitted_requests))
 
+    async def test_supervisor_dispatch_preserves_typed_analysis_context_for_period_followup(self) -> None:
+        """Supervisor가 기간 생략문을 분석 capability까지 안전하게 전달한다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Supervisor 기간 변경 후속 질문",
+        )
+        first_message = "2026년 6월 객실 매출"
+        second_message = "3월부터 5월은?"
+        self.support.program(
+            first_message,
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2026-06-01T00:00:00+09:00",
+                    "end_exclusive": "2026-07-01T00:00:00+09:00",
+                    "source_text": "2026년 6월",
+                }
+            ],
+            analysis_operation="aggregate",
+            requested_route="ANALYSIS",
+            is_elliptical=False,
+        )
+        first = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+
+        room_asset = {
+            "urn": "urn:li:dataset:(serving,room_daily,PROD)",
+            "context_release": TEST_SEMANTIC_RELEASE,
+            "metrics": [
+                {
+                    "id": "room_revenue",
+                    "visibility": "BUSINESS",
+                    "candidate_selectable": True,
+                }
+            ],
+        }
+        self.data_platform.assets = []
+        self.data_platform.program_search(second_message, [])
+        self.data_platform.program_preferred_search(
+            second_message,
+            ("room_revenue",),
+            [room_asset],
+        )
+        self.support.program_error(
+            second_message,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문에 분석할 지표가 포함되지 않았습니다.",
+                partial_context={
+                    "metric_resolution": "missing",
+                    "metric_ids": [],
+                    "metric_candidates": [],
+                    "measurement_source_text": None,
+                    "measurement_source_texts": [],
+                    "selected_metric_id": None,
+                    "selected_metric_ids": [],
+                    "intent_candidates": [],
+                    "analysis_operation": None,
+                    "analysis_time_bucket": None,
+                    "result_limit": None,
+                    "dimension_candidates": [],
+                    "dimension_fields": [],
+                    "filter_fields": [],
+                    "period_candidates": [
+                        {
+                            "start": "2026-03-01T00:00:00+09:00",
+                            "end_exclusive": "2026-06-01T00:00:00+09:00",
+                            "source_text": "3월부터 5월",
+                        }
+                    ],
+                    "period_relationship": "single",
+                    "requested_route": "ANALYSIS",
+                    "presentation_type": None,
+                    "is_elliptical": True,
+                },
+            ),
+        )
+        planner_requests: list[AgentRequest] = []
+
+        class Planner:
+            async def plan(self, admitted_request, catalog, *, previous_route):
+                planner_requests.append(admitted_request)
+                return SupervisorPlanResult(
+                    plan=SupervisorExecutionPlan(
+                        status="EXECUTABLE",
+                        tasks=(
+                            SupervisorTaskPlan(
+                                agent=AgentKind.ANALYSIS_WORKFLOW,
+                                objective=second_message,
+                            ),
+                        ),
+                    ),
+                    evidence_ref=f"model-supervisor:sha256:{'d' * 64}",
+                    model="gpt-5.6-terra",
+                    response_id="resp_multiturn_analysis",
+                )
+
+        request = AgentRequest(
+            conversation_id=conversation["conversation_id"],
+            command=ConversationCommandRequest(
+                user_message=second_message,
+                idempotency_key="supervisor-analysis-period-followup",
+                expected_head_turn_id=first["turn"]["turn_id"],
+            ),
+            context=self.context,
+        )
+        with patch.dict(
+            os.environ,
+            {"RAG_FEATURE_ENABLED": "0", "ML_FEATURE_ENABLED": "0"},
+        ):
+            second = await self.orchestrator.dispatch_agent_command(
+                request,
+                ConcurrentExecutionGate(),
+                lambda: None,
+                supervisor_planner_factory=Planner,
+                supervisor_routing_enabled=True,
+            )
+
+        self.assertEqual(second["status"], "SUCCESS")
+        self.assertEqual(second["data"]["turn"]["route"], "ANALYSIS")
+        self.assertEqual(len(planner_requests), 1)
+        previous_analysis = planner_requests[0].previous_analysis
+        self.assertIsNotNone(previous_analysis)
+        self.assertEqual(previous_analysis.metric_ids, ("room_revenue",))
+        self.assertEqual(previous_analysis.period_start.isoformat(), "2026-06-01")
+        slots = second["data"]["turn"]["resolved_slots"]
+        self.assertEqual(slots["metric_id"], "room_revenue")
+        self.assertTrue(slots["is_inherited_metric"])
+        self.assertEqual(slots["time_range"]["start"], "2026-03-01")
+        self.assertEqual(slots["time_range"]["end_exclusive"], "2026-06-01")
+        self.assertEqual(
+            self.data_platform.search_contexts[-1]["preferred_metric_ids"],
+            ["room_revenue"],
+        )
+
     async def test_unresolved_period_only_followup_never_replays_previous_period(self) -> None:
         """기간 재해석이 비어 있으면 직전 기간으로 같은 분석을 조용히 재실행하지 않는다."""
 

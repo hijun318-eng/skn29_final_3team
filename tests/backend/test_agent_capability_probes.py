@@ -20,6 +20,7 @@ from app.contracts import RequestContext, Role
 from app.conversation_contracts import ConversationCommandRequest
 from app.ports.agent import (
     AgentKind,
+    AgentPreviousAnalysisContext,
     AgentRequest,
     MLPredictionInvocation,
 )
@@ -259,6 +260,27 @@ class GovernedAnalysisCapabilityProbeTest(unittest.IsolatedAsyncioTestCase):
         second = await probe.probe(second_request)
 
         self.assertNotEqual(first.evidence_refs, second.evidence_refs)
+
+    async def test_previous_analysis_uses_typed_metric_hint_without_rewriting_query(self) -> None:
+        request = _request(question="3월부터 5월은?").model_copy(
+            update={
+                "previous_analysis": AgentPreviousAnalysisContext(
+                    metric_ids=("room_revenue",),
+                    period_start="2026-06-01",
+                    period_end_exclusive="2026-07-01",
+                )
+            }
+        )
+        platform = _CandidatePlatform(_candidates())
+
+        evidence = await GovernedAnalysisCapabilityProbe(platform).probe(request)
+
+        self.assertTrue(evidence.matched)
+        self.assertEqual(platform.calls[0][0], "3월부터 5월은?")
+        self.assertEqual(
+            platform.calls[0][1]["preferred_metric_ids"],
+            ["room_revenue"],
+        )
 
     async def test_no_governed_metric_is_a_receipted_non_match(self) -> None:
         platform = _CandidatePlatform(

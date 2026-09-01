@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from enum import Enum
 from hashlib import sha256
 import json
@@ -21,6 +22,7 @@ from app.conversation_contracts import (
 AGENT_REQUEST_VERSION = "AgentRequest.v1"
 AGENT_RESULT_VERSION = "AgentResult.v1"
 AGENT_PORT_READINESS_VERSION = "AgentPortReadiness.v1"
+AGENT_PREVIOUS_ANALYSIS_CONTEXT_VERSION = "AgentPreviousAnalysisContext.v1"
 ML_PREDICTION_INVOCATION_VERSION = "MLPredictionInvocation.v1"
 ML_ABSOLUTE_MAX_HORIZON_DAYS = ML_PREDICTION_ABSOLUTE_MAX_HORIZON_DAYS
 SUPERVISOR_PLAN_REFERENCE_PATTERN = r"^model-supervisor:sha256:[0-9a-f]{64}$"
@@ -54,6 +56,33 @@ class MLPredictionInvocation(MLPredictionAction):
     task: Literal["ROOM_DEMAND_FORECAST"] = "ROOM_DEMAND_FORECAST"
 
 
+class AgentPreviousAnalysisContext(ContractModel):
+    """서버가 저장한 직전 성공 분석의 최소 상속 후보 문맥이다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["AgentPreviousAnalysisContext.v1"] = (
+        AGENT_PREVIOUS_ANALYSIS_CONTEXT_VERSION
+    )
+    route: Literal["ANALYSIS"] = "ANALYSIS"
+    metric_ids: tuple[str, ...] = Field(min_length=1, max_length=8)
+    period_start: date
+    period_end_exclusive: date
+
+    @model_validator(mode="after")
+    def validate_context(self) -> "AgentPreviousAnalysisContext":
+        """중복·빈 지표와 역전된 기간을 Supervisor 입력에서 차단한다."""
+
+        if (
+            len(self.metric_ids) != len(set(self.metric_ids))
+            or any(not metric_id.strip() for metric_id in self.metric_ids)
+        ):
+            raise ValueError("이전 분석 Metric 문맥이 올바르지 않습니다.")
+        if self.period_start >= self.period_end_exclusive:
+            raise ValueError("이전 분석 기간 문맥이 올바르지 않습니다.")
+        return self
+
+
 class AgentRequest(ContractModel):
     """Supervisor가 한 Agent에 전달하는 immutable command·identity 봉투다."""
 
@@ -65,6 +94,7 @@ class AgentRequest(ContractModel):
     context: RequestContext
     target_agent: AgentKind | None = None
     invocation: MLPredictionInvocation | None = None
+    previous_analysis: AgentPreviousAnalysisContext | None = None
     task_objective: str | None = Field(default=None, min_length=1, max_length=240)
     supervisor_plan_ref: str | None = Field(
         default=None,

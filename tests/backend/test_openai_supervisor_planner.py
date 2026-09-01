@@ -25,7 +25,11 @@ from app.adapters.openai_supervisor import (  # noqa: E402
 )
 from app.contracts import RequestContext  # noqa: E402
 from app.conversation_contracts import ConversationCommandRequest  # noqa: E402
-from app.ports.agent import AgentKind, AgentRequest  # noqa: E402
+from app.ports.agent import (  # noqa: E402
+    AgentKind,
+    AgentPreviousAnalysisContext,
+    AgentRequest,
+)
 from app.services.agent_supervisor import AgentDispatchError  # noqa: E402
 from app.services.supervisor_planner import (  # noqa: E402
     SupervisorCapabilityCatalog,
@@ -134,6 +138,72 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
     assert "user_id" not in model_input
     assert result.plan.tasks[0].agent is AgentKind.ANALYSIS_WORKFLOW
     assert re.fullmatch(r"model-supervisor:sha256:[0-9a-f]{64}", result.evidence_ref)
+
+
+def test_terra_planner_receives_only_typed_previous_analysis_context() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json=_response(
+                {
+                    "schema_version": "SupervisorExecutionPlan.v2",
+                    "status": "EXECUTABLE",
+                    "tasks": [
+                        {
+                            "agent": "ANALYSIS_WORKFLOW",
+                            "objective": "3월부터 5월 기간의 이전 지표 분석",
+                            "ml_prediction": None,
+                        }
+                    ],
+                    "unavailable_reason": None,
+                }
+            ),
+        )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            planner = OpenAISupervisorPlanner(
+                "https://api.openai.com",
+                "test-token",
+                client=client,
+            )
+            request = _request("3월부터 5월은?").model_copy(
+                update={
+                    "previous_analysis": AgentPreviousAnalysisContext(
+                        metric_ids=("room_revenue",),
+                        period_start="2026-06-01",
+                        period_end_exclusive="2026-07-01",
+                    )
+                }
+            )
+            await planner.plan(
+                request,
+                SupervisorCapabilityCatalog(
+                    available_agents=(AgentKind.ANALYSIS_WORKFLOW,),
+                    unavailable_agents=(
+                        AgentKind.INTERNAL_GUIDELINE,
+                        AgentKind.ML_PREDICTION,
+                    ),
+                ),
+                previous_route="ANALYSIS",
+            )
+
+    asyncio.run(run())
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    model_input = json.loads(payload["input"])
+    assert model_input["question"] == "3월부터 5월은?"
+    assert model_input["previous_analysis"] == {
+        "metric_ids": ["room_revenue"],
+        "period_end_exclusive": "2026-07-01",
+        "period_start": "2026-06-01",
+        "route": "ANALYSIS",
+        "schema_version": "AgentPreviousAnalysisContext.v1",
+    }
 
 
 def test_ml_plan_is_materialized_only_from_dynamic_runtime_scope() -> None:

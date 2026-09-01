@@ -47,6 +47,8 @@ def artifact_view_title(source_title: str, view: str) -> str:
     label = _ARTIFACT_VIEW_LABELS.get(view)
     if not normalized or label is None:
         raise ValueError("검증 Artifact view 제목을 만들 수 없습니다.")
+    if normalized.casefold() == "analysis result":
+        return f"분석 {label}"
     suffix = f" · {label}"
     return f"{normalized[:255 - len(suffix)].rstrip()}{suffix}"
 

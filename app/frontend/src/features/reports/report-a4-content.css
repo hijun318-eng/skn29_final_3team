@@ -201,10 +201,16 @@
 }
 
 .answer-report-page .report-data-provenance {
+  max-inline-size: 34mm;
+  flex: 0 1 auto;
+  align-items: flex-start;
   color: #6b5128;
   border-color: #e5cea0;
   background: #fff8e8;
   box-shadow: none;
+  font-size: 6.5pt;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .answer-report-page .report-data-provenance > svg {
@@ -213,6 +219,15 @@
 
 .answer-report-page .report-data-provenance b {
   color: #704c15;
+}
+
+.answer-report-page .generated-report-block > header {
+  align-items: flex-start;
+}
+
+.answer-report-page .generated-report-block > header > div {
+  min-inline-size: 0;
+  flex: 1;
 }
 
 .answer-report-page .notion-data-status b {

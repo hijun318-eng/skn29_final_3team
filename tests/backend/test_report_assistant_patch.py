@@ -374,6 +374,38 @@ class ReportAssistantPatchTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Artifact view block 제목"):
             apply_report_assistant_patch(self.definition, patch, self.bindings)
 
+    def test_internal_artifact_title_is_not_exposed_to_report_readers(self) -> None:
+        """저장소 내부 기본 제목은 새 보고서 block에 사용자용 제목으로 정규화한다."""
+
+        binding = VerifiedArtifactBinding(
+            artifact_id="artifact-internal",
+            query_id="query-internal",
+            checksum="b" * 64,
+            source_title="Analysis result",
+            available_views=frozenset({"chart"}),
+        )
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "새 차트를 추가합니다.",
+            "operations": [{
+                "op": "add_artifact_view",
+                "artifact_ref": "new_result",
+                "view": "chart",
+                "title": "분석 차트",
+                "placement": {"width": "full"},
+            }],
+        })
+
+        result = apply_report_assistant_patch(
+            self.definition,
+            patch,
+            {**self.bindings, "new_result": binding},
+        )
+
+        self.assertEqual(
+            "분석 차트",
+            next(block.title for block in result.blocks if block.artifact_id == "artifact-internal"),
+        )
+
     def test_table_settings_and_artifact_view_presentation_are_typed(self) -> None:
         """표와 신규 Artifact view는 해당 view에 허용된 renderer 설정만 저장한다."""
 

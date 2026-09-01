@@ -81,6 +81,14 @@ assert.equal(
   "경영진이 정한 월별 매출 차트",
 );
 assert.equal(
+  normalizeGeneratedArtifactViewTitle("Analysis result · 차트", sameYear, "chart"),
+  "2026년 5월~8월 객실 매출 비교",
+);
+assert.equal(
+  normalizeGeneratedArtifactViewTitle("Analysis result · 핵심 지표", sameYear, "artifact"),
+  "2026년 5월~8월 객실 매출 핵심 지표",
+);
+assert.equal(
   normalizeGeneratedReportTitle(
     "2026.05.01–2026.08.30 객실 매출 분석 보고서",
     sameYear,

@@ -202,6 +202,7 @@ assert.doesNotMatch(appStyles, /\.report-editor-portal\{[^}]*inset:0/);
 assert.match(blockControls, /<ReportFloatingPanel/);
 assert.match(markdownEditor, /<ReportFloatingPanel/);
 assert.doesNotMatch(markdownEditor, /changeMode|onModeChange|>미리보기<|>편집</);
+assert.doesNotMatch(editorBlock, /setMarkdownMode/);
 assert.match(markdownEditor, /\/ 를 누르면 제목·목록·표를 추가/);
 assert.match(page, /className=\{`report-block-drag-overlay/);
 assert.match(viewport, /REPORT_EDITOR_MIN_READABLE_SCALE = 0\.9/);

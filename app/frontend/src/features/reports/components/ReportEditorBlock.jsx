@@ -91,7 +91,6 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   const titleTransactionRef = useRef(false);
 
   useEffect(() => () => window.clearTimeout(titleTimerRef.current), []);
-  useEffect(() => setMarkdownMode("edit"), [block.id]);
 
   const setBlockNodeRef = useCallback((node) => {
     blockNodeRef.current = node;

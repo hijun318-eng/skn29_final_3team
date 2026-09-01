@@ -188,6 +188,7 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
         "/v1/tools/internal-manual-answer",
     ]
     assert calls[0][1]["resolved_question"] == "객실 승인 절차"
+    assert calls[0][1]["top_k"] == 3
     assert calls[1][1]["query"] == calls[0][1]["resolved_question"]
     assert calls[1][1]["retrieval_request_id"] == retrieval_request_id
     assert calls[0][1]["trace_id"] == calls[1][1]["trace_id"] == trace_id

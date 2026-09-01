@@ -507,7 +507,9 @@ class InternalManualAgent:
             for document_id in selected_document_ids
             if document_id.strip()
         ))[:document_limit]
-        search_top_k = 10 if selected_ids else 8 if domains else 5
+        # 자동 route probe와 실제 실행의 기본 후보 수를 같게 유지해, 승인 시점과
+        # 답변 시점의 ANN 후보 집합이 달라지는 순위 변동을 막는다.
+        search_top_k = 10 if selected_ids else 8 if domains else 3
         contextual_query = (
             resolved_question
             or (

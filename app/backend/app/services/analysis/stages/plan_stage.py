@@ -176,7 +176,11 @@ class AnalysisPlanStage:
             # 2-B. 단일 승인 Serving View의 공통 연산은 질문을 다시 해석하지 않고
             # 서버 소유 typed plan에서 직접 AST를 만든다. 현재 구조 범위 밖이면 기존
             # Node 2 후보를 사용하되 아래의 동일한 G2 검증을 생략하지 않는다.
-            plan = self._support.typed_sql_plan(analysis_plan, package)
+            plan = (
+                None
+                if self._sql_generation_mode is SqlGenerationMode.MODEL_ONLY
+                else self._support.typed_sql_plan(analysis_plan, package)
+            )
             if plan is None:
                 if (
                     state.approved_semantic_snapshot is not None

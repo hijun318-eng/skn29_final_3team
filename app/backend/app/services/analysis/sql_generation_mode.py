@@ -15,6 +15,7 @@ class SqlGenerationMode(str, Enum):
 
     HYBRID = "hybrid"
     COMPILER_ONLY = "compiler_only"
+    MODEL_ONLY = "model_only"
 
 
 class SqlGenerationEvidenceMode(str, Enum):

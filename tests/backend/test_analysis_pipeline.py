@@ -692,6 +692,43 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             any("node=typed_sql_compiler" in detail for detail in model_traces)
         )
 
+    async def test_model_only_uses_node2_even_when_typed_compiler_supports_plan(self):
+        """MODEL_ONLY는 Compiler 지원 여부와 관계없이 Node 2 후보를 G2로 검증한다."""
+
+        serving_fqn = "serving.semantic.observations"
+        asset = copy.deepcopy(ASSET)
+        asset["fqn"] = serving_fqn
+        asset["metrics"][0]["asset_fqn"] = serving_fqn
+        asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = serving_fqn
+        asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        model_plan = copy.deepcopy(VALID_PLAN)
+        model_plan["sql"] = VALID_SQL.replace(ASSET_FQN, serving_fqn)
+        model_plan["declared_assets"] = [serving_fqn]
+        model_plan["declared_columns"] = [
+            {**item, "asset_fqn": serving_fqn}
+            for item in model_plan["declared_columns"]
+        ]
+        adapter = AsyncRuntimeDataPlatform(asset=asset)
+        model = model_with(node2=model_plan)
+        execution = {}
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model,
+            execution_sink=execution.update,
+            sql_generation_mode=SqlGenerationMode.MODEL_ONLY,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(
+            ["node1", "node2", "node3"],
+            [node for node, _ in model.calls],
+        )
+        self.assertNotEqual("typed_sql_compiler", execution["plan"].get("plan_source"))
+        self.assertEqual(["LLM", None], adapter.bound_generation_modes)
+
     async def test_compiler_only_blocks_unsupported_plan_without_node2_or_query(self):
         adapter = AsyncRuntimeDataPlatform()
         model = model_with()

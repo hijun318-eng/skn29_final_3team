@@ -76,8 +76,6 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   onToggleLock,
   onRetryArtifact,
 }) {
-  const [markdownMode, setMarkdownMode] = useState("edit");
-  const isBlockPreview = block.type === "text" && markdownMode === "preview";
   const {
     attributes,
     listeners,
@@ -272,7 +270,6 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       <MarkdownBlockEditor
         block={block}
         disabled={!isDraft || locked}
-        onModeChange={setMarkdownMode}
         onUpdate={updateBlock}
       />
     );
@@ -328,7 +325,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       ref={setBlockNodeRef}
       data-block-id={block.id}
       tabIndex={-1}
-      className={`editor-block notion-block ${selected ? "selected" : ""} ${dragging ? "dragging is-dragging" : ""} ${locked ? "locked" : ""} ${isBlockPreview ? "is-block-preview" : ""}`}
+      className={`editor-block notion-block ${selected ? "selected" : ""} ${dragging ? "dragging is-dragging" : ""} ${locked ? "locked" : ""}`}
       aria-label={`${displayTitle || "제목 없음"} 블록${selected ? ", 선택됨" : ""}${locked ? ", 잠김" : ""}`}
       onClick={selectBlock}
       onFocusCapture={selectBlockFromKeyboard}
@@ -370,9 +367,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
         )}
       </header>
       {isDraft && block.type === "text" ? (
-        isBlockPreview
-          ? <h2 className="notion-block-title notion-block-title--preview">{displayTitle}</h2>
-          : <input
+        <input
             className="notion-block-title"
             aria-label={`${displayTitle || "제목 없음"} 제목`}
             value={displayTitle}
@@ -387,7 +382,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
               updateBlock({ title: event.target.value }, record);
             }}
             placeholder="블록 제목을 입력하세요"
-          />
+        />
       ) : <h2 className="notion-block-title notion-block-title--readonly">{displayTitle}</h2>}
       {body}
       {isDraft && !locked && (

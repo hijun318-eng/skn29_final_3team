@@ -251,6 +251,46 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 UUID(artifact_id),
             )
 
+        report_id = "00000000-0000-0000-0000-000000000097"
+        report_block = ReportBlock(
+            "00000000-0000-0000-0000-000000000096",
+            "관리자 열람 근거",
+            artifact_id,
+            12,
+            "query-admin-preview",
+        )
+        repository.get_version = AsyncMock(return_value=ReportDefinitionVersion(
+            report_id,
+            1,
+            DefinitionStatus.DRAFT,
+            "다른 사용자의 보고서",
+            (report_block,),
+        ))
+        artifact_row = {
+            "artifact_id": UUID(artifact_id),
+            "title": "관리자 열람 근거",
+            "narrative_markdown": "검증된 근거",
+            "data_snapshot_json": {},
+            "evidence_json": {},
+            "chart_spec_json": None,
+            "artifact_checksum": "a" * 64,
+            "trino_query_id": "query-admin-preview",
+        }
+        report_result = MagicMock()
+        report_result.mappings.return_value.one_or_none.return_value = artifact_row
+        session.execute.return_value = report_result
+
+        loaded = await repository.get_report_artifact(report_id, 1, artifact_id)
+
+        report_sql = str(session.execute.await_args.args[0])
+        report_parameters = session.execute.await_args.args[1]
+        self.assertEqual(artifact_row, loaded)
+        self.assertIn("r.user_id = d.owner_id", report_sql)
+        self.assertIn(":manage_all OR d.owner_id = :owner_id", report_sql)
+        self.assertEqual(True, report_parameters["manage_all"])
+        self.assertEqual(UUID(report_id), report_parameters["definition_id"])
+        self.assertEqual(repository._owner_id, report_parameters["owner_id"])
+
     async def test_report_view_spec_survives_definition_and_replace_roundtrip(self):
         router = create_report_router(InMemoryReportRepository())
         definition_id = str(uuid4())

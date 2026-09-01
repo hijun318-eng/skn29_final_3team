@@ -116,6 +116,10 @@ assert.match(page, /draft\.addTemplateBlock\("artifact-chart", null, \{ chartTyp
 assert.match(page, /onAddChart=\{addChartBlock\}/);
 assert.match(page, /<ReportPresentation/);
 assert.match(page, /renderBlock=\{page\.renderPreviewBlock\}/);
+assert.match(page, /currencyControl=\{documentCurrencyControl\}/);
+assert.match(documentView, /\bMaximize2\b/);
+assert.match(documentView, /\bMinimize2\b/);
+assert.match(documentView, /function ReportDocumentView\(\{[\s\S]*?currencyControl,/);
 assert.match(page, /onToggleTheme=\{onToggleTheme\}/);
 assert.match(page, /theme=\{theme\}/);
 assert.match(shortcutHelp, /현재 보고서 저장/);
@@ -188,7 +192,7 @@ assert.match(builderStyles, /\.notion-block>\.report-block-chrome\{[^}]*z-index:
 assert.match(builderStyles, /\.report-block-actions\{[^}]*flex-direction:column/);
 assert.match(builderStyles, /\.report-block-actions \.report-drag-handle,[^\n]*width:34px;height:34px/);
 assert.match(builderStyles, /\.report-resize-handle\{[^}]*width:44px!important;[^}]*height:44px!important/);
-assert.match(builderStyles, /\.report-resize-handle::after\{[^}]*width:10px;height:10px/);
+assert.match(builderStyles, /\.report-resize-handle::after\{[^}]*width:8px;height:8px/);
 assert.match(builderStyles, /\.report-resize-handle--s\{[^}]*bottom:-22px;left:calc\(50% - 22px\)/);
 assert.match(floatingPanel, /createPortal\(/);
 assert.match(floatingPanel, /getBoundingClientRect\(\)/);
@@ -197,6 +201,8 @@ assert.match(appStyles, /\.report-editor-portal\{[^}]*width:0;height:0;[^}]*back
 assert.doesNotMatch(appStyles, /\.report-editor-portal\{[^}]*inset:0/);
 assert.match(blockControls, /<ReportFloatingPanel/);
 assert.match(markdownEditor, /<ReportFloatingPanel/);
+assert.doesNotMatch(markdownEditor, /changeMode|onModeChange|>미리보기<|>편집</);
+assert.match(markdownEditor, /\/ 를 누르면 제목·목록·표를 추가/);
 assert.match(page, /className=\{`report-block-drag-overlay/);
 assert.match(viewport, /REPORT_EDITOR_MIN_READABLE_SCALE = 0\.9/);
 assert.match(canvas, /"--report-editor-inverse-scale": 1 \/ frame\.scale/);
@@ -257,10 +263,14 @@ assert.match(properties, /unifySelectedSize\("height"\)/);
 assert.match(page, /onSelectBlocks=\{page\.editorTools\.selectBlocks\}/);
 assert.doesNotMatch(page, /분석 결과 전체로 추가|Artifact 전체로 추가/);
 assert.match(page, /독립 요소로 추가/);
-assert.match(toolPanel, /1\. 분석 원본/);
-assert.match(toolPanel, /2\. 추가할 분석 요소/);
+assert.match(toolPanel, /1\. 분석 결과 선택/);
+assert.match(toolPanel, /compactArtifacts\.length/);
+assert.match(toolPanel, /compactArtifacts\.map/);
+assert.match(toolPanel, /2\. 추가할 내용/);
 assert.match(toolPanel, /selectedAvailableViews\.includes\(template\.view\)/);
 assert.match(artifactLibrary, /aria-pressed=\{selected\}/);
+assert.match(artifactLibrary, /const sourceLabel = source\.title \|\| source\.question/);
+assert.match(artifactLibrary, /<b title=\{sourceLabel\}>\{sourceLabel\}<\/b>/);
 assert.doesNotMatch(artifactLibrary, /useDraggable|`artifact:\$\{/);
 for (const templateId of ["artifact-summary", "artifact-kpi", "artifact-chart", "artifact-table"]) {
   assert.match(reportPresentation, new RegExp(`id: "${templateId}"`));

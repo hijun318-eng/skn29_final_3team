@@ -82,14 +82,12 @@ function markdownSlashContext(content, cursor) {
 export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
   block,
   disabled,
-  onModeChange,
   onUpdate,
 }) {
   const textareaRef = useRef(null);
   const slashMenuRef = useRef(null);
   const typingTimerRef = useRef(null);
   const typingTransactionRef = useRef(false);
-  const [mode, setMode] = useState("edit");
   const [slash, setSlash] = useState(null);
   const [slashIndex, setSlashIndex] = useState(0);
   const slashCommands = slash ? MARKDOWN_INSERT_COMMANDS.filter((command) => (
@@ -105,7 +103,7 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
     typingTransactionRef.current = false;
     window.clearTimeout(typingTimerRef.current);
     return () => window.clearTimeout(typingTimerRef.current);
-  }, [block.id, mode]);
+  }, [block.id]);
 
   useEffect(() => {
     slashMenuRef.current
@@ -116,21 +114,6 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
   const updateSlash = (content, cursor) => {
     setSlash(markdownSlashContext(content, cursor));
     setSlashIndex(0);
-  };
-
-  const changeMode = (nextMode) => {
-    if (mode === nextMode) return;
-    setMode(nextMode);
-    setSlash(null);
-    onModeChange?.(nextMode);
-    if (nextMode === "edit") {
-      requestAnimationFrame(() => {
-        const textarea = textareaRef.current;
-        const cursor = textarea?.value.length ?? 0;
-        textarea?.focus();
-        textarea?.setSelectionRange(cursor, cursor);
-      });
-    }
   };
 
   const insertSlashCommand = (command) => {
@@ -210,11 +193,9 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
     });
   };
 
-  const preview = disabled || mode === "preview";
-
   return (
-    <div className={`report-markdown-editor ${preview ? "is-preview" : "is-editing"}`}>
-      {!disabled && mode === "edit" && (
+    <div className={`report-markdown-editor ${disabled ? "is-preview" : "is-editing"}`}>
+      {!disabled && (
         <div className="report-markdown-toolbar" aria-label={`${block.title} Markdown 도구`}>
           <div>
             <button type="button" title="굵게" aria-label="굵게" onMouseDown={(event) => event.preventDefault()} onClick={() => apply("bold")}><Bold size={14} /></button>
@@ -224,20 +205,10 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
             <button type="button" title="인용" aria-label="인용" onMouseDown={(event) => event.preventDefault()} onClick={() => apply("quote")}><Quote size={14} /></button>
             <button type="button" title="링크" aria-label="링크" onMouseDown={(event) => event.preventDefault()} onClick={() => apply("link")}><Link2 size={14} /></button>
           </div>
-          <div className="report-markdown-mode">
-            <button type="button" onClick={() => changeMode("preview")}>미리보기</button>
-          </div>
         </div>
       )}
-      {preview ? (
-        <>
-          {!disabled && (
-            <div className="report-markdown-preview-actions" data-report-editor-chrome="true">
-              <button type="button" onClick={() => changeMode("edit")}>편집</button>
-            </div>
-          )}
-          <div className="report-markdown-preview"><MarkdownText content={block.content} /></div>
-        </>
+      {disabled ? (
+        <div className="report-markdown-preview"><MarkdownText content={block.content} /></div>
       ) : (
         <>
           <textarea
@@ -272,7 +243,7 @@ export const MarkdownBlockEditor = memo(function MarkdownBlockEditor({
               }
             }}
             onKeyDown={handleTextareaKeyDown}
-            placeholder="내용을 입력하세요. Markdown 표·목록·체크박스·링크를 사용할 수 있습니다."
+            placeholder="내용을 입력하세요. / 를 누르면 제목·목록·표를 추가할 수 있습니다."
           />
           <ReportFloatingPanel
             anchorRef={textareaRef}

@@ -22,9 +22,9 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     description: "문단·목록·Markdown",
     icon: Type,
     blockTitle: "새 텍스트",
-    content: "새 문단을 작성하세요.",
+    content: "",
     w: 8,
-    h: 3,
+    h: 2,
   },
   {
     id: "section",
@@ -32,9 +32,9 @@ export { reportEvidenceReady } from "../reportArtifactEvidence";
     description: "소제목이 있는 문단",
     icon: Heading2,
     blockTitle: "새 섹션",
-    content: "## 새 섹션\n섹션 내용을 입력하세요.",
+    content: "",
     w: 8,
-    h: 3,
+    h: 2,
   },
   {
     id: "executive",

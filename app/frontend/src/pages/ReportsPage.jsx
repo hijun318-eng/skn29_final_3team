@@ -78,6 +78,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
 
   if (page.view === "document" && lifecycle.selectedDefinition) {
     return <ReportDocumentView
+      currencyControl={documentCurrencyControl}
       error={lifecycle.error}
       errorRef={page.errorRef}
       finalDocument={lifecycle.finalDocument}

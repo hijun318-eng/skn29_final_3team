@@ -81,6 +81,24 @@ def test_dedicated_sql_route_resolves_served_alias_and_exact_capacity() -> None:
     assert sql_route.capacity.runtime_max_output_tokens == 1024
 
 
+def test_cp135_capacity_and_runpod_origin_are_explicitly_registered() -> None:
+    manifest = load_model_runtime_manifest()
+    capacity = manifest.capacity_for("node2-qwen35-2b-cp135-20260901")
+    sql_route = next(
+        route for route in manifest.route_profiles if route.route_id == "sql"
+    )
+
+    assert capacity.base_model == "Qwen/Qwen3.5-2B"
+    assert capacity.snapshot == (
+        "yoondaesung/answervice-node2-qwen35-2b-cp135"
+        "@3cea09dcb30b19f7ee584d2de299fb7f2e5c49a8"
+    )
+    assert capacity.context_window_tokens == 8192
+    assert capacity.runtime_max_output_tokens == 1536
+    assert sql_route.data_boundary == "external"
+    assert sql_route.approved_endpoint_origins == ("https://api.runpod.ai",)
+
+
 @pytest.mark.parametrize("missing", tuple(NODE2))
 def test_partially_configured_sql_route_fails_closed(missing: str) -> None:
     environment = PRIMARY | NODE2

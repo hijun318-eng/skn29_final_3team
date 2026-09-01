@@ -207,6 +207,7 @@ def test_backend_image_includes_node2_runtime_evidence():
     for artifact in (
         "evals/node2_qwen35_2b_full3000_huggingface.receipt.json",
         "evals/node2_qwen35_2b_full3000_canary.v1.json",
+        "evals/node2_qwen35_2b_cp135_huggingface.receipt.json",
     ):
         assert artifact in dockerfile
 

@@ -3,7 +3,7 @@
   "maximum_context_tokens": 8192,
   "reserved_system_tokens": 700,
   "reserved_question_tokens": 512,
-  "maximum_output_tokens": 700,
+  "maximum_output_tokens": 1200,
   "generation_timeout_seconds": 20,
   "maximum_retries": 1,
   "minimum_relevance_score": 0.18,
@@ -12,5 +12,6 @@
   "maximum_points_per_article": 6,
   "maximum_answer_chars": 20000,
   "maximum_response_bytes": 1048576,
-  "allowed_http_hosts": ["rag-local-answer"]
+  "allowed_http_hosts": ["rag-local-answer"],
+  "allowed_https_hosts": ["api.openai.com"]
 }

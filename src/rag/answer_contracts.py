@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AnswerStatus(StrEnum):
@@ -88,3 +88,30 @@ class AnswerRequest(BaseModel):
     evidence_blocks: list[dict[str, Any]]
     intent: Literal["PROCESS", "IMMEDIATE_ACTION", "DECISION_CRITERIA", "REGULATION_CHECK", "COMPARISON", "SUMMARY"] = "REGULATION_CHECK"
     retrieval_request_id: str | None = None
+
+
+class GroundedModelClaim(BaseModel):
+    """외부 모델이 선택할 수 있는 원문 claim과 evidence 연결의 닫힌 계약이다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class GroundedModelSection(BaseModel):
+    """표시 제목과 근거 claim만 모델에 맡기고 문서 metadata는 서버가 봉인한다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    claims: list[GroundedModelClaim]
+
+
+class GroundedModelOutput(BaseModel):
+    """GPT가 반환하는 최소 출력이며 최종 사용자 응답은 서버가 다시 구성한다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ANSWER", "NO_EVIDENCE"]
+    sections: list[GroundedModelSection]

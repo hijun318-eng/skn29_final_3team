@@ -7,7 +7,15 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .answer_contracts import AnswerContextReceipt, AnswerRequest, AnswerResponse, Citation, Conflict
+from .answer_contracts import (
+    AnswerClaim,
+    AnswerContextReceipt,
+    AnswerRequest,
+    AnswerResponse,
+    Citation,
+    Conflict,
+    GroundedModelOutput,
+)
 from .answer_context import AnswerContextPacker
 from .answer_prompt import build_answer_prompt, serialize_evidence_blocks
 from .answer_safety import AnswerSafetySettings, EvidenceSafetyGate
@@ -32,6 +40,7 @@ class AnswerService:
     def __init__(self, answer_config: Dict[str, Any], api_key: str, endpoint: str):
         parsed_endpoint = urlsplit(endpoint)
         allowed_http_hosts = answer_config.get("allowed_http_hosts", [])
+        allowed_https_hosts = answer_config.get("allowed_https_hosts")
         if (
             parsed_endpoint.scheme not in {"http", "https"}
             or not parsed_endpoint.hostname
@@ -46,8 +55,26 @@ class AnswerService:
             )
             or len(allowed_http_hosts) != len(set(allowed_http_hosts))
             or (
+                allowed_https_hosts is not None
+                and (
+                    not isinstance(allowed_https_hosts, list)
+                    or any(
+                        not isinstance(host, str)
+                        or not host.strip()
+                        or host != host.strip().lower()
+                        for host in allowed_https_hosts
+                    )
+                    or len(allowed_https_hosts) != len(set(allowed_https_hosts))
+                )
+            )
+            or (
                 parsed_endpoint.scheme == "http"
                 and parsed_endpoint.hostname.lower() not in allowed_http_hosts
+            )
+            or (
+                parsed_endpoint.scheme == "https"
+                and allowed_https_hosts is not None
+                and parsed_endpoint.hostname.lower() not in allowed_https_hosts
             )
         ):
             raise ValueError("RAG answer endpoint is invalid")
@@ -67,6 +94,9 @@ class AnswerService:
         )
         self.maximum_response_bytes = self._bounded_response_bytes(
             self.config.get("maximum_response_bytes", 1048576)
+        )
+        self.maximum_claims = self._bounded_claims(
+            self.config.get("maximum_points_per_article", 6)
         )
         relevance_score = self._bounded_relevance_score(
             self.config.get("minimum_relevance_score", 0.18)
@@ -115,6 +145,14 @@ class AnswerService:
 
         if type(value) is not int or not 1024 <= value <= 4 * 1024 * 1024:
             raise ValueError("RAG answer response limit must be between 1024 and 4194304 bytes")
+        return value
+
+    @staticmethod
+    def _bounded_claims(value: Any) -> int:
+        """외부 모델이 선택할 수 있는 전체 claim 수를 1~20개로 제한한다."""
+
+        if type(value) is not int or not 1 <= value <= 20:
+            raise ValueError("RAG answer claim limit must be between 1 and 20")
         return value
 
     @staticmethod
@@ -184,12 +222,19 @@ class AnswerService:
             request.intent,
         )
 
+        response_schema = GroundedModelOutput.model_json_schema()
         payload = {
             "model": self.config.get("model", "gpt-4o-mini"),
             "messages": messages,
-            "max_tokens": self.config.get("maximum_output_tokens", 700),
-            "response_format": {"type": "json_object"},
-            "temperature": 0.0,
+            "max_completion_tokens": self.config.get("maximum_output_tokens", 700),
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "answervice_grounded_rag_answer",
+                    "strict": True,
+                    "schema": response_schema,
+                },
+            },
         }
 
         headers = {
@@ -222,7 +267,31 @@ class AnswerService:
                     if attempt < self.max_retries:
                         continue
                     break
-                parsed_response = AnswerResponse.model_validate_json(content)
+                model_output = GroundedModelOutput.model_validate_json(content)
+                source_citations = {
+                    str(block.get("evidence_id") or ""): str(block.get("citation") or "")
+                    for block in packed_request.evidence_blocks
+                }
+                referenced_ids = list(dict.fromkeys(
+                    evidence_id
+                    for section in model_output.sections
+                    for claim in section.claims
+                    for evidence_id in claim.evidence_ids
+                ))
+                parsed_response = AnswerResponse(
+                    request_id=request.request_id,
+                    trace_id=request.trace_id,
+                    status=model_output.status,
+                    answer="",
+                    sections=[section.model_dump() for section in model_output.sections],
+                    citations=[
+                        Citation(
+                            evidence_id=evidence_id,
+                            citation=source_citations.get(evidence_id, ""),
+                        )
+                        for evidence_id in referenced_ids
+                    ],
+                )
 
                 # Override request/trace IDs to match input
                 parsed_response.request_id = request.request_id
@@ -358,6 +427,7 @@ class AnswerService:
                     )
                 cited_ids.add(citation.evidence_id)
 
+            self._split_canonically_bound_lines(response, evidence_segments)
             referenced_ids: list[str] = []
             for section in response.sections:
                 for claim in section.claims:
@@ -369,6 +439,7 @@ class AnswerService:
             ]
             if (
                 any(not text.strip() for text in bound_texts)
+                or len(bound_texts) > self.maximum_claims
                 or sum(len(text) for text in bound_texts) > self.maximum_answer_chars
             ):
                 return self._generation_failed(
@@ -448,6 +519,108 @@ class AnswerService:
             )
 
         return response
+
+    @classmethod
+    def _split_canonically_bound_lines(
+        cls,
+        response: AnswerResponse,
+        evidence_segments: dict[str, frozenset[str]],
+    ) -> None:
+        """모델이 하나로 묶은 원문 표·불릿 행을 검증 가능한 claim 단위로 분리한다."""
+
+        for section in response.sections:
+            normalized: list[AnswerClaim] = []
+            for claim in section.claims:
+                lines = [line.strip() for line in claim.text.splitlines() if line.strip()]
+                if len(lines) > 1 and all(
+                    cls._claim_is_canonically_bound(
+                        line,
+                        claim.evidence_ids,
+                        evidence_segments,
+                    )
+                    for line in lines
+                ):
+                    normalized.extend(
+                        AnswerClaim(text=line, evidence_ids=list(claim.evidence_ids))
+                        for line in lines
+                    )
+                elif cls._table_projection_is_bound(
+                    lines,
+                    claim.evidence_ids,
+                    evidence_segments,
+                ):
+                    for evidence_id in claim.evidence_ids:
+                        evidence_segments[evidence_id] = frozenset(
+                            set(evidence_segments[evidence_id])
+                            | {cls._normalize_claim_segment(line) for line in lines}
+                        )
+                    normalized.extend(
+                        AnswerClaim(text=line, evidence_ids=list(claim.evidence_ids))
+                        for line in lines
+                    )
+                else:
+                    normalized.append(claim)
+            section.claims = normalized
+
+    @classmethod
+    def _table_projection_is_bound(
+        cls,
+        lines: list[str],
+        evidence_ids: list[str],
+        evidence_segments: dict[str, frozenset[str]],
+    ) -> bool:
+        """표 열 투영이 각 원문 행의 동일 column 조합인지 검증하고 행 혼합을 거부한다."""
+
+        projected_rows = [cls._table_cells(line) for line in lines]
+        if (
+            len(lines) < 2
+            or not evidence_ids
+            or any(row is None for row in projected_rows)
+            or len({len(row) for row in projected_rows if row is not None}) != 1
+            or any(character.isdigit() for cell in projected_rows[0] for character in cell)
+        ):
+            return False
+        projected = [row for row in projected_rows if row is not None]
+        for evidence_id in evidence_ids:
+            if evidence_id not in evidence_segments:
+                return False
+            source_rows = [
+                cells
+                for segment in evidence_segments[evidence_id]
+                if (cells := cls._table_cells(segment)) is not None
+            ]
+            if not any(
+                all(
+                    any(
+                        len(source_row) > max(indices)
+                        and [source_row[index] for index in indices] == projected_row
+                        for source_row in source_rows
+                    )
+                    for projected_row in projected[1:]
+                )
+                for source_header in source_rows
+                if (indices := cls._subsequence_indices(source_header, projected[0]))
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _table_cells(line: str) -> list[str] | None:
+        cells = [cell.strip() for cell in line.split("|") if cell.strip()]
+        return cells if len(cells) >= 2 else None
+
+    @staticmethod
+    def _subsequence_indices(source: list[str], selected: list[str]) -> list[int]:
+        indices: list[int] = []
+        cursor = 0
+        for cell in selected:
+            try:
+                index = source.index(cell, cursor)
+            except ValueError:
+                return []
+            indices.append(index)
+            cursor = index + 1
+        return indices
 
     @staticmethod
     def _claim_is_canonically_bound(

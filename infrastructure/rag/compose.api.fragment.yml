@@ -23,9 +23,9 @@ services:
       OPENAI_EMBEDDING_ENDPOINT: ${OPENAI_EMBEDDING_ENDPOINT:-https://api.openai.com/v1/embeddings}
       RAG_DEVICE: ${RAG_DEVICE:-cpu}
       RAG_SNIPPET_MAX_CHARS: ${RAG_SNIPPET_MAX_CHARS:-1800}
-      RAG_ANSWER_ENDPOINT: ${RAG_ANSWER_ENDPOINT:-http://rag-local-answer:8001/v1/chat/completions}
-      RAG_ANSWER_MODEL: ${RAG_ANSWER_MODEL:-rag-local-answer-v2}
-      RAG_ANSWER_API_KEY: ${RAG_ANSWER_API_KEY:-rag-local-no-secret}
+      RAG_ANSWER_ENDPOINT: ${RAG_ANSWER_ENDPOINT:-https://api.openai.com/v1/chat/completions}
+      RAG_ANSWER_MODEL: ${RAG_ANSWER_MODEL:-gpt-5.4-mini}
+      RAG_ANSWER_API_KEY: ${RAG_ANSWER_API_KEY:-${OPENAI_API_KEY:-}}
       RAG_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:-}
     volumes:
       - "${RAG_MODELS_DIR:-../rag/models}:/models:ro"

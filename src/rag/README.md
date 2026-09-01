@@ -95,8 +95,8 @@ MCP dispatcher는 2025-06-18 Tool 계약 형식에 맞추되 transport endpoint�
 | `OPENAI_EMBEDDING_DIMENSIONS` | `1024` |
 | `OPENAI_EMBEDDING_ENDPOINT` | `https://api.openai.com/v1/embeddings` |
 | `RAG_MODEL_PATH` | Qwen fallback를 명시적으로 빌드할 때만 사용 |
-| `RAG_ANSWER_ENDPOINT` | `http://rag-local-answer:8001/v1/chat/completions` |
-| `RAG_ANSWER_MODEL` | `rag-local-answer-v2` |
+| `RAG_ANSWER_ENDPOINT` | `https://api.openai.com/v1/chat/completions` |
+| `RAG_ANSWER_MODEL` | `gpt-5.4-mini` |
 | `RAG_DEVICE` | `cpu` |
 | `RAG_SMOKE_QUERIES_PATH` | `evals/testsets/rag/smoke_queries.json` |
 | `RAG_EVIDENCE_DIR` | `evals/runs/rag` |
@@ -178,7 +178,7 @@ python -m src.rag evaluate-answer evals/testsets/rag/answer_gold_v1.jsonl
 보조 RAG는 분석 Core의 G1/G2/G3 또는 Trino 경로를 대체하지 않는다. `rag-api`는 내부 매뉴얼 검색과 근거 답변만 담당하며, 검색 결과의 `evidence_id` 밖 인용은 E2E에서 실패 처리한다.
 
 1. `infrastructure/rag/.env.example`의 RAG DB, 모델 경로, 답변 endpoint, HMAC secret을 채운다.
-2. 승인 전 candidate 검증은 `docker compose --profile rag-candidate up -d --build rag-postgres rag-api rag-local-answer`로 서비스와 pgvector를 시작한다.
+2. 승인 전 candidate 검증은 `docker compose --profile rag-candidate up -d --build rag-postgres rag-api`로 서비스와 pgvector를 시작한다.
 3. 문서 ingestion을 수행한 뒤 `docker compose --profile rag-e2e run --rm rag-e2e`를 실행한다.
 4. 결과 JSON은 `evals/runs/rag/manual_rag_e2e_<request_id>.json`에 저장한다.
 
@@ -192,6 +192,6 @@ Run the complete local Manual/Policy RAG stack without an external LLM API key:
 python infrastructure/rag/bootstrap_portable_e2e.py --download-model
 ```
 
-The bootstrap downloads `Qwen/Qwen3-Embedding-0.6B` only when it is absent, prepares `tmp/rag-build-context`, starts `rag-postgres`, `rag-local-answer`, `rag-api`, and `rag-e2e`, then exits successfully only when the E2E contract succeeds. The local answer service is deterministic and evidence-bound; it does not use facts outside the retrieved evidence. Override `RAG_ANSWER_ENDPOINT`, `RAG_ANSWER_MODEL`, and `RAG_ANSWER_API_KEY` only when connecting a production OpenAI-compatible endpoint.
+The bootstrap downloads `Qwen/Qwen3-Embedding-0.6B` only when it is absent, prepares `tmp/rag-build-context`, starts `rag-postgres`, `rag-local-answer`, `rag-api`, and `rag-e2e`, then exits successfully only when the E2E contract succeeds. The portable profile explicitly injects the deterministic local answer service and does not use facts outside the retrieved evidence. The regular RAG profile uses the configured OpenAI answer endpoint.
 
-`RAG_ANSWER_ENDPOINT`는 외부 endpoint라면 HTTPS를 사용해야 한다. 평문 HTTP는 `config/rag/answer.json`의 `allowed_http_hosts`에 명시된 내부 service hostname만 허용되며 redirect와 환경 proxy는 사용하지 않는다.
+`RAG_ANSWER_ENDPOINT`는 HTTPS host allowlist를 통과해야 한다. 평문 HTTP는 `config/rag/answer.json`의 `allowed_http_hosts`에 명시된 내부 service hostname만 허용되며 redirect와 환경 proxy는 사용하지 않는다. 모델은 strict JSON schema로 원문 claim을 선택하고 최종 답변·인용·문서 metadata는 서버가 검색 evidence와 다시 대조해 봉인한다.

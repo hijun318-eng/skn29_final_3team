@@ -840,8 +840,9 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
         schedule_id = str(uuid4())
         repository = PostgresReportRepository(database_url, owner_id)
         outsider = PostgresReportRepository(database_url, uuid4())
+        manager_id = uuid4()
         manage_all_outsider = PostgresReportRepository(
-            database_url, uuid4(), manage_all=True
+            database_url, manager_id, manage_all=True
         )
         await repository.add_draft(
             ReportDefinitionVersion(
@@ -890,10 +891,10 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
             await outsider.archive_definition(
                 definition_id, actor_role="analyst", trace_id="outsider"
             )
-        with self.assertRaises(KeyError):
-            await manage_all_outsider.archive_definition(
-                definition_id, actor_role="platform_admin", trace_id="manage-all"
-            )
+        managed_repeat = await manage_all_outsider.archive_definition(
+            definition_id, actor_role="platform_admin", trace_id="manage-all-repeat"
+        )
+        self.assertEqual(archived, managed_repeat)
 
         restored = await repository.restore_definition(
             definition_id, actor_role="analyst", trace_id="restore-contract"
@@ -904,6 +905,16 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored, repeated_restore)
         self.assertFalse(restored.archived)
         self.assertFalse((await repository.get_schedule(schedule_id))["enabled"])
+
+        managed_archive = await manage_all_outsider.archive_definition(
+            definition_id, actor_role="platform_admin", trace_id="manage-all-archive"
+        )
+        self.assertTrue(managed_archive.archived)
+        self.assertEqual(str(manager_id), managed_archive.archived_by)
+        managed_restore = await manage_all_outsider.restore_definition(
+            definition_id, actor_role="platform_admin", trace_id="manage-all-restore"
+        )
+        self.assertFalse(managed_restore.archived)
 
         sync_url = make_url(database_url).set(drivername="postgresql+psycopg")
         engine = create_engine(sync_url)
@@ -919,7 +930,7 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
                 {"object_id": definition_id},
             ).all()
         self.assertEqual(
-            [("REPORT_ARCHIVED", 1), ("REPORT_RESTORED", 1)],
+            [("REPORT_ARCHIVED", 2), ("REPORT_RESTORED", 2)],
             [tuple(row) for row in actions],
         )
 

@@ -503,7 +503,7 @@ class ReportDefinitionRepositoryMixin:
         actor_role: str,
         trace_id: str | None = None,
     ) -> ReportDefinitionLifecycle:
-        """소유 보고서를 멱등 보관하고 진행 중 작업이 없을 때 schedule을 함께 끈다."""
+        """접근 가능한 보고서를 멱등 보관하고 진행 중 작업이 없을 때 schedule을 함께 끈다."""
 
         self._validate_lifecycle_actor(actor_role, trace_id)
         definition_uuid = _uuid(definition_id, "definition_id")
@@ -513,11 +513,12 @@ class ReportDefinitionRepositoryMixin:
                     """
                     SELECT definition_id, archived_at, archived_by
                     FROM report_v1.report_definitions
-                    WHERE definition_id = :definition_id AND owner_id = :owner_id
+                    WHERE definition_id = :definition_id
+                      AND (:manage_all OR owner_id = :owner_id)
                     FOR UPDATE
                     """
                 ),
-                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+                {"definition_id": definition_uuid, **self._scope_params()},
             )).mappings().one_or_none()
             if current is None:
                 raise KeyError("Report definition을 찾을 수 없습니다.")
@@ -576,11 +577,12 @@ class ReportDefinitionRepositoryMixin:
                     UPDATE report_v1.report_definitions
                     SET archived_at = now(), archived_by = :owner_id
                     WHERE definition_id = :definition_id
-                      AND owner_id = :owner_id AND archived_at IS NULL
+                      AND (:manage_all OR owner_id = :owner_id)
+                      AND archived_at IS NULL
                     RETURNING definition_id, archived_at, archived_by
                     """
                 ),
-                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+                {"definition_id": definition_uuid, **self._scope_params()},
             )).mappings().one()
             await session.execute(
                 text(
@@ -610,7 +612,7 @@ class ReportDefinitionRepositoryMixin:
         actor_role: str,
         trace_id: str | None = None,
     ) -> ReportDefinitionLifecycle:
-        """소유 보고서를 멱등 복원하며 보관 시 꺼진 schedule은 다시 켜지 않는다."""
+        """접근 가능한 보고서를 멱등 복원하며 보관 시 꺼진 schedule은 다시 켜지 않는다."""
 
         self._validate_lifecycle_actor(actor_role, trace_id)
         definition_uuid = _uuid(definition_id, "definition_id")
@@ -620,11 +622,12 @@ class ReportDefinitionRepositoryMixin:
                     """
                     SELECT definition_id, archived_at, archived_by
                     FROM report_v1.report_definitions
-                    WHERE definition_id = :definition_id AND owner_id = :owner_id
+                    WHERE definition_id = :definition_id
+                      AND (:manage_all OR owner_id = :owner_id)
                     FOR UPDATE
                     """
                 ),
-                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+                {"definition_id": definition_uuid, **self._scope_params()},
             )).mappings().one_or_none()
             if current is None:
                 raise KeyError("Report definition을 찾을 수 없습니다.")
@@ -637,11 +640,12 @@ class ReportDefinitionRepositoryMixin:
                     UPDATE report_v1.report_definitions
                     SET archived_at = NULL, archived_by = NULL
                     WHERE definition_id = :definition_id
-                      AND owner_id = :owner_id AND archived_at IS NOT NULL
+                      AND (:manage_all OR owner_id = :owner_id)
+                      AND archived_at IS NOT NULL
                     RETURNING definition_id, archived_at, archived_by
                     """
                 ),
-                {"definition_id": definition_uuid, "owner_id": self._owner_id},
+                {"definition_id": definition_uuid, **self._scope_params()},
             )).mappings().one()
             await session.execute(
                 text(

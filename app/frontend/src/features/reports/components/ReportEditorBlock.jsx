@@ -240,8 +240,10 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     return () => node.removeEventListener("wheel", resizeTableWithWheel);
   }, [block.type, isDraft, locked, resizeTableWithWheel]);
 
-  const displayX = resizePreview?.x ?? block.x ?? 0;
-  const displayY = Math.max(0, (resizePreview?.y ?? block.y ?? 0) - rowOffset);
+  const previewX = resizePreview?.x ?? block.x ?? 0;
+  const previewY = resizePreview?.y ?? block.y ?? 0;
+  const displayX = previewX;
+  const displayY = Math.max(0, previewY - rowOffset);
   const displayWidth = resizePreview?.w ?? block.w ?? block.columns;
   const displayHeight = resizePreview?.h ?? block.h ?? 1;
   const displayTitle = normalizeGeneratedArtifactViewTitle(block.title, artifact, block.type);

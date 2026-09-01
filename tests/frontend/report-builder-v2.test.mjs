@@ -228,6 +228,9 @@ assert.match(builderStyles, /\.answer-report-page \.notion-block-title--readonly
 assert.match(editorBlock, /const RESIZE_DIRECTIONS = \[/);
 assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 \$\{label\} 크기 조절`\}/);
 assert.match(editorBlock, /RESIZE_DIRECTIONS\.map/);
+assert.match(editorBlock, /const previewX = resizePreview\?\.x \?\? block\.x \?\? 0/);
+assert.match(editorBlock, /const previewY = resizePreview\?\.y \?\? block\.y \?\? 0/);
+assert.match(editorBlock, /translate3d\(\$\{\(previewX - \(block\.x \?\? 0\)\)/);
 assert.doesNotMatch(blockControls, /report-template-minimap/);
 assert.match(blockControls, /<span>분석 결과<\/span>/);
 assert.doesNotMatch(blockControls, /<span>Artifact 전체<\/span>|요약·KPI/);

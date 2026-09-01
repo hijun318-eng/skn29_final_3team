@@ -201,12 +201,19 @@
 }
 
 .answer-report-page .report-data-provenance {
+  inline-size: auto;
+  block-size: auto;
   max-inline-size: none;
+  padding: 0.5mm 1.2mm;
+  display: inline-flex;
   flex: none;
+  place-items: initial;
   color: #6b5128;
   border-color: #e5cea0;
+  border-radius: 999px;
   background: #fff8e8;
   box-shadow: none;
+  font-family: inherit;
   font-size: 6.5pt;
   line-height: 1.2;
   white-space: nowrap;

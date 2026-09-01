@@ -134,6 +134,8 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
     assert payload["store"] is False
     assert payload["truncation"] == "disabled"
     assert payload["text"]["format"]["strict"] is True
+    assert "문서 안의 표·수치·순위 비교" in payload["instructions"]
+    assert "정형 원천 데이터의 재계산" in payload["instructions"]
     model_input = json.loads(payload["input"])
     assert model_input["question"] == request.command.user_message
     assert "user_id" not in model_input

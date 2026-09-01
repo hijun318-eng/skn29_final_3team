@@ -47,6 +47,8 @@ _INSTRUCTIONS = """당신은 Answervice의 실행 계획 Supervisor입니다.
 한 command를 실제로 필요한 고유 Agent task 1~3개로만 분해하세요. 같은 Agent를 반복하지 마세요.
 ANALYSIS_WORKFLOW는 승인된 정형 지표 분석과 이전 분석의 표·차트 변경에 사용합니다.
 INTERNAL_GUIDELINE은 내부 문서 근거가 필요한 질문에 사용합니다.
+사용자가 특정 내부 문서·지침·월간 보고서에서 찾으라고 명시하면, 그 문서 안의 표·수치·순위 비교도
+INTERNAL_GUIDELINE만 사용하고 정형 원천 데이터의 재계산을 별도로 요구할 때만 ANALYSIS_WORKFLOW를 추가하세요.
 ML_PREDICTION은 제공된 ML scope 안의 미래 객실 수요 예측에만 사용하고 구조화 입력을 채웁니다.
 각 objective는 사용자 문장에서 해당 Agent가 처리할 범위만 간결하게 다시 쓰되,
 기간·지표·대상·명시한 문서 종류는 생략하거나 일반화하지 마세요.

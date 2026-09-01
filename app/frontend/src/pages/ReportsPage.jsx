@@ -312,6 +312,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme 
     orientation={draft.reportOrientation}
     pages={page.reportPages}
     properties={properties}
+    theme={theme}
     toolbar={toolbar}
   /> : <div
     className={`enterprise-report-editor notion-report-editor ${page.toolPanelOpen ? "" : "tools-collapsed"}`}

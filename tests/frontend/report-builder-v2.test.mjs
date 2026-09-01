@@ -243,7 +243,7 @@ assert.match(editorBlock, /isDraft && block\.type === "text" \? \(/);
 assert.match(editorBlock, /notion-block-title notion-block-title--readonly/);
 assert.match(builderStyles, /\.answer-report-page \.notion-block-title--readonly\{margin-block-start:0;cursor:default\}/);
 assert.match(editorBlock, /const RESIZE_DIRECTIONS = \[/);
-assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 \$\{label\} 크기 조절`\}/);
+assert.match(editorBlock, /aria-label=\{`\$\{displayTitle\} 블록 \$\{label\} 크기 조절`\}/);
 assert.match(editorBlock, /RESIZE_DIRECTIONS\.map/);
 assert.match(editorBlock, /const previewX = resizePreview\?\.x \?\? block\.x \?\? 0/);
 assert.match(editorBlock, /const previewY = resizePreview\?\.y \?\? block\.y \?\? 0/);

@@ -11,8 +11,6 @@ import {
   Eye,
   LoaderCircle,
   LockKeyhole,
-  Maximize2,
-  Minimize2,
   RotateCcw,
   Send,
   Shrink,
@@ -23,7 +21,6 @@ import { formatSeoulTime, reportStatusLabel } from "../reportPageLabels";
 
 /** 승인 미리보기와 최종문서 상태를 표시하며 pending 동안 충돌 명령을 잠그는 memo 화면이다. */
 export const ReportDocumentView = memo(function ReportDocumentView({
-  currencyControl,
   error,
   errorRef,
   finalDocument,

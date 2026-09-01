@@ -390,14 +390,14 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           />
       ) : <h2 className="notion-block-title notion-block-title--readonly">{displayTitle}</h2>}
       {body}
-      {isDraft && !locked && !isBlockPreview && (
+      {isDraft && !locked && (
         <div className="report-resize-handles" data-report-editor-chrome="true">
           {RESIZE_DIRECTIONS.map(([direction, label]) => (
             <button
               type="button"
               className={`report-resize-handle report-resize-handle--${direction}`}
               data-resize-direction={direction}
-              aria-label={`${block.title} 블록 ${label} 크기 조절`}
+              aria-label={`${displayTitle} 블록 ${label} 크기 조절`}
               title={`${label} 끌어서 크기 조절 · 방향키로 미세 조절`}
               onPointerDown={startResize}
               onPointerMove={resizeWithPointer}

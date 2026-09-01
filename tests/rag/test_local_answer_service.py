@@ -134,6 +134,41 @@ class EvidenceBoundAnswerComposerTest(unittest.TestCase):
         for marker in ("[DOCX", "[PARAGRAPH", "[TABLE", "[/TABLE]", "[r1c1"):
             self.assertNotIn(marker, answer["answer"])
 
+    def test_internal_report_keeps_retrieval_rank_over_incidental_word_hits(self) -> None:
+        def report(
+            evidence_id: str,
+            month: str,
+            score: float,
+            content: str,
+        ) -> dict[str, object]:
+            return {
+                "evidence_id": evidence_id,
+                "manual_id": f"REPORT-2026-{month}-ROOMS",
+                "title": f"2026년 {int(month)}월 객실 운영보고서",
+                "version": f"2026-{month}",
+                "document_type": "INTERNAL_REPORT",
+                "owner_team": "ROOMS",
+                "section_title": "객실 점유율 변동 원인",
+                "score": score,
+                "document_status": "WORKING_KNOWLEDGE",
+                "approval_status": "APPROVED",
+                "validity_status": "VALID",
+                "citation": f"[2026년 {int(month)}월 객실 운영보고서]",
+                "content": content,
+            }
+
+        answer = EvidenceBoundAnswerComposer().compose(build_answer_prompt(
+            "2026년 7월과 8월 객실 점유율 하락 원인을 알려줘",
+            [
+                report("EV-AUGUST", "08", 0.91, "8월 점유율 하락 원인은 단체 수요 감소다."),
+                report("EV-JULY", "07", 0.82, "7월과 8월 객실 점유율 하락 원인 비교 자료다."),
+            ],
+            "SUMMARY",
+        ))
+
+        self.assertEqual(answer["status"], "ANSWER")
+        self.assertEqual(answer["citations"][0]["evidence_id"], "EV-AUGUST")
+
 
 if __name__ == "__main__":
     unittest.main()

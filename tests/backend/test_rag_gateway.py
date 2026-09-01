@@ -83,14 +83,27 @@ def test_gateway_answer_evidence_matches_runtime_closed_contract() -> None:
     )
 
     assert set(projected) == {
+        "approval_status",
+        "article_number",
+        "chunk_id",
+        "chunk_index",
+        "document_id",
+        "document_status",
+        "effective_from",
+        "effective_to",
         "evidence_id",
-        "text",
-        "title",
+        "lexical_score",
         "manual_id",
-        "version",
         "document_type",
         "owner_team",
+        "page_start",
+        "score",
         "section_title",
+        "text",
+        "title",
+        "validity_status",
+        "vector_score",
+        "version",
         "citation",
     }
     assert VectorRagApplication._validated_answer_evidence([projected]) == [

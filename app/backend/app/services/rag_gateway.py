@@ -1468,16 +1468,33 @@ class InternalManualAgent:
     def _evidence_block(item: dict[str, Any]) -> dict[str, str]:
         """검색 결과를 metadata 손실 없는 signed answer evidence로 투영한다."""
 
+        def value(name: str) -> str:
+            raw = item.get(name)
+            return "" if raw is None else str(raw)
+
         return {
-            "evidence_id": str(item.get("evidence_id") or ""),
+            "evidence_id": value("evidence_id"),
             "text": str(item.get("content") or item.get("snippet") or ""),
-            "title": str(item.get("title") or ""),
-            "manual_id": str(item.get("manual_id") or ""),
-            "version": str(item.get("version") or ""),
-            "document_type": str(item.get("document_type") or ""),
-            "owner_team": str(item.get("owner_team") or ""),
-            "section_title": str(item.get("section_title") or ""),
-            "citation": str(item.get("citation") or ""),
+            "document_id": str(item.get("manual_id") or ""),
+            "title": value("title"),
+            "manual_id": value("manual_id"),
+            "version": value("version"),
+            "document_type": value("document_type"),
+            "owner_team": value("owner_team"),
+            "section_title": value("section_title"),
+            "article_number": value("article_number"),
+            "page_start": value("page_start"),
+            "chunk_id": value("chunk_id"),
+            "chunk_index": value("chunk_index"),
+            "score": value("score"),
+            "vector_score": value("vector_score"),
+            "lexical_score": value("lexical_score"),
+            "document_status": value("document_status"),
+            "approval_status": value("approval_status"),
+            "validity_status": value("validity_status"),
+            "effective_from": value("effective_from"),
+            "effective_to": str(item.get("effective_to") or item.get("expires_at") or ""),
+            "citation": value("citation"),
         }
 
     @staticmethod

@@ -174,6 +174,11 @@ class EvidenceSafetyGate:
         lexical_hits = sum(term in text for term in self._query_terms(query))
         retrieval_score = max(self._scores(group), default=0.0)
         identity = f"{group[0].get('manual_id', '')}:{group[0].get('version', '')}"
+        if any(
+            str(item.get("document_type") or "").upper() == "INTERNAL_REPORT"
+            for item in group
+        ):
+            return -retrieval_score, -float(lexical_hits), identity
         return -float(lexical_hits), -retrieval_score, identity
 
     @classmethod

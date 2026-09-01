@@ -47,6 +47,10 @@ def _analysis_progress():
     return _router_facade().analysis_progress
 
 
+async def _active_product_release_receipt() -> tuple[str, str]:
+    return await _router_facade()._active_product_release_receipt()
+
+
 @analysis_support_router.get(
     "/analysis/progress/{trace_id}",
     response_model=AnalysisProgressResponse,
@@ -200,7 +204,15 @@ async def list_analysis_definitions(
 ) -> dict[str, Any]:
     """현재 분석 주체가 저장한 definition만 생성 시각 역순으로 반환한다."""
     repository = _analysis_repository(context)
-    return {"items": await _repository_call(repository.list_definitions)}
+    product_release_id, semantic_release_id = await _active_product_release_receipt()
+    return {
+        "items": await _repository_call(
+            lambda: repository.list_definitions(
+                product_release_id=product_release_id,
+                semantic_release_id=semantic_release_id,
+            )
+        )
+    }
 
 
 @analysis_support_router.get(

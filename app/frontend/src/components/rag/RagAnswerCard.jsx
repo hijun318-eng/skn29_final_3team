@@ -62,9 +62,88 @@ function answerContent(text) {
     .map((line) => line.replace(/^[-*•]\s+/, '').trim())
     .filter(Boolean);
   if (points.length && points.length === lines.length) {
-    return { lead: points[0], points: points.slice(1), paragraphs: [] };
+    return { points, paragraphs: [] };
   }
-  return { lead: '', points: [], paragraphs: text.split(/\n\s*\n/).filter(Boolean) };
+  return { points: [], paragraphs: text.split(/\n\s*\n/).filter(Boolean) };
+}
+
+function focusTerms(question) {
+  const ignored = new Set([
+    '내부', '문서', '보고서', '알려줘', '보여줘', '내용', '결과', '전체', '가장',
+    '어떻게', '무엇', '관련', '요약', '분석', '에서', '으로', '까지', '부터',
+  ]);
+  const suffixes = ['으로', '에서', '에게', '까지', '부터', '하고', '과', '와', '을', '를', '은', '는', '이', '가', '의'];
+  return (String(question || '').toLowerCase().match(/[0-9a-z가-힣]{2,}/g) || [])
+    .map((raw) => suffixes.reduce((term, suffix) => (
+      term.endsWith(suffix) && term.length > suffix.length + 1
+        ? term.slice(0, -suffix.length)
+        : term
+    ), raw))
+    .filter((term) => !ignored.has(term) && !/^\d{1,4}(?:년|월|일)?$/.test(term));
+}
+
+function tableCells(point) {
+  const cells = point.split('|').map((cell) => cell.trim()).filter(Boolean);
+  return cells.length >= 2 ? cells : null;
+}
+
+function tablePresentation(points, question) {
+  const terms = focusTerms(question);
+  const candidates = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const columns = tableCells(points[index]);
+    if (!columns || columns.some((cell) => /\d/.test(cell))) continue;
+    const rows = [];
+    let cursor = index + 1;
+    while (cursor < points.length) {
+      const cells = tableCells(points[cursor]);
+      if (!cells || cells.length !== columns.length) break;
+      rows.push({ cells, pointIndex: cursor });
+      cursor += 1;
+    }
+    if (!rows.length) continue;
+    const searchable = [columns, ...rows.map((row) => row.cells)].flat().join(' ').toLowerCase();
+    candidates.push({
+      columns,
+      rows,
+      pointIndexes: new Set([index, ...rows.map((row) => row.pointIndex)]),
+      score: terms.reduce((sum, term) => sum + (searchable.includes(term) ? 1 : 0), 0),
+    });
+  }
+  return candidates.sort((left, right) => (
+    right.score - left.score || right.rows.length - left.rows.length
+  ))[0] || null;
+}
+
+function pointScore(point, terms) {
+  const normalized = point.toLowerCase();
+  const termScore = terms.reduce((sum, term) => sum + (normalized.includes(term) ? 10 : 0), 0);
+  const quantified = /(?:%|\d[\d,.]*\s*(?:원|건|박|명|실))/.test(point) ? 2 : 0;
+  const sentence = /[.!?다요]$/.test(point) ? 1 : 0;
+  return termScore + quantified + sentence;
+}
+
+function answerPresentation(content, question) {
+  if (!content.points.length) {
+    return { lead: '', visiblePoints: [], detailPoints: [], table: null };
+  }
+  const table = tablePresentation(content.points, question);
+  const tableIndexes = table?.pointIndexes || new Set();
+  const candidates = content.points
+    .map((point, index) => ({ point, index }))
+    .filter(({ index }) => !tableIndexes.has(index));
+  const terms = focusTerms(question);
+  const lead = [...candidates].sort((left, right) => (
+    pointScore(right.point, terms) - pointScore(left.point, terms) || left.index - right.index
+  ))[0] || null;
+  const remaining = candidates.filter(({ index }) => index !== lead?.index).map(({ point }) => point);
+  const visibleLimit = table ? 0 : 4;
+  return {
+    lead: lead?.point || '',
+    visiblePoints: remaining.slice(0, visibleLimit),
+    detailPoints: remaining.slice(visibleLimit),
+    table,
+  };
 }
 
 function citationReferences(rag, sources) {
@@ -96,8 +175,12 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
   ).values());
   const comparison = compareContent(answerText, rag?.answer_type);
   const content = comparison
-    ? { lead: '', points: [], paragraphs: comparison.prose }
+    ? { points: [], paragraphs: comparison.prose }
     : answerContent(answerText);
+  const presentation = answerPresentation(
+    content,
+    rag?.routing?.snapshot_question || rag?.routing?.context_question || '',
+  );
   const evidence = evidenceItems(rag);
   const sources = documentSources(evidence);
   const citationRefs = citationReferences(rag, evidence);
@@ -114,11 +197,38 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
     <article aria-labelledby={titleId} className="rag-answer-card">
       <div id={titleId} className="rag-answer-card__label">핵심 답변</div>
       <div className="rag-answer-card__body">
-        {content.lead && <p className="rag-answer-card__lead">{content.lead}</p>}
-        {content.points.length > 0 && (
+        {presentation.lead && <p className="rag-answer-card__lead">{presentation.lead}</p>}
+        {presentation.table && (
+          <div className="rag-answer-card__table-wrap">
+            <table>
+              <caption className="sr-only">질문 관련 내부 문서 근거 표</caption>
+              <thead>
+                <tr>{presentation.table.columns.map((column, index) => <th key={`${index}-${column}`} scope="col">{column}</th>)}</tr>
+              </thead>
+              <tbody>
+                {presentation.table.rows.map((row, rowIndex) => (
+                  <tr key={`${rowIndex}-${row.cells.join('|')}`}>
+                    {row.cells.map((cell, cellIndex) => (
+                      cellIndex === 0
+                        ? <th key={`${cellIndex}-${cell}`} scope="row">{cell}</th>
+                        : <td key={`${cellIndex}-${cell}`}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {presentation.visiblePoints.length > 0 && (
           <ul className="rag-answer-card__points">
-            {content.points.map((point) => <li key={point}>{point}</li>)}
+            {presentation.visiblePoints.map((point) => <li key={point}>{point}</li>)}
           </ul>
+        )}
+        {presentation.detailPoints.length > 0 && (
+          <details className="rag-answer-card__details">
+            <summary>상세 근거 {presentation.detailPoints.length}건</summary>
+            <ul>{presentation.detailPoints.map((point) => <li key={point}>{point}</li>)}</ul>
+          </details>
         )}
         {content.paragraphs.map((paragraph, index) => (
           <p key={`${index}-${paragraph.slice(0, 20)}`}>

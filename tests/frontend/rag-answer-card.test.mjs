@@ -83,6 +83,26 @@ try {
   assert.match(parserMarkerHtml, /class="rag-answer-card__points"/);
   assert.doesNotMatch(parserMarkerHtml, /SECTION_BOUNDARY|nextPage/);
 
+  const tableHtml = renderToStaticMarkup(createElement(RagAnswerCard, {
+    rag: {
+      answer_text: [
+        "- 2026년 8월 | 객실팀",
+        "- 전체 취소율은 17.59%입니다.",
+        "- 주요 취소 사유 | 건수 | 비중",
+        "- 일정 변경 | 894건 | 53.95%",
+        "- 가격 민감 | 763건 | 46.05%",
+        "- 호텔별 취소 규모도 함께 관리합니다.",
+      ].join("\n"),
+      routing: { snapshot_question: "2026년 8월 객실운영보고서에서 전체 취소율과 가장 큰 취소 사유를 알려줘" },
+    },
+  }));
+  assert.match(tableHtml, /<table>/);
+  assert.match(tableHtml, /<th scope="col">주요 취소 사유<\/th>/);
+  assert.match(tableHtml, /<th scope="row">일정 변경<\/th><td>894건<\/td><td>53.95%<\/td>/);
+  assert.match(tableHtml, /class="rag-answer-card__lead">전체 취소율은 17.59%입니다/);
+  assert.match(tableHtml, /상세 근거 2건/);
+  assert.equal((tableHtml.match(/2026년 8월 \| 객실팀/g) || []).length, 1);
+
   const labelledBy = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(labelledBy.length, 2);
   assert.equal(new Set(labelledBy).size, 2);

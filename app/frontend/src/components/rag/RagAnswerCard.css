@@ -66,6 +66,67 @@
   margin-top: 7px;
 }
 
+.rag-answer-card__table-wrap {
+  margin-top: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--rag-answer-border);
+  border-radius: 10px;
+}
+
+.rag-answer-card__table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rag-answer-card__table-wrap th,
+.rag-answer-card__table-wrap td {
+  padding: 11px 14px;
+  border-top: 1px solid var(--rag-answer-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rag-answer-card__table-wrap thead th {
+  color: var(--rag-answer-muted);
+  background: var(--rag-answer-surface-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.rag-answer-card__table-wrap tbody th {
+  color: var(--rag-answer-text);
+  font-weight: 700;
+}
+
+.rag-answer-card__table-wrap td:not(:first-child),
+.rag-answer-card__table-wrap th:not(:first-child) {
+  text-align: right;
+}
+
+.rag-answer-card__details {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rag-answer-border);
+}
+
+.rag-answer-card__details summary {
+  width: fit-content;
+  color: var(--rag-answer-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rag-answer-card__details ul {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--rag-answer-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .rag-answer-card__citations {
   margin-top: 14px;
   display: flex;

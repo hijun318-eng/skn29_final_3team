@@ -28,7 +28,6 @@ import {
 } from "./reportDraftMutations.ts";
 import {
   normalizeGeneratedArtifactViewTitle,
-  reportArtifactDefaultTitle,
 } from "./reportTimePresentation.js";
 import type {
   DraftCurrencyPolicy,
@@ -481,6 +480,12 @@ export function useReportDraftState(
   const fitHydratedArtifactViews = useCallback((artifactMap = optionsRef.current.artifacts ?? {}): boolean => {
     if (!optionsRef.current.editable) return false;
     const current = blocksRef.current;
+    const normalizeTitles = (items: readonly DraftReportBlock[]) => items.map((block) => {
+      const artifact = block.artifactId ? artifactMap[block.artifactId] : undefined;
+      if (!artifact) return block;
+      const title = normalizeGeneratedArtifactViewTitle(block.title, artifact, block.type);
+      return title === block.title ? block : { ...block, title };
+    });
     const migrated = splitLegacyCompositeArtifactBlocks(
       current,
       artifactMap,
@@ -488,7 +493,11 @@ export function useReportDraftState(
       orientationRef.current,
       createUuid,
     );
-    const fitted = fitAutoArtifactViewLayout(migrated.blocks, artifactMap, orientationRef.current);
+    const fitted = fitAutoArtifactViewLayout(
+      normalizeTitles(migrated.blocks),
+      artifactMap,
+      orientationRef.current,
+    );
     if (JSON.stringify(fitted) === JSON.stringify(current)) return false;
     const fittedSaved = fitAutoArtifactViewLayout(
       normalizeTitles(savedBlocksRef.current),

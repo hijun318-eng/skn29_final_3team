@@ -45,10 +45,12 @@ assert.match(appStyles, /\.report-builder-v2-mode>\.workspace>\.page-stage\{heig
 assert.match(appStyles, /\.report-builder-v2-mode>\.workspace>\.topbar\{display:none\}/);
 assert.doesNotMatch(controller, /REPORT_REVIEW_MODE|reviewDefinition|mockReport/i);
 assert.doesNotMatch(controller, /\breportDisplayTitle,\s*$/m);
+assert.match(controller, /import \{ reportStatusLabel \} from "\.\/reportPageLabels";/);
 assert.match(controller, /ANSWERVICE · 분석 보고서/);
 assert.doesNotMatch(controller, /GOVERNED REPORT|HTML 편집 초안|분석 근거 연결 · HTML 편집본/);
 assert.match(page, /page\.builderV2 \? <ReportBuilderV2/);
 assert.match(builder, /data-report-builder="v2"/);
+assert.match(builder, /properties,\s+theme,\s+toolbar,/);
 assert.match(builder, /report-builder-v2-layout/);
 assert.match(builder, /builder-library-column/);
 assert.match(builder, /builder-workspace/);

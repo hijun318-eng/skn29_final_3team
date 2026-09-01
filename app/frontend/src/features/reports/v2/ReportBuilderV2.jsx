@@ -35,6 +35,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   orientation,
   pages,
   properties,
+  theme,
   toolbar,
 }) {
   const rootRef = useRef(null);

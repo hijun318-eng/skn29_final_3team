@@ -32,6 +32,7 @@ import {
   reportCurrencyState,
 } from "./reportPageControllerSupport";
 import { normalizeReportEditorScale } from "./reportEditorViewport";
+import { reportStatusLabel } from "./reportPageLabels";
 import {
   reportAssistantSessionMatchesDefinition,
   reportAssistantSessionStorageKey,

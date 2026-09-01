@@ -130,7 +130,7 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
     assert captured["url"] == "https://api.openai.com/v1/responses"
     assert captured["authorization"] == "Bearer test-token"
     assert payload["model"] == "gpt-5.6-terra"
-    assert payload["reasoning"] == {"effort": "medium", "context": "current_turn"}
+    assert payload["reasoning"] == {"effort": "low", "context": "current_turn"}
     assert payload["store"] is False
     assert payload["truncation"] == "disabled"
     assert payload["text"]["format"]["strict"] is True

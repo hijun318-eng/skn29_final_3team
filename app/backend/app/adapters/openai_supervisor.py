@@ -100,7 +100,7 @@ class OpenAISupervisorPlanner:
         token: str,
         *,
         model: str = SUPERVISOR_MODEL,
-        reasoning_effort: str = "medium",
+        reasoning_effort: str = "low",
         timeout_seconds: float = 15.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
@@ -298,7 +298,7 @@ def openai_supervisor_planner_from_env() -> OpenAISupervisorPlanner:
     endpoint = os.getenv("SUPERVISOR_OPENAI_ENDPOINT", "").strip()
     token = os.getenv("SUPERVISOR_OPENAI_API_KEY", "").strip()
     model = os.getenv("SUPERVISOR_OPENAI_MODEL", SUPERVISOR_MODEL).strip()
-    effort = os.getenv("SUPERVISOR_REASONING_EFFORT", "medium").strip().lower()
+    effort = os.getenv("SUPERVISOR_REASONING_EFFORT", "low").strip().lower()
     raw_timeout = os.getenv("SUPERVISOR_TIMEOUT_SECONDS", "15").strip()
     try:
         timeout = float(raw_timeout)

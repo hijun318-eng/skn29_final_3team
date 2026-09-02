@@ -223,10 +223,11 @@ async def delete_account(
 async def list_connections(
     context: Annotated[RequestContext, Depends(system_manage_context)],
     session: Annotated[AsyncSession, Depends(get_database_session)],
+    paused: Annotated[list[str] | None, Query()] = None,
 ) -> ConnectionListResponse:
-    """서버 고정 dependency를 실제로 probe하고 URL 없는 결과를 감사한 뒤 반환한다."""
+    """고정 dependency 중 활성 대상을 probe하고 URL 없는 결과를 감사한 뒤 반환한다."""
 
-    rows = await probe_admin_connections()
+    rows = await probe_admin_connections(paused or ())
     try:
         await AdminAccountRepository(session).record_connection_check(
             actor=context,

@@ -1,6 +1,7 @@
 /** 관리자 계정·연결 상태와 읽기 전용 감사 추적 화면의 탭·공통 상태를 조정한다. */
 import {
   AlertTriangle,
+  BrainCircuit,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +18,8 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DiMsqlServer } from "react-icons/di";
+import { SiClickhouse, SiMysql, SiPostgresql, SiTrino } from "react-icons/si";
 import { AdminApiError } from "../api/adminClient.ts";
 import {
   AUTH_ACCOUNT_ROLE_OPTIONS,
@@ -30,8 +33,51 @@ const ADMIN_SECTIONS = [
   { id: "audit", label: "감사 로그", icon: FileClock },
 ];
 
-const STATUS_LABELS = { ready: "정상", down: "연결 실패" };
+const STATUS_LABELS = { ready: "정상", down: "연결 실패", paused: "점검 중지" };
 const EMPTY_PAGE = { items: [], page: 1, page_size: 50, total: 0 };
+const PAUSED_CONNECTIONS_STORAGE_KEY = "answervice:admin-paused-connections";
+
+/** DataHub 공식 저장소의 color mark를 카드 크기에 맞춘다. */
+function DataHubMark({ size = 26 }) {
+  return <svg width={size} height={size} viewBox="0 0 121 120" fill="none">
+    <path d="M8.40165 90.0111C13.5905 98.9778 21.0239 106.467 29.9461 111.722C38.8683 116.978 49.2794 120 60.3683 120C76.9239 120 91.9461 113.278 102.791 102.422C113.646 91.5778 120.368 76.5444 120.368 60C120.368 43.4444 113.646 28.4222 102.791 17.5778C91.9461 6.72222 76.9239 0 60.3683 0C57.8239 0 55.7572 2.06667 55.7572 4.61111C55.7572 7.15556 57.8239 9.22222 60.3683 9.22222C74.4017 9.22222 87.0683 14.9 96.2683 24.0889C105.457 33.2889 111.135 45.9556 111.135 59.9889C111.135 74.0222 105.457 86.6889 96.2683 95.8889C87.0683 105.089 74.4017 110.756 60.3683 110.756C50.9572 110.756 42.1794 108.2 34.635 103.756C27.0905 99.3111 20.7794 92.9556 16.3905 85.3667C15.1128 83.1556 12.2905 82.4111 10.0794 83.6889C7.86832 84.9667 7.12388 87.7889 8.40165 90V90.0111Z" fill="#006DCD" />
+    <path d="M81.1353 24.0222C74.8131 20.3778 67.6242 18.4556 60.3353 18.4556C53.2909 18.4556 46.1242 20.2556 39.602 24.0222C32.9464 27.8556 27.7464 33.2889 24.2131 39.5333C20.6798 45.7778 18.8242 52.8556 18.8242 60.0333C18.8242 67.0778 20.6242 74.2445 24.3909 80.7667C28.2242 87.4111 33.6576 92.6222 39.902 96.1556C46.1464 99.6889 53.2131 101.544 60.402 101.544C67.4464 101.544 74.6131 99.7444 81.1353 95.9778C83.3464 94.7 84.102 91.8778 82.8242 89.6778C81.5464 87.4667 78.7242 86.7111 76.5242 87.9889C71.4242 90.9333 65.8798 92.3222 60.402 92.3222C54.8242 92.3222 49.302 90.8667 44.4464 88.1222C39.5909 85.3778 35.3909 81.3556 32.3909 76.1556C29.4464 71.0556 28.0576 65.5222 28.0576 60.0333C28.0576 54.4556 29.5131 48.9333 32.2576 44.0778C35.002 39.2222 39.0242 35.0222 44.2242 32.0222C49.3242 29.0778 54.8576 27.6889 60.3464 27.6889C66.0242 27.6889 71.6242 29.1889 76.5464 32.0222C78.7576 33.3 81.5798 32.5333 82.8464 30.3222C84.1131 28.1111 83.3464 25.2889 81.1353 24.0222Z" fill="#EC9E32" />
+    <path d="M60.3689 83.078C66.7245 83.078 72.5245 80.4891 76.6911 76.3224C80.8578 72.1557 83.4578 66.3668 83.4467 60.0002C83.4467 53.6446 80.8578 47.8446 76.6911 43.678C72.5245 39.5113 66.7356 36.9113 60.3689 36.9224C57.8245 36.9224 55.7578 38.9891 55.7578 41.5335C55.7578 44.078 57.8245 46.1446 60.3689 46.1446C64.2023 46.1446 67.6356 47.6891 70.1578 50.2002C72.6689 52.7224 74.2134 56.1557 74.2134 59.9891C74.2134 63.8224 72.6689 67.2557 70.1578 69.778C67.6356 72.2891 64.2023 73.8335 60.3689 73.8335C57.8245 73.8335 55.7578 75.9002 55.7578 78.4446C55.7578 80.9891 57.8245 83.078 60.3689 83.078Z" fill="#D23500" />
+  </svg>;
+}
+
+const CONNECTION_VISUALS = Object.freeze({
+  pms: { icon: SiPostgresql, tone: "postgresql", label: "PostgreSQL" },
+  pos: { icon: SiMysql, tone: "mysql", label: "MySQL" },
+  crm: { icon: DiMsqlServer, tone: "sqlserver", label: "SQL Server" },
+  facility: { icon: SiClickhouse, tone: "clickhouse", label: "ClickHouse" },
+  banquet: { icon: SiPostgresql, tone: "postgresql", label: "PostgreSQL" },
+  "app-postgres": { icon: SiPostgresql, tone: "postgresql", label: "PostgreSQL" },
+  trino: { icon: SiTrino, tone: "trino", label: "Trino" },
+  datahub: { icon: DataHubMark, tone: "datahub", label: "DataHub" },
+  "model-api": { icon: BrainCircuit, tone: "model", label: "Model API" },
+});
+const CONNECTION_IDS = new Set(Object.keys(CONNECTION_VISUALS));
+
+function readPausedConnectionIds() {
+  if (typeof window === "undefined") return [];
+  try {
+    return (window.sessionStorage.getItem(PAUSED_CONNECTIONS_STORAGE_KEY) || "")
+      .split(",")
+      .filter((id) => CONNECTION_IDS.has(id));
+  } catch {
+    return [];
+  }
+}
+
+function savePausedConnectionIds(ids) {
+  try {
+    if (ids.length > 0) window.sessionStorage.setItem(PAUSED_CONNECTIONS_STORAGE_KEY, ids.join(","));
+    else window.sessionStorage.removeItem(PAUSED_CONNECTIONS_STORAGE_KEY);
+  } catch {
+    // 브라우저 저장소가 차단돼도 현재 화면의 토글 상태는 유지한다.
+  }
+}
 
 function adminErrorMessage(error) {
   if (!(error instanceof AdminApiError)) return "관리자 API 응답을 확인할 수 없습니다.";
@@ -46,6 +92,39 @@ function formatTimestamp(value) {
   if (!value) return "-";
   const timestamp = new Date(value);
   return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+}
+
+/** 고정 연결 ID에 대응하는 엔진 아이콘과 상태 점검 switch를 한 카드에 표시한다. */
+function ConnectionCard({ connection, index, paused, pending, onToggle }) {
+  const visual = CONNECTION_VISUALS[connection.id] ?? { icon: Database, tone: "default", label: connection.kind };
+  const Icon = visual.icon;
+  const status = paused ? "paused" : connection.status;
+  const enabled = status !== "paused";
+
+  return <article className={`admin-connection-card card${enabled ? "" : " is-paused"}`} data-connection-tone={visual.tone}>
+    <header>
+      <span className="admin-connection-card__icon" aria-hidden="true"><Icon size={26} /></span>
+      <span className="admin-connection-card__index">{String(index + 1).padStart(2, "0")}</span>
+      <button
+        className="admin-connection-switch"
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label={`${connection.name} 상태 점검 ${enabled ? "끄기" : "켜기"}`}
+        disabled={pending}
+        onClick={() => onToggle(connection)}
+      ><span aria-hidden="true"><i /></span><em>{enabled ? "ON" : "OFF"}</em></button>
+    </header>
+    <div className="admin-connection-card__body">
+      <span>{visual.label}</span>
+      <h3>{connection.name}</h3>
+      <p>{enabled && Number.isFinite(connection.latency_ms) ? `${connection.latency_ms} ms 응답` : "상태 점검 일시중지"}</p>
+    </div>
+    <footer>
+      <span className={`admin-status admin-status--${status}`}><i />{STATUS_LABELS[status] ?? status}</span>
+      <small>{enabled ? connection.kind : "수동으로 다시 켤 수 있습니다"}</small>
+    </footer>
+  </article>;
 }
 
 /** 계정 생성·수정·비밀번호 초기화 입력을 native modal dialog로 수집한다. */
@@ -91,6 +170,7 @@ export function AdminPage({ role, client }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [connections, setConnections] = useState([]);
+  const [pausedConnectionIds, setPausedConnectionIds] = useState(readPausedConnectionIds);
   const [accounts, setAccounts] = useState(EMPTY_PAGE);
   const [accountPage, setAccountPage] = useState(1);
   const [accountSearch, setAccountSearch] = useState("");
@@ -105,7 +185,7 @@ export function AdminPage({ role, client }) {
     setLoading((current) => ({ ...current, connections: true }));
     setError("");
     try {
-      const items = await client.listConnections();
+      const items = await client.listConnections(pausedConnectionIds);
       if (requestIds.current.connections !== requestId || activeSectionRef.current !== "connections") return;
       setConnections(items);
     } catch (nextError) {
@@ -115,7 +195,7 @@ export function AdminPage({ role, client }) {
     } finally {
       if (requestIds.current.connections === requestId) setLoading((current) => ({ ...current, connections: false }));
     }
-  }, [client]);
+  }, [client, pausedConnectionIds]);
 
   const loadAccounts = useCallback(async () => {
     const requestId = ++requestIds.current.accounts;
@@ -153,6 +233,18 @@ export function AdminPage({ role, client }) {
     setAccountForm({ username: "", password: "", role: "analyst", active: true });
     setDialogError("");
     setModal({ mode: "create", account: null });
+  };
+
+  const toggleConnectionMonitoring = (connection) => {
+    const currentlyPaused = pausedConnectionIds.includes(connection.id);
+    setPausedConnectionIds((current) => {
+      const next = currentlyPaused
+        ? current.filter((id) => id !== connection.id)
+        : [...current, connection.id].sort();
+      savePausedConnectionIds(next);
+      return next;
+    });
+    setNotice(`${connection.name} 상태 점검을 ${currentlyPaused ? "다시 시작했습니다." : "일시 중지했습니다."}`);
   };
   const openEdit = (account) => {
     setAccountForm({ username: account.username, password: "", role: account.role, active: account.active });
@@ -239,9 +331,9 @@ export function AdminPage({ role, client }) {
     </nav>
 
     {section === "connections" && <section className="admin-panel" id="admin-panel-connections" role="tabpanel" aria-labelledby="admin-tab-connections">
-      <header className="admin-panel__header"><div><small>READ ONLY INFRASTRUCTURE</small><h2>데이터 연결 상태</h2><p>승인된 데이터 및 분석 서비스의 읽기 전용 상태를 확인합니다.</p></div><button className="secondary" type="button" disabled={loading.connections} onClick={() => void loadConnections()}><RefreshCw size={15} />{loading.connections ? "확인 중…" : "상태 새로고침"}</button></header>
+      <header className="admin-panel__header"><div><small>READ ONLY INFRASTRUCTURE</small><h2>데이터 연결 상태</h2><p>연결별 상태 점검을 켜거나 일시 중지하고, 승인된 서비스의 응답 상태를 확인합니다.</p></div><button className="secondary" type="button" disabled={loading.connections} onClick={() => void loadConnections()}><RefreshCw size={15} />{loading.connections ? "확인 중…" : "상태 새로고침"}</button></header>
       <div className="admin-connection-grid">
-        {connections.map((connection, index) => <article className="admin-connection-card card" key={connection.id}><small>{String(index + 1).padStart(2, "0")}</small><h3>{connection.name}</h3><p>{connection.kind}{Number.isFinite(connection.latency_ms) ? ` · ${connection.latency_ms} ms` : ""}</p><span className={`admin-status admin-status--${connection.status}`}><i />{STATUS_LABELS[connection.status] ?? connection.status}</span></article>)}
+        {connections.map((connection, index) => <ConnectionCard key={connection.id} connection={connection} index={index} paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
       </div>
       {!loading.connections && connections.length === 0 && !error && <div className="admin-empty card"><div><Database size={24} /><b>등록된 연결 점검 대상이 없습니다.</b><span>Backend에 승인된 연결 대상이 등록되면 이곳에 표시됩니다.</span></div></div>}
       <p className="admin-panel__receipt">{checkedAt ? `마지막 확인 ${formatTimestamp(checkedAt)}` : loading.connections ? "연결 상태를 확인하고 있습니다." : "확인된 연결 상태가 없습니다."}</p>

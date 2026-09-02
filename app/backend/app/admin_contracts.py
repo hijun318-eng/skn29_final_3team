@@ -132,7 +132,7 @@ class ConnectionData(ContractModel):
     id: str
     name: str
     kind: str
-    status: Literal["ready", "down"]
+    status: Literal["ready", "down", "paused"]
     latency_ms: int = Field(ge=0)
     checked_at: datetime
 

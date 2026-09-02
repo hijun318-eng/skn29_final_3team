@@ -95,6 +95,7 @@ KNOWN_REVISIONS = (
     "20260831_70",
     "20260901_71",
     "20260901_72",
+    "20260901_73",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -121,7 +122,7 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260901_72"], script.get_heads())
+        self.assertEqual(["20260901_73"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
@@ -139,7 +140,7 @@ class MigrationGraphTest(unittest.TestCase):
         self.assertIsNotNone(reconciliation)
         self.assertEqual("20260828_55", legacy.down_revision)
         self.assertEqual("20260827_41", reconciliation.down_revision)
-        self.assertEqual("20260901_72", script.get_current_head())
+        self.assertEqual("20260901_73", script.get_current_head())
 
     def test_unknown_revision_is_native_nonzero_before_database_start(self) -> None:
         result = alembic("upgrade", "20260803_03", "--sql")

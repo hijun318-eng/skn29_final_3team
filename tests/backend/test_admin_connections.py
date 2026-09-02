@@ -139,3 +139,41 @@ async def test_admin_connection_projection_contains_exact_nine_server_targets() 
         "model-api",
     ]
     assert all(row["status"] == "ready" for row in rows)
+
+
+@_run_async
+async def test_paused_admin_connections_skip_only_the_selected_probes() -> None:
+    source_probe = AsyncMock(return_value=True)
+    model_probe = AsyncMock(return_value="ready")
+    with (
+        patch.object(
+            AppDatabaseReadiness,
+            "_database_probe",
+            AsyncMock(return_value={"app_postgres": "ready"}),
+        ) as database_probe,
+        patch.object(
+            AppDatabaseReadiness,
+            "_trino_probe",
+            AsyncMock(return_value="ready"),
+        ),
+        patch.object(
+            AppDatabaseReadiness,
+            "_datahub_probe",
+            AsyncMock(return_value="ready"),
+        ),
+        patch.object(AppDatabaseReadiness, "_model_probe", model_probe),
+        patch("app.services.admin_connections._trino_catalog_ready", source_probe),
+    ):
+        rows = await probe_admin_connections(("pms", "model-api", "unknown"))
+
+    statuses = {str(row["id"]): str(row["status"]) for row in rows}
+    assert statuses["pms"] == "paused"
+    assert statuses["model-api"] == "paused"
+    assert all(
+        status == "ready"
+        for connection_id, status in statuses.items()
+        if connection_id not in {"pms", "model-api"}
+    )
+    assert source_probe.await_count == 4
+    assert model_probe.await_count == 0
+    assert database_probe.await_count == 1

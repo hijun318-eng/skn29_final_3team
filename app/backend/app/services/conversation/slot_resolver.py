@@ -294,6 +294,18 @@ class ConversationSlotResolver:
         if requested_route not in cls.CONVERSATION_ROUTES:
             requested_route = None
 
+        # Node1이 표현 종류는 명확히 구조화했지만 route enum만 누락하는 경우가 있다.
+        # 문장을 키워드로 다시 해석하지 않고, 선행 Artifact가 있는 상태에서 모델이
+        # 명시적 표현 변경을 반환한 경우에만 PRESENTATION 후보로 복구한다. 아래의
+        # query-shape 비교가 새 지표·차원·필터·기간 요청을 다시 ANALYSIS로 닫는다.
+        if (
+            requested_route is None
+            and last_analysis is not None
+            and node1_output.get("presentation_explicit") is True
+            and node1_output.get("presentation_type") in cls.ALLOWED_CHART_TYPES
+        ):
+            requested_route = "PRESENTATION"
+
         if requested_route == "REPORT_ACTION":
             source_turn_ids: list[str] = []
             seen_artifacts: set[str] = set()

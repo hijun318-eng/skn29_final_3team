@@ -370,7 +370,7 @@ export function AnalysisStatePanel({
               {canRequestBarPresentation && (
                 <button type="button" onClick={onRequestBarPresentation}>
                   <BarChart3 size={14} aria-hidden="true" />
-                  막대그래프로 보기
+                  가로 막대그래프로 보기
                 </button>
               )}
               {artifactReuse?.viewSpecId && (

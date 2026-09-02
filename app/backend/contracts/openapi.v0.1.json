@@ -1740,7 +1740,8 @@
           "status": {
             "enum": [
               "ready",
-              "down"
+              "down",
+              "paused"
             ],
             "title": "Status",
             "type": "string"
@@ -7588,8 +7589,29 @@
     },
     "/admin/connections": {
       "get": {
-        "description": "서버 고정 dependency를 실제로 probe하고 URL 없는 결과를 감사한 뒤 반환한다.",
+        "description": "고정 dependency 중 활성 대상을 probe하고 URL 없는 결과를 감사한 뒤 반환한다.",
         "operationId": "listAdminConnections",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "paused",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7600,6 +7622,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

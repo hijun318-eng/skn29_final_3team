@@ -1088,8 +1088,8 @@ assert.equal(
   "http://backend.test/rag/documents/REPORT-2026-08-ROOMS/source",
 );
 assert.equal(
-  ragCatalogClient.manualPdfUrl("REPORT-2026-08-ROOMS"),
-  "http://backend.test/rag/documents/REPORT-2026-08-ROOMS/source.pdf",
+  ragCatalogClient.manualPreviewUrl("REPORT-2026-08-ROOMS"),
+  "http://backend.test/rag/documents/REPORT-2026-08-ROOMS/preview",
 );
 
 const invalidRagCatalogClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({

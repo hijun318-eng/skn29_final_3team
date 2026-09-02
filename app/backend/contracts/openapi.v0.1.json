@@ -2123,6 +2123,23 @@
             "title": "Artifact Id",
             "type": "string"
           },
+          "preferred_view": {
+            "anyOf": [
+              {
+                "enum": [
+                  "summary",
+                  "kpi",
+                  "chart",
+                  "table"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred View"
+          },
           "title": {
             "maxLength": 255,
             "minLength": 1,
@@ -11234,6 +11251,48 @@
           }
         ],
         "summary": "List Internal Manuals"
+      }
+    },
+    "/rag/documents/{manual_id}/preview": {
+      "get": {
+        "description": "승인된 PDF는 그대로, DOCX는 안전한 HTML로 변환해 화면 내 열람을 제공한다.",
+        "operationId": "previewInternalManual",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "manual_id",
+            "required": true,
+            "schema": {
+              "title": "Manual Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {},
+              "text/html": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Internal Manual Preview"
       }
     },
     "/rag/documents/{manual_id}/source": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Annotated, Literal
 from uuid import UUID
@@ -22,6 +23,10 @@ from app.services.internal_manual_query import (
     rag_document_ids as _rag_document_ids,
 )
 from app.services.rag_gateway import RagGatewayTool, RagToolError
+from app.services.rag_document_preview import (
+    RagDocumentPreviewError,
+    render_docx_preview_html,
+)
 
 
 class RagQueryRequest(ContractModel):
@@ -157,5 +162,63 @@ async def get_internal_manual_pdf(
             "Cache-Control": "private, no-store",
             "Content-Disposition": disposition,
             "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@rag_router.get(
+    "/rag/documents/{manual_id}/preview",
+    operation_id="previewInternalManual",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/pdf": {},
+                "text/html": {},
+            }
+        }
+    },
+)
+async def get_internal_manual_preview(
+    manual_id: str,
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> Response:
+    """승인된 PDF는 그대로, DOCX는 안전한 HTML로 변환해 화면 내 열람을 제공한다."""
+
+    if not has_capability(context.role, Capability.RUN_ANALYSIS):
+        raise HTTPException(status_code=403, detail="RAG 문서 열람 권한이 없습니다.")
+    _require_internal_guideline_enabled()
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="RAG Tool Registry를 사용할 수 없습니다.")
+    try:
+        content, _disposition, media_type = await RagGatewayTool(
+            database_url
+        ).fetch_document(manual_id, context.role.value)
+    except RagToolError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+    common_headers = {
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if media_type == "application/pdf":
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                **common_headers,
+                "Content-Disposition": f'inline; filename="{manual_id}.pdf"',
+            },
+        )
+    try:
+        html = await asyncio.to_thread(render_docx_preview_html, content, manual_id)
+    except RagDocumentPreviewError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={
+            **common_headers,
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
         },
     )

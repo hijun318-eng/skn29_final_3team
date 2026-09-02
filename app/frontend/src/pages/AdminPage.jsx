@@ -2,6 +2,7 @@
 import {
   AlertTriangle,
   ArrowRight,
+  BookOpenText,
   BrainCircuit,
   Check,
   ChevronLeft,
@@ -57,6 +58,7 @@ const CONNECTION_VISUALS = Object.freeze({
   trino: { icon: SiTrino, tone: "trino", label: "Trino" },
   datahub: { icon: DataHubMark, tone: "datahub", label: "DataHub" },
   "model-api": { icon: BrainCircuit, tone: "model", label: "Model API" },
+  "rag-knowledge": { icon: BookOpenText, tone: "rag", label: "pgvector" },
 });
 const CONNECTION_IDS = new Set(Object.keys(CONNECTION_VISUALS));
 const CORE_OPERATION_CONNECTION_IDS = Object.freeze(["pms", "pos", "crm", "banquet", "facility"]);

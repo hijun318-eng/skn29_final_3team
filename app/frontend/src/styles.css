@@ -999,6 +999,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
 .admin-connection-card[data-connection-tone="trino"] { --connection-accent: #dd00a1; }
 .admin-connection-card[data-connection-tone="datahub"] { --connection-accent: #006dcd; }
 .admin-connection-card[data-connection-tone="model"] { --connection-accent: #7357c6; }
+.admin-connection-card[data-connection-tone="rag"] { --connection-accent: #287a68; }
 .admin-connection-card > header {
   width: 100%;
   display: flex;

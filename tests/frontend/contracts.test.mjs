@@ -204,6 +204,7 @@ assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(pausedConn
 assert.match(source("pages/AdminPage.jsx"), /role="switch"/);
 assert.match(source("pages/AdminPage.jsx"), /aria-checked=\{enabled\}/);
 assert.match(source("pages/AdminPage.jsx"), /CONNECTION_VISUALS/);
+assert.match(source("pages/AdminPage.jsx"), /"rag-knowledge": \{ icon: BookOpenText, tone: "rag", label: "pgvector" \}/);
 assert.match(source("pages/AdminPage.jsx"), /CORE_OPERATION_CONNECTION_IDS/);
 assert.match(source("pages/AdminPage.jsx"), /admin-connection-story__flow/);
 assert.match(source("pages/AdminPage.jsx"), /기타 연결 및 지원 서비스/);

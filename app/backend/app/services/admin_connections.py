@@ -27,7 +27,7 @@ _SOURCE_CATALOGS = (
 )
 _SOURCE_CATALOG_NAMES = frozenset(item[0] for item in _SOURCE_CATALOGS)
 _CONNECTION_IDS = _SOURCE_CATALOG_NAMES | frozenset(
-    {"app-postgres", "trino", "datahub", "model-api"}
+    {"app-postgres", "trino", "datahub", "model-api", "rag-knowledge"}
 )
 
 
@@ -118,6 +118,42 @@ async def _trino_catalog_ready(catalog: str) -> bool:
             await trino.aclose()
 
 
+async def _rag_knowledge_ready(client: httpx.AsyncClient | None = None) -> bool:
+    """RAG API가 검증한 활성 pgvector 문서 corpus 상태를 확인한다."""
+
+    async def check(request_client: httpx.AsyncClient) -> bool:
+        response = await request_client.get(
+            f"{os.getenv('RAG_API_URL', 'http://rag-api:8000').rstrip('/')}"
+            "/health/ready"
+        )
+        response.raise_for_status()
+        payload = response.json()
+        database = payload.get("database")
+        if not isinstance(database, dict):
+            return False
+        return (
+            payload.get("status") == "healthy"
+            and isinstance(payload.get("active_corpus_release"), dict)
+            and bool(database.get("pgvector_version"))
+            and isinstance(database.get("documents"), int)
+            and database["documents"] > 0
+            and isinstance(database.get("chunks"), int)
+            and database["chunks"] > 0
+        )
+
+    if client is not None:
+        return await check(client)
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(AppDatabaseReadiness._probe_timeout()),
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "answervice-admin-connection/1.0",
+        },
+        trust_env=False,
+    ) as request_client:
+        return await check(request_client)
+
+
 async def probe_admin_connections(
     paused_connection_ids: Collection[str] = (),
 ) -> tuple[dict[str, object], ...]:
@@ -164,5 +200,12 @@ async def probe_admin_connections(
             _probe_or_pause("trino", "Trino", "HTTPS", trino_ready, paused),
             _probe_or_pause("datahub", "DataHub", "HTTPS", datahub_ready, paused),
             _probe_or_pause("model-api", "Model API", "HTTPS", model_ready, paused),
+            _probe_or_pause(
+                "rag-knowledge",
+                "RAG 문서 저장소",
+                "pgvector",
+                _rag_knowledge_ready,
+                paused,
+            ),
         )
     )

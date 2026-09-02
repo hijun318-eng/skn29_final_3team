@@ -231,32 +231,9 @@
   background: var(--ml-danger-surface);
 }
 
-.ml-workspace__result { padding: 20px; display: grid; gap: 20px; }
+.ml-workspace__result { padding: 20px; display: grid; gap: 16px; }
 .ml-workspace__result-state { margin: 0; padding: 14px; color: var(--ml-text-muted); border: 1px solid var(--ml-line); border-radius: 9px; background: var(--ml-surface-raised); font-size: 12px; line-height: 1.6; }
 .ml-workspace__result-state.is-error { color: var(--ml-danger-text); border-color: color-mix(in srgb, var(--ml-danger-text) 30%, transparent); background: var(--ml-danger-surface); }
-
-.ml-workspace__result-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.ml-workspace__result-meta div {
-  min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid var(--ml-line);
-  border-radius: 9px;
-  background: var(--ml-surface-raised);
-}
-
-.ml-workspace__result-meta span,
-.ml-workspace__result-meta strong { display: block; }
-.ml-workspace__result-meta span { color: var(--ml-text-muted); font-size: 12px; }
-.ml-workspace__result-meta strong {
-  margin-top: 4px;
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
 
 .ml-workspace__section-heading {
   display: flex;
@@ -274,6 +251,17 @@
   line-height: 1.5;
 }
 
+.ml-workspace__forecast-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+.ml-workspace__forecast-meta span:not(:first-child) {
+  color: color-mix(in srgb, var(--ml-text-muted) 82%, transparent);
+  font-size: 12px;
+}
+
 .ml-workspace__section-heading > span {
   padding: 4px 8px;
   flex: none;
@@ -287,7 +275,7 @@
 .ml-workspace__kpis {
   margin-top: 11px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -306,7 +294,7 @@
 .ml-workspace__kpis span { color: var(--ml-text-muted); font-size: 12px; line-height: 1.4; }
 .ml-workspace__kpis strong { margin-top: 8px; font-size: clamp(17px, 3vw, 21px); line-height: 1.2; }
 
-.ml-workspace__details,
+.ml-workspace__daily,
 .ml-workspace__technical-details {
   overflow: hidden;
   border: 1px solid var(--ml-line);
@@ -314,7 +302,6 @@
   background: var(--ml-surface-raised);
 }
 
-.ml-workspace__details > summary,
 .ml-workspace__technical-details > summary {
   min-height: 46px;
   padding: 0 13px;
@@ -327,7 +314,29 @@
   cursor: pointer;
 }
 
-.ml-workspace__details > summary strong {
+.ml-workspace__daily > header {
+  min-height: 58px;
+  padding: 11px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ml-workspace__daily > header small {
+  display: block;
+  color: var(--ml-accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ml-workspace__daily > header h4 {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.ml-workspace__daily > header > strong {
   margin-left: auto;
   color: var(--ml-text-muted);
   font-size: 12px;
@@ -341,7 +350,7 @@
 
 .ml-workspace__table-scroll table {
   width: 100%;
-  min-width: 590px;
+  min-width: 700px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -367,6 +376,12 @@
 }
 
 .ml-workspace__table-scroll tbody th { color: var(--ml-text); font-weight: 650; }
+.ml-workspace__table-scroll td.is-primary strong { color: var(--ml-text); font-weight: 800; }
+.ml-workspace__table-scroll td.is-cumulative {
+  color: var(--ml-accent-strong);
+  background: var(--ml-accent-soft);
+}
+.ml-workspace__table-scroll td.is-cumulative strong { font-weight: 850; }
 .ml-workspace__technical-details > summary { color: var(--ml-text-muted); }
 .ml-workspace__technical-details dl { margin: 0; padding: 0 13px 12px; display: grid; gap: 8px; }
 .ml-workspace__technical-details dl div {
@@ -401,7 +416,6 @@
   .ml-workspace__scroll { padding-bottom: env(safe-area-inset-bottom); }
   .ml-workspace__form { grid-template-columns: minmax(0, 1fr); }
   .ml-workspace__form label:nth-child(3) { grid-column: auto; }
-  .ml-workspace__result-meta,
   .ml-workspace__kpis { grid-template-columns: minmax(0, 1fr); }
   .ml-workspace__kpis article { min-height: 72px; }
 }

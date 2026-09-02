@@ -75,6 +75,12 @@ function formatKoreanDate(value) {
 }
 
 
+function propertyLabel(value) {
+  const label = String(value || "").trim();
+  return /(?:호텔|hotel)$/i.test(label) ? label : `${label} 호텔`;
+}
+
+
 function validForecastDay(day) {
   return Boolean(
     day
@@ -106,7 +112,24 @@ function buildForecastSummary(days) {
 }
 
 
-/** 예측 결과의 사용자 요약과 선택형 상세 정보를 표시한다. */
+function buildForecastRows(days) {
+  let cumulativeOccupied = 0;
+  let cumulativeAvailable = 0;
+  return days.map((day) => {
+    cumulativeOccupied += day.predicted_occupied_rooms;
+    cumulativeAvailable += day.total_available_rooms;
+    return {
+      ...day,
+      cumulative_occupied_rooms: cumulativeOccupied,
+      cumulative_occupancy_rate: cumulativeAvailable > 0
+        ? cumulativeOccupied / cumulativeAvailable
+        : null,
+    };
+  });
+}
+
+
+/** 예측 결과의 핵심 요약과 날짜별 누적 전망을 표시한다. */
 export function MLPredictionResult({ result }) {
   const forecasts = result?.daily_forecasts;
   if (!Array.isArray(forecasts) || !forecasts.every(validForecastDay)) {
@@ -117,6 +140,7 @@ export function MLPredictionResult({ result }) {
   }
   const days = forecasts;
   const summary = buildForecastSummary(days);
+  const dailyRows = buildForecastRows(days);
   const forecastPeriod = `${formatKoreanDate(days[0].target_date)} ~ ${formatKoreanDate(days.at(-1).target_date)}`;
 
   return (
@@ -125,46 +149,51 @@ export function MLPredictionResult({ result }) {
         <div className="ml-workspace__section-heading">
           <div>
             <small>수요 예측</small>
-            <h3 id="ml-forecast-summary-heading">{result.property_id} 객실 수요 예측</h3>
-            <p>{forecastPeriod} · {days.length}일 전망</p>
+            <h3 id="ml-forecast-summary-heading">{propertyLabel(result.property_id)} 객실 수요 예측</h3>
+            <p className="ml-workspace__forecast-meta">
+              <span>{forecastPeriod} · {days.length}일 전망</span>
+              <span>예측 기준 {formatKoreanDate(result.as_of)}</span>
+              <span>실적 기준 {formatKoreanDate(result.feature_as_of || result.as_of)}</span>
+            </p>
           </div>
         </div>
         <div className="ml-workspace__kpis">
-          <article><span>예측 기간</span><strong>{days.length}일</strong></article>
           <article><span>기간 예상 점유율</span><strong>{formatPercent(summary.occupancyRate)}</strong></article>
           <article><span>누적 예상 객실 판매량</span><strong>{formatRooms(summary.totalOccupied)} 박</strong></article>
         </div>
       </section>
 
-      <div className="ml-workspace__result-meta" aria-label="예측 데이터 기준">
-        <div><span>예측 기준일</span><strong>{formatKoreanDate(result.as_of)}</strong></div>
-        <div><span>실적 데이터 기준</span><strong>{formatKoreanDate(result.feature_as_of || result.as_of)}</strong></div>
-      </div>
-
       {days.length > 0 && (
-        <details className="ml-workspace__details">
-          <summary><span>일별 예측 상세 보기</span><strong>{days.length}일</strong></summary>
+        <section className="ml-workspace__daily" aria-labelledby="ml-daily-forecast-heading">
+          <header>
+            <div>
+              <small>일별 전망</small>
+              <h4 id="ml-daily-forecast-heading">날짜별 판매 및 점유율</h4>
+            </div>
+            <strong>{days.length}일</strong>
+          </header>
           <div className="ml-workspace__table-scroll">
             <table>
               <thead><tr>
-                <th scope="col">날짜</th><th scope="col">전체 객실</th>
-                <th scope="col">예상 판매</th><th scope="col">예상 잔여</th>
-                <th scope="col">예상 점유율</th>
+                <th scope="col">날짜</th><th scope="col">예상 판매</th>
+                <th scope="col">예상 잔여</th><th scope="col">일 점유율</th>
+                <th scope="col">누적 예상 판매</th><th scope="col">누적 점유율</th>
               </tr></thead>
               <tbody>
-                {days.map((day) => (
+                {dailyRows.map((day) => (
                   <tr key={day.target_date}>
                     <th scope="row">{formatKoreanDate(day.target_date)}</th>
-                    <td>{formatRooms(day.total_available_rooms)}실</td>
-                    <td>{formatRooms(day.predicted_occupied_rooms)}실</td>
+                    <td className="is-primary"><strong>{formatRooms(day.predicted_occupied_rooms)}실</strong></td>
                     <td>{formatRooms(day.predicted_available_rooms)}실</td>
-                    <td>{formatPercent(day.predicted_occupancy_rate)}</td>
+                    <td className="is-primary"><strong>{formatPercent(day.predicted_occupancy_rate)}</strong></td>
+                    <td className="is-cumulative"><strong>{formatRooms(day.cumulative_occupied_rooms)} 박</strong></td>
+                    <td className="is-cumulative"><strong>{formatPercent(day.cumulative_occupancy_rate)}</strong></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </details>
+        </section>
       )}
 
       {(result.model_version || result.provenance?.trino_query_id) && (

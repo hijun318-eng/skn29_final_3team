@@ -147,6 +147,7 @@ try {
   assert.match(analysisProcessHtml, /class="active" data-state="active"/);
   assert.match(analysisProcessHtml, /class="done" data-state="complete"/);
   assert.match(analysisProcessHtml, /데이터 조회/);
+  assert.doesNotMatch(analysisProcessHtml, /서버가 확인한 현재 상태와 경과 시간|서버가 반환한 실행 트레이스/);
 
   const runningPanelHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run: { ...run, status: "running" },
@@ -326,6 +327,26 @@ try {
   assert.match(tableHtml, /class="analysis-row-label-heading"/);
   assert.match(tableHtml, /class="analysis-row-label"/);
   assert.match(tableHtml, /객실 매출<small class="analysis-column-unit">\(억 원\)<\/small>/);
+
+  const hotelTableHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: {
+      ...run,
+      table: {
+        columns: ["hotel_code", "room_revenue"],
+        rows: [
+          { hotel_code: "DOUGLAS", room_revenue: 2760000000 },
+          { hotel_code: "GRAND", room_revenue: 18470000000 },
+          { hotel_code: "VISTA", room_revenue: 10840000000 },
+        ],
+      },
+    },
+    viewType: "TABLE",
+  }));
+  assert.match(hotelTableHtml, /DOUGLAS 호텔/);
+  assert.match(hotelTableHtml, /GRAND 호텔/);
+  assert.match(hotelTableHtml, /VISTA 호텔/);
+  assert.doesNotMatch(hotelTableHtml, />hotel_code</);
+  assert.match(stylesSource, /tbody td\.is-numeric\{font-weight:750\}/);
 
   const barPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,

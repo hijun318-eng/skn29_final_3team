@@ -65,16 +65,6 @@ export const REQUIRED_ACTION_COPY: Record<string, string> = {
 };
 
 /**
- * 경과 시간대별 진행 안내 문구를 만든다. 내부 처리 단계를 추측하지 않는다.
- * @param {number} elapsed - 요청 시작 후 경과 초.
- * @returns {string} 표시용 안내 문구.
- */
-export function progressMessage(elapsed: number) {
-  if (elapsed >= 60) return "평소보다 오래 걸리고 있지만 요청은 중단되지 않았습니다. 필요하면 분석을 취소할 수 있습니다.";
-  return "서버가 확인한 현재 상태와 경과 시간만 표시합니다.";
-}
-
-/**
  * 서버 progress를 표시용 ViewModel로 정규화한다. progress가 없으면 경과 시간으로 세부 단계를 만들지 않는다.
  * @param {AnalysisProcessViewModelInput} input - 요청 종류, 상태, 경과 시간과 선택적인 서버 단계.
  * @returns {AnalysisProcessViewModel} 화면에서 바로 사용할 과정 ViewModel.
@@ -167,12 +157,6 @@ export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel })
           </li>
         ))}
       </ol>
-      {!isPresentation && model.status === "running" && <p>{progressMessage(model.elapsedSeconds)}</p>}
-      <p className="analysis-progress-boundary">
-        {isPresentation
-          ? "요청한 형식에 맞춰 답변을 준비합니다."
-          : "서버가 반환한 실행 트레이스를 업무 단계로 묶어 표시합니다."}
-      </p>
     </section>
   );
 }
@@ -185,6 +169,7 @@ export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel })
  */
 export function columnLabel(column: string, run: AnalysisRun) {
   if (column === "period") return "기간";
+  if (column === "hotel_code" || column === "property_id") return "호텔";
   const metric = run.metrics.find((item) => item.resultField === column)
     ?? run.evidence?.metrics.find((item) => item.resultField === column);
   return metric ? metricDisplayLabel(metric) : column;

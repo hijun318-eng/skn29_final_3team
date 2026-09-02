@@ -141,7 +141,7 @@ const analysisPanelSource = [
   source("components/analysis/AnalysisFailureState.tsx"),
 ].join("\n");
 assert.match(analysisPanelSource, /분석 취소/);
-assert.match(analysisPanelSource, /서버가 반환한 실행 트레이스를 업무 단계로 묶어 표시합니다/);
+assert.doesNotMatch(analysisPanelSource, /서버가 확인한 현재 상태와 경과 시간|서버가 반환한 실행 트레이스를 업무 단계로 묶어 표시합니다/);
 assert.doesNotMatch(analysisPanelSource, /ANALYSIS_PHASES|modelCount/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /supportedChartType/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /문의 코드/);

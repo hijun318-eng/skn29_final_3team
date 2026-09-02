@@ -259,6 +259,7 @@ export function AnalysisDataSection({
   const rowLabelColumn = table.columns.length > 1
     ? table.columns.find((column) => !numericColumns.has(column)) ?? null
     : null;
+  const rowLabelName = rowLabelColumn ? columnLabel(rowLabelColumn, run) : "";
   return (
     <section
       className={`analysis-result-section analysis-data-section${isCompactResult ? " is-compact-result" : ""}${isSingleValueResult ? " is-single-value-result" : ""}${isWideResult ? " is-wide-result" : ""}`}
@@ -307,9 +308,15 @@ export function AnalysisDataSection({
                 {table.columns.map((column) => {
                   const content = valueScale.format(row[column], columnUnit(column, run), column);
                   const title = valueScale.exact(row[column], columnUnit(column, run));
+                  const displayedContent = column === rowLabelColumn
+                    && rowLabelName === "호텔"
+                    && content !== "—"
+                    && !content.endsWith("호텔")
+                    ? `${content} 호텔`
+                    : content;
                   return column === rowLabelColumn
-                    ? <th scope="row" className="analysis-row-label" key={column} title={title}>{content}</th>
-                    : <td className={numericColumns.has(column) ? "is-numeric" : ""} key={column} title={title}>{content}</td>;
+                    ? <th scope="row" className="analysis-row-label" key={column} title={title}>{displayedContent}</th>
+                    : <td className={numericColumns.has(column) ? "is-numeric" : ""} key={column} title={title}>{displayedContent}</td>;
                 })}
               </tr>
             ))}

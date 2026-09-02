@@ -185,10 +185,6 @@ export function AnalysisStatePanel({
   }, [isPresentationPending, run.elapsedSeconds, run.traceId, viewState]);
 
   useEffect(() => {
-    setChartDisplayOverride("");
-  }, [chartType, run.traceId]);
-
-  useEffect(() => {
     if (!run.error || viewState === "LOADING" || viewState === "DELAYED") return undefined;
     const frame = window.requestAnimationFrame(() => {
       const action = terminalStateRef.current?.querySelector<HTMLElement>(".analysis-diagnostic__options button:not([disabled]), .analysis-diagnostic__action:not([disabled])");

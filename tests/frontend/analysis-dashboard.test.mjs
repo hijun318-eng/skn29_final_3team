@@ -11,6 +11,7 @@ const response = JSON.parse(readFileSync(new URL("./fixtures/analysis-rich-succe
 const processViewModels = JSON.parse(readFileSync(new URL("./fixtures/analysis-process-view-models.json", import.meta.url), "utf8"));
 const stylesSource = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
 const agentSource = readFileSync(new URL("../../app/frontend/src/pages/AgentPage.jsx", import.meta.url), "utf8");
+const analysisPanelSource = readFileSync(new URL("../../app/frontend/src/components/analysis/AnalysisStatePanel.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../app/frontend/src/App.jsx", import.meta.url), "utf8");
 const server = await createServer({
   appType: "custom",
@@ -308,6 +309,7 @@ try {
   assert.match(agentSource, /attachAgentResults/);
   assert.doesNotMatch(agentSource, /추천 질문|저장 분석 바로 실행|exampleQuestions/);
   assert.match(agentSource, /이 저장 분석은 현재 데이터 릴리스와 맞지 않아 재실행할 수 없습니다/);
+  assert.doesNotMatch(analysisPanelSource, /setChartDisplayOverride|chartDisplayOverride/);
 
   // 차트 뷰에는 요청된 차트만 표시하고 별도 표현 방식 선택기는 노출하지 않는다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));

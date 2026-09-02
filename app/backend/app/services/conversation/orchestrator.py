@@ -266,15 +266,19 @@ def _presentation_view_contract(
     if len(columns) != len(raw_columns) or not columns:
         raise ValueError("이전 분석 결과의 표시 열이 비어 있거나 중복되었습니다.")
 
+    normalized_requested_type = requested_type.upper()
     view_type = {
         "HORIZONTAL_BAR": "BAR",
         "DONUT": "PIE",
         "SUMMARY": "TABLE",
-    }.get(requested_type.upper(), requested_type.upper())
+    }.get(normalized_requested_type, normalized_requested_type)
     if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA"}:
         raise ValueError("요청한 표현 방식은 현재 지원하지 않습니다.")
     spec: dict[str, Any] = {
-        "chart_type": view_type.lower(),
+        "chart_type": {
+            "HORIZONTAL_BAR": "horizontal-bar",
+            "DONUT": "donut",
+        }.get(normalized_requested_type, view_type.lower()),
         "source_artifact_id": str(artifact_id),
         "columns": list(columns),
         "sort": [],

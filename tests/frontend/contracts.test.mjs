@@ -11,7 +11,7 @@ import { reportApiError } from "../../app/frontend/src/features/reports/reportPa
 import { matchesAssistantArtifactSelection } from "../../app/frontend/src/features/reports/useReportLifecycleState.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
-import { commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun } from "../../app/frontend/src/pages/agentPageHelpers.js";
+import { commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationViewType, scopeNoticeRun } from "../../app/frontend/src/pages/agentPageHelpers.js";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
@@ -110,6 +110,11 @@ assert.equal(hasReusablePresentationArtifact({
   evidence: { artifactId: "artifact-1", queryId: "query-other" },
 }), false);
 assert.equal(hasReusablePresentationArtifact(null), false);
+assert.equal(presentationViewType({
+  view_type: "BAR",
+  resolved_slots: { target_chart_type: "HORIZONTAL_BAR" },
+}), "HORIZONTAL_BAR");
+assert.equal(presentationViewType({ view_type: "TABLE" }), "TABLE");
 assert.match(source("pages/AgentPage.jsx"), /setTurns\(\(prev\) => \[\.\.\.prev, optimisticTurn\]\)/);
 assert.match(source("pages/AgentPage.jsx"), /isPresentationAction && !hasReusablePresentationArtifact\(sourceRun\)/);
 assert.match(source("pages/AgentPage.jsx"), /requestGeneration\.current !== generation/);
@@ -716,13 +721,14 @@ const hydratedSuccess = hydrateTurnsFromServer([{
     }],
   },
 }, {
-  turn_id: "turn-table-view",
-  user_message: "표로 보여줘",
+  turn_id: "turn-horizontal-view",
+  user_message: "가로 막대로 바꿔줘",
   route: "PRESENTATION",
   terminal_status: "SUCCEEDED",
   artifact_id: "persisted-artifact",
-  view_spec_id: "view-spec-table",
-  view_type: "TABLE",
+  view_spec_id: "view-spec-horizontal",
+  view_type: "BAR",
+  resolved_slots: { target_chart_type: "HORIZONTAL_BAR" },
 }]);
 assert.equal(hydratedSuccess[0].run.metrics[0].metricId, "generic_metric");
 assert.equal(hydratedSuccess[0].run.metrics[0].resultField, "generic_value");
@@ -731,15 +737,15 @@ assert.equal(hydratedSuccess[0].run.chart.chartType, "bar");
 assert.equal(hydratedSuccess[0].run.evidence.metrics[0].resultField, "generic_value");
 assert.equal(hydratedSuccess[0].run.sources[0].schemaVersion, "v1");
 assert.equal(hydratedSuccess.length, 2);
-assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-table-view"]);
-assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "표로 보여줘"]);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-horizontal-view"]);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "가로 막대로 바꿔줘"]);
 assert.equal(hydratedSuccess[0].viewType, "SUMMARY");
-assert.equal(hydratedSuccess[1].viewType, "TABLE");
+assert.equal(hydratedSuccess[1].viewType, "HORIZONTAL_BAR");
 assert.equal(hydratedSuccess[1].run.artifact.artifactId, hydratedSuccess[0].run.artifact.artifactId);
 assert.equal(hydratedSuccess[1].run.artifact.queryId, hydratedSuccess[0].run.artifact.queryId);
 assert.equal(hydratedSuccess[1].run.summary, hydratedSuccess[0].run.summary);
 assert.equal(hydratedSuccess[1].isArtifactReuse, true);
-assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-table");
+assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-horizontal");
 
 const hydratedComposite = hydrateTurnsFromServer([{
   turn_id: "turn-composite",

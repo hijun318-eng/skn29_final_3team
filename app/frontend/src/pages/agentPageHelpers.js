@@ -54,6 +54,22 @@ export function hasReusablePresentationArtifact(run) {
 }
 
 /**
+ * PRESENTATION 턴은 영속 View enum보다 서버가 확정한 세부 표현 타입을 우선한다.
+ * ViewSpec의 BAR는 세로·가로 막대를 함께 담는 저장 타입이므로, resolved slot을 버리면
+ * HORIZONTAL_BAR 요청이 재조회 없이 성공해도 화면이 세로 막대로 되돌아간다.
+ */
+export function presentationViewType(serverTurn) {
+  const resolvedType = serverTurn?.resolved_slots?.target_chart_type;
+  if (typeof resolvedType === "string" && resolvedType.trim()) {
+    return resolvedType.trim().toUpperCase();
+  }
+  const storedType = serverTurn?.view_type;
+  return typeof storedType === "string" && storedType.trim()
+    ? storedType.trim().toUpperCase()
+    : "TABLE";
+}
+
+/**
  * 사용자가 선택한 disambiguation 옵션을 원 질문 뒤에 붙여 재질의용 질문 문장을 만든다.
  * @param {string} question - 원 질문.
  * @param {string} suggestion - 사용자가 선택한 값.
@@ -319,7 +335,7 @@ export function hydrateTurnsFromServer(serverTurns) {
         run,
         resolvedSlots: st.resolved_slots || null,
         viewType: isPresentation
-          ? (st.view_type || "TABLE")
+          ? presentationViewType(st)
           : isOutOfScope
             ? "CHAT"
             : ragResult && !st.data_snapshot_json

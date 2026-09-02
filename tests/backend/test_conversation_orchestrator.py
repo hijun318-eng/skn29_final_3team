@@ -55,6 +55,7 @@ from app.services.agent_supervisor import (
 from app.services.conversation.orchestrator import (
     ConversationOrchestrator,
     _business_terms_for_turn,
+    _presentation_view_contract,
     _safe_analysis_observation,
     _view_contract,
 )
@@ -109,6 +110,29 @@ def test_initial_summary_view_does_not_persist_an_unsolicited_chart() -> None:
 
     assert view["view_type"] == "TABLE"
     assert view["spec_json"]["chart_type"] == "table"
+
+
+def test_horizontal_presentation_preserves_direction_in_view_spec() -> None:
+    """BAR 저장 enum 안에서도 사용자가 요청한 가로 방향을 ViewSpec에 보존한다."""
+
+    view = _presentation_view_contract(
+        {
+            "artifact_id": str(uuid4()),
+            "data_snapshot_json": {
+                "columns": ["hotel_code", "room_revenue"],
+                "rows": [],
+            },
+            "chart_spec_json": {
+                "chart_type": "bar",
+                "x_field": "hotel_code",
+                "y_fields": ["room_revenue"],
+            },
+        },
+        "HORIZONTAL_BAR",
+    )
+
+    assert view["view_type"] == "BAR"
+    assert view["spec_json"]["chart_type"] == "horizontal-bar"
 
 
 def test_safe_analysis_observation_excludes_sql_rows_and_parameters() -> None:

@@ -13,7 +13,7 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationViewType, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
@@ -424,7 +424,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         viewType: responseType === "OUT_OF_SCOPE" || serverTurn?.route === "OUT_OF_SCOPE"
           ? "CHAT"
           : isPresentation
-          ? (serverTurn?.view_type || "TABLE")
+          ? presentationViewType(serverTurn)
           : (serverTurn?.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(finalRun),
         reusePending: false,

@@ -321,7 +321,11 @@ try {
   }));
   assert.doesNotMatch(tableHtml, /가로 막대그래프로 보기/);
   assert.match(tableHtml, /분석 결과/);
-  assert.match(tableHtml, /결과 6건/);
+  assert.doesNotMatch(tableHtml, /결과 6건|열 제목을 눌러 정렬/);
+  assert.match(tableHtml, /class="row-number sr-only">#/);
+  assert.match(tableHtml, /class="analysis-row-label-heading"/);
+  assert.match(tableHtml, /class="analysis-row-label"/);
+  assert.match(tableHtml, /객실 매출<small class="analysis-column-unit">\(억 원\)<\/small>/);
 
   const barPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,
@@ -379,7 +383,7 @@ try {
   }));
   assert.match(followupHtml, /상세 데이터 표/);
   assert.match(followupHtml, /analysis-data-meta/);
-  assert.match(followupHtml, /열 제목을 눌러 정렬/);
+  assert.doesNotMatch(followupHtml, /결과 6건|열 제목을 눌러 정렬/);
   assert.match(followupHtml, /analysis-table-sort/);
   assert.match(followupHtml, /data-result-density="wide"/);
   assert.match(followupHtml, /data-table-density="wide"/);
@@ -443,7 +447,7 @@ try {
   assert.match(singleValueTableHtml, /data-result-density="compact"/);
   assert.match(singleValueTableHtml, /is-compact-result is-single-value-result/);
   assert.match(singleValueTableHtml, /analysis-table-label/);
-  assert.match(singleValueTableHtml, /단일 결과/);
+  assert.doesNotMatch(singleValueTableHtml, /단일 결과/);
   assert.doesNotMatch(singleValueTableHtml, /class="row-number"|analysis-table-sort|열 제목을 눌러 정렬/);
 
   const pendingFollowupHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {

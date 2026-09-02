@@ -73,7 +73,6 @@ export function AnalysisStatePanel({
   onSave,
   onCreateReportDraft,
   onOpenEvidence,
-  onPreview,
   artifactReuse = null,
   processViewModel = null,
   saveDisabled = false,
@@ -88,7 +87,6 @@ export function AnalysisStatePanel({
   onSave?: () => void;
   onCreateReportDraft?: () => void;
   onOpenEvidence?: () => void;
-  onPreview?: () => void;
   artifactReuse?: { pending?: boolean; viewSpecId?: string | null } | null;
   processViewModel?: AnalysisProcessViewModel | null;
   saveDisabled?: boolean;
@@ -349,7 +347,6 @@ export function AnalysisStatePanel({
             onSave={onSave}
             onCreateReportDraft={onCreateReportDraft}
             onOpenEvidence={onOpenEvidence}
-            onPreview={onPreview}
             saveDisabled={saveDisabled}
           />}
           {!isPresentationPending && artifactReuse?.viewSpecId && (

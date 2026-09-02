@@ -660,10 +660,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         setReportTitle(reportTitleForAnalysis(turnItem.run));
                         setReportModal("draft");
                       } : undefined}
-                      onPreview={canDraftReport && turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
-                        setReportModalRun(turnItem.run);
-                        setReportModal("preview");
-                      } : undefined}
                       onOpenEvidence={turnItem.run.artifact ? () => {
                         setSelectedEvidenceRun(turnItem.run);
                         setEvidenceOpen(true);

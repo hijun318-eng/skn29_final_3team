@@ -1,6 +1,6 @@
 /** 책임: 인용 가능한 내부 문서 답변과 후속 질문·PDF 근거를 접근 가능한 카드로 표시한다. */
-import { useId } from "react";
-import { FileText } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { FileText, X } from "lucide-react";
 
 import "./RagAnswerCard.css";
 
@@ -201,9 +201,41 @@ function evidenceLabel(item) {
     .join(' · ') || '근거 문서';
 }
 
+function sourceRows(sources, pdfLinks) {
+  const matchedUrls = new Set();
+  const rows = sources.map((source) => {
+    const link = pdfLinks.find((item) => (
+      (source.document_id && item.documentId === source.document_id)
+      || item.label === source.document_name
+    )) || (sources.length === 1 && pdfLinks.length === 1 ? pdfLinks[0] : null);
+    if (link?.url) matchedUrls.add(link.url);
+    return {
+      key: source.evidence_id,
+      label: source.document_name || '근거 문서',
+      section: sectionLabel(source.section),
+      snippet: source.snippet || '',
+      url: link?.url || '',
+    };
+  });
+  pdfLinks.forEach((link) => {
+    if (!matchedUrls.has(link.url)) {
+      rows.push({
+        key: link.url,
+        label: link.label || '근거 문서',
+        section: '',
+        snippet: '',
+        url: link.url,
+      });
+    }
+  });
+  return rows;
+}
+
 /** RAG 답변을 비교형 본문, 후속 질문과 중복 제거된 PDF 링크로 렌더링한다. */
 export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp }) {
   const titleId = useId();
+  const viewerTitleId = useId();
+  const [viewerSource, setViewerSource] = useState(null);
   const answerText = getAnswerText(rag);
   const sourcePdfUrl = pdfUrl || getPdfUrl(rag);
   const pdfLinks = Array.from(new Map(
@@ -222,6 +254,7 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
     evidenceMetadataPoints(evidence),
   );
   const sources = documentSources(evidence);
+  const displayedSources = sourceRows(sources, pdfLinks);
   const citationRefs = citationReferences(rag, evidence);
   const responseStatus = String(rag?.status || rag?.response_status || '').toUpperCase();
   const isTerminalFailure = ['NO_EVIDENCE', 'ERROR', 'FAILED', 'GENERATION_FAILED'].includes(responseStatus);
@@ -231,6 +264,15 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
   const followUpQuestions = isTerminalFailure || !Array.isArray(candidateFollowUps)
     ? []
     : candidateFollowUps.filter((question) => typeof question === 'string' && question.trim());
+
+  useEffect(() => {
+    if (!viewerSource) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setViewerSource(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [viewerSource]);
 
   return (
     <article aria-labelledby={titleId} className="rag-answer-card">
@@ -259,9 +301,12 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
           </div>
         )}
         {presentation.visiblePoints.length > 0 && (
-          <ul className="rag-answer-card__points">
-            {presentation.visiblePoints.map((point) => <li key={point}>{emphasizedAnswerText(point)}</li>)}
-          </ul>
+          <section className="rag-answer-card__supporting">
+            <h3>함께 볼 내용</h3>
+            <ul className="rag-answer-card__points">
+              {presentation.visiblePoints.map((point) => <li key={point}>{emphasizedAnswerText(point)}</li>)}
+            </ul>
+          </section>
         )}
         {presentation.detailPoints.length > 0 && (
           <details className="rag-answer-card__details">
@@ -316,28 +361,53 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
           </div>
         </section>
       )}
-      {sources.length > 0 && (
+      {displayedSources.length > 0 && (
         <section className="rag-answer-card__source-strip" aria-label="출처">
           <p>출처</p>
-          <div>
-            {sources.map((item) => (
-              <span key={item.evidence_id} title={item.snippet || undefined}>
+          <div className="rag-answer-card__source-list">
+            {displayedSources.map((item) => item.url ? (
+              <button
+                key={item.key}
+                type="button"
+                title={item.snippet || `${item.label} 뷰어 열기`}
+                onClick={() => setViewerSource(item)}
+              >
                 <FileText size={14} aria-hidden="true" />
-                <b>{item.document_name || '근거 문서'}</b>
-                {sectionLabel(item.section) && <small>{sectionLabel(item.section)}</small>}
-              </span>
+                <b>{item.label}</b>
+                {item.section && <small>{item.section}</small>}
+                <span>뷰어 열기</span>
+              </button>
+            ) : (
+              <div key={item.key} title={item.snippet || undefined}>
+                <FileText size={14} aria-hidden="true" />
+                <b>{item.label}</b>
+                {item.section && <small>{item.section}</small>}
+              </div>
             ))}
           </div>
         </section>
       )}
-      {pdfLinks.length > 0 && (
-        <nav className="rag-answer-card__sources" aria-label="근거 문서">
-          {pdfLinks.map((item) => (
-            <a key={item.url} href={item.url} target="_blank" rel="noreferrer noopener">
-              원문 보기 · {item.label}
-            </a>
-          ))}
-        </nav>
+      {viewerSource && (
+        <div
+          className="rag-document-viewer"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setViewerSource(null);
+          }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby={viewerTitleId}>
+            <header>
+              <div>
+                <small>근거 문서</small>
+                <h2 id={viewerTitleId}>{viewerSource.label}</h2>
+              </div>
+              <button type="button" aria-label="문서 뷰어 닫기" onClick={() => setViewerSource(null)}>
+                <X size={20} aria-hidden="true" />
+              </button>
+            </header>
+            <iframe src={viewerSource.url} title={`${viewerSource.label} 문서 본문`} />
+          </section>
+        </div>
       )}
     </article>
   );

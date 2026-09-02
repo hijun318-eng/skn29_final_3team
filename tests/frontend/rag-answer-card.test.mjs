@@ -55,8 +55,8 @@ try {
     rag,
     onFollowUp: () => {},
     pdfSources: [
-      { label: "객실 운영 지침", url: rag.pdf_url },
-      { label: "중복 링크", url: rag.pdf_url },
+      { documentId: "manual-approved", label: "객실 운영 지침", url: rag.pdf_url },
+      { documentId: "manual-approved", label: "중복 링크", url: rag.pdf_url },
     ],
   });
   const html = renderToStaticMarkup(createElement("div", null, card("first"), card("second")));
@@ -65,9 +65,10 @@ try {
   assert.match(html, /핵심 답변/);
   assert.match(html, /class="rag-answer-card__comparison"/);
   assert.match(html, /aria-label="후속 질문"/);
-  assert.match(html, /aria-label="근거 문서"/);
+  assert.match(html, /aria-label="출처"/);
   assert.match(html, /승인 절차를 더 알려줘/);
-  assert.equal((html.match(/원문 보기/g) || []).length, 2);
+  assert.equal((html.match(/뷰어 열기/g) || []).length, 2);
+  assert.doesNotMatch(html, /원문 보기/);
   assert.doesNotMatch(html, /PDF 원문 보기/);
   assert.equal((html.match(/근거 인용/g) || []).length, 2);
   assert.equal((html.match(/aria-label="1번 인용 근거 보기"/g) || []).length, 2);
@@ -75,6 +76,7 @@ try {
   assert.match(html, /객실 정비 이력과 당직자 인계 내용을 함께 확인한다/);
   assert.equal((html.match(/class="rag-answer-card__source-strip"/g) || []).length, 2);
   assert.equal((html.match(/객실 운영 지침<\/b>/g) || []).length, 2);
+  assert.doesNotMatch(html, /class="rag-answer-card__sources"/);
   assert.doesNotMatch(html, /style=/);
 
   const parserMarkerHtml = renderToStaticMarkup(createElement(RagAnswerCard, {
@@ -131,6 +133,7 @@ try {
   assert.match(monthlyReportHtml, /class="rag-answer-card__metric">15,717실<\/strong>/);
   assert.match(monthlyReportHtml, /class="rag-answer-card__metric">68\.9억 원<\/strong>/);
   assert.match(monthlyReportHtml, /<small>문서 본문<\/small>/);
+  assert.match(monthlyReportHtml, /함께 볼 내용/);
   assert.doesNotMatch(monthlyReportHtml, /<small>\[DOCX DOCUMENT_START/);
 
   const labelledBy = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);
@@ -152,7 +155,8 @@ try {
   assert.match(stylesSource, /min-height: 44px/);
   assert.match(stylesSource, /:focus-visible/);
   assert.match(stylesSource, /\.rag-answer-card__metric/);
-  assert.match(stylesSource, /max-width: min\(100%, 520px\)/);
+  assert.match(stylesSource, /\.rag-document-viewer/);
+  assert.match(stylesSource, /grid-template-columns: auto minmax\(0, 1fr\)/);
 
 } finally {
   await server.close();

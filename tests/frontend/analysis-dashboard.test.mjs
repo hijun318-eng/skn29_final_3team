@@ -303,7 +303,7 @@ try {
     viewType: "TABLE",
     onRequestBarPresentation: () => {},
   }));
-  assert.match(tableWithPresentationActionHtml, /막대그래프로 보기/);
+  assert.match(tableWithPresentationActionHtml, /가로 막대그래프로 보기/);
 
   const barPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,
@@ -311,7 +311,7 @@ try {
     onRequestBarPresentation: () => {},
     artifactReuse: { viewSpecId: "view-spec-bar" },
   }));
-  assert.doesNotMatch(barPresentationHtml, /막대그래프로 보기/);
+  assert.doesNotMatch(barPresentationHtml, /가로 막대그래프로 보기/);
   assert.match(barPresentationHtml, /기존 분석 재사용 · 새 분석 쿼리 없음/);
 
   const pendingPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {

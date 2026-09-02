@@ -825,6 +825,24 @@ def test_route_is_decided_by_contract_signal_not_question_wording():
     ).route == "ANALYSIS"
 
 
+def test_explicit_presentation_signal_recovers_a_missing_route_enum():
+    """표현 신호는 명확하지만 route만 누락된 모델 출력을 0-query로 복구한다."""
+
+    slots = ConversationSlotResolver.resolve(
+        user_message="현재 결과를 다른 시각화로 전환",
+        node1_output={
+            "presentation_explicit": True,
+            "presentation_type": "HORIZONTAL_BAR",
+        },
+        previous_turns=[_prior_analysis_turn()],
+        as_of=date(2026, 8, 18),
+    )
+
+    assert slots.route == "PRESENTATION"
+    assert slots.target_chart_type == "HORIZONTAL_BAR"
+    assert slots.source_turn_ids == ("turn-1",)
+
+
 def test_unknown_route_signal_is_not_trusted():
     """계약 enum 밖의 route 값은 신호로 승격되지 않고 ANALYSIS로 닫히는지 검증."""
     as_of = date(2026, 8, 18)

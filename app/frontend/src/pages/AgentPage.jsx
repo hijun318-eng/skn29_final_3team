@@ -651,10 +651,10 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
                       onRequestBarPresentation={() => void analyzeQuestion(
-                        "호텔별 차이가 잘 보이게 막대그래프로 바꿔줘.",
+                        "호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘.",
                         {
                           requested_route: "PRESENTATION",
-                          presentation_type: "BAR",
+                          presentation_type: "HORIZONTAL_BAR",
                           inherit_previous_context: true,
                         },
                         turnItem,

@@ -204,6 +204,10 @@ assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(pausedConn
 assert.match(source("pages/AdminPage.jsx"), /role="switch"/);
 assert.match(source("pages/AdminPage.jsx"), /aria-checked=\{enabled\}/);
 assert.match(source("pages/AdminPage.jsx"), /CONNECTION_VISUALS/);
+assert.match(source("pages/AdminPage.jsx"), /CORE_OPERATION_CONNECTION_IDS/);
+assert.match(source("pages/AdminPage.jsx"), /admin-connection-story__flow/);
+assert.match(source("pages/AdminPage.jsx"), /기타 연결 및 지원 서비스/);
+assert.match(source("pages/AdminPage.jsx"), /readyCoreCount/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
 assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\}/);
 assert.match(source("App.jsx"), /const adminClient = useMemo\(\(\) => canUseAdmin \? createAdminClient\(undefined, fetch\) : null, \[canUseAdmin\]\)/);
@@ -217,6 +221,9 @@ assert.doesNotMatch(source("pages/AdminPage.jsx"), /<option value="(?:report_adm
 assert.match(source("pages/AdminPage.jsx"), /accountForm\.role === modal\.account\.role \? \{\} : \{ role: accountForm\.role \}/);
 assert.match(globalStyles, /\.admin-console\{display:grid;gap:18px;padding-top:22px\}/);
 assert.match(globalStyles, /\.admin-connection-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+assert.match(globalStyles, /\.admin-connection-summary\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+assert.match(globalStyles, /\.admin-connection-story__flow\{[^}]*grid-template-columns:minmax\(0,2fr\) 104px minmax\(240px,\.8fr\)/);
+assert.match(globalStyles, /\.admin-connection-support-grid\{grid-template-columns:repeat\(auto-fit,minmax\(220px,1fr\)/);
 assert.match(globalStyles, /\.admin-data-table__head,\.admin-data-table__row\{[^}]*display:grid/);
 assert.match(globalStyles, /\.ppt-theme \.admin-console__tabs button\.is-active\{/);
 assert.match(globalStyles, /@media\(max-width:700px\)\{\.admin-console\{padding-top:14px\}/);

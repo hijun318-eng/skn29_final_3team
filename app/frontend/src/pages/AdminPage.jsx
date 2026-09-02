@@ -97,7 +97,7 @@ function formatTimestamp(value) {
 }
 
 /** 고정 연결 ID에 대응하는 엔진 아이콘과 상태 점검 switch를 한 카드에 표시한다. */
-function ConnectionCard({ connection, category, featured = false, compact = false, paused, pending, onToggle }) {
+function ConnectionCard({ connection, featured = false, compact = false, paused, pending, onToggle }) {
   const visual = CONNECTION_VISUALS[connection.id] ?? { icon: Database, tone: "default", label: connection.kind };
   const Icon = visual.icon;
   const status = paused ? "paused" : connection.status;
@@ -106,7 +106,6 @@ function ConnectionCard({ connection, category, featured = false, compact = fals
   return <article className={`admin-connection-card card${featured ? " is-featured" : ""}${compact ? " is-compact" : ""}${enabled ? "" : " is-paused"}`} data-connection-tone={visual.tone}>
     <header>
       <span className="admin-connection-card__icon" aria-hidden="true"><Icon size={26} /></span>
-      <span className="admin-connection-card__category">{category}</span>
       <button
         className="admin-connection-switch"
         type="button"
@@ -359,17 +358,17 @@ export function AdminPage({ role, client }) {
           <header><div><small>CORE DATA SOURCES</small><h3 id="admin-core-connections-title">핵심 운영 데이터</h3><p>객실·식음·고객·연회·시설 데이터를 원본 DB 구분 없이 분석합니다.</p></div><span>이종 DB {coreConnections.length}개</span></header>
           <div className="admin-connection-story__flow">
             <div className="admin-connection-core-grid">
-              {coreConnections.map((connection) => <ConnectionCard key={connection.id} connection={connection} category="운영 원천" compact paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
+              {coreConnections.map((connection) => <ConnectionCard key={connection.id} connection={connection} compact paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
             </div>
             <div className="admin-connection-bridge" aria-hidden="true"><span>승인 View</span><i /><ArrowRight size={22} /></div>
-            {trinoConnection && <ConnectionCard connection={trinoConnection} category="통합 계층" featured paused={pausedConnectionIds.includes(trinoConnection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />}
+            {trinoConnection && <ConnectionCard connection={trinoConnection} featured paused={pausedConnectionIds.includes(trinoConnection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />}
           </div>
         </section>
 
         {supportingConnections.length > 0 && <section className="admin-connection-support" aria-labelledby="admin-support-connections-title">
           <header><div><small>SUPPORTING SERVICES</small><h3 id="admin-support-connections-title">기타 연결 및 지원 서비스</h3></div><span>{supportingConnections.length}개 연결</span></header>
           <div className="admin-connection-grid admin-connection-support-grid">
-            {supportingConnections.map((connection) => <ConnectionCard key={connection.id} connection={connection} category="지원 서비스" compact paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
+            {supportingConnections.map((connection) => <ConnectionCard key={connection.id} connection={connection} compact paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
           </div>
         </section>}
       </>}

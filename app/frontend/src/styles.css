@@ -971,8 +971,8 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
 
 /* 관리자 연결 화면은 핵심 원천 DB가 Trino 승인 View로 모이는 관계를 먼저 보여준다. */
 .admin-panel__header-actions{display:flex;align-items:center;gap:12px}.admin-panel__header-actions>span{color:var(--muted);font-size:10px;white-space:nowrap}.admin-panel__header-actions>button{flex:none}
-.admin-connection-summary{margin-bottom:14px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.admin-connection-summary article{min-height:84px;padding:14px 16px;display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-content:center;gap:3px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:0 7px 20px rgba(35,50,66,.06)}.admin-connection-summary article::before{width:8px;height:8px;grid-row:1 / span 2;align-self:center;border-radius:50%;content:"";background:var(--muted)}.admin-connection-summary article.is-ready::before{background:var(--green);box-shadow:0 0 0 5px color-mix(in srgb,var(--green) 12%,transparent)}.admin-connection-summary article.is-attention::before{background:var(--coral);box-shadow:0 0 0 5px color-mix(in srgb,var(--coral) 12%,transparent)}.admin-connection-summary span{grid-column:2;color:var(--muted);font-size:10px;font-weight:750}.admin-connection-summary b{grid-column:3;grid-row:1 / span 2;align-self:center;color:var(--charcoal);font-size:22px;line-height:1;letter-spacing:-.035em}.admin-connection-summary small{grid-column:2;color:var(--green);font-size:10px}.admin-connection-summary .is-attention small{color:var(--coral)}
-.admin-connection-story,.admin-connection-support{border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--surface) 88%,var(--ivory));box-shadow:0 12px 32px rgba(35,50,66,.06)}.admin-connection-story{padding:18px}.admin-connection-story>header,.admin-connection-support>header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.admin-connection-story>header{margin-bottom:14px}.admin-connection-story>header small,.admin-connection-support>header small{color:var(--gold);font-size:9px;font-weight:800;letter-spacing:.13em}.admin-connection-story>header h3,.admin-connection-support>header h3{margin:4px 0 0;color:var(--charcoal);font-size:18px}.admin-connection-story>header p{margin:4px 0 0;color:var(--muted);font-size:11px}.admin-connection-story>header>span,.admin-connection-support>header>span{padding:5px 9px;color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 24%,var(--border));border-radius:999px;background:var(--blue-bg);font-size:9px;font-weight:800;white-space:nowrap}.admin-connection-story__flow{display:grid;grid-template-columns:minmax(0,2fr) 104px minmax(240px,.8fr);align-items:stretch;gap:14px}.admin-connection-core-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.admin-connection-bridge{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:center;align-items:center;color:var(--blue)}.admin-connection-bridge>span{grid-column:1/-1;margin-bottom:7px;color:var(--muted);font-size:9px;font-weight:750;text-align:center}.admin-connection-bridge>i{height:2px;display:block;background:linear-gradient(90deg,color-mix(in srgb,var(--blue) 20%,transparent),var(--blue));box-shadow:0 0 0 4px color-mix(in srgb,var(--blue) 5%,transparent)}.admin-connection-bridge>svg{margin-left:-1px}.admin-connection-support{margin-top:14px;padding:15px}.admin-connection-support>header{margin:0 2px 11px}.admin-connection-support-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.admin-connection-summary{margin-bottom:14px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.admin-connection-summary article{min-height:84px;padding:14px 16px;display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-content:center;gap:3px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.admin-connection-summary article::before{width:8px;height:8px;grid-row:1 / span 2;align-self:center;border-radius:50%;content:"";background:var(--muted)}.admin-connection-summary article.is-ready::before{background:var(--green)}.admin-connection-summary article.is-attention::before{background:var(--coral)}.admin-connection-summary span{grid-column:2;color:var(--muted);font-size:10px;font-weight:750}.admin-connection-summary b{grid-column:3;grid-row:1 / span 2;align-self:center;color:var(--charcoal);font-size:22px;line-height:1}.admin-connection-summary small{grid-column:2;color:var(--green);font-size:10px}.admin-connection-summary .is-attention small{color:var(--coral)}
+.admin-connection-story,.admin-connection-support{border:1px solid var(--border);border-radius:12px;background:var(--surface)}.admin-connection-story{padding:18px}.admin-connection-story>header,.admin-connection-support>header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.admin-connection-story>header{margin-bottom:14px}.admin-connection-story>header small,.admin-connection-support>header small{color:var(--gold);font-size:9px;font-weight:800}.admin-connection-story>header h3,.admin-connection-support>header h3{margin:4px 0 0;color:var(--charcoal);font-size:18px}.admin-connection-story>header p{margin:4px 0 0;color:var(--muted);font-size:11px}.admin-connection-story>header>span,.admin-connection-support>header>span{padding:5px 9px;color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 24%,var(--border));border-radius:999px;background:var(--blue-bg);font-size:9px;font-weight:800;white-space:nowrap}.admin-connection-story__flow{display:grid;grid-template-columns:minmax(0,2fr) 104px minmax(240px,.8fr);align-items:stretch;gap:14px}.admin-connection-core-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.admin-connection-bridge{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:center;align-items:center;color:var(--blue)}.admin-connection-bridge>span{grid-column:1/-1;margin-bottom:7px;color:var(--muted);font-size:9px;font-weight:750;text-align:center}.admin-connection-bridge>i{height:2px;display:block;background:var(--blue)}.admin-connection-bridge>svg{margin-left:-1px}.admin-connection-support{margin-top:14px;padding:15px}.admin-connection-support>header{margin:0 2px 11px}.admin-connection-support-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .admin-connection-core-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.admin-connection-core-grid>.admin-connection-card{grid-column:span 2}.admin-connection-core-grid>.admin-connection-card:nth-child(4),.admin-connection-core-grid>.admin-connection-card:nth-child(5){grid-column:span 3}.admin-connection-support-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 /* 관리자 연결 카드는 엔진별 색상·아이콘과 상태 점검 switch를 함께 제공한다. */
 .admin-connection-card {
@@ -982,8 +982,6 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   padding: 14px;
   overflow: hidden;
   border-color: color-mix(in srgb, var(--connection-accent) 24%, var(--border));
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--connection-accent) 9%, transparent);
-  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 .admin-connection-card::before {
   position: absolute;
@@ -994,11 +992,6 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   content: "";
   background: var(--connection-accent);
 }
-.admin-connection-card:hover {
-  border-color: color-mix(in srgb, var(--connection-accent) 42%, var(--border));
-  box-shadow: 0 14px 34px color-mix(in srgb, var(--connection-accent) 14%, transparent);
-  transform: translateY(-2px);
-}
 .admin-connection-card[data-connection-tone="postgresql"] { --connection-accent: #4169e1; }
 .admin-connection-card[data-connection-tone="mysql"] { --connection-accent: #4479a1; }
 .admin-connection-card[data-connection-tone="sqlserver"] { --connection-accent: #cc2927; }
@@ -1008,8 +1001,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
 .admin-connection-card[data-connection-tone="model"] { --connection-accent: #7357c6; }
 .admin-connection-card > header {
   width: 100%;
-  display: grid;
-  grid-template-columns: 42px minmax(0,1fr) auto;
+  display: flex;
   align-items: center;
   gap: 11px;
 }
@@ -1023,12 +1015,6 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   border-radius: 11px;
   background: color-mix(in srgb, var(--connection-accent) 10%, var(--surface));
 }
-.admin-connection-card__category {
-  color: color-mix(in srgb, var(--connection-accent) 74%, var(--muted));
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: .04em;
-}
 .admin-connection-switch {
   min-width: 64px;
   min-height: 28px;
@@ -1036,6 +1022,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin-left: auto;
   gap: 6px;
   color: var(--muted);
   border: 1px solid var(--border);
@@ -1059,7 +1046,6 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   height: 11px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(20,28,38,.24);
   transition: transform .18s ease;
 }
 .admin-connection-switch em {
@@ -1067,7 +1053,6 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   font-size: 9px;
   font-style: normal;
   font-weight: 800;
-  letter-spacing: .04em;
 }
 .admin-connection-switch[aria-checked="true"] {
   color: var(--connection-accent);
@@ -1081,12 +1066,10 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   color: var(--connection-accent);
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: .08em;
 }
 .admin-connection-card .admin-connection-card__body h3 {
   margin: 4px 0 2px;
   font-size: 19px;
-  letter-spacing: -.015em;
 }
 .admin-connection-card .admin-connection-card__body p { margin: 0; color: var(--muted); font-size: 11px; }
 .admin-connection-card > footer {
@@ -1114,14 +1097,13 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
   border-style: dashed;
   box-shadow: none;
 }
-.admin-connection-card.is-paused:hover { box-shadow: 0 10px 24px rgba(49,57,66,.08); }
 .admin-connection-card.is-paused .admin-connection-card__icon { filter: grayscale(1); }
-.admin-connection-card.is-featured{height:100%;min-height:0;border-width:2px;background:linear-gradient(145deg,color-mix(in srgb,var(--connection-accent) 7%,var(--surface)),var(--surface) 62%);box-shadow:0 16px 38px color-mix(in srgb,var(--connection-accent) 15%,transparent)}.admin-connection-card.is-featured::after{position:absolute;right:16px;bottom:48px;color:color-mix(in srgb,var(--connection-accent) 9%,transparent);font-size:54px;font-weight:900;line-height:1;content:"TRINO";pointer-events:none}.admin-connection-card.is-featured .admin-connection-card__icon{width:52px;height:52px}.admin-connection-card.is-featured .admin-connection-card__body h3{font-size:24px}.admin-connection-card.is-featured .admin-connection-card__body>span{font-size:10px}.admin-connection-card.is-compact{min-height:142px}.admin-connection-support .admin-connection-card{min-height:132px}.admin-connection-support .admin-connection-card__body h3{font-size:17px}
+.admin-connection-card.is-featured{height:100%;min-height:0;border-width:2px;background:var(--surface)}.admin-connection-card.is-featured .admin-connection-card__icon{width:52px;height:52px}.admin-connection-card.is-featured .admin-connection-card__body h3{font-size:24px}.admin-connection-card.is-featured .admin-connection-card__body>span{font-size:10px}.admin-connection-card.is-compact{min-height:142px}.admin-connection-support .admin-connection-card{min-height:132px}.admin-connection-support .admin-connection-card__body h3{font-size:17px}
 .ppt-theme .admin-connection-switch { border-color: #2a3443; background: #0b111a; }
 .ppt-theme .admin-connection-card__icon { background: color-mix(in srgb, var(--connection-accent) 18%, #05070b); }
 .ppt-theme .admin-status--paused { color: #a7b0bd; background: #131b27; }
 .ppt-theme .admin-connection-story,.ppt-theme .admin-connection-support,.ppt-theme .admin-connection-summary article{border-color:#2a3443;background:#05070b}.ppt-theme .admin-connection-story>header h3,.ppt-theme .admin-connection-support>header h3,.ppt-theme .admin-connection-summary b{color:#eef3f9}
-@media(max-width:1100px){.admin-connection-story__flow{grid-template-columns:minmax(0,1fr)}.admin-connection-bridge{min-height:48px;grid-template-columns:1fr;justify-items:center}.admin-connection-bridge>span{margin-bottom:5px}.admin-connection-bridge>i{width:2px;height:22px;background:linear-gradient(180deg,color-mix(in srgb,var(--blue) 20%,transparent),var(--blue))}.admin-connection-bridge>svg{margin:-3px 0 0;transform:rotate(90deg)}.admin-connection-card.is-featured{min-height:150px}.admin-connection-support-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){.admin-connection-story__flow{grid-template-columns:minmax(0,1fr)}.admin-connection-bridge{min-height:48px;grid-template-columns:1fr;justify-items:center}.admin-connection-bridge>span{margin-bottom:5px}.admin-connection-bridge>i{width:2px;height:22px;background:var(--blue)}.admin-connection-bridge>svg{margin:-3px 0 0;transform:rotate(90deg)}.admin-connection-card.is-featured{min-height:150px}.admin-connection-support-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px) {
   .admin-panel__header-actions{width:100%;align-items:stretch;flex-direction:column}.admin-panel__header-actions>span{white-space:normal}.admin-connection-summary{grid-template-columns:1fr}.admin-connection-core-grid,.admin-connection-support-grid{grid-template-columns:1fr}.admin-connection-story{padding:12px}.admin-connection-story>header,.admin-connection-support>header{align-items:flex-start;flex-direction:column;gap:8px}.admin-connection-card { min-height: 150px; }
   .admin-connection-card > footer small { max-width: 48%; }

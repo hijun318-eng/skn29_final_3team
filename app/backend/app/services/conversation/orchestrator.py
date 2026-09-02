@@ -1437,6 +1437,7 @@ class ConversationOrchestrator:
         )
         from app.services.internal_manual_query import InternalManualQuery
         from app.services.mcp_agent_tools import MCPMLPredictionExecutor
+        from app.services.analysis import analysis_progress
         from app.services.supervisor_planner import MaterializedSupervisorPlan
 
         if not isinstance(materialized_plan, MaterializedSupervisorPlan) or not (
@@ -1468,6 +1469,18 @@ class ConversationOrchestrator:
                 "복합 실행을 확정할 대표 Agent가 없습니다.",
                 evidence_refs=(materialized_plan.evidence_ref,),
             )
+
+        progress_tasks = tuple(
+            (request.target_agent.value, request.task_objective or "")
+            for request in requests
+        )
+        analysis_progress.start_agent_plan(
+            admission.context.trace_id,
+            admission.context.user_id,
+            admission.context.role,
+            admission.context.request_id,
+            progress_tasks,
+        )
 
         shared_rag_service = (
             internal_manual_query_service_factory()
@@ -1523,6 +1536,7 @@ class ConversationOrchestrator:
                 except asyncio.CancelledError:
                     pass
 
+        active_agent: AgentKind | None = None
         try:
             routings: dict[AgentKind, Any] = {}
             evidence_refs: list[str] = []
@@ -1552,6 +1566,12 @@ class ConversationOrchestrator:
                         "AGENT_PORT_NOT_READY",
                         "RAG 실행 서비스가 구성되지 않았습니다.",
                     )
+                active_agent = AgentKind.INTERNAL_GUIDELINE
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "RUNNING",
+                )
                 rag_response = dict(
                     await shared_rag_service.execute(
                         InternalManualQuery(
@@ -1573,6 +1593,12 @@ class ConversationOrchestrator:
                         persist_turn=False,
                     )
                 )
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "SUCCEEDED",
+                )
+                active_agent = None
                 rag_response.pop("turn_id", None)
                 rag_tool_run_id = rag_response.get("mcp_tool_run_id")
                 if isinstance(rag_tool_run_id, str) and rag_tool_run_id:
@@ -1603,6 +1629,12 @@ class ConversationOrchestrator:
                         shared_ml_service,
                     )
                 try:
+                    active_agent = AgentKind.ML_PREDICTION
+                    analysis_progress.record_agent(
+                        admission.context.request_id,
+                        active_agent.value,
+                        "RUNNING",
+                    )
                     ml_prediction = dict(
                         await ml_tool_executor.execute(
                             {
@@ -1627,6 +1659,12 @@ class ConversationOrchestrator:
                         "AGENT_PORT_NOT_READY",
                         "ML 예측 실행 서비스를 확인하지 못했습니다.",
                     ) from error
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "SUCCEEDED",
+                )
+                active_agent = None
                 ml_tool_run_id = ml_prediction.get("mcp_tool_run_id")
                 if isinstance(ml_tool_run_id, str) and ml_tool_run_id:
                     evidence_refs.append(f"mcp-tool-run:{ml_tool_run_id}")
@@ -1665,11 +1703,51 @@ class ConversationOrchestrator:
                 ml_prediction_executor_factory=ml_prediction_executor_factory,
                 composite_augmentation=augmentation,
             )
+            active_agent = primary_agent
+            analysis_progress.record_agent(
+                admission.context.request_id,
+                active_agent.value,
+                "RUNNING",
+            )
             outcome = await execution_supervisor.execute_routed_with_state(
                 by_agent[primary_agent],
                 routings[primary_agent],
             )
+            analysis_progress.record_agent(
+                admission.context.request_id,
+                active_agent.value,
+                "SUCCEEDED",
+            )
+            analysis_progress.finish(
+                admission.context.request_id,
+                AnalysisStatus.SUCCEEDED,
+            )
+            active_agent = None
             return outcome.result.payload
+        except asyncio.CancelledError:
+            if active_agent is not None:
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "CANCELLED",
+                )
+            analysis_progress.finish(
+                admission.context.request_id,
+                AnalysisStatus.CANCELLED,
+            )
+            raise
+        except Exception:
+            if active_agent is not None:
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "FAILED",
+                )
+            analysis_progress.finish(
+                admission.context.request_id,
+                AnalysisStatus.FAILED,
+            )
+            raise
         finally:
             await _stop_route_lease()
 

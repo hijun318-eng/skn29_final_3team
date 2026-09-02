@@ -266,6 +266,23 @@ try {
   assert.match(executionHtml, /RAG Agent/);
   assert.match(executionHtml, /ML Agent/);
   assert.equal((executionHtml.match(/>완료</g) || []).length, 3);
+  assert.doesNotMatch(executionHtml, /8월 호텔별 총 운영 매출을 비교한다/);
+
+  const progressHtml = renderToStaticMarkup(createElement(AgentExecutionBar, {
+    run: { status: "running" },
+    processViewModel: {
+      ...processViewModels.analysisActive,
+      agentTasks: [
+        { agent: "INTERNAL_GUIDELINE", objective: "관련 내부 운영 보고서를 검색한다.", state: "complete" },
+        { agent: "ML_PREDICTION", objective: "GRAND 호텔의 7일 객실 수요를 예측한다.", state: "active" },
+        { agent: "ANALYSIS_WORKFLOW", objective: "8월 호텔별 총 운영 매출을 비교한다.", state: "pending" },
+      ],
+    },
+  }));
+  assert.match(progressHtml, /Supervisor 실행 진행/);
+  assert.match(progressHtml, /1\/3개 작업 완료/);
+  assert.match(progressHtml, /data-state="active"/);
+  assert.match(progressHtml, /GRAND 호텔의 7일 객실 수요를 예측한다/);
 
   for (const invalidReceipt of [
     { ...compositeRun.supervisorComposition, schema_version: "invalid" },

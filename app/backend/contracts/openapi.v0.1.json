@@ -153,6 +153,45 @@
         "title": "AccountResponse",
         "type": "object"
       },
+      "AgentTaskProgress": {
+        "additionalProperties": false,
+        "description": "Supervisor가 확정한 Agent별 작업 목적과 현재 실행 상태를 공개한다.",
+        "properties": {
+          "agent": {
+            "enum": [
+              "ANALYSIS_WORKFLOW",
+              "INTERNAL_GUIDELINE",
+              "ML_PREDICTION"
+            ],
+            "title": "Agent",
+            "type": "string"
+          },
+          "objective": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "objective",
+          "status"
+        ],
+        "title": "AgentTaskProgress",
+        "type": "object"
+      },
       "AnalysisArtifactLifecycleResponse": {
         "additionalProperties": false,
         "description": "비파괴 보관·복원 후 Artifact ID와 현재 owner-scoped 상태를 반환한다.",
@@ -407,6 +446,15 @@
         "additionalProperties": false,
         "description": "진행 조회 시 실행 식별자, 시작 시각, 경과 시간, 취소 요청과 누적 추적을 반환한다.",
         "properties": {
+          "agent_tasks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AgentTaskProgress"
+            },
+            "maxItems": 3,
+            "title": "Agent Tasks",
+            "type": "array"
+          },
           "cancel_requested": {
             "title": "Cancel Requested",
             "type": "boolean"

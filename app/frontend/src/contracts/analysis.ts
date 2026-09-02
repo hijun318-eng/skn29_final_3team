@@ -34,6 +34,13 @@ export interface AnalysisProcessStep {
   description?: string;
 }
 
+/** Supervisor가 서버에서 확정한 Agent별 작업 목적과 실행 상태다. */
+export interface AgentTaskProcess {
+  agent: "ANALYSIS_WORKFLOW" | "INTERNAL_GUIDELINE" | "ML_PREDICTION";
+  objective: string;
+  state: ProcessState;
+}
+
 /** 분석 실행과 기존 Artifact 표현 준비를 같은 패널에서 구분해 표시하는 ViewModel이다. */
 export interface AnalysisProcessViewModel {
   kind: "ANALYSIS" | "PRESENTATION";
@@ -41,6 +48,7 @@ export interface AnalysisProcessViewModel {
   elapsedSeconds: number;
   cancelRequested: boolean;
   steps: AnalysisProcessStep[];
+  agentTasks?: AgentTaskProcess[];
 }
 
 /** command progress 어댑터가 서버 실행 트레이스를 정규화해 전달하는 프런트 계약이다. */

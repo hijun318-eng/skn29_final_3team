@@ -597,7 +597,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
                     {!turnItem.run.scopeNotice && !(turnItem.run.chatPending && !turnItem.processViewModel) && (
-                      <AgentExecutionBar run={turnItem.run} />
+                      <AgentExecutionBar run={turnItem.run} processViewModel={turnItem.processViewModel} />
                     )}
                     {turnItem.run.scopeNotice ? (
                       <div className="scope-notice-response" role="status">
@@ -639,7 +639,10 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         <span aria-hidden="true"><i /><i /><i /></span>
                         <p>답변을 준비하고 있어요</p>
                       </div>
-                    ) : <AnalysisStatePanel
+                    ) : turnItem.run.chatPending
+                      && turnItem.processViewModel?.agentTasks?.length
+                      && turnItem.processViewModel.steps.every((step) => step.state === "pending") ? null
+                    : <AnalysisStatePanel
                       run={turnItem.run}
                       viewType={turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY"}
                       artifactReuse={turnItem.isArtifactReuse ? {

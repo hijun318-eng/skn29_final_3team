@@ -891,6 +891,11 @@ const commandProgressSnapshot = {
     { stage: "CONTEXT", outcome: "PASSED" },
     { stage: "G1", outcome: "PASSED" },
   ],
+  agent_tasks: [
+    { agent: "INTERNAL_GUIDELINE", objective: "내부 운영 보고서를 검색한다.", status: "SUCCEEDED" },
+    { agent: "ML_PREDICTION", objective: "GRAND 객실 수요를 예측한다.", status: "RUNNING" },
+    { agent: "ANALYSIS_WORKFLOW", objective: "호텔별 총 운영 매출을 비교한다.", status: "PENDING" },
+  ],
 };
 const normalizedCommandProgress = normalizeConversationCommandProgress(commandProgressSnapshot);
 assert.equal(normalizedCommandProgress.traceId, "command-trace");
@@ -898,6 +903,17 @@ assert.deepEqual(normalizedCommandProgress.steps.map((step) => step.state), [
   "complete", "complete", "active", "pending", "pending", "pending",
 ]);
 assert.match(normalizedCommandProgress.steps[2].label, /SQL/);
+assert.deepEqual(normalizedCommandProgress.agentTasks, [
+  { agent: "INTERNAL_GUIDELINE", objective: "내부 운영 보고서를 검색한다.", state: "complete" },
+  { agent: "ML_PREDICTION", objective: "GRAND 객실 수요를 예측한다.", state: "active" },
+  { agent: "ANALYSIS_WORKFLOW", objective: "호텔별 총 운영 매출을 비교한다.", state: "pending" },
+]);
+const supervisorOnlyProgress = normalizeConversationCommandProgress({
+  ...commandProgressSnapshot,
+  trace: [],
+});
+assert.equal(supervisorOnlyProgress.steps.every((step) => step.state === "pending"), true);
+assert.equal(supervisorOnlyProgress.agentTasks[1].state, "active");
 
 let commandResponseResolve;
 let receivedCommandProgress = null;

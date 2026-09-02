@@ -59,6 +59,53 @@ def test_same_trace_never_overwrites_server_owned_requests():
         registry.get("shared-correlation", owner)
 
 
+def test_composite_agent_plan_preserves_real_objectives_across_analysis_start():
+    registry = AnalysisProgressRegistry()
+    owner = UUID("00000000-0000-0000-0000-000000000001")
+    request_id = UUID("00000000-0000-0000-0000-000000000003")
+    tasks = (
+        ("INTERNAL_GUIDELINE", "관련 내부 운영 보고서를 검색한다."),
+        ("ML_PREDICTION", "GRAND 호텔의 7일 객실 수요를 예측한다."),
+        ("ANALYSIS_WORKFLOW", "8월 호텔별 총 운영 매출을 비교한다."),
+    )
+
+    registry.start_agent_plan(
+        "composite-trace",
+        owner,
+        Role.ANALYST,
+        request_id,
+        tasks,
+    )
+    registry.record_agent(request_id, "INTERNAL_GUIDELINE", "RUNNING")
+    registry.record_agent(request_id, "INTERNAL_GUIDELINE", "SUCCEEDED")
+    registry.record_agent(request_id, "ML_PREDICTION", "RUNNING")
+
+    # 대표 Analysis Agent가 같은 요청으로 progress를 시작해도 Supervisor 계획은 유지된다.
+    registry.start("composite-trace", owner, Role.ANALYST, request_id)
+    snapshot = registry.get_request(request_id, owner)
+    assert snapshot["agent_tasks"] == (
+        {
+            "agent": "INTERNAL_GUIDELINE",
+            "objective": "관련 내부 운영 보고서를 검색한다.",
+            "status": "SUCCEEDED",
+        },
+        {
+            "agent": "ML_PREDICTION",
+            "objective": "GRAND 호텔의 7일 객실 수요를 예측한다.",
+            "status": "RUNNING",
+        },
+        {
+            "agent": "ANALYSIS_WORKFLOW",
+            "objective": "8월 호텔별 총 운영 매출을 비교한다.",
+            "status": "PENDING",
+        },
+    )
+
+    registry.finish(request_id, AnalysisStatus.SUCCEEDED)
+    registry.record_agent(request_id, "ML_PREDICTION", "SUCCEEDED")
+    assert registry.get_request(request_id, owner)["status"] == "SUCCEEDED"
+
+
 def test_progress_registry_enforces_size_bound_without_cross_request_mutation():
     registry = AnalysisProgressRegistry(max_entries=1)
     owner = UUID("00000000-0000-0000-0000-000000000001")

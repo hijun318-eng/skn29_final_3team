@@ -294,6 +294,11 @@ export interface AnalysisProgress {
   elapsed_seconds: number;
   cancel_requested: boolean;
   trace: Array<{ stage: string; outcome: string; detail?: string | null }>;
+  agent_tasks?: Array<{
+    agent: SupervisorAgentKind;
+    objective: string;
+    status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+  }>;
 }
 
 const ANALYSIS_PROCESS_PHASES = [
@@ -379,13 +384,43 @@ export function normalizeConversationCommandProgress(progress: AnalysisProgress)
         : "failed";
   }
 
-  if (status === "running") {
+  if (status === "running" && progress.trace.length > 0) {
     const activeIndex = states.findIndex((state) => state === "pending");
     if (activeIndex >= 0) states[activeIndex] = "active";
-  } else if (status !== "success" && states.every((state) => ["complete", "pending"].includes(state))) {
+  } else if (status !== "running" && status !== "success" && states.every((state) => ["complete", "pending"].includes(state))) {
     const terminalIndex = states.findIndex((state) => state === "pending");
     if (terminalIndex >= 0) states[terminalIndex] = status;
   }
+
+  const agentState = {
+    PENDING: "pending",
+    RUNNING: "active",
+    SUCCEEDED: "complete",
+    FAILED: "failed",
+    CANCELLED: "cancelled",
+  } as const;
+  const allowedAgents = new Set<SupervisorAgentKind>([
+    "ANALYSIS_WORKFLOW",
+    "INTERNAL_GUIDELINE",
+    "ML_PREDICTION",
+  ]);
+  const rawAgentTasks = Array.isArray(progress.agent_tasks) ? progress.agent_tasks : [];
+  const agentTasks = rawAgentTasks.length >= 2
+    && rawAgentTasks.length <= 3
+    && new Set(rawAgentTasks.map((task) => task.agent)).size === rawAgentTasks.length
+    && rawAgentTasks.every((task) => (
+      allowedAgents.has(task.agent)
+      && typeof task.objective === "string"
+      && task.objective.trim().length >= 1
+      && task.objective.trim().length <= 240
+      && task.status in agentState
+    ))
+    ? rawAgentTasks.map((task) => ({
+        agent: task.agent,
+        objective: task.objective.trim(),
+        state: agentState[task.status],
+      }))
+    : [];
 
   return {
     traceId: progress.trace_id,
@@ -393,6 +428,7 @@ export function normalizeConversationCommandProgress(progress: AnalysisProgress)
     status,
     elapsedSeconds: progress.elapsed_seconds,
     cancelRequested: progress.cancel_requested,
+    agentTasks,
     steps: ANALYSIS_PROCESS_PHASES.map((phase, index) => ({
       id: phase.id,
       label: phase.label,
@@ -795,7 +831,7 @@ export function createHttpAnalysisClient(
             signal: options.signal,
           });
           const payload = await parse<{ data: AnalysisProgress | null }>(response);
-          if (polling && payload.data?.trace?.length) {
+          if (polling && (payload.data?.trace?.length || payload.data?.agent_tasks?.length)) {
             onProgress(normalizeConversationCommandProgress(payload.data));
           }
         } catch {

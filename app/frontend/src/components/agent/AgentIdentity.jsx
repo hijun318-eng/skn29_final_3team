@@ -98,7 +98,44 @@ export function AgentCapabilityOverview({ ragEnabled = false, mlEnabled = false 
 }
 
 /** 한 응답을 만든 Agent 또는 Agent 협업 구성을 결과 위에 간결하게 표시한다. */
-export function AgentExecutionBar({ run }) {
+export function AgentExecutionBar({ run, processViewModel = null }) {
+  const progressTasks = processViewModel?.agentTasks?.map((task) => ({
+    kind: SUPERVISOR_AGENT_KIND[task.agent],
+    objective: task.objective,
+    state: task.state,
+  })).filter((task) => task.kind);
+  if (progressTasks?.length >= 2) {
+    const completedCount = progressTasks.filter((task) => task.state === "complete").length;
+    return (
+      <section className="agent-execution-tree is-running" aria-label="Supervisor 실행 진행">
+        <header>
+          <span className="agent-execution-tree__icon" aria-hidden="true"><Layers3 size={16} /></span>
+          <div>
+            <small>Supervisor</small>
+            <strong>{completedCount}/{progressTasks.length}개 작업 완료</strong>
+          </div>
+        </header>
+        <ul>
+          {progressTasks.map(({ kind, objective, state }) => {
+            const profile = AGENT_PRESENTATION[kind];
+            const Icon = profile.icon;
+            const stateLabel = state === "complete" ? "완료"
+              : state === "active" ? "진행 중"
+              : state === "failed" ? "실패"
+              : state === "cancelled" ? "취소됨"
+              : "대기";
+            return (
+              <li key={kind} data-state={state}>
+                <span aria-hidden="true"><Icon size={14} /></span>
+                <div><strong>{profile.label}</strong><small>{objective}</small></div>
+                <em>{stateLabel}</em>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    );
+  }
   const supervisorKinds = supervisorAgentKinds(run?.supervisorComposition);
   if (supervisorKinds) {
     return (

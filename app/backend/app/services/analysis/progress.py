@@ -37,6 +37,7 @@ class _ActiveAnalysis:
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_clock: float = field(default_factory=_get_monotonic)
     trace: list[dict[str, str]] = field(default_factory=list)
+    agent_tasks: list[dict[str, str]] = field(default_factory=list)
     cancel: Event = field(default_factory=Event)
     status: AnalysisStatus = AnalysisStatus.RECEIVED
     completed_clock: float | None = None
@@ -62,6 +63,15 @@ class AnalysisProgressRegistry:
         """신규 분석 요청을 레지스트리에 등록합니다."""
         with self._lock:
             self._prune()
+            existing = self._active.get(request_id)
+            if existing is not None:
+                if (
+                    existing.trace_id != trace_id
+                    or existing.user_id != user_id
+                    or existing.role != role
+                ):
+                    raise ValueError("같은 요청 ID의 진행 상태 소유권이 일치하지 않습니다.")
+                return
             while len(self._active) >= self._max_entries:
                 self._evict_oldest()
             self._active[request_id] = _ActiveAnalysis(
@@ -71,6 +81,63 @@ class AnalysisProgressRegistry:
                 request_id,
             )
             self._trace_index.setdefault(trace_id, []).append(request_id)
+
+    def start_agent_plan(
+        self,
+        trace_id: str,
+        user_id: UUID,
+        role: Role,
+        request_id: UUID,
+        tasks: tuple[tuple[str, str], ...],
+    ) -> None:
+        """검증된 Supervisor 계획의 Agent와 작업 목적을 진행 상태에 결속한다."""
+
+        allowed_agents = {
+            "ANALYSIS_WORKFLOW",
+            "INTERNAL_GUIDELINE",
+            "ML_PREDICTION",
+        }
+        if (
+            not 2 <= len(tasks) <= 3
+            or len({agent for agent, _ in tasks}) != len(tasks)
+            or any(
+                agent not in allowed_agents
+                or not isinstance(objective, str)
+                or not 1 <= len(objective.strip()) <= 240
+                for agent, objective in tasks
+            )
+        ):
+            raise ValueError("Supervisor Agent 진행 계획이 올바르지 않습니다.")
+        self.start(trace_id, user_id, role, request_id)
+        with self._lock:
+            item = self._active[request_id]
+            item.agent_tasks = [
+                {
+                    "agent": agent,
+                    "objective": objective.strip(),
+                    "status": "PENDING",
+                }
+                for agent, objective in tasks
+            ]
+
+    def record_agent(self, request_id: UUID, agent: str, status: str) -> None:
+        """Supervisor 계획에 있는 Agent 하나의 실제 실행 상태를 갱신한다."""
+
+        if status not in {"RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"}:
+            raise ValueError("Agent 진행 상태가 올바르지 않습니다.")
+        with self._lock:
+            item = self._active.get(request_id)
+            if item is None:
+                return
+            task = next(
+                (candidate for candidate in item.agent_tasks if candidate["agent"] == agent),
+                None,
+            )
+            if task is None:
+                raise ValueError("Supervisor 계획에 없는 Agent 상태입니다.")
+            task["status"] = status
+            if item.status not in _TERMINAL_STATUSES:
+                item.status = AnalysisStatus.ROUTED
 
     def record(
         self,
@@ -194,6 +261,7 @@ class AnalysisProgressRegistry:
             "elapsed_seconds": round(max(0.0, _get_monotonic() - item.started_clock), 1),
             "cancel_requested": item.cancel.is_set(),
             "trace": tuple(item.trace),
+            "agent_tasks": tuple(dict(task) for task in item.agent_tasks),
         }
 
 

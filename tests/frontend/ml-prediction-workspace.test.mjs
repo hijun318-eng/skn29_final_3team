@@ -64,10 +64,10 @@ test("ML 예측 결과는 핵심 KPI를 먼저 보여주고 상세·기술 정�
       },
     }));
 
-    assert.match(html, /예측 요약/);
+    assert.match(html, /HOTEL-SEOUL 객실 수요 예측/);
+    assert.match(html, /2026\.08\.31\. ~ 2026\.09\.01\. · 2일 전망/);
     assert.match(html, /기간 예상 점유율<\/span><strong>75%/);
     assert.match(html, /누적 예상 객실 판매량<\/span><strong>150 박/);
-    assert.match(html, /title="HOTEL-SEOUL"/);
     assert.match(html, /2026\.08\.30\./);
     assert.doesNotMatch(html, /role="img"|예상 점유율 추이|ml-workspace__chart/);
     assert.doesNotMatch(html, />2026-08-31</);

@@ -315,17 +315,17 @@ try {
   assert.match(chartHtml, /enterprise-chart--horizontal-bar/);
   assert.doesNotMatch(chartHtml, /AI 분석 요약/);
 
-  const tableWithPresentationActionHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+  const tableHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,
     viewType: "TABLE",
-    onRequestBarPresentation: () => {},
   }));
-  assert.match(tableWithPresentationActionHtml, /가로 막대그래프로 보기/);
+  assert.doesNotMatch(tableHtml, /가로 막대그래프로 보기/);
+  assert.match(tableHtml, /분석 결과/);
+  assert.match(tableHtml, /결과 6건/);
 
   const barPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,
     viewType: "BAR",
-    onRequestBarPresentation: () => {},
     artifactReuse: { viewSpecId: "view-spec-bar" },
   }));
   assert.doesNotMatch(barPresentationHtml, /가로 막대그래프로 보기/);

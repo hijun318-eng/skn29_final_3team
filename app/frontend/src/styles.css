@@ -870,7 +870,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
 .analysis-result-section .analysis-table table{font-size:12px;line-height:1.5}.analysis-result-section .analysis-table th,.analysis-result-section .analysis-table td{padding:12px 16px}.analysis-result-section .analysis-table thead th{color:var(--av-ink-3);background:var(--av-paper-tint);font-size:11.5px;font-weight:750;letter-spacing:0}.analysis-result-section .analysis-table-sort{min-height:36px;padding:0;color:inherit;background:transparent}.analysis-result-section .analysis-table-sort svg{color:var(--av-ink-3);opacity:.72}.analysis-result-section .analysis-table-sort.is-sorted svg{color:var(--av-blue);opacity:1}.analysis-column-unit{margin-top:3px;color:var(--av-ink-3);font-size:10px}.analysis-result-section .analysis-table tbody th{color:var(--av-ink-3);background:var(--av-paper)}.analysis-result-section .analysis-table tbody tr{min-height:44px}.theme-light .analysis-result-section .analysis-table-sort{background:transparent}.theme-light .analysis-result-section .analysis-table-sort:hover,.theme-light .analysis-result-section .analysis-table-sort:focus-visible{color:#0f5fc8;background:#e6effa}
 
 /* 소수 행·열 결과는 콘텐츠 폭에 맞추고, 넓은 결과만 기존 가로 스크롤을 사용한다. */
-.analysis-data-section.is-compact-result{width:min(100%,720px);justify-self:start}.analysis-data-section.is-single-value-result{width:min(100%,460px)}.analysis-data-section.is-compact-result .analysis-table{overflow-x:auto}.analysis-data-section.is-compact-result .analysis-table table{width:100%;min-width:0;table-layout:auto}.analysis-data-section.is-single-value-result .analysis-table table{table-layout:fixed}.analysis-table-label{min-height:36px;display:flex;align-items:center;color:inherit;line-height:1.35;white-space:normal}.is-numeric>.analysis-table-label{justify-content:flex-end;text-align:right}.analysis-data-section.is-single-value-result .analysis-table tbody td{color:var(--av-ink);font-size:16px;font-weight:760}.analysis-data-section.is-single-value-result .analysis-table thead th,.analysis-data-section.is-single-value-result .analysis-table tbody td{padding-inline:18px}@media(max-width:650px){.analysis-data-section.is-compact-result,.analysis-data-section.is-single-value-result{width:100%}}
+.analysis-data-section.is-compact-result{width:min(100%,820px);justify-self:start}.analysis-data-section.is-single-value-result{width:min(100%,460px)}.analysis-data-section.is-compact-result .analysis-table{overflow-x:auto}.analysis-data-section.is-compact-result .analysis-table table{width:100%;min-width:0;table-layout:auto}.analysis-data-section.is-single-value-result .analysis-table table{table-layout:fixed}.analysis-table-label{min-height:36px;display:flex;align-items:center;color:inherit;line-height:1.35;white-space:normal}.is-numeric>.analysis-table-label{justify-content:flex-end;text-align:right}.analysis-data-section.is-single-value-result .analysis-table tbody td{color:var(--av-ink);font-size:16px;font-weight:760}.analysis-data-section.is-single-value-result .analysis-table thead th,.analysis-data-section.is-single-value-result .analysis-table tbody td{padding-inline:18px}@media(max-width:650px){.analysis-data-section.is-compact-result,.analysis-data-section.is-single-value-result{width:100%}}
 
 /* 분석 과정은 단계 수나 종료 상태와 무관하게 위에서 아래로 흐르는 타임라인으로 고정한다. */
 .analysis-trace[data-process-flow="vertical"] ol{display:grid;grid-template-columns:minmax(0,1fr);min-width:0}.analysis-trace[data-process-flow="vertical"] li,.analysis-trace--complete[data-process-flow="vertical"] li{position:relative;min-height:58px;padding:10px 14px;display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;align-content:center;gap:10px;border-right:0;border-bottom:1px solid var(--av-line,#202d40)}.analysis-trace[data-process-flow="vertical"] li:nth-child(2n){border-right:0}.analysis-trace[data-process-flow="vertical"] li:last-child{grid-column:auto;border-bottom:0}.analysis-trace[data-process-flow="vertical"] li>i{position:relative;z-index:1;background:var(--av-panel,#0b121c)}.analysis-trace[data-process-flow="vertical"] li:not(:last-child)::after{position:absolute;top:37px;bottom:-12px;left:26px;width:1px;content:"";background:var(--av-line,#202d40)}.analysis-trace[data-process-flow="vertical"] li em{grid-column:auto}.theme-light .analysis-trace[data-process-flow="vertical"] li>i{background:#fff}
@@ -959,15 +959,34 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
 @media(prefers-reduced-motion:reduce){.enterprise-chart-legend.is-interactive button,.analysis-result-section .recharts-tooltip-cursor{transition:none}}
 
 .composite-agent-result {
-  margin-top: 16px;
-  padding-top: 16px;
+  width: min(100%, 820px);
+  margin-top: 24px;
+  padding-top: 22px;
   border-top: 1px solid var(--border-subtle, #dce5f0);
 }
 
-.composite-agent-result > .agent-result-type {
-  display: block;
-  margin-bottom: 8px;
+.composite-agent-result__header {
+  margin-bottom: 12px;
 }
+.composite-agent-result__header small {
+  display: block;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+.composite-agent-result__header h3 {
+  margin: 5px 0 0;
+  color: var(--charcoal);
+  font-size: 17px;
+  line-height: 1.4;
+}
+.composite-agent-result__header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.composite-agent-result .rag-answer-card{width:100%;margin-top:0}
 
 /* 관리자 연결 화면은 핵심 원천 DB가 Trino 승인 View로 모이는 관계를 먼저 보여준다. */
 .admin-panel__header-actions{display:flex;align-items:center;gap:12px}.admin-panel__header-actions>span{color:var(--muted);font-size:10px;white-space:nowrap}.admin-panel__header-actions>button{flex:none}

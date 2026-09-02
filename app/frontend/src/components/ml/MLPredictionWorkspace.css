@@ -50,7 +50,7 @@
   --ml-accent: #4f9cf5;
   --ml-accent-strong: #176fe5;
   --ml-accent-soft: rgba(79, 156, 245, 0.13);
-  width: min(100%, 760px);
+  width: min(100%, 820px);
   overflow: hidden;
   color: var(--ml-text);
   border: 1px solid var(--ml-line);
@@ -237,7 +237,7 @@
 
 .ml-workspace__result-meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -265,7 +265,8 @@
   gap: 12px;
 }
 
-.ml-workspace__section-heading h3 { margin: 0; font-size: 16px; }
+.ml-workspace__section-heading small { display: block; margin-bottom: 5px; color: var(--ml-accent-strong); font-size: 12px; font-weight: 800; }
+.ml-workspace__section-heading h3 { margin: 0; font-size: 18px; line-height: 1.4; }
 .ml-workspace__section-heading p {
   margin: 4px 0 0;
   color: var(--ml-text-muted);

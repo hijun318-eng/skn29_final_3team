@@ -117,20 +117,16 @@ export function MLPredictionResult({ result }) {
   }
   const days = forecasts;
   const summary = buildForecastSummary(days);
+  const forecastPeriod = `${formatKoreanDate(days[0].target_date)} ~ ${formatKoreanDate(days.at(-1).target_date)}`;
 
   return (
     <div className="ml-workspace__result" aria-live="polite">
-      <div className="ml-workspace__result-meta">
-        <div><span>호텔</span><strong title={String(result.property_id)}>{result.property_id}</strong></div>
-        <div><span>예측 기준일</span><strong>{formatKoreanDate(result.as_of)}</strong></div>
-        <div><span>실적 데이터 기준</span><strong>{formatKoreanDate(result.feature_as_of || result.as_of)}</strong></div>
-      </div>
-
       <section className="ml-workspace__summary" aria-labelledby="ml-forecast-summary-heading">
         <div className="ml-workspace__section-heading">
           <div>
-            <h3 id="ml-forecast-summary-heading">예측 요약</h3>
-            <p>선택한 기간의 객실 수요를 한눈에 확인하세요.</p>
+            <small>수요 예측</small>
+            <h3 id="ml-forecast-summary-heading">{result.property_id} 객실 수요 예측</h3>
+            <p>{forecastPeriod} · {days.length}일 전망</p>
           </div>
         </div>
         <div className="ml-workspace__kpis">
@@ -139,6 +135,11 @@ export function MLPredictionResult({ result }) {
           <article><span>누적 예상 객실 판매량</span><strong>{formatRooms(summary.totalOccupied)} 박</strong></article>
         </div>
       </section>
+
+      <div className="ml-workspace__result-meta" aria-label="예측 데이터 기준">
+        <div><span>예측 기준일</span><strong>{formatKoreanDate(result.as_of)}</strong></div>
+        <div><span>실적 데이터 기준</span><strong>{formatKoreanDate(result.feature_as_of || result.as_of)}</strong></div>
+      </div>
 
       {days.length > 0 && (
         <details className="ml-workspace__details">

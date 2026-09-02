@@ -621,7 +621,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         />
                         {turnItem.run.mlPrediction && (
                           <section className="composite-agent-result" aria-label="객실 수요 예측">
-                            <small className="agent-result-type">객실 수요 예측</small>
                             <div className="ml-conversation-result">
                               <MLPredictionResult result={turnItem.run.mlPrediction} />
                             </div>
@@ -653,15 +652,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
-                      onRequestBarPresentation={() => void analyzeQuestion(
-                        "호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘.",
-                        {
-                          requested_route: "PRESENTATION",
-                          presentation_type: "HORIZONTAL_BAR",
-                          inherit_previous_context: true,
-                        },
-                        turnItem,
-                      )}
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
                       onSave={["success", "partial"].includes(turnItem.run.status) && !turnItem.isArtifactReuse ? () => void saveAnalysis(turnItem.run) : undefined}
                       saveDisabled={savedBusy}
@@ -681,7 +671,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                     />}
                     {turnItem.run.rag && turnItem.run.evidence && (
                       <section className="composite-agent-result" aria-label="내부 문서 근거">
-                        <small className="agent-result-type">내부 문서 근거</small>
+                        <header className="composite-agent-result__header">
+                          <small>내부 문서</small>
+                          <h3>운영 보고서 참고 내용</h3>
+                          <p>분석 결과와 함께 확인할 내부 근거입니다.</p>
+                        </header>
                         <RagAnswerCard
                           rag={turnItem.run.rag}
                           pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
@@ -693,7 +687,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                     )}
                     {turnItem.run.mlPrediction && turnItem.run.evidence && (
                       <section className="composite-agent-result" aria-label="객실 수요 예측">
-                        <small className="agent-result-type">객실 수요 예측</small>
                         <div className="ml-conversation-result">
                           <MLPredictionResult result={turnItem.run.mlPrediction} />
                         </div>

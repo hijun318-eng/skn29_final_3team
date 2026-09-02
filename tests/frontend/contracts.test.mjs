@@ -799,8 +799,7 @@ assert.equal(hydratedComposite[0].run.supervisorComposition.schema_version, "Sup
 assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE"/);
 assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction,[\s\S]*?supervisorComposition/);
 assert.match(source("pages/AgentPage.jsx"), /className="composite-agent-result"/);
-assert.match(source("pages/AgentPage.jsx"), /호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘\./);
-assert.match(source("pages/AgentPage.jsx"), /requested_route: "PRESENTATION",[\s\S]*?presentation_type: "HORIZONTAL_BAR",[\s\S]*?turnItem/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /가로 막대그래프로 보기|호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘\./);
 assert.match(source("pages/AgentPage.jsx"), /sourceArtifactId !== serverTurn\.artifact_id[\s\S]*?!sourceQueryId[\s\S]*?serverTurn\?\.query_id !== sourceQueryId[\s\S]*?!serverTurn\?\.view_spec_id/);
 
 const mismatchedPresentation = hydrateTurnsFromServer([{

@@ -269,9 +269,9 @@ export function AnalysisDataSection({
       style={isWideResult ? { "--analysis-table-min-width": `${Math.max(760, table.columns.length * 156)}px` } as React.CSSProperties : undefined}
     >
       <header>
-        <div><small>데이터</small><h3>상세 데이터</h3></div>
+        <div><small>분석 결과</small><h3>{resultTitle}</h3></div>
         <div className="analysis-data-meta">
-          <span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}행 · {(table?.columns?.length ?? 0).toLocaleString("ko-KR")}열</span>
+          <span>결과 {(table?.rows?.length ?? 0).toLocaleString("ko-KR")}건</span>
           <small>{sortDescription}</small>
           {showAsOf && run.meta?.asOf && <time dateTime={run.meta.asOf}>데이터 기준 {analysisAsOfLabel(run.meta.asOf)}</time>}
         </div>

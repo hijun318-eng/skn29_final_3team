@@ -284,7 +284,7 @@ export function AnalysisDataSection({
                 const sortDirection = tableSort.column === column ? tableSort.direction : "";
                 const SortIcon = sortDirection === "asc" ? ArrowUp : sortDirection === "desc" ? ArrowDown : ArrowUpDown;
                 if (column === rowLabelColumn) {
-                  return <th scope="col" className="analysis-row-label-heading" key={column}><span className="sr-only">{label}</span></th>;
+                  return <th scope="col" className="analysis-row-label-heading" key={column}><span>{label}</span></th>;
                 }
                 return (
                   <th scope="col" aria-sort={canSort ? (tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none") : undefined} className={numericColumns.has(column) ? "is-numeric" : ""} key={column}>
@@ -309,7 +309,7 @@ export function AnalysisDataSection({
                   const content = valueScale.format(row[column], columnUnit(column, run), column);
                   const title = valueScale.exact(row[column], columnUnit(column, run));
                   const displayedContent = column === rowLabelColumn
-                    && rowLabelName === "호텔"
+                    && (rowLabelColumn === "hotel_code" || rowLabelName === "호텔")
                     && content !== "—"
                     && !content.endsWith("호텔")
                     ? `${content} 호텔`

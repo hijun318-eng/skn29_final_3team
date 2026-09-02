@@ -169,7 +169,8 @@ export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel })
  */
 export function columnLabel(column: string, run: AnalysisRun) {
   if (column === "period") return "기간";
-  if (column === "hotel_code" || column === "property_id") return "호텔";
+  if (column === "hotel_code") return "호텔 코드";
+  if (column === "property_id") return "호텔";
   const metric = run.metrics.find((item) => item.resultField === column)
     ?? run.evidence?.metrics.find((item) => item.resultField === column);
   return metric ? metricDisplayLabel(metric) : column;

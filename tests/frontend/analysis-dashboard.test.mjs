@@ -345,8 +345,9 @@ try {
   assert.match(hotelTableHtml, /DOUGLAS 호텔/);
   assert.match(hotelTableHtml, /GRAND 호텔/);
   assert.match(hotelTableHtml, /VISTA 호텔/);
-  assert.doesNotMatch(hotelTableHtml, />hotel_code</);
+  assert.match(hotelTableHtml, />호텔 코드</);
   assert.match(stylesSource, /tbody td\.is-numeric\{font-weight:750\}/);
+  assert.doesNotMatch(stylesSource, /analysis-table tbody tr:nth-child\(even\)/);
 
   const barPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,

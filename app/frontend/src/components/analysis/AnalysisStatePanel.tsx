@@ -298,7 +298,6 @@ export function AnalysisStatePanel({
                   columnLabel={columnLabel}
                   valueScale={valueScale}
                   chartCurrencyField={chartCurrencyField}
-                  showAsOf={false}
                 />}
                 {hasTableRows && <AnalysisDataSection
                   run={run}

@@ -166,23 +166,20 @@ export function AnalysisKpiSection({ run, valueScale, showAsOf = true }: {
 export function AnalysisVisualSection({
   run, chart, table, canRenderChart, supportedChartType, hasTableColumns, chartTitle,
   chartDisplayType, chartLines, chartHeight, chartDescription, columnLabel,
-  valueScale, chartCurrencyField, showAsOf = true,
+  valueScale, chartCurrencyField,
 }: {
   run: AnalysisRun; chart: NonNullable<AnalysisRun["chart"]> | null; table: NonNullable<AnalysisRun["table"]> | null;
   canRenderChart: boolean; supportedChartType: boolean; hasTableColumns: boolean; chartTitle: string;
   chartDisplayType: string;
   chartLines: Array<{ key: string; label: string; color: string; unit?: string }>;
   chartHeight: number; chartDescription: string; columnLabel: (col: string, r: AnalysisRun) => string;
-  valueScale: AnalysisValueScale; chartCurrencyField: string | null; showAsOf?: boolean;
+  valueScale: AnalysisValueScale; chartCurrencyField: string | null;
 }) {
   if (chart && table && canRenderChart) {
     return (
       <section className="analysis-result-section analysis-visual-section">
         <header>
           <div><small>차트 시각화</small><h3>{chartTitle}</h3></div>
-          <div className="analysis-chart-actions">
-            <AnalysisSectionMeta run={run} showAsOf={showAsOf}><span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}개 항목</span></AnalysisSectionMeta>
-          </div>
         </header>
         <figure className="analysis-chart">
           <EnterpriseChart

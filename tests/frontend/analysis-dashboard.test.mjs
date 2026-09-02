@@ -314,6 +314,7 @@ try {
   // 차트 뷰에는 요청된 차트만 표시하고 별도 표현 방식 선택기는 노출하지 않는다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));
   assert.doesNotMatch(chartHtml, /aria-label="차트 표현 방식"|세로 막대|가로 막대|선 그래프|영역 차트/);
+  assert.doesNotMatch(chartHtml, /개 항목|데이터 기준/);
   assert.match(chartHtml, /enterprise-chart--horizontal-bar/);
   assert.doesNotMatch(chartHtml, /AI 분석 요약/);
 

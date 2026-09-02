@@ -434,16 +434,6 @@
   white-space: nowrap;
 }
 
-.ml-workspace__daily-cards dl div.is-cumulative {
-  margin-inline: -11px;
-  padding: 6px 11px;
-  color: var(--ml-accent-strong);
-  background: var(--ml-accent-soft);
-}
-
-.ml-workspace__daily-cards dl div.is-cumulative + div.is-cumulative { margin-top: -7px; }
-.ml-workspace__daily-cards dl div.is-cumulative dt,
-.ml-workspace__daily-cards dl div.is-cumulative dd { color: var(--ml-accent-strong); font-weight: 800; }
 .ml-workspace__technical-details > summary { color: var(--ml-text-muted); }
 .ml-workspace__technical-details dl { margin: 0; padding: 0 13px 12px; display: grid; gap: 8px; }
 .ml-workspace__technical-details dl div {

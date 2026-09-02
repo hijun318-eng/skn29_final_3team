@@ -187,8 +187,8 @@ export function MLPredictionResult({ result }) {
                   <dl>
                     <div><dt>예상 잔여</dt><dd>{formatRooms(day.predicted_available_rooms)} 객실</dd></div>
                     <div><dt>일 점유율</dt><dd>{formatPercent(day.predicted_occupancy_rate)}</dd></div>
-                    <div className="is-cumulative"><dt>누적 예상 판매</dt><dd>{formatRooms(day.cumulative_occupied_rooms)} 객실</dd></div>
-                    <div className="is-cumulative"><dt>누적 점유율</dt><dd>{formatPercent(day.cumulative_occupancy_rate)}</dd></div>
+                    <div><dt>누적 예상 판매</dt><dd>{formatRooms(day.cumulative_occupied_rooms)} 객실</dd></div>
+                    <div><dt>누적 점유율</dt><dd>{formatPercent(day.cumulative_occupancy_rate)}</dd></div>
                   </dl>
                 </li>
               ))}

@@ -80,6 +80,7 @@ test("ML 예측 결과는 핵심 KPI와 날짜별 누적 전망을 먼저 보여
     assert.match(html, /<dt>누적 예상 판매<\/dt><dd>70 객실<\/dd>/);
     assert.match(html, /<dt>누적 예상 판매<\/dt><dd>150 객실<\/dd>/);
     assert.match(html, /<dt>누적 점유율<\/dt><dd>75%<\/dd>/);
+    assert.doesNotMatch(html, /is-cumulative/);
     assert.doesNotMatch(html, /\s박<|\d실</);
     assert.match(html, /2026\.08\.30\./);
     assert.doesNotMatch(html, /role="img"|예상 점유율 추이|ml-workspace__chart/);

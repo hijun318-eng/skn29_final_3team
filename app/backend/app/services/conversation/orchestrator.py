@@ -113,7 +113,12 @@ def _clarification_resolved_by_inheritance(
             partial.get("metric_resolution") == "missing"
             and slots.is_inherited_metric
             and bool(slots.metric_ids)
-            and ConversationSlotResolver.has_grounded_analysis_slot_delta(partial)
+            and (
+                # 표현 전환은 새 분석 슬롯이 없어야 정상이며, 선행 Artifact 존재와
+                # immutable ViewSpec 생성 전제는 PRESENTATION 실행 분기가 다시 확인한다.
+                slots.route == "PRESENTATION"
+                or ConversationSlotResolver.has_grounded_analysis_slot_delta(partial)
+            )
         )
     if error.code is ContextBuildErrorCode.PERIOD_REQUIRED:
         return (

@@ -1999,11 +1999,26 @@ class MetricResolver:
         if relationship not in ("single", "comparison"):
             raise ValueError("Node1 period_relationship 은 'single' 또는 'comparison' 이어야 합니다.")
         is_comparison = relationship == "comparison"
+        requested_route = enum_signal(
+            normalized.get("requested_route"), CONVERSATION_ROUTES
+        )
+        raw_analysis_operation = normalized.get("analysis_operation")
         intents = [
             item
             for item in normalized.get("intent_candidates", ())
             if isinstance(item, str) and item
         ]
+        # 표현·보고서 후보에서 모델이 앞선 분석의 의도들을 반복 출력해도 그 목록이
+        # 안전한 Artifact 재사용을 막지 않게 한다. 서버가 실행에 쓰는 단일 typed
+        # analysis_operation만 보존하며, 실제 쿼리 형태 변경 여부는 SlotResolver가
+        # 저장 슬롯과 비교해 ANALYSIS로 승격한다. 잘못된 operation 값은 아래 검증에서
+        # 그대로 실패하므로 비신뢰 모델 출력의 허용 범위를 넓히지 않는다.
+        if requested_route in {"PRESENTATION", "REPORT_ACTION"}:
+            intents = (
+                [raw_analysis_operation]
+                if raw_analysis_operation in _ANALYSIS_OPERATIONS
+                else []
+            )
         shape_elided_followup = (
             normalized.get("metric_resolution") == "missing"
             and normalized.get("is_elliptical") is True
@@ -2078,7 +2093,7 @@ class MetricResolver:
         # 같은 응답 안에서도 불일치할 수 있으므로 서버가 목록에서 항상 재계산한다.
         selected = expected_single_selected
 
-        analysis_operation = normalized.get("analysis_operation")
+        analysis_operation = raw_analysis_operation
         if "analysis_time_bucket" not in normalized:
             raise ValueError("Node1 analysis_time_bucket 필드가 필요합니다.")
         analysis_time_bucket = normalized.get("analysis_time_bucket")
@@ -2155,9 +2170,6 @@ class MetricResolver:
                 for item in ([selected] if isinstance(selected, str) else []) + raw_metric_ids
                 if item in support_terms
             )
-        )
-        requested_route = enum_signal(
-            normalized.get("requested_route"), CONVERSATION_ROUTES
         )
         presentation_explicit = normalized.get("presentation_explicit") is True
         presentation_type = (

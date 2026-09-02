@@ -1158,6 +1158,36 @@ class _Normalizer:
         }
 
 
+class _PresentationWithRepeatedIntentsNormalizer(_Normalizer):
+    """표현 요청에서 모델이 선행 분석 의도를 중복 반복한 응답을 재현한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result.update(
+            {
+                "normalized_question": "Render the existing result horizontally",
+                "intent_candidates": ["aggregate", "breakdown"],
+                "measurement_source_text": None,
+                "measurement_source_texts": [],
+                "metric_candidates": [],
+                "metric_resolution": "missing",
+                "selected_metric_id": None,
+                "selected_metric_ids": [],
+                "analysis_operation": "breakdown",
+                "analysis_time_bucket": None,
+                "result_limit": None,
+                "dimension_candidates": [],
+                "filter_candidates": [],
+                "period_candidates": [],
+                "requested_route": "PRESENTATION",
+                "presentation_type": "HORIZONTAL_BAR",
+                "presentation_explicit": True,
+                "is_elliptical": True,
+            }
+        )
+        return result
+
+
 class _AmbiguousNormalizer(_Normalizer):
     async def normalize_question(self, payload: dict) -> dict:
         result = await super().normalize_question(payload)
@@ -1550,6 +1580,52 @@ class _NonEllipticalMissingNormalizer(_MissingNormalizer):
         result = await super().normalize_question(payload)
         result["is_elliptical"] = False
         return result
+
+
+def test_presentation_canonicalizes_repeated_analysis_intents_to_one_typed_shape() -> None:
+    """표현 요청의 중복 의도는 모델 오류로 전체 턴을 실패시키지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000061"),
+        trace_id="presentation-repeated-intents",
+        user_id=UUID("20000000-0000-0000-0000-000000000062"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            MetricResolver(
+                engine,
+                _PresentationWithRepeatedIntentsNormalizer(),
+            ).resolve(
+                AnalysisRequest(
+                    question="Render the existing result horizontally",
+                    resolved_slots=ResolvedSlots(
+                        analysis_operation="breakdown",
+                        period_start="2026-08-01",
+                        period_end_exclusive="2026-09-01",
+                    ),
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.INVALID_METRIC
+    structured = raised.value.partial_context
+    assert structured["requested_route"] == "PRESENTATION"
+    assert structured["presentation_type"] == "HORIZONTAL_BAR"
+    assert structured["analysis_operation"] == "breakdown"
+    assert structured["intent_candidates"] == ["breakdown"]
 
 
 def test_node1_can_identify_support_metric_but_only_business_metric_is_selectable() -> None:

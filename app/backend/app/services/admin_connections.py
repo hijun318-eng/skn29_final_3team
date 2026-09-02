@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from datetime import datetime, timezone
 from time import monotonic
 
@@ -26,6 +26,9 @@ _SOURCE_CATALOGS = (
     ("banquet", "Banquet", "PostgreSQL"),
 )
 _SOURCE_CATALOG_NAMES = frozenset(item[0] for item in _SOURCE_CATALOGS)
+_CONNECTION_IDS = _SOURCE_CATALOG_NAMES | frozenset(
+    {"app-postgres", "trino", "datahub", "model-api"}
+)
 
 
 async def _timed_probe(
@@ -49,6 +52,27 @@ async def _timed_probe(
         "latency_ms": max(0, round((monotonic() - started) * 1000)),
         "checked_at": datetime.now(timezone.utc),
     }
+
+
+async def _probe_or_pause(
+    connection_id: str,
+    name: str,
+    kind: str,
+    check: Callable[[], Awaitable[bool]],
+    paused_connection_ids: frozenset[str],
+) -> dict[str, object]:
+    """관리자가 점검을 일시 중지한 고정 대상은 network 호출 없이 투영한다."""
+
+    if connection_id in paused_connection_ids:
+        return {
+            "id": connection_id,
+            "name": name,
+            "kind": kind,
+            "status": "paused",
+            "latency_ms": 0,
+            "checked_at": datetime.now(timezone.utc),
+        }
+    return await _timed_probe(connection_id, name, kind, check)
 
 
 async def _trino_catalog_ready(catalog: str) -> bool:
@@ -94,10 +118,13 @@ async def _trino_catalog_ready(catalog: str) -> bool:
             await trino.aclose()
 
 
-async def probe_admin_connections() -> tuple[dict[str, object], ...]:
-    """고정 source 5개와 App PostgreSQL·Trino·DataHub·model을 병렬 확인한다."""
+async def probe_admin_connections(
+    paused_connection_ids: Collection[str] = (),
+) -> tuple[dict[str, object], ...]:
+    """고정 dependency를 병렬 확인하되 명시적으로 중지한 대상은 probe하지 않는다."""
 
     readiness = AppDatabaseReadiness()
+    paused = _CONNECTION_IDS.intersection(paused_connection_ids)
 
     async def database_ready() -> bool:
         return (await readiness._database_probe())["app_postgres"] == "ready"
@@ -121,20 +148,21 @@ async def probe_admin_connections() -> tuple[dict[str, object], ...]:
             return await readiness._model_probe(client) == "ready"
 
     source_probes = tuple(
-        _timed_probe(
+        _probe_or_pause(
             catalog,
             name,
             kind,
             lambda catalog=catalog: _trino_catalog_ready(catalog),
+            paused,
         )
         for catalog, name, kind in _SOURCE_CATALOGS
     )
     return tuple(
         await asyncio.gather(
             *source_probes,
-            _timed_probe("app-postgres", "App PostgreSQL", "PostgreSQL", database_ready),
-            _timed_probe("trino", "Trino", "HTTPS", trino_ready),
-            _timed_probe("datahub", "DataHub", "HTTPS", datahub_ready),
-            _timed_probe("model-api", "Model API", "HTTPS", model_ready),
+            _probe_or_pause("app-postgres", "App PostgreSQL", "PostgreSQL", database_ready, paused),
+            _probe_or_pause("trino", "Trino", "HTTPS", trino_ready, paused),
+            _probe_or_pause("datahub", "DataHub", "HTTPS", datahub_ready, paused),
+            _probe_or_pause("model-api", "Model API", "HTTPS", model_ready, paused),
         )
     )

@@ -32,7 +32,7 @@ export interface AdminConnection {
   id: string;
   name: string;
   kind: string;
-  status: "ready" | "down";
+  status: "ready" | "down" | "paused";
   latency_ms: number;
   checked_at: string;
 }
@@ -133,7 +133,7 @@ function normalizeConnection(value: unknown): AdminConnection {
     || typeof value.id !== "string"
     || typeof value.name !== "string"
     || typeof value.kind !== "string"
-    || !["ready", "down"].includes(value.status)
+    || !["ready", "down", "paused"].includes(value.status)
     || !Number.isInteger(value.latency_ms)
     || typeof value.checked_at !== "string") {
     throw new Error("관리자 연결 API가 올바르지 않은 응답을 반환했습니다.");
@@ -176,8 +176,10 @@ export function createAdminClient(baseUrl = env.VITE_BACKEND_BASE_URL, request: 
     async deleteAccount(subject: string): Promise<void> {
       await ensureEmpty(await send(`/admin/accounts/${encodeURIComponent(subject)}`, "DELETE"));
     },
-    async listConnections(): Promise<AdminConnection[]> {
-      const data = await parseData<unknown>(await send("/admin/connections"));
+    async listConnections(pausedConnectionIds: readonly string[] = []): Promise<AdminConnection[]> {
+      const query = new URLSearchParams();
+      pausedConnectionIds.forEach((id) => query.append("paused", id));
+      const data = await parseData<unknown>(await send(`/admin/connections${query.size > 0 ? `?${query}` : ""}`));
       if (!isRecord(data) || !Array.isArray(data.items)) throw new Error("관리자 연결 API가 올바르지 않은 응답을 반환했습니다.");
       return data.items.map(normalizeConnection);
     },

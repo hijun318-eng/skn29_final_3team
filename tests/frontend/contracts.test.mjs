@@ -200,7 +200,10 @@ assert.deepEqual(AUTH_ACCOUNT_ROLE_OPTIONS, [
 assert.match(source("pages/AdminPage.jsx"), /연결 상태/);
 assert.match(source("pages/AdminPage.jsx"), /계정 관리/);
 assert.match(source("pages/AdminPage.jsx"), /감사 로그/);
-assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(\)/);
+assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(pausedConnectionIds\)/);
+assert.match(source("pages/AdminPage.jsx"), /role="switch"/);
+assert.match(source("pages/AdminPage.jsx"), /aria-checked=\{enabled\}/);
+assert.match(source("pages/AdminPage.jsx"), /CONNECTION_VISUALS/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
 assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\}/);
 assert.match(source("App.jsx"), /const adminClient = useMemo\(\(\) => canUseAdmin \? createAdminClient\(undefined, fetch\) : null, \[canUseAdmin\]\)/);
@@ -1221,12 +1224,14 @@ const auditTrailDetail = {
 let adminQueryUrl;
 const adminQueryClient = createAdminClient("http://backend.test", async (url) => {
   adminQueryUrl = url;
-  if (url.endsWith("/connections")) return new Response(JSON.stringify({ data: { items: [{ id: "app_db", name: "App DB", kind: "PostgreSQL", status: "ready", latency_ms: 8, checked_at: "2030-01-01T00:00:00Z" }] } }), { status: 200 });
+  if (url.includes("/admin/connections")) return new Response(JSON.stringify({ data: { items: [{ id: "app_db", name: "App DB", kind: "PostgreSQL", status: "ready", latency_ms: 8, checked_at: "2030-01-01T00:00:00Z" }] } }), { status: 200 });
   if (url.includes("/admin/audit-trails?")) return new Response(JSON.stringify({ data: { items: [auditTrailSummary], next_cursor: "cursor-2" } }), { status: 200 });
   return new Response(JSON.stringify({ data: auditTrailDetail }), { status: 200 });
 });
 assert.equal((await adminQueryClient.listConnections())[0].status, "ready");
 assert.equal(adminQueryUrl, "http://backend.test/admin/connections");
+await adminQueryClient.listConnections(["pms", "model-api"]);
+assert.equal(adminQueryUrl, "http://backend.test/admin/connections?paused=pms&paused=model-api");
 assert.equal((await adminQueryClient.listAuditTrails({ query: "kim hong", outcome: "DENIED", action: "ANALYSIS", from: "2030-01-01", to: "2030-01-02" }, "opaque cursor")).items[0].outcome, "DENIED");
 assert.equal(adminQueryUrl, "http://backend.test/admin/audit-trails?cursor=opaque+cursor&limit=30&query=kim+hong&outcome=DENIED&action=ANALYSIS&from=2030-01-01&to=2030-01-02");
 assert.equal((await adminQueryClient.getAuditTrail(auditTrailSummary.trail_id)).events[0].details_redacted.reason, "PERMISSION");

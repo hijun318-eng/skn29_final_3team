@@ -154,6 +154,38 @@ function structuredEvidenceTables(items) {
   return tables;
 }
 
+function decodePreviewText(value) {
+  const entities = {
+    amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", nbsp: ' ',
+  };
+  return String(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&(#\d+|#x[\da-f]+|amp|lt|gt|quot|nbsp);/gi, (match, entity) => {
+      const normalized = entity.toLowerCase();
+      if (normalized.startsWith('#x')) return String.fromCodePoint(Number.parseInt(normalized.slice(2), 16));
+      if (normalized.startsWith('#')) return String.fromCodePoint(Number.parseInt(normalized.slice(1), 10));
+      return entities[normalized] ?? match;
+    })
+    .trim();
+}
+
+/** 권한 검증된 문서 미리보기 HTML에서 사용자에게 보여 줄 표 데이터만 추출한다. */
+export function previewTablesFromHtml(html) {
+  return Array.from(String(html).matchAll(/<table(?:\s[^>]*)?>([\s\S]*?)<\/table>/gi), (tableMatch) => {
+    const rows = Array.from(tableMatch[1].matchAll(/<tr(?:\s[^>]*)?>([\s\S]*?)<\/tr>/gi), (rowMatch) => (
+      Array.from(rowMatch[1].matchAll(/<(?:th|td)(?:\s[^>]*)?>([\s\S]*?)<\/(?:th|td)>/gi), (cellMatch) => (
+        decodePreviewText(cellMatch[1])
+      ))
+    )).filter((row) => row.length);
+    const columns = rows[0] || [];
+    return {
+      columns,
+      rows: rows.slice(1).filter((row) => row.length === columns.length),
+    };
+  }).filter((table) => table.columns.length > 1 && table.rows.length);
+}
+
 function metricNumber(value) {
   const normalized = String(value).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
   return normalized ? Number(normalized[0]) : null;
@@ -164,10 +196,10 @@ function phraseMentioned(context, phrase) {
   return new RegExp(`(?:^|\\s)${escaped}(?:은|는|이|가|을|를|으로|로|[,.\\s]|$)`).test(context);
 }
 
-function evidenceTablePresentation(items, question, answerText) {
+function evidenceTablePresentation(items, question, answerText, previewTables = []) {
   const context = `${question}\n${answerText}`.toLowerCase();
   const terms = focusTerms(context);
-  const candidates = structuredEvidenceTables(items).map((table) => {
+  const candidates = [...structuredEvidenceTables(items), ...previewTables].map((table) => {
     const scoredColumns = table.columns.slice(1).map((column, offset) => {
       const normalized = column.toLowerCase();
       const direct = phraseMentioned(context, normalized) ? 20 + normalized.length : 0;
@@ -303,6 +335,7 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
   const titleId = useId();
   const viewerTitleId = useId();
   const [viewerSource, setViewerSource] = useState(null);
+  const [previewTables, setPreviewTables] = useState([]);
   const answerText = getAnswerText(rag);
   const sourcePdfUrl = pdfUrl || getPdfUrl(rag);
   const pdfLinks = Array.from(new Map(
@@ -321,11 +354,20 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
     contextQuestion,
     evidenceMetadataPoints(evidence),
   );
-  const supportingTable = presentation.table
+  const evidenceSupportingTable = presentation.table
     ? null
     : evidenceTablePresentation(evidence, contextQuestion, answerText);
+  const hasPresentationTable = Boolean(presentation.table);
+  const hasEvidenceSupportingTable = Boolean(evidenceSupportingTable);
   const sources = documentSources(evidence);
   const displayedSources = sourceRows(sources, pdfLinks);
+  const previewUrlKey = displayedSources.map((item) => item.url).filter(Boolean).join('\n');
+  const wantsQuantitativeDetail = /\d|수치|비교|가장|최대|최소|높|낮|얼마|합계|평균|비율|추이/.test(
+    `${contextQuestion}\n${answerText}`,
+  );
+  const supportingTable = evidenceSupportingTable || (
+    presentation.table ? null : evidenceTablePresentation(evidence, contextQuestion, answerText, previewTables)
+  );
   const citationRefs = citationReferences(rag, evidence);
   const responseStatus = String(rag?.status || rag?.response_status || '').toUpperCase();
   const isTerminalFailure = ['NO_EVIDENCE', 'ERROR', 'FAILED', 'GENERATION_FAILED'].includes(responseStatus);
@@ -344,6 +386,29 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [viewerSource]);
+
+  useEffect(() => {
+    if (hasPresentationTable || hasEvidenceSupportingTable || !wantsQuantitativeDetail || !previewUrlKey) {
+      setPreviewTables((current) => (current.length ? [] : current));
+      return undefined;
+    }
+    const controller = new AbortController();
+    const urls = previewUrlKey.split('\n').slice(0, 2);
+    Promise.all(urls.map(async (url) => {
+      const response = await fetch(url, {
+        credentials: 'include',
+        headers: { Accept: 'text/html' },
+        signal: controller.signal,
+      });
+      if (!response.ok || !String(response.headers.get('content-type') || '').includes('text/html')) return [];
+      return previewTablesFromHtml(await response.text());
+    })).then((tables) => {
+      if (!controller.signal.aborted) setPreviewTables(tables.flat());
+    }).catch(() => {
+      if (!controller.signal.aborted) setPreviewTables([]);
+    });
+    return () => controller.abort();
+  }, [hasEvidenceSupportingTable, hasPresentationTable, previewUrlKey, wantsQuantitativeDetail]);
 
   return (
     <article aria-labelledby={titleId} className="rag-answer-card">

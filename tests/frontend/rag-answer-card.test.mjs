@@ -24,7 +24,14 @@ const server = await createServer({
 });
 
 try {
-  const { RagAnswerCard } = await server.ssrLoadModule("/src/components/rag/RagAnswerCard.jsx");
+  const { RagAnswerCard, previewTablesFromHtml } = await server.ssrLoadModule("/src/components/rag/RagAnswerCard.jsx");
+  assert.deepEqual(previewTablesFromHtml([
+    '<main><table><tr><th>호텔</th><th>객실 매출</th></tr>',
+    '<tr><td>GRAND</td><td>4,304,501,150원</td></tr></table></main>',
+  ].join('')), [{
+    columns: ['호텔', '객실 매출'],
+    rows: [['GRAND', '4,304,501,150원']],
+  }]);
   const rag = {
     answer_text: "현재 상태\n- 객실 정비 이력 확인\n- 당직자 인계 확인\n\n권장 조치\n- 승인 절차 확인\n- 후속 기록 남기기",
     answer_type: ["COMPARE"],

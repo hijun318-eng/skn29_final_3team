@@ -17,7 +17,7 @@ const styles = readFileSync(
   "utf8",
 );
 
-test("ML 예측 결과는 핵심 KPI와 날짜별 누적 전망을 먼저 보여주고 기술 정보만 접어 둔다", async () => {
+test("ML 예측 결과는 핵심 KPI와 날짜별 카드를 먼저 보여주고 기술 정보만 접어 둔다", async () => {
   const server = await createServer({
     appType: "custom",
     cacheDir: "node_modules/.vite-ml-prediction-workspace-test",
@@ -72,14 +72,10 @@ test("ML 예측 결과는 핵심 KPI와 날짜별 누적 전망을 먼저 보여
     assert.match(html, /예측 기준 2026\.08\.30\./);
     assert.match(html, /실적 기준 2026\.08\.29\./);
     assert.match(html, /날짜별 판매 및 점유율/);
-    assert.match(html, /누적 예상 판매/);
-    assert.match(html, /누적 점유율/);
     assert.match(html, /class="ml-workspace__daily-cards"/);
     assert.match(html, /<time dateTime="2026-08-31">2026\.08\.31\.<\/time>/);
     assert.match(html, /예상 판매<\/span><strong>70 객실<\/strong>/);
-    assert.match(html, /<dt>누적 예상 판매<\/dt><dd>70 객실<\/dd>/);
-    assert.match(html, /<dt>누적 예상 판매<\/dt><dd>150 객실<\/dd>/);
-    assert.match(html, /<dt>누적 점유율<\/dt><dd>75%<\/dd>/);
+    assert.doesNotMatch(html, /<dt>누적 예상 판매<\/dt>|<dt>누적 점유율<\/dt>/);
     assert.doesNotMatch(html, /is-cumulative/);
     assert.doesNotMatch(html, /\s박<|\d실</);
     assert.match(html, /2026\.08\.30\./);

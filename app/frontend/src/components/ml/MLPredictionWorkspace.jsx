@@ -112,24 +112,7 @@ function buildForecastSummary(days) {
 }
 
 
-function buildForecastRows(days) {
-  let cumulativeOccupied = 0;
-  let cumulativeAvailable = 0;
-  return days.map((day) => {
-    cumulativeOccupied += day.predicted_occupied_rooms;
-    cumulativeAvailable += day.total_available_rooms;
-    return {
-      ...day,
-      cumulative_occupied_rooms: cumulativeOccupied,
-      cumulative_occupancy_rate: cumulativeAvailable > 0
-        ? cumulativeOccupied / cumulativeAvailable
-        : null,
-    };
-  });
-}
-
-
-/** 예측 결과의 핵심 요약과 날짜별 누적 전망을 표시한다. */
+/** 예측 결과의 핵심 요약과 날짜별 상세 전망을 표시한다. */
 export function MLPredictionResult({ result }) {
   const forecasts = result?.daily_forecasts;
   if (!Array.isArray(forecasts) || !forecasts.every(validForecastDay)) {
@@ -140,7 +123,6 @@ export function MLPredictionResult({ result }) {
   }
   const days = forecasts;
   const summary = buildForecastSummary(days);
-  const dailyRows = buildForecastRows(days);
   const forecastPeriod = `${formatKoreanDate(days[0].target_date)} ~ ${formatKoreanDate(days.at(-1).target_date)}`;
 
   return (
@@ -174,7 +156,7 @@ export function MLPredictionResult({ result }) {
           </header>
           <div className="ml-workspace__daily-scroll" role="region" aria-label="날짜별 객실 수요 예측" tabIndex="0">
             <ol className="ml-workspace__daily-cards">
-              {dailyRows.map((day, index) => (
+              {days.map((day, index) => (
                 <li key={day.target_date}>
                   <header>
                     <time dateTime={day.target_date}>{formatKoreanDate(day.target_date)}</time>
@@ -187,8 +169,6 @@ export function MLPredictionResult({ result }) {
                   <dl>
                     <div><dt>예상 잔여</dt><dd>{formatRooms(day.predicted_available_rooms)} 객실</dd></div>
                     <div><dt>일 점유율</dt><dd>{formatPercent(day.predicted_occupancy_rate)}</dd></div>
-                    <div><dt>누적 예상 판매</dt><dd>{formatRooms(day.cumulative_occupied_rooms)} 객실</dd></div>
-                    <div><dt>누적 점유율</dt><dd>{formatPercent(day.cumulative_occupancy_rate)}</dd></div>
                   </dl>
                 </li>
               ))}

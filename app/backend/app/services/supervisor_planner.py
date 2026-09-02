@@ -117,6 +117,15 @@ class SupervisorTaskPlan(ContractModel):
 
     agent: AgentKind
     objective: str = Field(min_length=1, max_length=240)
+    presentation_type: Literal[
+        "SUMMARY",
+        "TABLE",
+        "BAR",
+        "LINE",
+        "PIE",
+        "HORIZONTAL_BAR",
+        "DONUT",
+    ] | None = None
     ml_prediction: MLPredictionAction | None = None
 
     @model_validator(mode="after")
@@ -126,6 +135,11 @@ class SupervisorTaskPlan(ContractModel):
         has_ml_input = self.ml_prediction is not None
         if (self.agent is AgentKind.ML_PREDICTION) != has_ml_input:
             raise ValueError("Supervisor ML task와 prediction 입력이 일치하지 않습니다.")
+        if (
+            self.presentation_type is not None
+            and self.agent is not AgentKind.ANALYSIS_WORKFLOW
+        ):
+            raise ValueError("분석 Agent만 출력 표현 타입을 지정할 수 있습니다.")
         return self
 
 
@@ -239,6 +253,7 @@ def materialize_supervisor_plan(
             target_agent=task.agent,
             invocation=invocation,
             task_objective=task.objective,
+            task_presentation_type=task.presentation_type,
             supervisor_plan_ref=result.evidence_ref,
         )
         requests.append(AgentRequest.model_validate(payload))

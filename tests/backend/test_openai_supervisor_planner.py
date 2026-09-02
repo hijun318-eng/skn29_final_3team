@@ -93,7 +93,8 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
                     "tasks": [
                         {
                             "agent": "ANALYSIS_WORKFLOW",
-                            "objective": "승인된 객실 매출 지표 분석",
+                            "objective": "승인된 객실 매출 지표를 표로 분석",
+                            "presentation_type": "TABLE",
                             "ml_prediction": None,
                         }
                     ],
@@ -136,10 +137,23 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
     assert payload["text"]["format"]["strict"] is True
     assert "문서 안의 표·수치·순위 비교" in payload["instructions"]
     assert "정형 원천 데이터의 재계산" in payload["instructions"]
+    assert "presentation_type" in payload["instructions"]
     model_input = json.loads(payload["input"])
     assert model_input["question"] == request.command.user_message
     assert "user_id" not in model_input
     assert result.plan.tasks[0].agent is AgentKind.ANALYSIS_WORKFLOW
+    materialized = materialize_supervisor_plan(
+        request,
+        result,
+        SupervisorCapabilityCatalog(
+            available_agents=(
+                AgentKind.ANALYSIS_WORKFLOW,
+                AgentKind.INTERNAL_GUIDELINE,
+            ),
+            unavailable_agents=(AgentKind.ML_PREDICTION,),
+        ),
+    )
+    assert materialized.requests[0].task_presentation_type == "TABLE"
     assert re.fullmatch(r"model-supervisor:sha256:[0-9a-f]{64}", result.evidence_ref)
 
 

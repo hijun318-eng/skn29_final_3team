@@ -2102,6 +2102,7 @@ class ConversationOrchestrator:
         analysis_queue_wait_seconds: float = 0.0,
         supervisor_plan_ref: str | None = None,
         task_objective: str | None = None,
+        task_presentation_type: str | None = None,
         composite_augmentation: Any | None = None,
     ) -> dict[str, Any]:
         """사용자의 멀티턴 명령을 멱등성 및 거버넌스 규칙에 따라 안전하게 실행합니다.
@@ -2136,6 +2137,11 @@ class ConversationOrchestrator:
             )
         if task_objective is not None and not 1 <= len(task_objective.strip()) <= 240:
             raise ValueError("분석 command의 Supervisor objective가 올바르지 않습니다.")
+        if task_presentation_type is not None and (
+            not has_planned_execution
+            or task_presentation_type not in ConversationSlotResolver.ALLOWED_CHART_TYPES
+        ):
+            raise ValueError("분석 command의 Supervisor 출력 표현 타입이 올바르지 않습니다.")
         if composite_augmentation is not None:
             from app.ports.agent import AgentKind
             from app.services.composite_agent_execution import (
@@ -2677,7 +2683,19 @@ class ConversationOrchestrator:
 
             # 5-1. UI가 이미 아는 동작은 자연어로 바꾸지 않고 typed action으로 받는다.
             # 신호는 후보일 뿐이며 재사용 가능 여부는 아래 라우팅 계약이 다시 확인한다.
-            node1_res = {**node1_res, **action_signals}
+            planned_presentation_signals = (
+                {
+                    "presentation_type": task_presentation_type,
+                    "presentation_explicit": True,
+                }
+                if task_presentation_type is not None
+                else {}
+            )
+            node1_res = {
+                **node1_res,
+                **planned_presentation_signals,
+                **action_signals,
+            }
             if (
                 preflight_clarification is None
                 and not action_signals

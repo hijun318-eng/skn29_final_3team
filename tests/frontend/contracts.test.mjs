@@ -784,6 +784,11 @@ const hydratedComposite = hydrateTurnsFromServer([{
       answer: { text: "내부 보고서에서 확인한 하락 원인입니다." },
       evidence_bundle: [{ document_id: "REPORT-2026-08-ROOMS", document_name: "8월 객실 운영보고서" }],
     },
+    ml_prediction: {
+      status: "SUCCEEDED",
+      model_key: "generic_forecast",
+      predictions: [{ forecast_date: "2026-09-01", predicted_value: 100 }],
+    },
     supervisor_composition: {
       schema_version: "SupervisorCompositionReceipt.v1",
       plan_ref: `model-supervisor:sha256:${"b".repeat(64)}`,
@@ -792,11 +797,25 @@ const hydratedComposite = hydrateTurnsFromServer([{
       evidence_refs: [`model-supervisor:sha256:${"b".repeat(64)}`],
     },
   },
+}, {
+  turn_id: "turn-composite-chart",
+  user_message: "막대그래프로 보여줘",
+  route: "PRESENTATION",
+  terminal_status: "SUCCEEDED",
+  artifact_id: "composite-artifact",
+  view_spec_id: "view-composite-bar",
+  view_type: "BAR",
+  resolved_slots: { target_chart_type: "BAR" },
 }]);
 assert.equal(hydratedComposite[0].viewType, "SUMMARY");
 assert.equal(hydratedComposite[0].run.requestId, "composite-request");
 assert.equal(hydratedComposite[0].run.rag.answer_text, "내부 보고서에서 확인한 하락 원인입니다.");
 assert.equal(hydratedComposite[0].run.supervisorComposition.schema_version, "SupervisorCompositionReceipt.v1");
+assert.equal(hydratedComposite[1].viewType, "BAR");
+assert.equal(hydratedComposite[1].run.artifact.artifactId, "composite-artifact");
+assert.equal(hydratedComposite[1].run.rag, undefined);
+assert.equal(hydratedComposite[1].run.mlPrediction, undefined);
+assert.equal(hydratedComposite[1].run.supervisorComposition, undefined);
 assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE"/);
 assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction,[\s\S]*?supervisorComposition/);
 assert.match(source("pages/AgentPage.jsx"), /className="composite-agent-result"/);

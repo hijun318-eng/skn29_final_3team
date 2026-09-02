@@ -53,6 +53,16 @@ export function hasReusablePresentationArtifact(run) {
   );
 }
 
+/** 표현 전환에서는 원본 분석 데이터만 재사용하고 부가 에이전트 응답은 다시 노출하지 않는다. */
+export function presentationAnalysisRun(sourceRun, overrides = {}) {
+  if (!sourceRun) return sourceRun;
+  const analysisRun = { ...sourceRun };
+  delete analysisRun.rag;
+  delete analysisRun.mlPrediction;
+  delete analysisRun.supervisorComposition;
+  return { ...analysisRun, ...overrides };
+}
+
 /**
  * PRESENTATION 턴은 영속 View enum보다 서버가 확정한 세부 표현 타입을 우선한다.
  * ViewSpec의 BAR는 세로·가로 막대를 함께 담는 저장 타입이므로, resolved slot을 버리면
@@ -227,14 +237,13 @@ export function hydrateTurnsFromServer(serverTurns) {
             required_action: "NONE",
           });
         } else {
-          run = {
-            ...lastAnalysisRun,
+          run = presentationAnalysisRun(lastAnalysisRun, {
             question: userMessage,
             status: "success",
             summary: lastAnalysisRun.summary || st.artifact_summary || "기존 분석 결과를 다시 표시했습니다.",
             chart: st.chart_spec_json ? normalizeAnalysisChart(st.chart_spec_json) : lastAnalysisRun.chart,
             viewSpecId: st.view_spec_id,
-          };
+          });
         }
       } else if (isReportAction && st.terminal_status === "SUCCEEDED") {
         run = {
@@ -338,11 +347,13 @@ export function hydrateTurnsFromServer(serverTurns) {
           ? presentationViewType(st)
           : isOutOfScope
             ? "CHAT"
-            : ragResult && !st.data_snapshot_json
-              ? "RAG"
-              : mlPrediction
-                ? "ML_PREDICTION"
-                : (st.resolved_slots?.target_chart_type || "SUMMARY"),
+            : st.data_snapshot_json
+              ? (st.resolved_slots?.target_chart_type || "SUMMARY")
+              : ragResult
+                ? "RAG"
+                : mlPrediction
+                  ? "ML_PREDICTION"
+                  : "SUMMARY",
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
         reusePending: false,
         viewSpecId: isPresentation ? st.view_spec_id : null,

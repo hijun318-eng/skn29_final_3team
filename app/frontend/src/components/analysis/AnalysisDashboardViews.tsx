@@ -164,15 +164,13 @@ export function AnalysisKpiSection({ run, valueScale, showAsOf = true }: {
 
 /** 차트 시각화 및 실패 시의 fallback 섹션을 렌더링한다. */
 export function AnalysisVisualSection({
-  run, chart, table, canRenderChart, supportedChartType, hasTableColumns, chartTitle, chartDisplayOptions,
-  chartDisplayType, showDisplayControls = false, setChartDisplayOverride, chartLines, chartHeight, chartDescription, columnLabel,
+  run, chart, table, canRenderChart, supportedChartType, hasTableColumns, chartTitle,
+  chartDisplayType, chartLines, chartHeight, chartDescription, columnLabel,
   valueScale, chartCurrencyField, showAsOf = true,
 }: {
   run: AnalysisRun; chart: NonNullable<AnalysisRun["chart"]> | null; table: NonNullable<AnalysisRun["table"]> | null;
   canRenderChart: boolean; supportedChartType: boolean; hasTableColumns: boolean; chartTitle: string;
-  chartDisplayOptions: Array<{ type: string; label: string }>; chartDisplayType: string;
-  showDisplayControls?: boolean;
-  setChartDisplayOverride: React.Dispatch<React.SetStateAction<string>>;
+  chartDisplayType: string;
   chartLines: Array<{ key: string; label: string; color: string; unit?: string }>;
   chartHeight: number; chartDescription: string; columnLabel: (col: string, r: AnalysisRun) => string;
   valueScale: AnalysisValueScale; chartCurrencyField: string | null; showAsOf?: boolean;
@@ -184,15 +182,6 @@ export function AnalysisVisualSection({
           <div><small>차트 시각화</small><h3>{chartTitle}</h3></div>
           <div className="analysis-chart-actions">
             <AnalysisSectionMeta run={run} showAsOf={showAsOf}><span>{(table?.rows?.length ?? 0).toLocaleString("ko-KR")}개 항목</span></AnalysisSectionMeta>
-            {showDisplayControls && chartDisplayOptions.length > 0 && (
-              <div role="group" aria-label="차트 표현 방식">
-                {chartDisplayOptions.map((option) => (
-                  <button type="button" key={option.type} aria-pressed={chartDisplayType === option.type} onClick={() => setChartDisplayOverride(option.type)}>
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </header>
         <figure className="analysis-chart">

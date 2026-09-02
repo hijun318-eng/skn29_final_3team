@@ -309,10 +309,9 @@ try {
   assert.doesNotMatch(agentSource, /추천 질문|저장 분석 바로 실행|exampleQuestions/);
   assert.match(agentSource, /이 저장 분석은 현재 데이터 릴리스와 맞지 않아 재실행할 수 없습니다/);
 
-  // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
+  // 차트 뷰에는 요청된 차트만 표시하고 별도 표현 방식 선택기는 노출하지 않는다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));
-  assert.match(chartHtml, /aria-label="차트 표현 방식"/);
-  assert.match(chartHtml, /aria-pressed="true">가로 막대<\/button>/);
+  assert.doesNotMatch(chartHtml, /aria-label="차트 표현 방식"|세로 막대|가로 막대|선 그래프|영역 차트/);
   assert.match(chartHtml, /enterprise-chart--horizontal-bar/);
   assert.doesNotMatch(chartHtml, /AI 분석 요약/);
 
@@ -355,7 +354,7 @@ try {
     artifactReuse: { viewSpecId: "view-spec-bar" },
   }));
   assert.doesNotMatch(barPresentationHtml, /가로 막대그래프로 보기/);
-  assert.match(barPresentationHtml, /기존 분석 재사용 · 새 분석 쿼리 없음/);
+  assert.doesNotMatch(barPresentationHtml, /기존 분석 재사용|새 분석 쿼리 없음/);
 
   const pendingPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run,
@@ -386,8 +385,7 @@ try {
     viewType: "DONUT",
   }));
   assert.match(donutHtml, /enterprise-chart--donut/);
-  assert.match(donutHtml, /aria-pressed="false">원형<\/button>/);
-  assert.match(donutHtml, /aria-pressed="true">도넛<\/button>/);
+  assert.doesNotMatch(donutHtml, /aria-label="차트 표현 방식"|>원형<|>도넛</);
 
   const emptyChartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run: { ...run, table: { ...run.table, rows: [] } },
@@ -415,7 +413,7 @@ try {
   for (const label of ["요약으로 보기", "표로 보기", "그래프로 보기", "KPI만 보기"]) {
     assert.doesNotMatch(followupHtml, new RegExp(label));
   }
-  assert.match(followupHtml, /기존 분석 재사용 · 새 분석 쿼리 없음/);
+  assert.doesNotMatch(followupHtml, /기존 분석 재사용|새 분석 쿼리 없음/);
   assert.doesNotMatch(followupHtml, /결과 보기 전환|이전 분석 결과|재조회|연결 정보/);
   assert.doesNotMatch(followupHtml, /DataHub|AST SQL|거버넌스/);
 

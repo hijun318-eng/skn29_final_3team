@@ -13,7 +13,7 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationViewType, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationAnalysisRun, presentationViewType, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
 const REPORT_ARTIFACT_VIEW = Object.freeze({
   SUMMARY: "summary",
@@ -235,7 +235,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       turnId: `temp-${Date.now()}`,
       question: normalized,
       run: canReuseArtifact
-        ? { ...sourceRun, question: normalized, status: "success", traceId, elapsedSeconds: 0 }
+        ? presentationAnalysisRun(sourceRun, { question: normalized, status: "success", traceId, elapsedSeconds: 0 })
         : { ...transientRun(normalized, "running"), traceId, chatPending: true },
       resolvedSlots: null,
       viewType: canReuseArtifact ? action.presentation_type : null,
@@ -376,12 +376,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
             required_action: "NONE",
           });
         } else {
-          finalRun = {
-            ...sourceRun,
+          finalRun = presentationAnalysisRun(sourceRun, {
             question: normalized,
             status: "success",
             viewSpecId: serverTurn?.view_spec_id,
-          };
+          });
         }
       } else if (isPresentationAction) {
         finalRun = commandErrorRun(normalized, {

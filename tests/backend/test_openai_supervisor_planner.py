@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 import json
 from pathlib import Path
 import re
@@ -34,7 +35,9 @@ from app.ports.agent import (  # noqa: E402
 from app.services.agent_supervisor import AgentDispatchError  # noqa: E402
 from app.services.supervisor_planner import (  # noqa: E402
     SupervisorCapabilityCatalog,
+    SupervisorExecutionPlan,
     SupervisorMLPropertyScope,
+    SupervisorPlanResult,
     materialize_supervisor_plan,
 )
 
@@ -371,6 +374,37 @@ def test_ml_plan_is_materialized_only_from_dynamic_runtime_scope() -> None:
     assert planned_request.invocation.horizon_days == 30
     assert planned_request.task_objective == "지원 범위의 30일 객실 수요 예측"
     assert planned_request.supervisor_plan_ref == result.evidence_ref
+
+
+def test_internal_guideline_objective_grounds_bare_month_to_request_year() -> None:
+    base_request = _request("8월 운영 보고서 내용을 찾아줘")
+    request = base_request.model_copy(
+        update={
+            "context": base_request.context.model_copy(
+                update={"as_of": date(2031, 9, 2)}
+            )
+        }
+    )
+    result = SupervisorPlanResult(
+        plan=SupervisorExecutionPlan(
+            status="EXECUTABLE",
+            tasks=({
+                "agent": "INTERNAL_GUIDELINE",
+                "objective": "8월 호텔 운영 보고서 내용을 찾는다",
+            },),
+        ),
+        evidence_ref=f"model-supervisor:sha256:{'a' * 64}",
+        model="gpt-5.6-terra",
+        response_id="resp_grounded_month",
+    )
+    catalog = SupervisorCapabilityCatalog(
+        available_agents=(AgentKind.ANALYSIS_WORKFLOW, AgentKind.INTERNAL_GUIDELINE),
+        unavailable_agents=(AgentKind.ML_PREDICTION,),
+    )
+
+    materialized = materialize_supervisor_plan(request, result, catalog)
+
+    assert materialized.requests[0].task_objective == "2031년 8월 호텔 운영 보고서 내용을 찾는다"
 
 
 def test_invalid_model_contract_fails_without_agent_fallback() -> None:

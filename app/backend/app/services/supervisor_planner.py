@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import re
 from typing import Literal, Protocol
 
 from pydantic import ConfigDict, Field, model_validator
@@ -16,6 +17,17 @@ from app.services.ml_prediction_service import MLRuntimeCapability
 
 
 SUPERVISOR_EXECUTION_PLAN_VERSION = "SupervisorExecutionPlan.v2"
+_BARE_MONTH_PATTERN = re.compile(r"(?<!\d)(?<!년 )(1[0-2]|0?[1-9])월")
+
+
+def _ground_internal_guideline_period(objective: str, as_of: date) -> str:
+    """연도가 생략된 월을 요청 기준 연도에 결속해 문서 검색 변동을 막는다."""
+
+    grounded = _BARE_MONTH_PATTERN.sub(
+        lambda match: f"{as_of.year}년 {match.group(1)}월",
+        objective,
+    )
+    return grounded if len(grounded) <= 240 else objective
 
 
 class SupervisorMLPropertyScope(ContractModel):
@@ -254,10 +266,15 @@ def materialize_supervisor_plan(
             else None
         )
         payload = request.model_dump(mode="python")
+        task_objective = (
+            _ground_internal_guideline_period(task.objective, request.context.as_of)
+            if task.agent is AgentKind.INTERNAL_GUIDELINE
+            else task.objective
+        )
         payload.update(
             target_agent=task.agent,
             invocation=invocation,
-            task_objective=task.objective,
+            task_objective=task_objective,
             task_analysis_route=task.analysis_route,
             task_presentation_type=task.presentation_type,
             supervisor_plan_ref=result.evidence_ref,

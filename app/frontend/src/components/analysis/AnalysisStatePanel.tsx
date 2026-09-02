@@ -101,7 +101,6 @@ export function AnalysisStatePanel({
   const [elapsed, setElapsed] = useState(0);
   const terminalStateRef = useRef<HTMLElement | null>(null);
   const [tableSort, setTableSort] = useState<TableSort>({ column: "", direction: "" });
-  const [chartDisplayOverride, setChartDisplayOverride] = useState("");
 
   const normalizedViewType = (viewType || "SUMMARY").toUpperCase();
   const isSummaryMode = normalizedViewType === "SUMMARY";
@@ -116,8 +115,6 @@ export function AnalysisStatePanel({
     ? "regular"
     : analysisResultDensity(run, normalizedViewType);
   const widthClass = `analysis-state--${resultDensity}-width`;
-  // 차트 표현 전환은 서버가 확정한 차트 보기 요청에서만 제공한다. 기본 요약·KPI·전체 보기에는 노출하지 않는다.
-  const showChartDisplayControls = isChartMode;
   const displayedProcessViewModel = processViewModel ?? createAnalysisProcessViewModel({
     kind: isPresentationPending ? "PRESENTATION" : "ANALYSIS",
     status: "running",
@@ -160,19 +157,7 @@ export function AnalysisStatePanel({
   const hasLongCategories = Boolean(chart && table?.rows?.some((row) => [...String(row[chart.xField] ?? "")].length > 10));
   const defaultChartDisplayType = chartType === "bar" && hasLongCategories ? "horizontal-bar" : chartType;
 
-  const chartDisplayOptions = [
-    { type: "bar", label: "세로 막대" },
-    { type: "horizontal-bar", label: "가로 막대" },
-    { type: "line", label: "선 그래프" },
-    { type: "area", label: "영역 차트" },
-    ...(["pie", "donut"].includes(chartType)
-      ? [{ type: "pie", label: "원형" }, { type: "donut", label: "도넛" }]
-      : []),
-  ];
-
-  const chartDisplayType = chartDisplayOptions.some((option) => option.type === chartDisplayOverride)
-    ? chartDisplayOverride
-    : defaultChartDisplayType;
+  const chartDisplayType = defaultChartDisplayType;
   const chartHeight = chartDisplayType === "horizontal-bar"
     ? Math.max(280, Math.min(420, (table?.rows?.length ?? 0) * 46 + 54))
     : 280;
@@ -269,10 +254,7 @@ export function AnalysisStatePanel({
                     supportedChartType={supportedChartType}
                     hasTableColumns={hasTableColumns}
                     chartTitle={chartTitle}
-                    chartDisplayOptions={chartDisplayOptions}
                     chartDisplayType={chartDisplayType}
-                    showDisplayControls={showChartDisplayControls}
-                    setChartDisplayOverride={setChartDisplayOverride}
                     chartLines={chartLines}
                     chartHeight={chartHeight}
                     chartDescription={chartDescription}
@@ -313,10 +295,7 @@ export function AnalysisStatePanel({
                   supportedChartType={supportedChartType}
                   hasTableColumns={hasTableColumns}
                   chartTitle={chartTitle}
-                  chartDisplayOptions={chartDisplayOptions}
                   chartDisplayType={chartDisplayType}
-                  showDisplayControls={false}
-                  setChartDisplayOverride={setChartDisplayOverride}
                   chartLines={chartLines}
                   chartHeight={chartHeight}
                   chartDescription={chartDescription}
@@ -349,11 +328,6 @@ export function AnalysisStatePanel({
             onOpenEvidence={onOpenEvidence}
             saveDisabled={saveDisabled}
           />}
-          {!isPresentationPending && artifactReuse?.viewSpecId && (
-            <div className="analysis-presentation-actions">
-              <span role="status">기존 분석 재사용 · 새 분석 쿼리 없음</span>
-            </div>
-          )}
         </div>
       )}
     </section>

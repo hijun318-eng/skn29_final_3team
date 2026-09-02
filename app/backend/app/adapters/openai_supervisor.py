@@ -52,6 +52,7 @@ INTERNAL_GUIDELINE만 사용하고 정형 원천 데이터의 재계산을 별�
 ML_PREDICTION은 제공된 ML scope 안의 미래 객실 수요 예측에만 사용하고 구조화 입력을 채웁니다.
 각 objective는 사용자 문장에서 해당 Agent가 처리할 범위만 간결하게 다시 쓰되,
 기간·지표·대상·명시한 문서 종류는 생략하거나 일반화하지 마세요.
+연도가 생략된 월은 request_as_of의 연도로 해석하고 objective에는 연도를 명시하세요.
 사용자가 분석 결과의 출력 표현을 명시했다면 ANALYSIS_WORKFLOW task의 presentation_type에
 그 표현을 구조화해 전달하고, 명시하지 않았다면 null로 두세요.
 ANALYSIS_WORKFLOW task는 새 측정·집계가 필요하면 analysis_route=ANALYSIS로, 기존 분석의

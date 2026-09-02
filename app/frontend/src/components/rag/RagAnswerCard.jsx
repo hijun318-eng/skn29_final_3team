@@ -4,6 +4,12 @@ import { FileText } from "lucide-react";
 
 import "./RagAnswerCard.css";
 
+function normalizeAnswerText(text) {
+  return String(text)
+    .replace(/(\d[\d,.]*)\s*억원다\./g, '$1억 원입니다.')
+    .replace(/(\d[\d,.]*)\s*억원/g, '$1억 원');
+}
+
 function getAnswerText(rag) {
   const text = rag?.answer_text || rag?.answer?.text || rag?.answer || rag?.body || '';
   const cleaned = String(text)
@@ -13,7 +19,7 @@ function getAnswerText(rag) {
     .replace(/^\s*[-*•]\s*$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  if (cleaned) return cleaned;
+  if (cleaned) return normalizeAnswerText(cleaned);
   const status = String(rag?.status || rag?.response_status || '').toUpperCase();
   if (status === 'NO_EVIDENCE') {
     return '질문과 일치하는 내부 지침 근거를 찾지 못했습니다.\n\n업무 영역과 발생 상황을 포함해 다시 질문해 주세요.';
@@ -53,6 +59,22 @@ function documentSources(items) {
       [item.document_id, item.document_version].filter(Boolean).join(':') || item.evidence_id,
       item,
     ])).values());
+}
+
+function evidenceMetadataPoints(items) {
+  const points = new Set();
+  items.forEach((item) => {
+    const documentName = String(item?.document_name || '').trim();
+    if (documentName) {
+      points.add(documentName);
+      points.add(documentName.replace(/^\d{4}년\s*\d{1,2}월\s*/, '').trim());
+    }
+    String(item?.snippet || '').split('\n').forEach((line) => {
+      const match = line.trim().match(/^\[PARAGRAPH style=(?:Title|Subtitle)\]\s*(.+)$/i);
+      if (match?.[1]) points.add(match[1].trim());
+    });
+  });
+  return points;
 }
 
 function answerContent(text) {
@@ -123,7 +145,7 @@ function pointScore(point, terms) {
   return termScore + quantified + sentence;
 }
 
-function answerPresentation(content, question) {
+function answerPresentation(content, question, metadataPoints = new Set()) {
   if (!content.points.length) {
     return { lead: '', visiblePoints: [], detailPoints: [], table: null };
   }
@@ -131,7 +153,11 @@ function answerPresentation(content, question) {
   const tableIndexes = table?.pointIndexes || new Set();
   const candidates = content.points
     .map((point, index) => ({ point, index }))
-    .filter(({ index }) => !tableIndexes.has(index));
+    .filter(({ point, index }) => (
+      !tableIndexes.has(index)
+      && !metadataPoints.has(point)
+      && !/^\d{4}년\s*\d{1,2}월\s*\|\s*[^|]+$/.test(point)
+    ));
   const terms = focusTerms(question);
   const lead = [...candidates].sort((left, right) => (
     pointScore(right.point, terms) - pointScore(left.point, terms) || left.index - right.index
@@ -146,6 +172,18 @@ function answerPresentation(content, question) {
   };
 }
 
+function emphasizedAnswerText(text) {
+  return String(text).split(/(\d[\d,.]*\s*(?:억\s*원|만\s*원|천\s*원|%|건|박|명|실|일|개))/g)
+    .filter(Boolean)
+    .map((part, index) => /\d/.test(part) && /(?:억\s*원|만\s*원|천\s*원|%|건|박|명|실|일|개)$/.test(part)
+      ? <strong className="rag-answer-card__metric" key={`${index}-${part}`}>{part}</strong>
+      : part);
+}
+
+function sectionLabel(value) {
+  return String(value || '').replace(/^\[DOCX\s+[^\]]+\]\s*/i, '').trim();
+}
+
 function citationReferences(rag, sources) {
   const sourceById = new Map(sources.map((item) => [item.evidence_id, item]));
   const citations = Array.isArray(rag?.citations) ? rag.citations : [];
@@ -158,7 +196,7 @@ function citationReferences(rag, sources) {
 }
 
 function evidenceLabel(item) {
-  return [item?.document_name, item?.document_version, item?.section]
+  return [item?.document_name, item?.document_version, sectionLabel(item?.section)]
     .filter((value) => typeof value === 'string' && value.trim())
     .join(' · ') || '근거 문서';
 }
@@ -174,14 +212,15 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
       .map((item) => [item.url, item]),
   ).values());
   const comparison = compareContent(answerText, rag?.answer_type);
+  const evidence = evidenceItems(rag);
   const content = comparison
     ? { points: [], paragraphs: comparison.prose }
     : answerContent(answerText);
   const presentation = answerPresentation(
     content,
     rag?.routing?.snapshot_question || rag?.routing?.context_question || '',
+    evidenceMetadataPoints(evidence),
   );
-  const evidence = evidenceItems(rag);
   const sources = documentSources(evidence);
   const citationRefs = citationReferences(rag, evidence);
   const responseStatus = String(rag?.status || rag?.response_status || '').toUpperCase();
@@ -197,7 +236,7 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
     <article aria-labelledby={titleId} className="rag-answer-card">
       <div id={titleId} className="rag-answer-card__label">핵심 답변</div>
       <div className="rag-answer-card__body">
-        {presentation.lead && <p className="rag-answer-card__lead">{presentation.lead}</p>}
+        {presentation.lead && <p className="rag-answer-card__lead">{emphasizedAnswerText(presentation.lead)}</p>}
         {presentation.table && (
           <div className="rag-answer-card__table-wrap">
             <table>
@@ -221,18 +260,18 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
         )}
         {presentation.visiblePoints.length > 0 && (
           <ul className="rag-answer-card__points">
-            {presentation.visiblePoints.map((point) => <li key={point}>{point}</li>)}
+            {presentation.visiblePoints.map((point) => <li key={point}>{emphasizedAnswerText(point)}</li>)}
           </ul>
         )}
         {presentation.detailPoints.length > 0 && (
           <details className="rag-answer-card__details">
             <summary>상세 근거 {presentation.detailPoints.length}건</summary>
-            <ul>{presentation.detailPoints.map((point) => <li key={point}>{point}</li>)}</ul>
+            <ul>{presentation.detailPoints.map((point) => <li key={point}>{emphasizedAnswerText(point)}</li>)}</ul>
           </details>
         )}
         {content.paragraphs.map((paragraph, index) => (
           <p key={`${index}-${paragraph.slice(0, 20)}`}>
-            {paragraph}
+            {emphasizedAnswerText(paragraph)}
           </p>
         ))}
         {comparison && (
@@ -285,7 +324,7 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
               <span key={item.evidence_id} title={item.snippet || undefined}>
                 <FileText size={14} aria-hidden="true" />
                 <b>{item.document_name || '근거 문서'}</b>
-                {item.section && <small>{item.section}</small>}
+                {sectionLabel(item.section) && <small>{sectionLabel(item.section)}</small>}
               </span>
             ))}
           </div>

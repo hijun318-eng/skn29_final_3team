@@ -100,9 +100,38 @@ try {
   assert.match(tableHtml, /<table>/);
   assert.match(tableHtml, /<th scope="col">주요 취소 사유<\/th>/);
   assert.match(tableHtml, /<th scope="row">일정 변경<\/th><td>894건<\/td><td>53.95%<\/td>/);
-  assert.match(tableHtml, /class="rag-answer-card__lead">전체 취소율은 17.59%입니다/);
-  assert.match(tableHtml, /상세 근거 2건/);
-  assert.equal((tableHtml.match(/2026년 8월 \| 객실팀/g) || []).length, 1);
+  assert.match(tableHtml, /class="rag-answer-card__lead">전체 취소율은 <strong class="rag-answer-card__metric">17.59%<\/strong>입니다/);
+  assert.match(tableHtml, /상세 근거 1건/);
+  assert.doesNotMatch(tableHtml, /2026년 8월 \| 객실팀/);
+
+  const monthlyReportHtml = renderToStaticMarkup(createElement(RagAnswerCard, {
+    rag: {
+      answer_text: [
+        "- 운영 결론 판매 객실은 15,717실, 객실 매출은 68.9억원다.",
+        "- 객실 운영보고서",
+        "- 호텔 운영실적과 원인, 후속 조치를 연결한 월간 보고",
+        "- 매출은 그랜드호텔이 가장 높다.",
+        "- 2026년 8월 | 객실팀",
+        "- 전체 취소율은 17.59%다.",
+      ].join("\n"),
+      evidence_bundle: [{
+        evidence_id: "report-room:1",
+        document_id: "report-room",
+        document_name: "2026년 8월 객실 운영보고서",
+        section: "[DOCX DOCUMENT_START 1] 문서 본문",
+        snippet: [
+          "[PARAGRAPH style=Title] 객실 운영보고서",
+          "[PARAGRAPH style=Subtitle] 호텔 운영실적과 원인, 후속 조치를 연결한 월간 보고",
+        ].join("\n"),
+      }],
+    },
+  }));
+  assert.match(monthlyReportHtml, /68\.9억 원<\/strong>입니다/);
+  assert.doesNotMatch(monthlyReportHtml, /억원다|<li>객실 운영보고서<\/li>|<li>2026년 8월 \| 객실팀<\/li>/);
+  assert.match(monthlyReportHtml, /class="rag-answer-card__metric">15,717실<\/strong>/);
+  assert.match(monthlyReportHtml, /class="rag-answer-card__metric">68\.9억 원<\/strong>/);
+  assert.match(monthlyReportHtml, /<small>문서 본문<\/small>/);
+  assert.doesNotMatch(monthlyReportHtml, /<small>\[DOCX DOCUMENT_START/);
 
   const labelledBy = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(labelledBy.length, 2);
@@ -122,6 +151,8 @@ try {
   assert.match(stylesSource, /@media \(max-width: 650px\)/);
   assert.match(stylesSource, /min-height: 44px/);
   assert.match(stylesSource, /:focus-visible/);
+  assert.match(stylesSource, /\.rag-answer-card__metric/);
+  assert.match(stylesSource, /max-width: min\(100%, 520px\)/);
 
 } finally {
   await server.close();

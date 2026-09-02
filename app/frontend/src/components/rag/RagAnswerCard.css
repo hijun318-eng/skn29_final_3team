@@ -43,10 +43,19 @@
 }
 
 .rag-answer-card__lead {
+  padding: 13px 15px;
   color: var(--rag-answer-text);
+  border-left: 3px solid var(--rag-answer-accent);
+  border-radius: 4px 9px 9px 4px;
+  background: var(--rag-answer-accent-soft);
   font-size: 17px;
   font-weight: 700;
   line-height: 1.65;
+}
+
+.rag-answer-card__metric {
+  color: var(--rag-answer-accent);
+  font-weight: 850;
 }
 
 .rag-answer-card__points {
@@ -344,7 +353,7 @@
 }
 
 .rag-answer-card__source-strip > div > span {
-  max-width: 300px;
+  max-width: min(100%, 520px);
   min-height: 36px;
   padding: 7px 10px;
   display: inline-flex;
@@ -353,10 +362,10 @@
   gap: 6px;
   color: var(--rag-answer-muted);
   border: 1px solid var(--rag-answer-border);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--rag-answer-surface-muted);
   font-size: 11px;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .rag-answer-card__source-strip svg {
@@ -365,18 +374,18 @@
 }
 
 .rag-answer-card__source-strip b {
-  max-width: 160px;
-  overflow: hidden;
+  max-width: none;
+  overflow: visible;
   color: var(--rag-answer-text);
   font-size: 11px;
-  text-overflow: ellipsis;
+  white-space: normal;
 }
 
 .rag-answer-card__source-strip small {
-  max-width: 100px;
-  overflow: hidden;
+  max-width: none;
+  overflow: visible;
   font-size: 10px;
-  text-overflow: ellipsis;
+  white-space: normal;
 }
 
 .ppt-theme .rag-answer-card {

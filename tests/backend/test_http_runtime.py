@@ -409,7 +409,7 @@ class FastApiRuntimeTest(unittest.TestCase):
             self.assertEqual(200, status)
             self.assertEqual(request_id, progress["data"]["request_id"])
 
-    def test_analysis_exposes_repair_trace_and_blocks_g3_artifact(self) -> None:
+    def test_analysis_fails_closed_without_compiler_recovery_and_blocks_g3_artifact(self) -> None:
         status, repaired = self.request(
             "/analysis",
             method="POST",
@@ -420,12 +420,14 @@ class FastApiRuntimeTest(unittest.TestCase):
             },
         )
         self.assertEqual(200, status)
-        self.assertEqual(1, repaired["data"]["repair_count"])
-        self.assertIn(
+        self.assertEqual(0, repaired["data"]["repair_count"])
+        self.assertNotIn(
             "REPAIR",
             [step["stage"] for step in repaired["data"]["trace"]],
         )
-        self.assertIsNotNone(repaired["data"]["artifact"])
+        self.assertEqual("BLOCKED", repaired["data"]["status"])
+        self.assertIsNone(repaired["data"]["artifact"])
+        self.assertEqual("SQL_POLICY_BLOCKED", repaired["error"]["code"])
 
         status, failed = self.request(
             "/analysis",

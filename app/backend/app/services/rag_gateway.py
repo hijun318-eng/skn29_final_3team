@@ -666,6 +666,13 @@ class InternalManualAgent:
                 for item in cited_results
                 if str(item.get("document_id") or item.get("manual_id") or "").strip()
             ))[:document_limit]
+            cited_document_id_set = set(cited_document_ids)
+            supporting_results = [
+                item
+                for item in results
+                if str(item.get("document_id") or item.get("manual_id") or "").strip()
+                in cited_document_id_set
+            ]
             approved_document_ids = selected_ids or cited_document_ids
             output = {
                 "status": "ANSWER",
@@ -675,7 +682,7 @@ class InternalManualAgent:
                 "answer": {"text": answer_body},
                 "agent": str(search.get("agent") or "INTERNAL_GUIDELINE"),
                 "processing_steps": list(search.get("processing_steps") or []),
-                "evidence_bundle": self._evidence_bundle(cited_results),
+                "evidence_bundle": self._evidence_bundle(supporting_results),
                 "citations": list(answer.get("citations") or []),
                 "request_id": str(answer.get("request_id") or ""),
                 "trace_id": trace_id,

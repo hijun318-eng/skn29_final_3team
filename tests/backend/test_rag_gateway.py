@@ -160,7 +160,23 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
                         "citation": "[업무 매뉴얼 v1.0 p.1 승인 절차]",
                         "score": 0.9,
                         "validity_status": "VALID",
-                    }
+                    },
+                    {
+                        "evidence_id": "MANUAL-ONE:1.0:1:chunk-2",
+                        "manual_id": "MANUAL-ONE",
+                        "title": "업무 매뉴얼",
+                        "version": "1.0",
+                        "document_type": "MANUAL",
+                        "owner_team": "OPERATIONS",
+                        "page_start": 1,
+                        "page_end": 1,
+                        "section_title": "승인 기준표",
+                        "content": "항목 | 기준\n승인 | 완료",
+                        "snippet": "항목 | 기준\n승인 | 완료",
+                        "citation": "[업무 매뉴얼 v1.0 p.1 승인 기준표]",
+                        "score": 0.8,
+                        "validity_status": "VALID",
+                    },
                 ],
                 "processing_steps": ["DOCUMENT_SEARCHED"],
                 "agent": "INTERNAL_GUIDELINE",
@@ -196,6 +212,10 @@ def test_gateway_binds_normalized_query_trace_and_actor_across_search_answer() -
         str(actor_id).encode("utf-8")
     ).hexdigest()
     assert result["status"] == "ANSWER"
+    assert [item["evidence_id"] for item in result["evidence_bundle"]] == [
+        "MANUAL-ONE:1.0:1:chunk-1",
+        "MANUAL-ONE:1.0:1:chunk-2",
+    ]
     assert [path for path, _payload, _role in calls] == [
         "/v1/tools/internal-manual-search",
         "/v1/tools/internal-manual-answer",

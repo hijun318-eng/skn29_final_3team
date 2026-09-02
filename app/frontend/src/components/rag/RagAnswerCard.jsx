@@ -137,6 +137,73 @@ function tablePresentation(points, question) {
   ))[0] || null;
 }
 
+function structuredEvidenceTables(items) {
+  const tables = [];
+  items.forEach((item) => {
+    const snippet = String(item?.snippet || '');
+    for (const match of snippet.matchAll(/\[TABLE[^\]]*\]\s*([\s\S]*?)\s*\[\/TABLE\]/g)) {
+      const rows = match[1].split('\n').map((line) => Array.from(line.matchAll(
+        /\[r\d+c\d+\s+span=\d+(?:\s+vmerge=\w+)?\]\s*(.*?)(?=\s+\|\s+\[r\d+c\d+\s+span=|$)/g,
+      ), (cell) => cell[1].replace('[EMPTY_CELL]', '').trim())).filter((row) => row.length);
+      if (rows.length < 2 || rows[0].length < 2) continue;
+      const columns = rows[0];
+      const bodyRows = rows.slice(1).filter((row) => row.length === columns.length);
+      if (bodyRows.length) tables.push({ columns, rows: bodyRows });
+    }
+  });
+  return tables;
+}
+
+function metricNumber(value) {
+  const normalized = String(value).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  return normalized ? Number(normalized[0]) : null;
+}
+
+function phraseMentioned(context, phrase) {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\s)${escaped}(?:은|는|이|가|을|를|으로|로|[,.\\s]|$)`).test(context);
+}
+
+function evidenceTablePresentation(items, question, answerText) {
+  const context = `${question}\n${answerText}`.toLowerCase();
+  const terms = focusTerms(context);
+  const candidates = structuredEvidenceTables(items).map((table) => {
+    const scoredColumns = table.columns.slice(1).map((column, offset) => {
+      const normalized = column.toLowerCase();
+      const direct = phraseMentioned(context, normalized) ? 20 + normalized.length : 0;
+      const termScore = terms.reduce((score, term) => (
+        score + (normalized.includes(term) || term.includes(normalized) ? 2 : 0)
+      ), 0);
+      return { index: offset + 1, score: direct + termScore };
+    }).filter((column) => column.score > 0)
+      .sort((left, right) => right.score - left.score || left.index - right.index)
+      .slice(0, 3);
+    const selectedIndexes = [0, ...scoredColumns.map((column) => column.index).sort((a, b) => a - b)];
+    return {
+      score: scoredColumns.reduce((sum, column) => sum + column.score, 0),
+      columns: selectedIndexes.map((index) => table.columns[index]),
+      rows: table.rows.map((row) => selectedIndexes.map((index) => row[index])),
+    };
+  }).filter((table) => table.score > 0 && table.columns.length > 1)
+    .sort((left, right) => right.score - left.score || right.rows.length - left.rows.length);
+  const selected = candidates[0];
+  if (!selected) return null;
+  const maxima = selected.columns.map((_column, columnIndex) => (
+    columnIndex === 0
+      ? null
+      : Math.max(...selected.rows.map((row) => metricNumber(row[columnIndex]) ?? Number.NEGATIVE_INFINITY))
+  ));
+  return { ...selected, maxima };
+}
+
+function evidenceValue(value) {
+  const numeric = metricNumber(value);
+  if (numeric !== null && /원$/.test(value) && numeric >= 100_000_000) {
+    return { primary: `${(numeric / 100_000_000).toFixed(1)}억 원`, detail: value };
+  }
+  return { primary: value, detail: '' };
+}
+
 function pointScore(point, terms) {
   const normalized = point.toLowerCase();
   const termScore = terms.reduce((sum, term) => sum + (normalized.includes(term) ? 10 : 0), 0);
@@ -248,11 +315,15 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
   const content = comparison
     ? { points: [], paragraphs: comparison.prose }
     : answerContent(answerText);
+  const contextQuestion = rag?.routing?.snapshot_question || rag?.routing?.context_question || '';
   const presentation = answerPresentation(
     content,
-    rag?.routing?.snapshot_question || rag?.routing?.context_question || '',
+    contextQuestion,
     evidenceMetadataPoints(evidence),
   );
+  const supportingTable = presentation.table
+    ? null
+    : evidenceTablePresentation(evidence, contextQuestion, answerText);
   const sources = documentSources(evidence);
   const displayedSources = sourceRows(sources, pdfLinks);
   const citationRefs = citationReferences(rag, evidence);
@@ -308,6 +379,38 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
             </ul>
           </section>
         )}
+        {supportingTable && (
+          <section className="rag-answer-card__supporting-table" aria-label="보고서 관련 수치">
+            <h3>보고서 관련 수치</h3>
+            <div className="rag-answer-card__table-wrap">
+              <table>
+                <thead>
+                  <tr>{supportingTable.columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {supportingTable.rows.map((row) => (
+                    <tr key={row.join('|')}>
+                      {row.map((cell, columnIndex) => {
+                        const display = evidenceValue(cell);
+                        const isMaximum = columnIndex > 0
+                          && metricNumber(cell) === supportingTable.maxima[columnIndex];
+                        return columnIndex === 0 ? (
+                          <th key={`${columnIndex}-${cell}`} scope="row">{cell}</th>
+                        ) : (
+                          <td key={`${columnIndex}-${cell}`} className={isMaximum ? 'is-maximum' : undefined}>
+                            {isMaximum ? <strong>{display.primary}</strong> : display.primary}
+                            {isMaximum && <em>최고</em>}
+                            {display.detail && <small>{display.detail}</small>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
         {presentation.detailPoints.length > 0 && (
           <details className="rag-answer-card__details">
             <summary>상세 근거 {presentation.detailPoints.length}건</summary>
@@ -331,23 +434,6 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
             ))}
           </div>
         )}
-        {citationRefs.length > 0 && (
-          <div className="rag-answer-card__citations" aria-label="본문 인용">
-            <span>근거 인용</span>
-            <div>
-              {citationRefs.map((reference, index) => (
-                <details key={reference.evidence?.evidence_id || `${reference.citation}-${index}`}>
-                  <summary aria-label={`${index + 1}번 인용 근거 보기`}>[{index + 1}]</summary>
-                  <div className="rag-answer-card__citation-preview">
-                    <strong>{evidenceLabel(reference.evidence)}</strong>
-                    {reference.citation && <small>{reference.citation}</small>}
-                    {reference.evidence?.snippet && <p>{reference.evidence.snippet}</p>}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
       {onFollowUp && followUpQuestions.length > 0 && (
         <section className="rag-answer-card__followups" aria-label="후속 질문">
@@ -363,13 +449,27 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
       )}
       {displayedSources.length > 0 && (
         <section className="rag-answer-card__source-strip" aria-label="출처">
-          <p>출처</p>
+          <div className="rag-answer-card__citations rag-answer-card__citations--inline" aria-label="본문 인용">
+            <span>출처</span>
+            <div>
+              {citationRefs.map((reference, index) => (
+                <details key={reference.evidence?.evidence_id || `${reference.citation}-${index}`}>
+                  <summary aria-label={`${index + 1}번 인용 근거 보기`}>[{index + 1}]</summary>
+                  <div className="rag-answer-card__citation-preview">
+                    <strong>{evidenceLabel(reference.evidence)}</strong>
+                    {reference.citation && <small>{reference.citation}</small>}
+                    {reference.evidence?.snippet && <p>{reference.evidence.snippet}</p>}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
           <div className="rag-answer-card__source-list">
             {displayedSources.map((item) => item.url ? (
               <button
                 key={item.key}
                 type="button"
-                title={item.snippet || `${item.label} 뷰어 열기`}
+                title={`${item.label} 뷰어 열기`}
                 onClick={() => setViewerSource(item)}
               >
                 <FileText size={14} aria-hidden="true" />
@@ -378,7 +478,7 @@ export function RagAnswerCard({ rag, pdfUrl = '', pdfSources = [], onFollowUp })
                 <span>뷰어 열기</span>
               </button>
             ) : (
-              <div key={item.key} title={item.snippet || undefined}>
+              <div key={item.key}>
                 <FileText size={14} aria-hidden="true" />
                 <b>{item.label}</b>
                 {item.section && <small>{item.section}</small>}

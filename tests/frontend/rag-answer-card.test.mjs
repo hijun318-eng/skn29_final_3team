@@ -67,10 +67,11 @@ try {
   assert.match(html, /aria-label="후속 질문"/);
   assert.match(html, /aria-label="출처"/);
   assert.match(html, /승인 절차를 더 알려줘/);
-  assert.equal((html.match(/뷰어 열기/g) || []).length, 2);
+  assert.equal((html.match(/<span>뷰어 열기<\/span>/g) || []).length, 2);
   assert.doesNotMatch(html, /원문 보기/);
   assert.doesNotMatch(html, /PDF 원문 보기/);
-  assert.equal((html.match(/근거 인용/g) || []).length, 2);
+  assert.equal((html.match(/aria-label="본문 인용"/g) || []).length, 2);
+  assert.doesNotMatch(html, />근거 인용</);
   assert.equal((html.match(/aria-label="1번 인용 근거 보기"/g) || []).length, 2);
   assert.match(html, /객실 운영 지침 · v3 · 객실 정비 인계/);
   assert.match(html, /객실 정비 이력과 당직자 인계 내용을 함께 확인한다/);
@@ -124,8 +125,15 @@ try {
         snippet: [
           "[PARAGRAPH style=Title] 객실 운영보고서",
           "[PARAGRAPH style=Subtitle] 호텔 운영실적과 원인, 후속 조치를 연결한 월간 보고",
+          "[TABLE index=2 style=UNSTYLED]",
+          "[r1c1 span=1] 호텔 | [r1c2 span=1] 판매 가능 객실 | [r1c3 span=1] 판매 객실 | [r1c4 span=1] 객실 매출 | [r1c5 span=1] 판매 가능 객실당 매출",
+          "[r2c1 span=1] 더글러스호텔 | [r2c2 span=1] 1,598실 | [r2c3 span=1] 785실 | [r2c4 span=1] 357,944,650원 | [r2c5 span=1] 223,995원",
+          "[r3c1 span=1] 그랜드호텔 | [r3c2 span=1] 15,532실 | [r3c3 span=1] 10,592실 | [r3c4 span=1] 4,304,501,150원 | [r3c5 span=1] 277,138원",
+          "[r4c1 span=1] 비스타호텔 | [r4c2 span=1] 7,516실 | [r4c3 span=1] 4,340실 | [r4c4 span=1] 2,223,290,000원 | [r4c5 span=1] 295,808원",
+          "[/TABLE]",
         ].join("\n"),
       }],
+      routing: { snapshot_question: "8월 호텔별 총 운영 매출을 비교해줘" },
     },
   }));
   assert.match(monthlyReportHtml, /68\.9억 원<\/strong>입니다/);
@@ -134,6 +142,12 @@ try {
   assert.match(monthlyReportHtml, /class="rag-answer-card__metric">68\.9억 원<\/strong>/);
   assert.match(monthlyReportHtml, /<small>문서 본문<\/small>/);
   assert.match(monthlyReportHtml, /함께 볼 내용/);
+  assert.match(monthlyReportHtml, /보고서 관련 수치/);
+  assert.match(monthlyReportHtml, /43\.0억 원/);
+  assert.match(monthlyReportHtml, /4,304,501,150원/);
+  assert.match(monthlyReportHtml, /295,808원/);
+  assert.doesNotMatch(monthlyReportHtml, /<th scope="col">판매 가능 객실<\/th>/);
+  assert.equal((monthlyReportHtml.match(/최고/g) || []).length, 3);
   assert.doesNotMatch(monthlyReportHtml, /<small>\[DOCX DOCUMENT_START/);
 
   const labelledBy = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);

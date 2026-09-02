@@ -345,7 +345,7 @@ try {
   assert.match(hotelTableHtml, /DOUGLAS 호텔/);
   assert.match(hotelTableHtml, /GRAND 호텔/);
   assert.match(hotelTableHtml, /VISTA 호텔/);
-  assert.match(hotelTableHtml, />호텔 코드</);
+  assert.match(hotelTableHtml, /class="analysis-row-label-heading"><span>호텔<\/span>/);
   assert.match(stylesSource, /tbody td\.is-numeric\{font-weight:750\}/);
   assert.doesNotMatch(stylesSource, /analysis-table tbody tr:nth-child\(even\)/);
 

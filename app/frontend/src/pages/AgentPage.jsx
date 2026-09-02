@@ -32,6 +32,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
   const [reportModal, setReportModal] = useState("");
   const [reportModalRun, setReportModalRun] = useState(null);
+  const [reportModalViewType, setReportModalViewType] = useState("SUMMARY");
   const [reportTitle, setReportTitle] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [savedBusy, setSavedBusy] = useState(false);
@@ -657,6 +658,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       saveDisabled={savedBusy}
                       onCreateReportDraft={canDraftReport && turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
                         setReportModalRun(turnItem.run);
+                        setReportModalViewType(turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY");
                         setReportTitle(reportTitleForAnalysis(turnItem.run));
                         setReportModal("draft");
                       } : undefined}
@@ -751,6 +753,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       {canDraftReport && <TurnReportModal
         mode={reportModal}
         run={reportModalRun || activeEvidenceRun}
+        viewType={reportModalViewType}
         title={reportTitle}
         onTitleChange={setReportTitle}
         onConfirm={() => void createReportDraft()}

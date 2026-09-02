@@ -4,8 +4,7 @@
 import React from "react";
 import { Check, FileText, X } from "lucide-react";
 import { AnalysisStatePanel } from "./analysis/AnalysisStatePanel";
-import { createAnalysisValueScale, userFacingAnalysisSummary } from "./analysis/analysisValueScale";
-import { analysisTitle, formatMetricValue, metricDisplayLabel, metricDisplayUnit } from "../utils/presentation";
+import { analysisTitle } from "../utils/presentation";
 import "./TurnReportModal.css";
 
 /**
@@ -13,6 +12,7 @@ import "./TurnReportModal.css";
  * @param {object} props
  * @param {string} props.mode
  * @param {object} props.run
+ * @param {string} props.viewType
  * @param {string} props.title
  * @param {Function} props.onTitleChange
  * @param {Function} props.onConfirm
@@ -23,6 +23,7 @@ import "./TurnReportModal.css";
 export function TurnReportModal({
   mode,
   run,
+  viewType = "SUMMARY",
   title,
   onTitleChange,
   onConfirm,
@@ -36,8 +37,8 @@ export function TurnReportModal({
   if (!mode || !run) return null;
 
   const metrics = Array.isArray(run.metrics) ? run.metrics : [];
-  const rows = Array.isArray(run.table?.rows) ? run.table.rows : [];
-  const valueScale = createAnalysisValueScale(metrics, rows);
+  const rowCount = Array.isArray(run.table?.rows) ? run.table.rows.length : 0;
+  const isTableView = String(viewType).toUpperCase() === "TABLE";
   const isDraft = mode === "draft";
 
   return (
@@ -82,35 +83,13 @@ export function TurnReportModal({
                     <small>선택한 분석</small>
                     <h3>{analysisTitle(run)}</h3>
                   </div>
-                  {metrics.length > 0 && <span>{metrics.length}개 지표</span>}
+                  {isTableView && rowCount > 0
+                    ? <span>{rowCount}개 행</span>
+                    : metrics.length > 0 && <span>{metrics.length}개 지표</span>}
                 </header>
-                <p>{userFacingAnalysisSummary(run, valueScale)}</p>
-                {metrics.length > 0 && (
-                  <dl aria-label="보고서에 포함할 핵심 지표">
-                    {metrics.map((metric) => {
-                      const resultField = metric.resultField || metric.result_field;
-                      const isCurrency = valueScale.isCurrency(metric.unit);
-                      const unitLabel = isCurrency
-                        ? valueScale.unitLabel(metric.unit, resultField)
-                        : metricDisplayUnit(metric.unit, metric.displayUnit ?? metric.display_unit);
-                      const formattedValue = isCurrency
-                        ? valueScale.format(metric.value, metric.unit, resultField)
-                        : formatMetricValue(metric.value, { includeUnit: false, unit: metric.unit });
-                      const exactValue = isCurrency
-                        ? valueScale.exact(metric.value, metric.unit)
-                        : formatMetricValue(metric.value, { unit: unitLabel });
-                      return (
-                        <div key={metric.metricId || metric.metric_id || resultField || metric.label}>
-                          <dt>{metricDisplayLabel(metric)}</dt>
-                          <dd title={exactValue}>
-                            <strong>{formattedValue}</strong>
-                            {unitLabel && <span>{unitLabel}</span>}
-                          </dd>
-                        </div>
-                      );
-                    })}
-                  </dl>
-                )}
+                <div className="report-analysis-preview report-analysis-preview--selected-view">
+                  <AnalysisStatePanel run={run} viewType={viewType} />
+                </div>
               </section>
             </>
           ) : (

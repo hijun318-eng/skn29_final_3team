@@ -10,7 +10,7 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
         self.router = create_report_router(InMemoryReportRepository())
 
     def test_route_manifest_is_ready_for_r4_registration(self):
-        self.assertEqual(12, len(REPORT_ROUTES))
+        self.assertEqual(13, len(REPORT_ROUTES))
         self.assertIn(("POST", "/reports/definitions", "create_definition"), REPORT_ROUTES)
         self.assertIn(
             ("POST", "/reports/definitions/{definition_id}/versions/{version}/approve", "approve_version"),
@@ -23,6 +23,10 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn(
             ("POST", "/reports/definitions/{definition_id}/restore", "restore_definition"),
+            REPORT_ROUTES,
+        )
+        self.assertIn(
+            ("DELETE", "/reports/definitions/{definition_id}", "permanently_delete_definition"),
             REPORT_ROUTES,
         )
         self.assertIn(
@@ -273,6 +277,36 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(409, blocked.exception.status_code)
         self.assertEqual("REPORT_ARCHIVE_IN_PROGRESS", blocked.exception.detail)
+
+    async def test_permanent_delete_requires_trash_and_removes_all_versions(self):
+        await self.router.create_definition({
+            "definition_id": "report-purge",
+            "title": "영구삭제 계약 보고서",
+            "blocks": [],
+        })
+        with self.assertRaises(ReportRouteError) as active:
+            await self.router.permanently_delete_definition(
+                "report-purge", actor_role="analyst", trace_id="purge-active"
+            )
+        self.assertEqual(409, active.exception.status_code)
+        self.assertEqual(
+            "REPORT_PERMANENT_DELETE_REQUIRES_ARCHIVE", active.exception.detail
+        )
+
+        await self.router.archive_definition(
+            "report-purge", actor_role="analyst", trace_id="purge-archive"
+        )
+        receipt = await self.router.permanently_delete_definition(
+            "report-purge", actor_role="analyst", trace_id="purge-delete"
+        )
+        self.assertTrue(receipt["permanently_deleted"])
+        self.assertEqual("report-purge", receipt["definition_id"])
+        self.assertEqual([], (await self.router.list_definitions(archived=True))["items"])
+        with self.assertRaises(ReportRouteError) as missing:
+            await self.router.permanently_delete_definition(
+                "report-purge", actor_role="analyst", trace_id="purge-repeat"
+            )
+        self.assertEqual(404, missing.exception.status_code)
 
     async def test_draft_revision_retries_are_idempotent_and_stale_changes_conflict(self):
         created = await self.router.create_definition({

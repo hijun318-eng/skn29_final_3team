@@ -11,7 +11,7 @@ import { reportApiError } from "../../app/frontend/src/features/reports/reportPa
 import { matchesAssistantArtifactSelection } from "../../app/frontend/src/features/reports/useReportLifecycleState.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
-import { commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun } from "../../app/frontend/src/pages/agentPageHelpers.js";
+import { commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationViewType, scopeNoticeRun } from "../../app/frontend/src/pages/agentPageHelpers.js";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
@@ -43,7 +43,9 @@ assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.match(nginx, /location \/assets\/ \{[\s\S]*try_files \$uri =404/);
 assert.match(nginx, /Cache-Control "no-cache, no-store, must-revalidate"/);
-assert.match(nginx, /location \/api\/ \{[\s\S]*proxy_pass http:\/\/backend:8000\//);
+assert.match(nginx, /resolver 127\.0\.0\.11 valid=10s ipv6=off/);
+assert.match(nginx, /upstream backend_upstream \{[\s\S]*server backend:8000 resolve/);
+assert.match(nginx, /location \/api\/ \{[\s\S]*proxy_pass http:\/\/backend_upstream\//);
 assert.equal(frontendPackage.scripts["dev:compose"], "vite --mode compose");
 assert.match(viteConfig, /composeMode \? "http:\/\/127\.0\.0\.1:28000"/);
 assert.match(viteConfig, /composeMode \? "\/api"/);
@@ -108,6 +110,11 @@ assert.equal(hasReusablePresentationArtifact({
   evidence: { artifactId: "artifact-1", queryId: "query-other" },
 }), false);
 assert.equal(hasReusablePresentationArtifact(null), false);
+assert.equal(presentationViewType({
+  view_type: "BAR",
+  resolved_slots: { target_chart_type: "HORIZONTAL_BAR" },
+}), "HORIZONTAL_BAR");
+assert.equal(presentationViewType({ view_type: "TABLE" }), "TABLE");
 assert.match(source("pages/AgentPage.jsx"), /setTurns\(\(prev\) => \[\.\.\.prev, optimisticTurn\]\)/);
 assert.match(source("pages/AgentPage.jsx"), /isPresentationAction && !hasReusablePresentationArtifact\(sourceRun\)/);
 assert.match(source("pages/AgentPage.jsx"), /requestGeneration\.current !== generation/);
@@ -409,10 +416,10 @@ assert.deepEqual(reorderedBlocks.map((block) => [block.x, block.y]), [[0, 0], [6
 
 const compactlyPlacedBlocks = placeDraftBlock(reorderedBlocks, "right", 6, 3);
 assert.deepEqual(compactlyPlacedBlocks.find((block) => block.id === "right"), {
-  id: "right", title: "오른쪽", columns: 6, type: "text", content: "오른쪽", x: 0, y: 2, w: 6, h: 2,
+  id: "right", title: "오른쪽", columns: 6, type: "text", content: "오른쪽", x: 6, y: 3, w: 6, h: 2,
 });
 const collisionAvoidedBlocks = placeDraftBlock(compactlyPlacedBlocks, "left", 6, 3);
-assert.deepEqual(collisionAvoidedBlocks.map((block) => [block.x, block.y]), [[0, 0], [0, 2]]);
+assert.deepEqual(collisionAvoidedBlocks.map((block) => [block.x, block.y]), [[6, 5], [6, 3]]);
 
 const movedOutOfPair = placeDraftBlock([
   { id: "pair-left", title: "Left", columns: 6, type: "text", x: 0, y: 0, w: 6, h: 4 },
@@ -714,13 +721,14 @@ const hydratedSuccess = hydrateTurnsFromServer([{
     }],
   },
 }, {
-  turn_id: "turn-table-view",
-  user_message: "표로 보여줘",
+  turn_id: "turn-horizontal-view",
+  user_message: "가로 막대로 바꿔줘",
   route: "PRESENTATION",
   terminal_status: "SUCCEEDED",
   artifact_id: "persisted-artifact",
-  view_spec_id: "view-spec-table",
-  view_type: "TABLE",
+  view_spec_id: "view-spec-horizontal",
+  view_type: "BAR",
+  resolved_slots: { target_chart_type: "HORIZONTAL_BAR" },
 }]);
 assert.equal(hydratedSuccess[0].run.metrics[0].metricId, "generic_metric");
 assert.equal(hydratedSuccess[0].run.metrics[0].resultField, "generic_value");
@@ -729,15 +737,15 @@ assert.equal(hydratedSuccess[0].run.chart.chartType, "bar");
 assert.equal(hydratedSuccess[0].run.evidence.metrics[0].resultField, "generic_value");
 assert.equal(hydratedSuccess[0].run.sources[0].schemaVersion, "v1");
 assert.equal(hydratedSuccess.length, 2);
-assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-table-view"]);
-assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "표로 보여줘"]);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-horizontal-view"]);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "가로 막대로 바꿔줘"]);
 assert.equal(hydratedSuccess[0].viewType, "SUMMARY");
-assert.equal(hydratedSuccess[1].viewType, "TABLE");
+assert.equal(hydratedSuccess[1].viewType, "HORIZONTAL_BAR");
 assert.equal(hydratedSuccess[1].run.artifact.artifactId, hydratedSuccess[0].run.artifact.artifactId);
 assert.equal(hydratedSuccess[1].run.artifact.queryId, hydratedSuccess[0].run.artifact.queryId);
 assert.equal(hydratedSuccess[1].run.summary, hydratedSuccess[0].run.summary);
 assert.equal(hydratedSuccess[1].isArtifactReuse, true);
-assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-table");
+assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-horizontal");
 
 const hydratedComposite = hydrateTurnsFromServer([{
   turn_id: "turn-composite",
@@ -765,16 +773,24 @@ const hydratedComposite = hydrateTurnsFromServer([{
       evidence_bundle: [{ document_id: "REPORT-2026-08-ROOMS", document_name: "8월 객실 운영보고서" }],
     },
     supervisor_composition: {
+      schema_version: "SupervisorCompositionReceipt.v1",
+      plan_ref: `model-supervisor:sha256:${"b".repeat(64)}`,
+      primary_agent: "ANALYSIS_WORKFLOW",
       agents: ["ANALYSIS_WORKFLOW", "INTERNAL_GUIDELINE"],
+      evidence_refs: [`model-supervisor:sha256:${"b".repeat(64)}`],
     },
   },
 }]);
 assert.equal(hydratedComposite[0].viewType, "SUMMARY");
 assert.equal(hydratedComposite[0].run.requestId, "composite-request");
 assert.equal(hydratedComposite[0].run.rag.answer_text, "내부 보고서에서 확인한 하락 원인입니다.");
+assert.equal(hydratedComposite[0].run.supervisorComposition.schema_version, "SupervisorCompositionReceipt.v1");
 assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE"/);
-assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction/);
+assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction,[\s\S]*?supervisorComposition/);
 assert.match(source("pages/AgentPage.jsx"), /className="composite-agent-result"/);
+assert.match(source("pages/AgentPage.jsx"), /호텔별 차이가 잘 보이게 막대그래프로 바꿔줘\./);
+assert.match(source("pages/AgentPage.jsx"), /requested_route: "PRESENTATION",[\s\S]*?presentation_type: "BAR",[\s\S]*?turnItem/);
+assert.match(source("pages/AgentPage.jsx"), /sourceArtifactId !== serverTurn\.artifact_id[\s\S]*?!sourceQueryId[\s\S]*?serverTurn\?\.query_id !== sourceQueryId[\s\S]*?!serverTurn\?\.view_spec_id/);
 
 const mismatchedPresentation = hydrateTurnsFromServer([{
   turn_id: "turn-source",

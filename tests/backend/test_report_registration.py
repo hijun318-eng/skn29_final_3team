@@ -36,11 +36,13 @@ from app.report_contracts import (  # noqa: E402
     ReplaceReportBlocksRequest,
     ReportArtifactResponse,
     ReportDefinitionLifecycleResponse,
+    ReportDefinitionPermanentDeleteResponse,
     ReportDefinitionListResponse,
     UpdateReportScheduleRequest,
 )
 from tests.support.report_repository import InMemoryReportRepository  # noqa: E402
 from src.report.router import create_report_router  # noqa: E402
+from src.report.repository import ReportLifecycleConflict  # noqa: E402
 from src.report.domain import (  # noqa: E402
     DefinitionStatus,
     BlockType,
@@ -74,6 +76,29 @@ def report_assistant_request() -> dict[str, object]:
 
 
 class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
+    def test_permanent_delete_migration_preserves_admin_owned_chat_function(self):
+        """기존 DB의 관리자 소유 함수는 교체하지 않고 turns trigger만 분리한다."""
+
+        migration = (
+            BACKEND
+            / "migrations"
+            / "versions"
+            / "20260901_73_report_permanent_deletion.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn(
+            "CREATE OR REPLACE FUNCTION chat.enforce_conversation_history_immutability()",
+            migration,
+        )
+        self.assertIn(
+            "CREATE OR REPLACE FUNCTION chat.enforce_report_turn_history_immutability()",
+            migration,
+        )
+        self.assertIn("DROP TRIGGER turns_immutable ON chat.turns", migration)
+        self.assertIn(
+            "EXECUTE FUNCTION chat.enforce_report_turn_history_immutability()",
+            migration,
+        )
+
     async def test_manual_report_routes_cannot_forge_or_retain_changed_ai_evidence(self):
         """일반 생성은 AI 근거를 만들 수 없고 근거가 붙은 본문 변경은 명시적 해제를 요구한다."""
 
@@ -226,6 +251,46 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 UUID(artifact_id),
             )
 
+        report_id = "00000000-0000-0000-0000-000000000097"
+        report_block = ReportBlock(
+            "00000000-0000-0000-0000-000000000096",
+            "관리자 열람 근거",
+            artifact_id,
+            12,
+            "query-admin-preview",
+        )
+        repository.get_version = AsyncMock(return_value=ReportDefinitionVersion(
+            report_id,
+            1,
+            DefinitionStatus.DRAFT,
+            "다른 사용자의 보고서",
+            (report_block,),
+        ))
+        artifact_row = {
+            "artifact_id": UUID(artifact_id),
+            "title": "관리자 열람 근거",
+            "narrative_markdown": "검증된 근거",
+            "data_snapshot_json": {},
+            "evidence_json": {},
+            "chart_spec_json": None,
+            "artifact_checksum": "a" * 64,
+            "trino_query_id": "query-admin-preview",
+        }
+        report_result = MagicMock()
+        report_result.mappings.return_value.one_or_none.return_value = artifact_row
+        session.execute.return_value = report_result
+
+        loaded = await repository.get_report_artifact(report_id, 1, artifact_id)
+
+        report_sql = str(session.execute.await_args.args[0])
+        report_parameters = session.execute.await_args.args[1]
+        self.assertEqual(artifact_row, loaded)
+        self.assertIn("r.user_id = d.owner_id", report_sql)
+        self.assertIn(":manage_all OR d.owner_id = :owner_id", report_sql)
+        self.assertEqual(True, report_parameters["manage_all"])
+        self.assertEqual(UUID(report_id), report_parameters["definition_id"])
+        self.assertEqual(repository._owner_id, report_parameters["owner_id"])
+
     async def test_report_view_spec_survives_definition_and_replace_roundtrip(self):
         router = create_report_router(InMemoryReportRepository())
         definition_id = str(uuid4())
@@ -343,8 +408,8 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             [
                 ("실제 분석 결과 · 요약", "artifact", 0, 0, 6, 5),
                 ("실제 분석 결과 · 핵심 지표", "artifact", 6, 0, 6, 6),
-                ("실제 분석 결과 · 차트", "chart", 0, 6, 8, 7),
-                ("실제 분석 결과 · 표", "table", 0, 13, 6, 5),
+                ("실제 분석 결과 · 차트", "chart", 0, 6, 12, 7),
+                ("실제 분석 결과 · 표", "table", 0, 13, 12, 5),
             ],
             [
                 (
@@ -669,6 +734,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             "/reports/definitions/{definition_id}/restore", schema["paths"]
         )
+        self.assertIn("delete", schema["paths"]["/reports/definitions/{definition_id}"])
         self.assertIn("/reports/runs/manual", schema["paths"])
         self.assertIn("/reports/schedules", schema["paths"])
         self.assertIn("/reports/schedules/{schedule_id}", schema["paths"])
@@ -706,6 +772,18 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 )
             )
             self.assertFalse(restored.archived)
+
+            await report_api.archive_definition(
+                "00000000-0000-0000-0000-000000000111",
+                report_context,
+            )
+            deleted = ReportDefinitionPermanentDeleteResponse.model_validate(
+                await report_api.permanently_delete_definition(
+                    "00000000-0000-0000-0000-000000000111",
+                    report_context,
+                )
+            )
+            self.assertTrue(deleted.permanently_deleted)
 
     def test_schedule_contract_requires_timezone_aware_instants(self):
         payload = {
@@ -830,6 +908,83 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
 
         await dispose_database()
 
+    async def test_permanent_delete_requires_archive_removes_immutable_content_and_audits(self):
+        from app.adapters.report_repository import PostgresReportRepository
+        from app.services.report.document import canonical_source_checksum
+        from sqlalchemy import create_engine, make_url, text
+
+        database_url = os.environ["REPORT_DATABASE_URL"]
+        owner_id = uuid4()
+        definition_id = str(uuid4())
+        repository = PostgresReportRepository(database_url, owner_id)
+        await repository.add_draft(
+            ReportDefinitionVersion(
+                definition_id,
+                1,
+                DefinitionStatus.DRAFT,
+                "영구삭제 DB 경계 검증",
+                (
+                    ReportBlock(
+                        str(uuid4()),
+                        "삭제 대상 본문",
+                        None,
+                        12,
+                        None,
+                        BlockType.TEXT,
+                        content="영구삭제 뒤 남아서는 안 되는 보고서 본문",
+                    ),
+                ),
+            )
+        )
+        source = await repository.get_document_source(definition_id, 1)
+        checksum = canonical_source_checksum(source, "portrait")
+        await repository.approve_with_document(
+            definition_id,
+            1,
+            datetime.now(timezone.utc),
+            "portrait",
+            "auto",
+            checksum,
+            "<html><body>purge target</body></html>",
+            b"%PDF-1.7\npurge target",
+        )
+        with self.assertRaises(ReportLifecycleConflict):
+            await repository.permanently_delete_definition(
+                definition_id,
+                actor_role="analyst",
+                trace_id="purge-active-contract",
+            )
+
+        await repository.archive_definition(
+            definition_id,
+            actor_role="analyst",
+            trace_id="purge-archive-contract",
+        )
+        self.assertTrue(
+            await repository.permanently_delete_definition(
+                definition_id,
+                actor_role="analyst",
+                trace_id="purge-delete-contract",
+            )
+        )
+        with self.assertRaises(KeyError):
+            await repository.get_version(definition_id, 1)
+
+        sync_url = make_url(database_url).set(drivername="postgresql+psycopg")
+        engine = create_engine(sync_url)
+        self.addCleanup(engine.dispose)
+        with engine.connect() as connection:
+            event = connection.execute(
+                text(
+                    "SELECT action_code FROM governance.audit_events "
+                    "WHERE object_type = 'REPORT_DEFINITION' "
+                    "AND object_id = :object_id "
+                    "AND action_code = 'REPORT_PERMANENTLY_DELETED'"
+                ),
+                {"object_id": definition_id},
+            ).scalar_one()
+        self.assertEqual("REPORT_PERMANENTLY_DELETED", event)
+
     async def test_archive_restore_is_owner_scoped_idempotent_and_keeps_schedule_disabled(self):
         from app.adapters.report_repository import PostgresReportRepository
         from sqlalchemy import create_engine, make_url, text
@@ -840,8 +995,9 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
         schedule_id = str(uuid4())
         repository = PostgresReportRepository(database_url, owner_id)
         outsider = PostgresReportRepository(database_url, uuid4())
+        manager_id = uuid4()
         manage_all_outsider = PostgresReportRepository(
-            database_url, uuid4(), manage_all=True
+            database_url, manager_id, manage_all=True
         )
         await repository.add_draft(
             ReportDefinitionVersion(
@@ -890,10 +1046,10 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
             await outsider.archive_definition(
                 definition_id, actor_role="analyst", trace_id="outsider"
             )
-        with self.assertRaises(KeyError):
-            await manage_all_outsider.archive_definition(
-                definition_id, actor_role="platform_admin", trace_id="manage-all"
-            )
+        managed_repeat = await manage_all_outsider.archive_definition(
+            definition_id, actor_role="platform_admin", trace_id="manage-all-repeat"
+        )
+        self.assertEqual(archived, managed_repeat)
 
         restored = await repository.restore_definition(
             definition_id, actor_role="analyst", trace_id="restore-contract"
@@ -904,6 +1060,16 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored, repeated_restore)
         self.assertFalse(restored.archived)
         self.assertFalse((await repository.get_schedule(schedule_id))["enabled"])
+
+        managed_archive = await manage_all_outsider.archive_definition(
+            definition_id, actor_role="platform_admin", trace_id="manage-all-archive"
+        )
+        self.assertTrue(managed_archive.archived)
+        self.assertEqual(str(manager_id), managed_archive.archived_by)
+        managed_restore = await manage_all_outsider.restore_definition(
+            definition_id, actor_role="platform_admin", trace_id="manage-all-restore"
+        )
+        self.assertFalse(managed_restore.archived)
 
         sync_url = make_url(database_url).set(drivername="postgresql+psycopg")
         engine = create_engine(sync_url)
@@ -919,7 +1085,7 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
                 {"object_id": definition_id},
             ).all()
         self.assertEqual(
-            [("REPORT_ARCHIVED", 1), ("REPORT_RESTORED", 1)],
+            [("REPORT_ARCHIVED", 2), ("REPORT_RESTORED", 2)],
             [tuple(row) for row in actions],
         )
 

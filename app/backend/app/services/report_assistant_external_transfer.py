@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -49,6 +50,16 @@ _CONTENT_WARNING = (
     "사용자 지시·대화·보고서·선택 Artifact 원문에 민감정보가 포함되어 있으면 "
     "그 내용도 함께 전송될 수 있으므로 동의 전에 검토하고 제거해 주세요."
 )
+_DEPLOYMENT_PREAPPROVAL_ENV = "REPORT_ASSISTANT_EXTERNAL_TRANSFER_PREAUTHORIZED"
+
+
+def _deployment_preapproval_enabled() -> bool:
+    """배포자가 명시한 true만 외부 전송 사전 승인을 활성화한다."""
+
+    value = os.getenv(_DEPLOYMENT_PREAPPROVAL_ENV, "false").strip().lower()
+    if value not in {"true", "false"}:
+        raise ValueError(f"{_DEPLOYMENT_PREAPPROVAL_ENV} must be true or false")
+    return value == "true"
 
 
 class ExternalTransferConsentRequired(RuntimeError):
@@ -530,11 +541,15 @@ async def authorize_report_assistant_transfer(
         )
 
     disclosure_id = str(uuid4())
+    deployment_preapproved = _deployment_preapproval_enabled()
     route_json = {
         "manifest_version": route.manifest_version,
         "provider_routes": provider_routes,
         "report_draft_revision": session["report_draft_revision"],
         "report_context_hash": session["report_context_hash"],
+        "authorization_mode": (
+            "deployment_preapproval" if deployment_preapproved else "interactive_consent"
+        ),
     }
     expires_at = datetime.now(timezone.utc) + _DISCLOSURE_LIFETIME
     disclosure_hash = _canonical_sha256(
@@ -567,7 +582,25 @@ async def authorize_report_assistant_transfer(
         disclosure_hash=disclosure_hash,
         expires_at=expires_at,
     )
-    raise ExternalTransferConsentRequired(_disclosure_response(row))
+    disclosure = _disclosure_response(row)
+    if not deployment_preapproved:
+        raise ExternalTransferConsentRequired(disclosure)
+    consent = await repository.accept_assistant_external_transfer(
+        assistant_request_id,
+        str(disclosure.disclosure_id),
+        disclosure.disclosure_hash,
+    )
+    return ReportAssistantTransferAuthorization(
+        assistant_request_id=assistant_request_id,
+        policy_version=EXTERNAL_TRANSFER_POLICY_VERSION,
+        node=node,
+        route=route,
+        binding_hash=binding_hash,
+        data_scopes=scopes,
+        scope_hash=scope_hash,
+        disclosure_id=str(consent["disclosure_id"]),
+        consent_id=str(consent["consent_id"]),
+    )
 
 
 async def accept_report_assistant_external_transfer(

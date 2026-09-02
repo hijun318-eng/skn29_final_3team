@@ -67,11 +67,15 @@ class ConversationCommandRequest(ContractModel):
 
     @model_validator(mode="after")
     def validate_route_payloads(self) -> "ConversationCommandRequest":
-        """RAG 상속과 ML action이 각 명시 route에만 결속되게 한다."""
+        """근거 상속과 ML action이 허용된 명시 route에만 결속되게 한다."""
 
-        if self.inherit_previous_context and self.requested_route != "INTERNAL_GUIDELINE":
+        if self.inherit_previous_context and self.requested_route not in {
+            "INTERNAL_GUIDELINE",
+            "PRESENTATION",
+        }:
             raise ValueError(
-                "inherit_previous_context requires requested_route=INTERNAL_GUIDELINE"
+                "inherit_previous_context requires requested_route="
+                "INTERNAL_GUIDELINE or PRESENTATION"
             )
         has_ml_action = self.ml_prediction is not None
         if (self.requested_route == "ML_PREDICTION") != has_ml_action:

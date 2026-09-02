@@ -1,0 +1,52 @@
+{
+  "receipt_version": "NODE2-HUGGINGFACE-ADAPTER-v1",
+  "captured_at": "2026-09-01T08:20:00Z",
+  "status": "RUNPOD_LIVE_CANARY_CONNECTED_G2_RECOVERY_REQUIRED",
+  "production_switch_allowed": false,
+  "repository": {
+    "repo_id": "yoondaesung/answervice-node2-qwen35-2b-cp135",
+    "private": true,
+    "commit_sha": "3cea09dcb30b19f7ee584d2de299fb7f2e5c49a8",
+    "adapter_weight_path": "adapter_model.safetensors",
+    "adapter_weight_size_bytes": 67327104,
+    "local_adapter_weight_sha256": "22fc86ac2d8638885e1ea6647340c0a15ba1b068dfad19a2fa0e24f6e2f46aa1",
+    "remote_adapter_weight_sha256": "22fc86ac2d8638885e1ea6647340c0a15ba1b068dfad19a2fa0e24f6e2f46aa1"
+  },
+  "base_model": {
+    "model_id": "Qwen/Qwen3.5-2B",
+    "revision": "15852e8c16360a2fea060d615a32b45270f8a8fc"
+  },
+  "adapter": {
+    "checkpoint": "checkpoint-135",
+    "rank": 16
+  },
+  "evaluation": {
+    "gate": "HOLD",
+    "valid_json": "144/144",
+    "g2_pass": "103/144",
+    "trino_result_match": "96/144",
+    "active_catalog_result_match": "20/24",
+    "runtime_policy": "NODE2_FIRST_WITH_G2_AND_COMPILER_RECOVERY"
+  },
+  "deployment": {
+    "provider": "runpod",
+    "endpoint_id": "k7u4xkmfiz6l42",
+    "template_id": "heu9c3qsvf",
+    "served_model_alias": "node2-qwen35-2b-cp135-20260901",
+    "workers_min": 1,
+    "workers_max": 1,
+    "always_on_verified_at": "2026-09-01T09:13:34Z",
+    "live_model_list": "PASS_ALIAS_AND_IMMUTABLE_ADAPTER_ROOT",
+    "live_model_list_verified_at": "2026-09-01T09:13:34Z",
+    "live_sql_transport": "PASS_JSON_OBJECT",
+    "live_sql_g2": "FAIL_LIMIT_OR_PARAMETER_CONTRACT",
+    "live_sql_policy": "G2_BLOCK_THEN_COMPILER_RECOVERY",
+    "live_sql_verified_at": "2026-09-01T09:13:34Z"
+  },
+  "checks": {
+    "private_repository": "PASS",
+    "immutable_commit_sha": "PASS",
+    "remote_adapter_lfs_sha256": "PASS_MATCH_LOCAL",
+    "credential_in_receipt": false
+  }
+}

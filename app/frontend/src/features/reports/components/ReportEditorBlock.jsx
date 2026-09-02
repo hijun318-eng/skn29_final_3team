@@ -76,15 +76,13 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   onToggleLock,
   onRetryArtifact,
 }) {
-  const [markdownMode, setMarkdownMode] = useState("edit");
-  const isBlockPreview = block.type === "text" && markdownMode === "preview";
   const {
     attributes,
     listeners,
     setNodeRef,
     setActivatorNodeRef,
     transform,
-  } = useDraggable({ id: block.id, disabled: !isDraft || locked || isBlockPreview });
+  } = useDraggable({ id: block.id, disabled: !isDraft || locked });
   const blockNodeRef = useRef(null);
   const resizeStart = useRef(null);
   const resizePreviewRef = useRef(null);
@@ -93,7 +91,6 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   const titleTransactionRef = useRef(false);
 
   useEffect(() => () => window.clearTimeout(titleTimerRef.current), []);
-  useEffect(() => setMarkdownMode("edit"), [block.id]);
 
   const setBlockNodeRef = useCallback((node) => {
     blockNodeRef.current = node;
@@ -272,7 +269,6 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       <MarkdownBlockEditor
         block={block}
         disabled={!isDraft || locked}
-        onModeChange={setMarkdownMode}
         onUpdate={updateBlock}
       />
     );
@@ -328,13 +324,13 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       ref={setBlockNodeRef}
       data-block-id={block.id}
       tabIndex={-1}
-      className={`editor-block notion-block ${selected ? "selected" : ""} ${dragging ? "dragging is-dragging" : ""} ${locked ? "locked" : ""} ${isBlockPreview ? "is-block-preview" : ""}`}
+      className={`editor-block notion-block ${selected ? "selected" : ""} ${dragging ? "dragging is-dragging" : ""} ${locked ? "locked" : ""}`}
       aria-label={`${displayTitle || "제목 없음"} 블록${selected ? ", 선택됨" : ""}${locked ? ", 잠김" : ""}`}
       onClick={selectBlock}
       onFocusCapture={selectBlockFromKeyboard}
       style={style}
     >
-      {!isBlockPreview && <header className="report-block-chrome">
+      <header className="report-block-chrome">
         <div className="report-block-title">
           {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
           <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "분석 결과" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
@@ -368,11 +364,9 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
             />
           </div>
         )}
-      </header>}
+      </header>
       {isDraft && block.type === "text" ? (
-        isBlockPreview
-          ? <h2 className="notion-block-title notion-block-title--preview">{displayTitle}</h2>
-          : <input
+        <input
             className="notion-block-title"
             aria-label={`${displayTitle || "제목 없음"} 제목`}
             value={displayTitle}
@@ -387,17 +381,17 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
               updateBlock({ title: event.target.value }, record);
             }}
             placeholder="블록 제목을 입력하세요"
-          />
+        />
       ) : <h2 className="notion-block-title notion-block-title--readonly">{displayTitle}</h2>}
       {body}
-      {isDraft && !locked && !isBlockPreview && (
+      {isDraft && !locked && (
         <div className="report-resize-handles" data-report-editor-chrome="true">
           {RESIZE_DIRECTIONS.map(([direction, label]) => (
             <button
               type="button"
               className={`report-resize-handle report-resize-handle--${direction}`}
               data-resize-direction={direction}
-              aria-label={`${block.title} 블록 ${label} 크기 조절`}
+              aria-label={`${displayTitle} 블록 ${label} 크기 조절`}
               title={`${label} 끌어서 크기 조절 · 방향키로 미세 조절`}
               onPointerDown={startResize}
               onPointerMove={resizeWithPointer}

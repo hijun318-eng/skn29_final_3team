@@ -27,18 +27,19 @@ function shortSummary(summary) {
 export function ReportArtifactLibraryTile({ source, artifact, disabled = false, selected = false, onSelect }) {
   const metrics = artifactMetricCards(artifact);
   const metricLabels = [...new Set(metrics.map((metric) => metricDisplayLabel(metric)).filter(Boolean))];
-  const primaryLabel = metricLabels.length > 1
+  const metricLabel = metricLabels.length > 1
     ? `${metricLabels[0]} 외 ${metricLabels.length - 1}개 지표`
-    : metricLabels[0] || source.title || source.definitionTitle || "분석 결과";
+    : metricLabels[0] || "지표 확인 중";
+  const sourceLabel = source.title || source.question || source.definitionTitle || "분석 결과";
   const periodLabel = analysisTimeLabel(artifact?.evidence, source);
   const availableViews = availableArtifactViews(artifact);
   return <article className={`report-artifact-library-tile ${selected ? "is-selected" : ""}`}>
     <button type="button" className="report-artifact-library-add" disabled={disabled} aria-pressed={selected} onClick={() => onSelect(source.artifactId)}>
       <span className="report-artifact-library-icon"><Layers3 size={16} aria-hidden="true" /></span>
       <span>
-        <b>{primaryLabel}</b>
+        <b title={sourceLabel}>{sourceLabel}</b>
         {periodLabel && <small className="report-artifact-library-period">{periodLabel}</small>}
-        <small>{availableViews.length ? availableViews.map((view) => ARTIFACT_VIEW_LABELS[view]).join(" · ") : "분석 요소 확인 중"}</small>
+        <small>{metricLabel}{availableViews.length ? ` · ${availableViews.map((view) => ARTIFACT_VIEW_LABELS[view]).join(" · ")}` : ""}</small>
       </span>
     </button>
   </article>;

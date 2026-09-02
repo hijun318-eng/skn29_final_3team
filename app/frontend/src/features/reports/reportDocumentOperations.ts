@@ -18,10 +18,11 @@ import { REPORT_ARTIFACT_VIEW_IDS } from "../../contracts/reportContract.ts";
 import {
   canonicalArtifactRef,
   canonicalBlock,
-  insertDocumentBlockAtPlacement,
+  canonicalReportDocument,
   orderedDocumentBlocks,
   pairedSiblingId,
   reflowDocumentBlocks,
+  resolveDocumentPageCollisions,
 } from "./reportDocumentLayout.ts";
 import {
   isIntegerBetween,
@@ -53,6 +54,126 @@ function invalid(document: ReportDocumentV2, ...errors: string[]): DocumentOpera
 
 function valid(document: ReportDocumentV2): DocumentOperationResult {
   return { ok: true, document, errors: [] };
+}
+
+function insertBlockPreservingLayout(
+  original: ReportDocumentV2,
+  block: ReportDocumentBlock,
+  placement: ReportDropPlacement,
+): DocumentOperationResult {
+  let document = canonicalReportDocument(original);
+  let pageIndex = placement.type === "end" && placement.pageId
+    ? document.pages.findIndex((page) => page.id === placement.pageId)
+    : document.pages.length - 1;
+  let targetIndex = -1;
+  if (placement.type !== "end") {
+    pageIndex = document.pages.findIndex((page) => (
+      page.blocks.some((candidate) => candidate.id === placement.targetBlockId)
+    ));
+    if (pageIndex >= 0) {
+      targetIndex = document.pages[pageIndex].blocks.findIndex(
+        (candidate) => candidate.id === placement.targetBlockId,
+      );
+    }
+  }
+  if (pageIndex < 0) return invalid(original, "target page or block does not exist");
+  if (placement.type === "end" && !placement.pageId) {
+    const lastPage = document.pages[pageIndex];
+    const bottom = lastPage.blocks.reduce(
+      (value, item) => Math.max(value, item.y + item.h),
+      0,
+    );
+    if (bottom + block.h > A4_PAGE_LAYOUT[document.orientation].contentRows) {
+      const nextIndex = document.pages.length;
+      document = {
+        ...document,
+        pages: [...document.pages, {
+          id: `${document.id}:page:${nextIndex + 1}`,
+          index: nextIndex,
+          size: "A4",
+          orientation: document.orientation,
+          blocks: [],
+        }],
+      };
+      pageIndex = nextIndex;
+    }
+  }
+  const page = document.pages[pageIndex];
+  const blocks = [...page.blocks];
+  let candidate = canonicalBlock(block);
+  if (placement.type === "end") {
+    candidate = canonicalBlock({
+      ...candidate,
+      x: 0,
+      y: blocks.reduce((bottom, item) => Math.max(bottom, item.y + item.h), 0),
+    } as ReportDocumentBlock);
+  } else {
+    const target = blocks[targetIndex];
+    if (!target) return invalid(original, "target block does not exist");
+    if (placement.type === "side") {
+      if (target.kind === "pageBreak" || candidate.kind === "pageBreak" || target.w !== REPORT_GRID_COLUMNS) {
+        return invalid(original, "side drop requires a full-width content block");
+      }
+      const targetX = placement.edge === "left" ? 6 : 0;
+      blocks[targetIndex] = canonicalBlock({ ...target, x: targetX, w: 6 } as ReportDocumentBlock);
+      candidate = canonicalBlock({
+        ...candidate,
+        x: placement.edge === "left" ? 0 : 6,
+        y: target.y,
+        w: 6,
+      } as ReportDocumentBlock);
+    } else {
+      candidate = canonicalBlock({
+        ...candidate,
+        x: 0,
+        y: placement.type === "before" ? target.y : target.y + target.h,
+      } as ReportDocumentBlock);
+    }
+  }
+  const nextBlocks = resolveDocumentPageCollisions([...blocks, candidate], candidate.id);
+  const rowLimit = A4_PAGE_LAYOUT[document.orientation].contentRows;
+  const pages = document.pages.map((item) => ({ ...item, blocks: [...item.blocks] }));
+  pages[pageIndex] = { ...pages[pageIndex], blocks: nextBlocks };
+  for (let index = pageIndex; index < pages.length; index += 1) {
+    const overflow = pages[index].blocks
+      .filter((item) => item.y + item.h > rowLimit)
+      .sort((left, right) => left.y - right.y || left.x - right.x);
+    if (!overflow.length) continue;
+    const overflowIds = new Set(overflow.map((item) => item.id));
+    pages[index] = {
+      ...pages[index],
+      blocks: pages[index].blocks.filter((item) => !overflowIds.has(item.id)),
+    };
+    for (const item of overflow) {
+      let nextIndex = index + 1;
+      while (true) {
+        if (!pages[nextIndex]) {
+          pages.push({
+            id: `${document.id}:page:${nextIndex + 1}`,
+            index: nextIndex,
+            size: "A4",
+            orientation: document.orientation,
+            blocks: [],
+          });
+        }
+        const bottom = pages[nextIndex].blocks.reduce(
+          (value, existing) => Math.max(value, existing.y + existing.h),
+          0,
+        );
+        if (bottom + item.h <= rowLimit) {
+          pages[nextIndex].blocks.push(canonicalBlock({ ...item, y: bottom } as ReportDocumentBlock));
+          break;
+        }
+        nextIndex += 1;
+      }
+    }
+  }
+  const next = canonicalReportDocument({
+    ...document,
+    pages,
+  });
+  const validation = validateReportDocument(next);
+  return validation.valid ? valid(next) : invalid(original, ...validation.errors);
 }
 
 /** 검증된 기본 정책으로 비어 있는 versioned 편집 문서를 생성한다. */
@@ -119,35 +240,29 @@ export function insertArtifactBlock(
     presentationMode: mode,
     visibleViews: [...input.visibleViews],
   };
-  const stream = orderedDocumentBlocks(document);
-  const inserted = insertDocumentBlockAtPlacement(
-    document,
-    stream,
-    block,
-    input.placement ?? { type: "end" },
-  );
-  return inserted.error
-    ? invalid(document, inserted.error)
-    : valid(reflowDocumentBlocks(document, inserted.stream!));
+  return insertBlockPreservingLayout(document, block, input.placement ?? { type: "end" });
 }
 
-/** 지정 블록을 삭제하고 나머지를 재배치하며 알 수 없는 ID는 실패 결과로 닫는다. */
+/** 지정 블록만 삭제하고 나머지 좌표와 빈 공간을 보존한다. */
 export function deleteReportBlock(document: ReportDocumentV2, blockId: string): DocumentOperationResult {
   const validation = validateReportDocument(document);
   if (!validation.valid) return invalid(document, ...validation.errors);
-  const stream = orderedDocumentBlocks(document);
-  const index = stream.findIndex((block) => block.id === blockId);
-  if (index < 0) return invalid(document, "block does not exist");
-  const siblingId = pairedSiblingId(document, blockId);
-  stream.splice(index, 1);
-  if (siblingId) {
-    const siblingIndex = stream.findIndex((block) => block.id === siblingId);
-    stream[siblingIndex] = canonicalBlock({
-      ...stream[siblingIndex],
-      w: REPORT_GRID_COLUMNS,
-    } as ReportDocumentBlock);
+  if (!orderedDocumentBlocks(document).some((block) => block.id === blockId)) {
+    return invalid(document, "block does not exist");
   }
-  return valid(reflowDocumentBlocks(document, stream));
+  const siblingId = pairedSiblingId(document, blockId);
+  const next = canonicalReportDocument({
+    ...document,
+    pages: document.pages.map((page) => ({
+      ...page,
+      blocks: page.blocks
+        .filter((block) => block.id !== blockId)
+        .map((block) => siblingId === block.id
+          ? canonicalBlock({ ...block, x: 0, w: REPORT_GRID_COLUMNS } as ReportDocumentBlock)
+          : block),
+    })),
+  });
+  return valid(next);
 }
 
 /** 기존 블록을 상대 위치로 이동해 재배치하고 유효하지 않은 대상은 거부한다. */
@@ -161,23 +276,23 @@ export function moveReportBlock(
   if (placement.type !== "end" && placement.targetBlockId === blockId) {
     return invalid(document, "a block cannot target itself");
   }
-  const stream = orderedDocumentBlocks(document);
-  const sourceIndex = stream.findIndex((block) => block.id === blockId);
-  if (sourceIndex < 0) return invalid(document, "block does not exist");
-  let [block] = stream.splice(sourceIndex, 1);
+  const source = orderedDocumentBlocks(document).find((block) => block.id === blockId);
+  if (!source) return invalid(document, "block does not exist");
+  let block = source;
   const siblingId = pairedSiblingId(document, blockId);
-  if (siblingId) {
-    const siblingIndex = stream.findIndex((candidate) => candidate.id === siblingId);
-    stream[siblingIndex] = canonicalBlock({
-      ...stream[siblingIndex],
-      w: REPORT_GRID_COLUMNS,
-    } as ReportDocumentBlock);
-    block = canonicalBlock({ ...block, w: REPORT_GRID_COLUMNS } as ReportDocumentBlock);
-  }
-  const inserted = insertDocumentBlockAtPlacement(document, stream, block, placement, blockId);
-  return inserted.error
-    ? invalid(document, inserted.error)
-    : valid(reflowDocumentBlocks(document, inserted.stream!));
+  const withoutSource = canonicalReportDocument({
+    ...document,
+    pages: document.pages.map((page) => ({
+      ...page,
+      blocks: page.blocks
+        .filter((candidate) => candidate.id !== blockId)
+        .map((candidate) => siblingId === candidate.id
+          ? canonicalBlock({ ...candidate, x: 0, w: REPORT_GRID_COLUMNS } as ReportDocumentBlock)
+          : candidate),
+    })),
+  });
+  if (siblingId) block = canonicalBlock({ ...block, x: 0, w: REPORT_GRID_COLUMNS } as ReportDocumentBlock);
+  return insertBlockPreservingLayout(withoutSource, block, placement);
 }
 
 /** A4 방향을 바꾸고 새 row 한도에 맞춰 전체 블록을 결정론적으로 재배치한다. */
@@ -189,16 +304,16 @@ export function setReportOrientation(
   if (!validation.valid) return invalid(document, ...validation.errors);
   if (!isOrientation(orientation)) return invalid(document, "orientation must be portrait or landscape");
   if (orientation === document.orientation) {
-    return valid(reflowDocumentBlocks(document, orderedDocumentBlocks(document)));
+    return valid(canonicalReportDocument(document));
   }
   return valid(reflowDocumentBlocks({ ...document, orientation }, orderedDocumentBlocks(document)));
 }
 
 /** 검증된 canonical 문서만 결정론적 JSON으로 직렬화한다. */
 export function serializeReportDocument(document: ReportDocumentV2): string {
-  const compacted = compactReportDocument(document);
-  if (!compacted.ok) throw new TypeError(compacted.errors.join("; "));
-  return JSON.stringify(compacted.document);
+  const validation = validateReportDocument(document);
+  if (!validation.valid) throw new TypeError(validation.errors.join("; "));
+  return JSON.stringify(canonicalReportDocument(document));
 }
 
 /** JSON 편집 문서를 파싱·검증하며 실패 시 예외 대신 원문과 오류 목록을 반환한다. */
@@ -213,8 +328,9 @@ export function parseReportDocument(serialized: string):
   }
   const validation = validateReportDocument(parsed);
   if (!validation.valid) return { ok: false, errors: validation.errors };
-  const compacted = compactReportDocument(parsed as ReportDocumentV2);
-  return compacted.ok
-    ? { ok: true, document: compacted.document, errors: [] }
-    : { ok: false, errors: compacted.errors };
+  return {
+    ok: true,
+    document: canonicalReportDocument(parsed as ReportDocumentV2),
+    errors: [],
+  };
 }

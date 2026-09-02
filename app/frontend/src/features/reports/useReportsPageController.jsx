@@ -1,7 +1,7 @@
 /** 보고서 하위 hook과 memo renderer를 목록·문서·editor 화면 계약으로 합성하는 controller 모듈이다. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { compactDraftLayout, toReportBlockRequest } from "../../contracts/report";
+import { toReportBlockRequest } from "../../contracts/report";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
   DEFAULT_FRONTEND_CURRENCY_POLICY,
@@ -206,7 +206,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
 
   const openPreview = useCallback(async (definition) => {
     if (definition.archivedAt && definition.status !== "approved") {
-      lifecycle.setError("보관된 초안은 복원한 뒤 확인할 수 있습니다. 보관함에서는 확정 문서만 열람할 수 있습니다.");
+      lifecycle.setError("삭제된 초안은 복원한 뒤 확인할 수 있습니다. 휴지통에서는 확정 문서만 열람할 수 있습니다.");
       return;
     }
     const requestId = openRequestRef.current + 1;
@@ -217,7 +217,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     const current = await lifecycle.fetchDefinition(definition);
     if (!current || !isCurrentRequest()) return;
     if (current.archivedAt && current.status !== "approved") {
-      lifecycle.setError("보관된 초안은 복원한 뒤 확인할 수 있습니다. 보관함에서는 확정 문서만 열람할 수 있습니다.");
+      lifecycle.setError("삭제된 초안은 복원한 뒤 확인할 수 있습니다. 휴지통에서는 확정 문서만 열람할 수 있습니다.");
       return;
     }
     lifecycle.clearAssistantTrace();
@@ -234,7 +234,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
 
   const openEditor = useCallback(async (definition) => {
     if (definition.archivedAt) {
-      lifecycle.setError("보관된 보고서는 읽기 전용입니다. 보관함에서 복원한 뒤 편집해 주세요.");
+      lifecycle.setError("삭제된 보고서는 읽기 전용입니다. 휴지통에서 복원한 뒤 편집해 주세요.");
       return;
     }
     const requestId = openRequestRef.current + 1;
@@ -245,7 +245,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     let current = await lifecycle.fetchDefinition(definition);
     if (!current || !isCurrentRequest()) return;
     if (current.archivedAt) {
-      lifecycle.setError("보관된 보고서는 읽기 전용입니다. 보관함에서 복원한 뒤 편집해 주세요.");
+      lifecycle.setError("삭제된 보고서는 읽기 전용입니다. 휴지통에서 복원한 뒤 편집해 주세요.");
       return;
     }
     if (current.status === "approved") {
@@ -319,7 +319,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       )?.focus());
       return;
     }
-    const persistedBlocks = compactDraftLayout(draft.orderedBlocks);
+    const persistedBlocks = draft.orderedBlocks;
     const snapshot = createFrontendDraftSnapshot({
       definitionId: definition.definitionId,
       version: definition.version,
@@ -381,7 +381,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
 
   const requireSavedAssistantDraft = useCallback(() => {
     if (lifecycle.selectedDefinition?.archivedAt) {
-      lifecycle.setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 보고서를 복원해 주세요.");
+      lifecycle.setError("삭제된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 보고서를 복원해 주세요.");
       return false;
     }
     if (!draft.isDirty) return true;
@@ -542,7 +542,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   }, [artifacts.loadArtifacts, draft.blocks, draft.isDirty, lifecycle]);
   const returnToEditor = useCallback(() => {
     if (lifecycle.selectedDefinition?.archivedAt) {
-      lifecycle.setError("보관된 보고서는 읽기 전용입니다. 복원한 뒤 편집해 주세요.");
+      lifecycle.setError("삭제된 보고서는 읽기 전용입니다. 복원한 뒤 편집해 주세요.");
       return;
     }
     const focus = () => focusReportBlock(dnd.pageCanvasRefs, draft.selectedBlockId);

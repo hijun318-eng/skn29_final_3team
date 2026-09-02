@@ -13,7 +13,7 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationViewType, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
@@ -287,6 +287,8 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       const responseType = data?.type || "ANALYSIS";
       const ragResponse = data?.rag_response || serverTurn?.resolved_slots?.rag;
       const mlPrediction = data?.ml_prediction || serverTurn?.resolved_slots?.ml_prediction;
+      const supervisorComposition = data?.composition
+        || serverTurn?.resolved_slots?.supervisor_composition;
       const isPresentation = serverTurn?.route === "PRESENTATION";
       const isReportAction = serverTurn?.route === "REPORT_ACTION";
 
@@ -337,17 +339,21 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           && responseEvidence.query_id === sourceQueryId
         );
         const turnEvidenceMatches = !turnEvidence || (
-          turnEvidence.artifact_id === sourceArtifactId
-          && turnEvidence.query_id === sourceQueryId
+          (!turnEvidence.artifact_id || turnEvidence.artifact_id === sourceArtifactId)
+          && (!turnEvidence.query_id || turnEvidence.query_id === sourceQueryId)
         );
         if (
           data?.status === "PARTIAL"
           || !hasReusablePresentationArtifact(sourceRun)
           || !serverTurn?.artifact_id
           || sourceArtifactId !== serverTurn.artifact_id
+          || !sourceQueryId
+          || serverTurn?.query_id !== sourceQueryId
           || !responseArtifactMatches
           || !responseEvidenceMatches
           || !turnEvidenceMatches
+          || !serverTurn?.view_spec_id
+          || serverTurn.view_spec_id === sourceTurn?.viewSpecId
         ) {
           finalRun = commandErrorRun(normalized, {
             code: "INSUFFICIENT_EVIDENCE",
@@ -376,6 +382,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
           finalRun = attachAgentResults(finalRun, normalized, {
             ragResult: ragResponse,
             mlPrediction,
+            supervisorComposition,
           });
         }
       } else if (responseType === "COMPOSITE" && (ragResponse || mlPrediction)) {
@@ -385,6 +392,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         finalRun = attachAgentResults(primaryRun, normalized, {
           ragResult: ragResponse,
           mlPrediction,
+          supervisorComposition,
         });
       } else if (data?.status === "PARTIAL") {
         finalRun = commandErrorRun(
@@ -416,7 +424,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         viewType: responseType === "OUT_OF_SCOPE" || serverTurn?.route === "OUT_OF_SCOPE"
           ? "CHAT"
           : isPresentation
-          ? (serverTurn?.view_type || "TABLE")
+          ? presentationViewType(serverTurn)
           : (serverTurn?.resolved_slots?.target_chart_type || "SUMMARY"),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(finalRun),
         reusePending: false,
@@ -642,6 +650,15 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
+                      onRequestBarPresentation={() => void analyzeQuestion(
+                        "호텔별 차이가 잘 보이게 막대그래프로 바꿔줘.",
+                        {
+                          requested_route: "PRESENTATION",
+                          presentation_type: "BAR",
+                          inherit_previous_context: true,
+                        },
+                        turnItem,
+                      )}
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
                       onSave={["success", "partial"].includes(turnItem.run.status) && !turnItem.isArtifactReuse ? () => void saveAnalysis(turnItem.run) : undefined}
                       saveDisabled={savedBusy}

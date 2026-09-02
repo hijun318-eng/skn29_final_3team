@@ -28,7 +28,7 @@ COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser docs/ ./docs/
 COPY --chown=appuser:appuser evals/__init__.py evals/metric_retrieval.py evals/metric_retrieval_runner.py evals/
 COPY --chown=appuser:appuser evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json evals/metric_retrieval_gold/
-COPY --chown=appuser:appuser evals/node2_qwen35_2b_full3000_huggingface.receipt.json evals/node2_qwen35_2b_full3000_canary.v1.json evals/
+COPY --chown=appuser:appuser evals/node2_qwen35_2b_full3000_huggingface.receipt.json evals/node2_qwen35_2b_full3000_canary.v1.json evals/node2_qwen35_2b_cp135_huggingface.receipt.json evals/
 
 ARG ANSWERVICE_SOURCE_REVISION
 ARG ANSWERVICE_SOURCE_DIRTY

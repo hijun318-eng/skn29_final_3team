@@ -54,6 +54,10 @@
 [data-report-builder="v2"]>.notion-editor-topbar>.editor-navigation-actions{min-width:0;overflow:hidden;flex-wrap:nowrap}
 [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{min-width:0;margin-left:auto;align-items:center;justify-content:flex-end;overflow:visible;flex-wrap:nowrap;gap:7px}
 [data-report-builder="v2"]>.notion-editor-topbar .editor-view-actions,[data-report-builder="v2"]>.notion-editor-topbar .editor-history-actions,[data-report-builder="v2"]>.notion-editor-topbar .editor-save-state{min-height:38px;align-items:center}
+[data-report-builder="v2"]>.notion-editor-topbar .editor-history-actions{min-height:34px;padding:0;gap:0;overflow:hidden;border:1px solid #2a374a;border-radius:6px;background:#111926}
+[data-report-builder="v2"]>.notion-editor-topbar .editor-history-actions button{width:32px!important;height:32px!important;min-height:32px!important;border:0;border-radius:0;background:transparent;box-shadow:none}
+[data-report-builder="v2"]>.notion-editor-topbar .editor-history-actions button+button{border-left:1px solid #2a374a}
+[data-report-builder="v2"]>.notion-editor-topbar .editor-history-actions button:hover:not(:disabled){color:#fff;background:#17345a}
 [data-report-builder="v2"]>.notion-editor-topbar .report-editor-theme-toggle{min-width:76px;padding-inline:10px!important}
 [data-report-builder="v2"] .editor-view-actions .report-orientation-switch{min-height:38px;padding:2px;gap:2px;border:1px solid #2c3d54;border-radius:8px;background:#0c1420;box-shadow:none}
 [data-report-builder="v2"] .editor-view-actions .report-orientation-switch button{height:32px!important;min-height:32px!important;padding:0 11px!important;border-radius:6px!important;box-shadow:none}
@@ -85,6 +89,14 @@
 [data-report-builder="v2"] .report-view-menu-popover>.report-orientation-switch>button{height:32px!important;min-height:32px!important;margin-left:0!important;padding:0 8px!important;justify-self:stretch}
 [data-report-builder="v2"] .report-view-menu-popover>.report-orientation-switch{grid-template-columns:96px 1fr 1fr}
 [data-report-builder="v2"] .report-view-menu-popover>.report-editor-theme-toggle{width:100%;min-width:0!important;justify-content:center}
+
+@media(max-width:1599px) and (min-width:901px){
+  [data-report-builder="v2"]>.notion-editor-topbar{padding:10px 16px;grid-template-columns:minmax(0,1fr);row-gap:8px}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-navigation-actions{width:100%}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{width:100%;margin-left:0;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin}
+  [data-report-builder="v2"] .report-builder-heading{min-width:0;flex:1}
+  [data-report-builder="v2"] .report-builder-heading h1{max-width:none}
+}
 
 @media(max-width:1599px) and (min-width:901px){
   [data-report-builder="v2"]>.notion-editor-topbar{padding:10px 16px;grid-template-columns:minmax(0,1fr);row-gap:8px}
@@ -191,10 +203,8 @@
 [data-report-builder="v2"] .builder-workspace-toolbar nav>span{border-color:transparent;background:transparent}
 [data-report-builder="v2"] .builder-workspace-toolbar button:hover{color:#fff;border-color:#4c78ad;background:#13253a}
 [data-report-builder="v2"] .report-api-state{margin:12px 22px 0}
-[data-report-builder="v2"] .report-notice-shell{width:fit-content;max-width:min(720px,calc(100% - 44px));min-height:40px;margin:12px auto 0;padding:9px 12px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);font-size:11px;line-height:1.5}
+[data-report-builder="v2"] .report-notice-shell{width:fit-content;max-width:min(720px,calc(100% - 44px));min-height:40px;margin:12px auto 0;padding:9px 12px;font-size:11px}
 [data-report-builder="v2"] .report-notice-shell>svg{flex:none}
-[data-report-builder="v2"] .notion-editor-notice{color:#c9d7e6;border:1px solid #2d4159;background:rgba(15,25,39,.96)}
-[data-report-builder="v2"] .notion-editor-notice>svg{color:#65c18c}
 [data-report-builder="v2"] .report-a4-editor-shell{padding:24px clamp(18px,4vw,58px) 72px}
 [data-report-builder="v2"] .answer-report-canvas--editor{padding:0;gap:44px;overflow:visible;background:transparent}
 [data-report-builder="v2"] .answer-report-canvas--editor .answer-report-page-viewport{align-items:safe center}
@@ -208,7 +218,7 @@
 [data-report-builder="v2"] .answer-report-page__block>.notion-block{padding:4.2mm 3.8mm 3.2mm!important;border:1px solid #dce5ef!important;border-left:1px solid #dce5ef!important;border-radius:8px;background:#fff;box-shadow:0 5px 18px rgba(38,58,82,.06)}
 [data-report-builder="v2"] .answer-report-page__block>.notion-block:hover,[data-report-builder="v2"] .answer-report-page__block>.notion-block.selected{border-color:#dce5ef;background:#fff;box-shadow:0 5px 18px rgba(38,58,82,.06)}
 [data-report-builder="v2"] .answer-report-page__block>.notion-block.selected{border-color:#91b8e9}
-[data-report-builder="v2"] .notion-block>.report-block-chrome{top:2px!important;right:auto!important;left:calc(-42px * var(--report-editor-inverse-scale,1))!important;width:38px;height:auto;padding:0;justify-content:flex-start;opacity:0;transform:scale(var(--report-editor-inverse-scale,1));transform-origin:top left;transition:opacity .14s}
+[data-report-builder="v2"] .notion-block>.report-block-chrome{z-index:24;top:2px!important;right:auto!important;left:calc(-42px * var(--report-editor-inverse-scale,1))!important;width:38px;height:auto;padding:0;justify-content:flex-start;opacity:0;transform:scale(var(--report-editor-inverse-scale,1));transform-origin:top left;transition:opacity .14s}
 [data-report-builder="v2"] .notion-block:hover>.report-block-chrome,[data-report-builder="v2"] .notion-block.selected>.report-block-chrome,[data-report-builder="v2"] .notion-block.locked>.report-block-chrome{opacity:1}
 [data-report-builder="v2"] .notion-block .report-block-chrome-button{width:30px;height:30px;padding:0;display:grid;place-items:center;color:#526780;border:1px solid #cdd9e7;border-radius:6px;background:rgba(255,255,255,.96);box-shadow:0 2px 7px rgba(31,54,82,.12);opacity:1;transition:color .14s,border-color .14s,background .14s,box-shadow .14s}
 [data-report-builder="v2"] .notion-block .report-block-chrome-button:hover,[data-report-builder="v2"] .notion-block .report-block-chrome-button:focus-visible,[data-report-builder="v2"] .report-block-menu[open]>.report-block-chrome-button{color:#fff;border-color:#176fe5;background:#176fe5;box-shadow:0 3px 10px rgba(23,111,229,.25)}
@@ -233,21 +243,21 @@
 [data-report-builder="v2"] .answer-report-page .report-markdown-preview{min-height:0;padding:4px 52px 4px 0;overflow:visible}
 [data-report-builder="v2"] .answer-report-page .report-markdown-preview-actions button{min-height:24px;padding:0 8px;color:#31557f;border:1px solid #d5e1ef;border-radius:4px;background:#f7faff;font-size:9px}
 [data-report-builder="v2"] .answer-report-page .notion-data-embed{margin-top:6px;padding:0;border:0;background:#fff}
-[data-report-builder="v2"] .report-resize-handle{position:absolute!important;z-index:12;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;background:transparent!important;opacity:0;touch-action:none;box-shadow:none;transform:scale(var(--report-editor-inverse-scale,1));transform-origin:bottom right}
-[data-report-builder="v2"] .report-resize-handle::after{content:"";position:absolute;right:13px;bottom:13px;width:18px;height:18px;border:2px solid #fff;border-radius:5px;background:#176fe5;box-shadow:0 1px 5px rgba(16,60,115,.42)}
+[data-report-builder="v2"] .report-resize-handle{position:absolute!important;z-index:12;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;background:transparent!important;opacity:0;touch-action:none;box-shadow:none;transform:scale(var(--report-editor-inverse-scale,1));transform-origin:center}
+[data-report-builder="v2"] .report-resize-handle::after{content:"";position:absolute;right:17px;bottom:17px;width:8px;height:8px;border:1px solid #fff;border-radius:3px;background:#176fe5;box-shadow:0 1px 3px rgba(16,60,115,.3)}
 [data-report-builder="v2"] .notion-block:hover .report-resize-handle,[data-report-builder="v2"] .notion-block.selected .report-resize-handle,[data-report-builder="v2"] .report-resize-handle:focus{opacity:1}
 [data-report-builder="v2"] .report-resize-handle span{display:none}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--n,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--s{right:auto;bottom:auto;width:34px;height:10px;border-radius:999px}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--n{top:-6px;left:50%}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--s{top:auto;bottom:-6px;left:50%}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--e,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--w{right:auto;bottom:auto;width:10px;height:34px;border-radius:999px}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--e{top:50%;right:-6px;left:auto}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--w{top:50%;left:-6px}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--ne,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--nw,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--se,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--sw{width:14px;height:14px;border-radius:50%}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--ne{top:-7px;right:-7px;bottom:auto;left:auto}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--nw{top:-7px;right:auto;bottom:auto;left:-7px}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--se{top:auto;right:-7px;bottom:-7px;left:auto}
-[data-report-builder="v2"] .report-resize-handles .report-resize-handle--sw{top:auto;right:auto;bottom:-7px;left:-7px}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--n,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--s{right:auto;bottom:auto;border-radius:999px}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--n{top:-22px;left:calc(50% - 22px);cursor:ns-resize}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--s{top:auto;bottom:-22px;left:calc(50% - 22px);cursor:ns-resize}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--e,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--w{right:auto;bottom:auto;border-radius:999px}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--e{top:calc(50% - 22px);right:-22px;left:auto;cursor:ew-resize}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--w{top:calc(50% - 22px);left:-22px;cursor:ew-resize}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--ne,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--nw,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--se,[data-report-builder="v2"] .report-resize-handles .report-resize-handle--sw{border-radius:50%}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--ne{top:-22px;right:-22px;bottom:auto;left:auto;cursor:nesw-resize}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--nw{top:-22px;right:auto;bottom:auto;left:-22px;cursor:nwse-resize}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--se{top:auto;right:-22px;bottom:-22px;left:auto;cursor:nwse-resize}
+[data-report-builder="v2"] .report-resize-handles .report-resize-handle--sw{top:auto;right:auto;bottom:-22px;left:-22px;cursor:nesw-resize}
 
 [data-report-builder="v2"] .report-properties-panel{position:relative;z-index:10;top:auto;width:auto;height:auto;min-height:0;padding:0 12px 28px;display:block;overflow:auto;color:#cbd7e5;border:0;border-left:1px solid #24344a;background:#080f18;scrollbar-width:thin}
 [data-report-builder="v2"] .report-properties-panel>header{position:sticky;z-index:4;top:0;margin:0 -12px 10px;padding:17px 16px 15px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid #24344a;background:linear-gradient(180deg,#0e1825 0,#0a121d 100%)}
@@ -526,6 +536,9 @@
 .theme-light [data-report-builder="v2"] .editor-view-actions .report-orientation-switch button{color:#52677e!important;background:transparent!important}
 .theme-light [data-report-builder="v2"] .editor-view-actions .report-orientation-switch button[aria-pressed="true"]{color:#0f56b8!important;background:#eaf3ff!important;box-shadow:inset 0 0 0 1px #82a9d8}
 .theme-light [data-report-builder="v2"] .editor-history-actions{border-color:#d5dfea}
+.theme-light [data-report-builder="v2"] .editor-history-actions{background:#fff}
+.theme-light [data-report-builder="v2"] .editor-history-actions button+button{border-left-color:#d5dfea}
+.theme-light [data-report-builder="v2"] .editor-history-actions button:hover:not(:disabled){color:#0f56b8;background:#eaf3ff}
 .theme-light [data-report-builder="v2"] .notion-editor-topbar .editor-save-state{color:#62778f}
 .theme-light [data-report-builder="v2"] .report-view-menu>summary{color:#52677e;border-color:#d2dce8;background:#fff}
 .theme-light [data-report-builder="v2"] .report-view-menu[open]>summary,.theme-light [data-report-builder="v2"] .report-view-menu>summary:hover{color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
@@ -597,8 +610,6 @@
 .theme-light [data-report-builder="v2"] .builder-workspace-toolbar nav>span,.theme-light [data-report-builder="v2"] .builder-workspace-toolbar button{color:#556c84;border-color:#ced9e5;background:#fff}
 .theme-light [data-report-builder="v2"] .builder-workspace-toolbar nav>span{border-color:transparent;background:transparent}
 .theme-light [data-report-builder="v2"] .builder-workspace-toolbar button:hover,.theme-light [data-report-builder="v2"] .builder-workspace-toolbar button[aria-pressed="true"]{color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
-.theme-light [data-report-builder="v2"] .notion-editor-notice{color:#36516d;border-color:#d2deea;background:rgba(255,255,255,.98);box-shadow:0 8px 24px rgba(43,70,101,.1)}
-.theme-light [data-report-builder="v2"] .notion-editor-notice>svg{color:#31855f}
 .theme-light [data-report-builder="v2"] .answer-report-page{box-shadow:0 24px 65px rgba(45,70,101,.16),0 0 0 1px rgba(132,153,178,.28)}
 .theme-light [data-report-builder="v2"] .report-block-actions{border-color:#c7d6e5;background:rgba(255,255,255,.96);box-shadow:0 2px 8px rgba(39,67,99,.12)}
 .theme-light [data-report-builder="v2"] .report-block-actions .report-drag-handle,.theme-light [data-report-builder="v2"] .report-block-actions .report-block-menu>summary{color:#536d88;border:0;background:transparent;box-shadow:none}
@@ -608,8 +619,8 @@
 .theme-light [data-report-builder="v2"] .report-block-menu-popover section+section{border-color:#dbe4ed}
 .theme-light [data-report-builder="v2"] .report-block-menu-popover section>span,.theme-light [data-report-builder="v2"] .report-block-menu-popover section>label{color:#526a82}
 .theme-light [data-report-builder="v2"] .report-block-menu-popover section>small{color:#667b91}
-.theme-light [data-report-builder="v2"] .notion-block .report-block-menu-popover button{color:#36536f;border-color:#cbd8e5;background:#fff}
-.theme-light [data-report-builder="v2"] .notion-block .report-block-menu-popover button:hover:not(:disabled),.theme-light [data-report-builder="v2"] .notion-block .report-block-menu-popover button.active{color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
+.theme-light [data-report-builder="v2"] .report-block-menu-popover button{color:#36536f;border-color:#cbd8e5;background:#fff}
+.theme-light [data-report-builder="v2"] .report-block-menu-popover button:hover:not(:disabled),.theme-light [data-report-builder="v2"] .report-block-menu-popover button.active{color:#0f56b8;border-color:#82a9d8;background:#eaf3ff}
 .theme-light [data-report-builder="v2"] .report-block-height output,.theme-light [data-report-builder="v2"] .report-chart-type select{color:#29445f;border-color:#cbd8e5;background:#f5f8fb}
 .theme-light .report-template-overlay{color:#17324f;border-color:#8fb2db;background:#fff;box-shadow:0 18px 44px rgba(41,66,96,.2)}
 .theme-light .report-template-overlay>svg{color:#176fe5}.theme-light .report-template-overlay small{color:#5f7288}

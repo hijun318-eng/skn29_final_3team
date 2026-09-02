@@ -228,7 +228,7 @@ try {
     ragEnabled: true,
     mlEnabled: true,
   }));
-  assert.match(capabilityHtml, /분석 Agent/);
+  assert.match(capabilityHtml, /Analysis Agent/);
   assert.match(capabilityHtml, /RAG Agent/);
   assert.match(capabilityHtml, /ML Agent/);
   assert.match(capabilityHtml, /HGBR 예측 Tool/);
@@ -248,14 +248,36 @@ try {
   const compositeRun = attachAgentResults(run, "복합 요청", {
     ragResult,
     mlPrediction: mlResult,
+    supervisorComposition: {
+      schema_version: "SupervisorCompositionReceipt.v1",
+      plan_ref: `model-supervisor:sha256:${"a".repeat(64)}`,
+      primary_agent: "ANALYSIS_WORKFLOW",
+      agents: ["ANALYSIS_WORKFLOW", "INTERNAL_GUIDELINE", "ML_PREDICTION"],
+      evidence_refs: [`model-supervisor:sha256:${"a".repeat(64)}`],
+    },
   });
   assert.deepEqual(agentKindsForRun(compositeRun), ["ANALYSIS", "RAG", "ML"]);
   assert.equal(compositeRun.rag.answer_text, "승인 문서 답변");
   assert.equal(compositeRun.mlPrediction, mlResult);
   const executionHtml = renderToStaticMarkup(createElement(AgentExecutionBar, { run: compositeRun }));
-  assert.match(executionHtml, /전문 Agent 협업/);
-  assert.match(executionHtml, /분석 Agent · RAG Agent · ML Agent/);
-  assert.match(executionHtml, /3개 Agent/);
+  assert.match(executionHtml, /Supervisor/);
+  assert.match(executionHtml, /3개 작업 완료/);
+  assert.match(executionHtml, /Analysis Agent/);
+  assert.match(executionHtml, /RAG Agent/);
+  assert.match(executionHtml, /ML Agent/);
+  assert.equal((executionHtml.match(/>완료</g) || []).length, 3);
+
+  for (const invalidReceipt of [
+    { ...compositeRun.supervisorComposition, schema_version: "invalid" },
+    { ...compositeRun.supervisorComposition, agents: ["ANALYSIS_WORKFLOW", "UNKNOWN"] },
+    { ...compositeRun.supervisorComposition, agents: ["ANALYSIS_WORKFLOW", "ANALYSIS_WORKFLOW"] },
+  ]) {
+    const fallbackHtml = renderToStaticMarkup(createElement(AgentExecutionBar, {
+      run: { ...compositeRun, supervisorComposition: invalidReceipt },
+    }));
+    assert.doesNotMatch(fallbackHtml, /Supervisor/);
+    assert.match(fallbackHtml, /전문 Agent 협업/);
+  }
   assert.deepEqual(agentKindsForRun(ragRun("질문", ragResult)), ["RAG"]);
   assert.deepEqual(agentKindsForRun(mlPredictionRun("질문", mlResult)), ["ML"]);
 
@@ -275,6 +297,29 @@ try {
   assert.match(chartHtml, /aria-pressed="true">가로 막대<\/button>/);
   assert.match(chartHtml, /enterprise-chart--horizontal-bar/);
   assert.doesNotMatch(chartHtml, /AI 분석 요약/);
+
+  const tableWithPresentationActionHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    viewType: "TABLE",
+    onRequestBarPresentation: () => {},
+  }));
+  assert.match(tableWithPresentationActionHtml, /막대그래프로 보기/);
+
+  const barPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    viewType: "BAR",
+    onRequestBarPresentation: () => {},
+    artifactReuse: { viewSpecId: "view-spec-bar" },
+  }));
+  assert.doesNotMatch(barPresentationHtml, /막대그래프로 보기/);
+  assert.match(barPresentationHtml, /기존 분석 재사용 · 새 분석 쿼리 없음/);
+
+  const pendingPresentationHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    viewType: "BAR",
+    artifactReuse: { pending: true },
+  }));
+  assert.doesNotMatch(pendingPresentationHtml, /새 분석 쿼리 없음/);
 
   const fullHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "FULL" }));
   assert.doesNotMatch(fullHtml, /aria-label="차트 표현 방식"/);
@@ -327,7 +372,8 @@ try {
   for (const label of ["요약으로 보기", "표로 보기", "그래프로 보기", "KPI만 보기"]) {
     assert.doesNotMatch(followupHtml, new RegExp(label));
   }
-  assert.doesNotMatch(followupHtml, /결과 보기 전환|이전 분석 결과|재사용|재조회|연결 정보/);
+  assert.match(followupHtml, /기존 분석 재사용 · 새 분석 쿼리 없음/);
+  assert.doesNotMatch(followupHtml, /결과 보기 전환|이전 분석 결과|재조회|연결 정보/);
   assert.doesNotMatch(followupHtml, /DataHub|AST SQL|거버넌스/);
 
   const regularTableHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {

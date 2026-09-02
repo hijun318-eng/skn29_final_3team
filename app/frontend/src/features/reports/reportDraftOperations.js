@@ -308,7 +308,7 @@ export function moveFrontendBlock(blocks, blockId, placement, report) {
   return operationResult(moveReportBlock(current.document, blockId, placement), blocks);
 }
 
-/** 지정 draft 블록을 삭제하고 나머지 grid를 compact한다. */
+/** 지정 draft 블록만 삭제하고 나머지 grid 좌표와 빈 공간을 보존한다. */
 export function deleteFrontendBlock(blocks, blockId, report) {
   const current = frontendBlocksToDocument({ ...report, blocks });
   if (!current.ok) return { ...current, blocks };

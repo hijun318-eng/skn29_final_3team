@@ -191,13 +191,15 @@ class ReportArtifactRepositoryMixin:
         version: int,
         artifact_id: str,
     ) -> dict[str, object]:
-        """보고서 version이 실제 참조하는 현재 소유자의 승인 artifact를 반환한다.
+        """보고서 version이 실제 참조하는 보고서 소유자의 승인 artifact를 반환한다.
 
-        먼저 접근 가능한 definition version의 block 참조를 확인한 뒤 artifact 소유권과 분석
-        성공 상태를 검증한다. 잘못된 UUID는 ``ValueError``이며 누락·비참조·비소유·미승인은
-        모두 ``KeyError``로 반환한다.
+        먼저 현재 주체가 접근 가능한 definition version의 block 참조를 확인한다. 그 다음
+        artifact가 해당 보고서 소유자의 성공한 분석인지 검증하므로 ``manage_all`` 관리자는
+        타인 보고서를 열람할 때도 그 보고서에 이미 결속된 근거만 볼 수 있다. 새 보고서에
+        타인 artifact를 연결하는 write 계약은 확장하지 않는다.
         """
         artifact_uuid = _uuid(artifact_id, "artifact_id")
+        definition_uuid = _uuid(definition_id, "definition_id")
         definition = await self.get_version(definition_id, version)
         if not any(block.artifact_id == str(artifact_uuid) for block in definition.blocks):
             raise KeyError("보고서에 연결된 Analysis Artifact를 찾을 수 없습니다.")
@@ -213,13 +215,20 @@ class ReportArtifactRepositoryMixin:
                     JOIN query.query_executions q
                       ON q.query_execution_id = a.query_execution_id
                     JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    JOIN report_v1.report_definitions d
+                      ON d.definition_id = :definition_id
                     WHERE a.artifact_id = :artifact_id
                       AND a.status = 'APPROVED'
                       AND r.status IN ('SUCCEEDED', 'PARTIAL')
-                      AND r.user_id = :owner_id
+                      AND r.user_id = d.owner_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
                     """
                 ),
-                {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "artifact_id": artifact_uuid,
+                },
             )).mappings().one_or_none()
         if row is None:
             raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")

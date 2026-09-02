@@ -1097,6 +1097,26 @@ class DeterministicAgentSupervisorTest(unittest.IsolatedAsyncioTestCase):
                 requested_route="ML_PREDICTION",
             )
 
+    def test_command_allows_explicit_context_reuse_for_presentation_only(self) -> None:
+        command = ConversationCommandRequest(
+            user_message="호텔별 차이가 잘 보이게 막대그래프로 바꿔줘.",
+            idempotency_key=uuid4().hex,
+            expected_head_turn_id=uuid4(),
+            requested_route="PRESENTATION",
+            presentation_type="BAR",
+            inherit_previous_context=True,
+        )
+
+        self.assertTrue(command.inherit_previous_context)
+        with self.assertRaises(ValidationError):
+            ConversationCommandRequest(
+                user_message="같은 조건으로 다시 분석해줘.",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=uuid4(),
+                requested_route="ANALYSIS",
+                inherit_previous_context=True,
+            )
+
     def test_command_rejects_ml_action_on_another_route(self) -> None:
         with self.assertRaises(ValidationError):
             ConversationCommandRequest(

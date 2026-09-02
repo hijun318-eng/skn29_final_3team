@@ -35,6 +35,52 @@ def _stable_unique_mappings(values: list[dict[str, Any]]) -> list[dict[str, Any]
     return unique
 
 
+def _resolved_plan_filters(
+    structured: dict[str, Any], contracts: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """서버가 검증한 필터 계획을 값 없는 Node 2 필터 계약으로 변환한다."""
+
+    values = structured.get("filter_fields", ())
+    if not isinstance(values, (list, tuple)):
+        raise ValueError("Node 2 filter_fields must be a structured array")
+    approved_fields = {
+        (asset["fqn"], column["name"])
+        for asset in contracts["schema_context"]["assets"]
+        for column in asset["columns"]
+    }
+    approved_parameters = {
+        item["name"]
+        for item in contracts["parameter_contract"]["parameters"]
+        if item.get("scope") == "filter"
+    }
+    required = {"asset_fqn", "column", "operator", "parameter"}
+    result: list[dict[str, Any]] = []
+    for item in values:
+        if (
+            not isinstance(item, dict)
+            or set(item) != required
+            or any(
+                not isinstance(item[name], str) or not item[name].strip()
+                for name in required
+            )
+            or (item["asset_fqn"], item["column"]) not in approved_fields
+            or item["operator"] not in {"eq", "neq"}
+            or item["parameter"] not in approved_parameters
+        ):
+            raise ValueError("Node 2 filter_fields differ from governed contracts")
+        result.append(
+            {
+                "field": {
+                    "asset_fqn": item["asset_fqn"],
+                    "column": item["column"],
+                },
+                "operator": item["operator"],
+                "parameter": item["parameter"],
+            }
+        )
+    return result
+
+
 def request_definition(node: str) -> str:
     """모델 노드 요청이 따라야 할 JSON Schema definition을 반환한다."""
     try:
@@ -92,7 +138,10 @@ def node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
         "parameter_contract",
         "query_policy",
     }
-    if not isinstance(contracts, dict) or set(contracts) != contract_names:
+    if not isinstance(contracts, dict) or set(contracts) not in (
+        contract_names,
+        contract_names | {"filter_rules"},
+    ):
         raise ValueError("Node 2 requires all six governed context contracts")
     common = {name: contracts[name] for name in sorted(contract_names)}
     structured = payload.get("structured_request") or {}
@@ -175,6 +224,7 @@ def node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
             for metric in contracts["metric_rules"]
             for item in metric["required_filters"]
         ]
+        + _resolved_plan_filters(structured, contracts)
     )
     resolved_request = {
         "intent": operation,

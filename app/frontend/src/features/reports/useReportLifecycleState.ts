@@ -392,7 +392,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   }, [assistantActionError]);
   const ensureAssistantEditable = useCallback(() => {
     if (!selectedDefinitionRef.current?.archivedAt) return true;
-    setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 보고서를 복원해 주세요.");
+    setError("삭제된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 보고서를 복원해 주세요.");
     return false;
   }, []);
 
@@ -467,7 +467,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setDefinitions(next);
     setDefinitionState(next.length ? "ready" : "empty");
     setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
-    setNotice("보고서를 보관했습니다. 보관함에서 확정 문서를 계속 열람할 수 있습니다.");
+    setNotice("보고서를 삭제했습니다. 휴지통에서 확인하거나 복원할 수 있습니다.");
     return archived;
   }, [mutate, reportClient]);
 
@@ -484,6 +484,25 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
     setNotice("보고서를 복원했습니다. 활성 보고서에서 다시 편집할 수 있습니다.");
     return restored;
+  }, [mutate, reportClient]);
+
+  const permanentlyDeleteDefinition = useCallback(async (definitionId: string) => {
+    if (definitionCollectionRef.current !== "archived") {
+      setError("영구삭제는 휴지통에 있는 보고서에서만 할 수 있습니다.");
+      return null;
+    }
+    const deleted = await mutate(
+      `permanent-delete:${definitionId}`,
+      () => reportClient.permanentlyDeleteDefinition(definitionId),
+    );
+    if (!deleted) return null;
+    const next = definitionsRef.current.filter((item) => item.definitionId !== definitionId);
+    definitionsRef.current = next;
+    setDefinitions(next);
+    setDefinitionState(next.length ? "ready" : "empty");
+    setSelectedDefinition((current) => current?.definitionId === definitionId ? null : current);
+    setNotice("보고서를 영구 삭제했습니다. 이 작업은 되돌릴 수 없습니다.");
+    return deleted;
   }, [mutate, reportClient]);
 
   const fetchDefinition = useCallback((definition: Pick<ReportDefinitionVersion, "definitionId" | "version">) => (
@@ -531,7 +550,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
 
   const createNextDraft = useCallback(async (definition: ReportDefinitionVersion) => {
     if (definition.archivedAt) {
-      setError("보관된 보고서는 복원한 뒤 새 버전을 만들 수 있습니다.");
+      setError("삭제된 보고서는 복원한 뒤 새 버전을 만들 수 있습니다.");
       return null;
     }
     if (definition.status !== "approved") return definition;
@@ -554,7 +573,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     } = {},
   ) => {
     if (definition.archivedAt) {
-      setError("보관된 보고서는 복원한 뒤 확정할 수 있습니다.");
+      setError("삭제된 보고서는 복원한 뒤 확정할 수 있습니다.");
       return null;
     }
     if (definition.status !== "draft") return null;
@@ -631,7 +650,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     runOptions: ManualRunOptions = {},
   ): Promise<ManualRunResult | null> => {
     if (definition?.archivedAt) {
-      setError("보관된 보고서는 실행할 수 없습니다. 먼저 복원해 주세요.");
+      setError("삭제된 보고서는 실행할 수 없습니다. 먼저 복원해 주세요.");
       return null;
     }
     if (!definition || definition.status !== "approved") return null;
@@ -664,7 +683,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   ) => {
     const values = { cadence, scheduleAt, ...override };
     if (definition?.archivedAt) {
-      setError("보관된 보고서에는 예약을 만들 수 없습니다. 먼저 복원해 주세요.");
+      setError("삭제된 보고서에는 예약을 만들 수 없습니다. 먼저 복원해 주세요.");
       return null;
     }
     if (!definition || definition.status !== "approved" || !values.scheduleAt) return null;
@@ -705,7 +724,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   ) => {
     const normalized = instruction.trim();
     if (definition.archivedAt) {
-      setError("보관된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 복원해 주세요.");
+      setError("삭제된 보고서에서는 AI 도우미를 사용할 수 없습니다. 먼저 복원해 주세요.");
       return null;
     }
     if (!artifactId || !normalized || definition.status !== "draft") return null;
@@ -787,7 +806,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     selectedBlockId: string | null = null,
   ) => {
     if (definition.archivedAt) {
-      setError("보관된 보고서에서는 AI 품질 검토를 실행할 수 없습니다. 먼저 복원해 주세요.");
+      setError("삭제된 보고서에서는 AI 품질 검토를 실행할 수 없습니다. 먼저 복원해 주세요.");
       return null;
     }
     if (!artifactId || definition.status !== "draft") return null;
@@ -1103,6 +1122,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     loadDefinitions,
     archiveDefinition,
     restoreDefinition,
+    permanentlyDeleteDefinition,
     fetchDefinition,
     findLatestDraft,
     createDefinition,
@@ -1134,7 +1154,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     finalDocumentState, findLatestDraft, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
     pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient,
-    restoreAssistantSession, restoreDefinition, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
+    restoreAssistantSession, restoreDefinition, permanentlyDeleteDefinition, retryAssistantSession, cancelAssistantSession, runDefinition, runQuery,
     runs, scheduleAt, schedules, selectedDefinition, selectedRun, selectedSchedules,
     selectDefinition, setDefinitionCollection, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
     reviewAssistantReport, submitAssistantInstruction, visibleDefinitions, visibleRunCount, visibleRuns,

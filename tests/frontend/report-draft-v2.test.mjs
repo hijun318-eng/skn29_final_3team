@@ -580,8 +580,10 @@ assert.match(reportSources.artifacts, /sources\.filter\([\s\S]*hydrationIds\.has
 assert.match(reportSources.artifacts, /const setAssistantArtifacts = useCallback\(async/);
 assert.match(reportSources.artifacts, /const primaryArtifactId = representativeArtifactId \|\| artifactSelection \|\| uniqueIds\[0\] \|\| ""/);
 assert.match(reportSources.artifacts, /const selectedIds = \[primaryArtifactId, \.\.\.requested\]/);
+assert.match(reportSources.artifacts, /filter\(Boolean\)\.slice\(0, 5\)/);
+assert.match(reportSources.artifacts, /filter\(\(artifactId\) => artifactId !== primaryArtifactId\)[\s\S]*\.slice\(0, 4\)/);
 assert.match(reportSources.artifacts, /setArtifactSelection\(primaryArtifactId\)/);
-assert.match(reportSources.controller, /const persistedBlocks = compactDraftLayout\(draft\.orderedBlocks\)/);
+assert.match(reportSources.controller, /const persistedBlocks = draft\.orderedBlocks/);
 assert.doesNotMatch(
   reportFeatureSource,
   /pdfUnsupportedBlocks|orderedBlocks\.filter\(\(block\) => block\.type !== "artifact"\)/,
@@ -597,7 +599,7 @@ assert.match(hydratedFit, /savedBlocksRef\.current = copyDraftBlocks\(fittedSave
 assert.match(hydratedFit, /setIsDirty\(migrated\.migratedSourceCount > 0 \|\| draftChanged\(blocksRef\.current\)\)/);
 assert.doesNotMatch(hydratedFit, /commitBlocks\(/, "artifact hydration must not create user history; only an explicit legacy migration becomes dirty");
 assert.match(reportSources.draftState, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
-assert.match(reportSources.draftMutations, /const compacted = compactDraftLayout\(inputBlocks\)/);
+assert.match(reportSources.draftMutations, /return resolveDraftLayoutCollisions\(fitted\)/);
 assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
 assert.match(reportSources.draftMutations, /block\.type === "artifact"[\s\S]*fitFrontendArtifactBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
 assert.match(reportSources.draftMutations, /\["artifact", "chart", "table"\]\.includes\(block\.type \?\? ""\)[\s\S]*sizeMode: "manual"/);

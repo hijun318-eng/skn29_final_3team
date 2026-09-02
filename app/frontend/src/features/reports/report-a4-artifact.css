@@ -30,6 +30,51 @@
   border-color: #4f8fe4;
 }
 
+.report-artifact-library-add {
+  width: 100%;
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 11px !important;
+  display: grid !important;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: #dce8f7 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: left;
+}
+
+.report-artifact-library-add > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.report-artifact-library-add b {
+  display: -webkit-box;
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.report-artifact-library-add small {
+  overflow: hidden;
+  color: #7f93aa;
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-artifact-library-add .report-artifact-library-period { color: #9baec3; }
+
 .report-artifact-library-summary,
 .report-artifact-library-action > button,
 .report-artifact-library-drag {

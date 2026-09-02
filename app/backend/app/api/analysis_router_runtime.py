@@ -109,6 +109,9 @@ def model():
             node2_model=node2.model,
             node2_provider=node2.provider,
             timeout_seconds=float(os.getenv("MODEL_TIMEOUT_SECONDS", "60")),
+            node2_timeout_seconds=float(
+                os.getenv("NODE2_MODEL_TIMEOUT_SECONDS", "90")
+            ),
         )
     return ContractModelAdapter.from_openai(
         endpoint=primary.endpoint,

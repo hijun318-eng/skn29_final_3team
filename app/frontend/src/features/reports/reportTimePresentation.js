@@ -222,8 +222,17 @@ function metricPhraseFromGeneratedTitle(title) {
 
 /** 과거 자동 생성 차트·표 제목만 월 단위 표시 정책으로 정리하고 사용자 제목은 보존한다. */
 export function normalizeGeneratedArtifactViewTitle(title, artifact, type) {
-  if (!["chart", "table"].includes(type)) return String(title ?? "");
   const current = String(title ?? "").trim();
+  const internalTitle = /^analysis result(?:\s*·\s*(요약|핵심 지표|차트|표))?$/i.exec(current);
+  if (internalTitle) {
+    const view = internalTitle[1]
+      || (type === "chart" ? "차트" : type === "table" ? "표" : "요약");
+    const time = reportTimeRangeLabel(artifact);
+    const metric = primaryMetricLabel(artifact);
+    const label = view === "차트" ? "비교" : view === "표" ? "상세" : view;
+    return `${time ? `${time} ` : ""}${metric} ${label}`;
+  }
+  if (!["chart", "table"].includes(type)) return current;
   const expectedSuffix = type === "chart" ? "차트" : "표";
   if (!/^\d{4}/.test(current) || !new RegExp(`·\\s*${expectedSuffix}\\s*$`).test(current)) {
     return current;

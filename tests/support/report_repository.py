@@ -150,6 +150,31 @@ class InMemoryReportRepository:
                 )
         return ReportDefinitionLifecycle(definition_id, None, None)
 
+    def permanently_delete_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> bool:
+        del actor_role, trace_id
+        versions = [
+            version
+            for version in self._versions.values()
+            if version.definition_id == definition_id
+        ]
+        if not versions:
+            raise KeyError("Report definition을 찾을 수 없습니다.")
+        if not versions[0].is_archived:
+            raise ReportLifecycleConflict("REPORT_PERMANENT_DELETE_REQUIRES_ARCHIVE")
+        for key in tuple(self._versions):
+            if key[0] == definition_id:
+                del self._versions[key]
+        for run_id, run in tuple(self._runs.items()):
+            if run.definition_id == definition_id:
+                del self._runs[run_id]
+        return True
+
     def approve(
         self, definition_id: str, version: int, approved_at: datetime
     ) -> ReportDefinitionVersion:

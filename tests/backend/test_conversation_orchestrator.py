@@ -55,6 +55,7 @@ from app.services.agent_supervisor import (
 from app.services.conversation.orchestrator import (
     ConversationOrchestrator,
     _business_terms_for_turn,
+    _presentation_view_contract,
     _safe_analysis_observation,
     _view_contract,
 )
@@ -109,6 +110,29 @@ def test_initial_summary_view_does_not_persist_an_unsolicited_chart() -> None:
 
     assert view["view_type"] == "TABLE"
     assert view["spec_json"]["chart_type"] == "table"
+
+
+def test_horizontal_presentation_preserves_direction_in_view_spec() -> None:
+    """BAR 저장 enum 안에서도 사용자가 요청한 가로 방향을 ViewSpec에 보존한다."""
+
+    view = _presentation_view_contract(
+        {
+            "artifact_id": str(uuid4()),
+            "data_snapshot_json": {
+                "columns": ["hotel_code", "room_revenue"],
+                "rows": [],
+            },
+            "chart_spec_json": {
+                "chart_type": "bar",
+                "x_field": "hotel_code",
+                "y_fields": ["room_revenue"],
+            },
+        },
+        "HORIZONTAL_BAR",
+    )
+
+    assert view["view_type"] == "BAR"
+    assert view["spec_json"]["chart_type"] == "horizontal-bar"
 
 
 def test_safe_analysis_observation_excludes_sql_rows_and_parameters() -> None:
@@ -769,6 +793,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 "chart_spec_json": artifact_payload["chart_spec_json"],
                 "narrative_markdown": artifact_payload["narrative_markdown"],
                 "evidence_json": artifact_payload["evidence_json"],
+                "query_id": artifact_payload["trino_query_id"],
             }
             # Minimal mock response with artifact
             class FakeResp:
@@ -2846,7 +2871,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["turn"]["route"], "ANALYSIS")
         self.assertEqual(data["turn"]["user_message"], original_message)
         self.assertEqual(self.submitted_requests[-1].question, analysis_objective)
-        self.assertEqual(rag_queries, [(original_message, False)])
+        self.assertEqual(rag_queries, [(rag_objective, False)])
         self.assertEqual(len(generated), 1)
         self.assertEqual(persisted, [data["ml_prediction"]])
         self.assertEqual(
@@ -3404,6 +3429,18 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("REPORT_ACTION", report["turn"]["route"])
         self.assertEqual(["2025년 8월 객실 매출 보여줘"], self.support.questions)
         self.assertEqual(1, len(self.submitted_requests))
+        self.assertEqual(
+            analysis["turn"]["artifact_id"],
+            presentation["turn"]["artifact_id"],
+        )
+        self.assertEqual(
+            analysis["turn"]["query_id"],
+            presentation["turn"]["query_id"],
+        )
+        self.assertNotEqual(
+            analysis["turn"]["view_spec_id"],
+            presentation["turn"]["view_spec_id"],
+        )
 
     async def test_report_action_updates_existing_draft_in_subsequent_report_actions(self) -> None:
         """대화방에 이미 연결된 draft 보고서가 있을 때 후속 REPORT_ACTION이 새 uuid 생성 대신 기존 draft blocks를 원자적으로 갱신하는지 검증."""

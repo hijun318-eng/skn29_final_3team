@@ -54,6 +54,7 @@ from app.report_contracts import (
     ReplaceReportBlocksRequest,
     ReportDefinitionListResponse,
     ReportDefinitionLifecycleResponse,
+    ReportDefinitionPermanentDeleteResponse,
     ReportDefinitionResponse,
     ReportDocumentResponse,
     ReportArtifactResponse,
@@ -1881,7 +1882,7 @@ async def archive_definition(
     definition_id: str,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    """소유 보고서를 비파괴 보관하고 진행 중 실행·Assistant가 있으면 409로 거부한다."""
+    """권한 범위의 보고서를 비파괴 보관하고 진행 중 실행·Assistant가 있으면 409로 거부한다."""
 
     return await _call(
         lambda: _router(context).archive_definition(
@@ -1901,10 +1902,30 @@ async def restore_definition(
     definition_id: str,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    """소유 보고서를 복원하되 보관 시 비활성화한 schedule은 자동으로 다시 켜지 않는다."""
+    """권한 범위의 보고서를 복원하되 보관 시 비활성화한 schedule은 자동으로 다시 켜지 않는다."""
 
     return await _call(
         lambda: _router(context).restore_definition(
+            definition_id,
+            actor_role=context.role.value,
+            trace_id=context.trace_id,
+        )
+    )
+
+
+@report_router.delete(
+    "/reports/definitions/{definition_id}",
+    operation_id="reportPermanentlyDeleteDefinition",
+    response_model=ReportDefinitionPermanentDeleteResponse,
+)
+async def permanently_delete_definition(
+    definition_id: str,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """휴지통의 권한 범위 보고서만 복원 불가능하게 제거하고 최소 감사 이벤트를 남긴다."""
+
+    return await _call(
+        lambda: _router(context).permanently_delete_definition(
             definition_id,
             actor_role=context.role.value,
             trace_id=context.trace_id,

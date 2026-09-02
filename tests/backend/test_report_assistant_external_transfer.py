@@ -289,6 +289,29 @@ class ReportAssistantExternalTransferTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("not-recorded-token", serialized)
         self.assertIn("https://api.openai.com", serialized)
 
+    async def test_deployment_preapproval_skips_428_and_preserves_audit_binding(self):
+        with patch.dict(
+            os.environ,
+            {"REPORT_ASSISTANT_EXTERNAL_TRANSFER_PREAUTHORIZED": "true"},
+            clear=False,
+        ):
+            authorization = await authorize_report_assistant_transfer(
+                self.repository,
+                assistant_request_id=self.request_id,
+                node="report_assistant_turn",
+                payload=copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST),
+                session=self.session,
+                artifacts=self.artifacts,
+            )
+
+        self.assertIsNotNone(authorization.disclosure_id)
+        self.assertIsNotNone(authorization.consent_id)
+        self.assertEqual(
+            "deployment_preapproval",
+            self.repository.disclosure["route_json"]["authorization_mode"],
+        )
+        self.assertEqual(authorization.binding_hash, self.repository.consent["binding_hash"])
+
     async def test_repeated_missing_consent_reuses_one_pending_disclosure(self):
         payload = copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
         disclosures = []

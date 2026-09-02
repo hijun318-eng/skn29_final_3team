@@ -47,6 +47,8 @@ def artifact_view_title(source_title: str, view: str) -> str:
     label = _ARTIFACT_VIEW_LABELS.get(view)
     if not normalized or label is None:
         raise ValueError("검증 Artifact view 제목을 만들 수 없습니다.")
+    if normalized.casefold() == "analysis result":
+        return f"분석 {label}"
     suffix = f" · {label}"
     return f"{normalized[:255 - len(suffix)].rstrip()}{suffix}"
 
@@ -288,12 +290,54 @@ def _compact_blocks(blocks: list[ReportBlock]) -> list[ReportBlock]:
     return [placed[item.block_id] for item in blocks]
 
 
+def _blocks_overlap(left: ReportBlock, right: ReportBlock) -> bool:
+    """두 block의 현재 12열 grid 사각형이 실제로 겹치는지 확인한다."""
+
+    return (
+        left.x < right.x + right.w
+        and left.x + left.w > right.x
+        and left.y < right.y + right.h
+        and left.y + left.h > right.y
+    )
+
+
+def _resolve_block_collisions(
+    blocks: list[ReportBlock],
+    anchor_id: str,
+) -> list[ReportBlock]:
+    """anchor 좌표는 유지하고 충돌하는 block만 아래로 이동한다."""
+
+    anchor = next((item for item in blocks if item.block_id == anchor_id), None)
+    if anchor is None:
+        return blocks
+    order = {item.block_id: index for index, item in enumerate(blocks)}
+    ordered = sorted(
+        (item for item in blocks if item.block_id != anchor_id),
+        key=lambda item: (item.y, item.x, order[item.block_id]),
+    )
+    placed = [anchor]
+    resolved = {anchor.block_id: anchor}
+    for block in ordered:
+        candidate = block
+        while True:
+            collisions = [item for item in placed if _blocks_overlap(candidate, item)]
+            if not collisions:
+                break
+            candidate = _replace_block(
+                candidate,
+                y=max(item.y + item.h for item in collisions),
+            )
+        placed.append(candidate)
+        resolved[candidate.block_id] = candidate
+    return [resolved[item.block_id] for item in blocks]
+
+
 def _insert_block(
     blocks: list[ReportBlock],
     block: ReportBlock,
     after_block_id: str | None,
 ) -> None:
-    """상대 위치를 현재 block ID로 검증하고 기존 layout을 아래로 이동해 삽입한다."""
+    """새 block을 상대 위치에 고정하고 실제 충돌 block만 아래로 이동한다."""
 
     if after_block_id is None:
         insert_y = max((item.y + item.h for item in blocks), default=0)
@@ -302,10 +346,8 @@ def _insert_block(
         if target is None:
             raise ValueError("Report patch의 기준 block을 찾을 수 없습니다.")
         insert_y = target.y + target.h
-        # 같은 행뿐 아니라 위에서 시작해 삽입 지점을 가로지르는 staggered block도 있다.
-        # 새 block의 실제 x=0..w와 2D로 겹치는 block이 없을 때까지 시작점을 아래로 민다.
         while True:
-            collision_bottoms = [
+            crossing_bottoms = [
                 item.y + item.h
                 for item in blocks
                 if item.x < block.w
@@ -313,33 +355,10 @@ def _insert_block(
                 and item.y < insert_y
                 and item.y + item.h > insert_y
             ]
-            if not collision_bottoms:
+            if not crossing_bottoms:
                 break
-            next_y = max(collision_bottoms)
-            if next_y <= insert_y:
-                break
-            insert_y = next_y
-    shifted = [
-        ReportBlock(
-            item.block_id,
-            item.title,
-            item.artifact_id,
-            item.columns,
-            item.query_id,
-            item.type,
-            item.x,
-            item.y + block.h if item.y >= insert_y else item.y,
-            item.w,
-            item.h,
-            item.content,
-            item.evidence_refs,
-            item.view_spec_id,
-        )
-        for item in blocks
-    ]
-    blocks[:] = shifted
-    blocks.append(
-        ReportBlock(
+            insert_y = max(crossing_bottoms)
+    candidate = ReportBlock(
             block.block_id,
             block.title,
             block.artifact_id,
@@ -354,7 +373,8 @@ def _insert_block(
             block.evidence_refs,
             block.view_spec_id,
         )
-    )
+    blocks.append(candidate)
+    blocks[:] = _resolve_block_collisions(blocks, candidate.block_id)
 
 
 def apply_report_assistant_patch(
@@ -460,7 +480,7 @@ def apply_report_assistant_patch(
                     _with_settings(resized, {"sizeMode": "manual"})
                     if source.type is not BlockType.TEXT else resized
                 )
-                blocks = _compact_blocks(blocks)
+                blocks = _resolve_block_collisions(blocks, source.block_id)
             elif operation.op == "update_chart_settings":
                 if source.type is not BlockType.CHART:
                     raise ValueError("chart 설정은 chart block에만 적용할 수 있습니다.")

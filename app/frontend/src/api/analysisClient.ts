@@ -87,6 +87,21 @@ export interface InternalManualSummary {
   owner_team: string;
 }
 
+/** Supervisor가 실행할 수 있는 서버 전문 Agent 식별자다. */
+export type SupervisorAgentKind =
+  | "ANALYSIS_WORKFLOW"
+  | "INTERNAL_GUIDELINE"
+  | "ML_PREDICTION";
+
+/** Supervisor가 실제 완료한 전문 Agent 조합을 증명하는 공개 receipt다. */
+export interface SupervisorCompositionReceipt {
+  schema_version: "SupervisorCompositionReceipt.v1";
+  plan_ref: string;
+  primary_agent: SupervisorAgentKind;
+  agents: SupervisorAgentKind[];
+  evidence_refs: string[];
+}
+
 /**
  * 서버 데이터베이스에서 수화된 대화 턴의 불변 유선 계약이다.
  */
@@ -109,6 +124,7 @@ export interface ConversationTurnWire {
   reason_code: string | null;
   request_id: string | null;
   artifact_id: string | null;
+  query_id?: string | null;
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {
@@ -118,6 +134,7 @@ export interface ConversationTurnWire {
     };
     rag?: Record<string, unknown>;
     ml_prediction?: Record<string, unknown>;
+    supervisor_composition?: SupervisorCompositionReceipt;
     business_terms?: string[];
     metric_id?: string | null;
     metric_ids?: string[];
@@ -174,6 +191,7 @@ export interface ConversationTurnWire {
 export interface ConversationTurnResult {
   status: string;
   turn: ConversationTurnWire;
+  composition?: SupervisorCompositionReceipt;
   conversation: {
     conversation_id: string;
     head_turn_id: string;

@@ -336,6 +336,29 @@ class ReportAssistantPatchTest(unittest.TestCase):
         )
         self.assertEqual("현재 실적", self.definition.blocks[1].title)
 
+    def test_resize_preserves_valid_vertical_gap(self) -> None:
+        """resize는 실제 충돌이 없으면 기존 block의 세로 gap을 유지한다."""
+
+        gapped = self.definition.replace_blocks((
+            self.definition.blocks[0],
+            ReportBlock(
+                "current-chart", "현재 실적", "artifact-old", 6, "query-old",
+                BlockType.CHART, 0, 20, 6, 7,
+            ),
+        ))
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "차트 크기만 변경합니다.",
+            "operations": [{
+                "op": "resize_block", "block_id": "current-chart",
+                "block_width": 6, "block_height": 9,
+            }],
+        })
+
+        result = apply_report_assistant_patch(gapped, patch, self.bindings)
+
+        self.assertEqual(20, result.blocks[1].y)
+        self.assertEqual(9, result.blocks[1].h)
+
     def test_artifact_view_title_change_is_rejected(self) -> None:
         """chart·table·Artifact 제목은 승인 근거 식별값이므로 patch로 바꿀 수 없다."""
 
@@ -350,6 +373,38 @@ class ReportAssistantPatchTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Artifact view block 제목"):
             apply_report_assistant_patch(self.definition, patch, self.bindings)
+
+    def test_internal_artifact_title_is_not_exposed_to_report_readers(self) -> None:
+        """저장소 내부 기본 제목은 새 보고서 block에 사용자용 제목으로 정규화한다."""
+
+        binding = VerifiedArtifactBinding(
+            artifact_id="artifact-internal",
+            query_id="query-internal",
+            checksum="b" * 64,
+            source_title="Analysis result",
+            available_views=frozenset({"chart"}),
+        )
+        patch = ReportAssistantPatch.model_validate({
+            "summary": "새 차트를 추가합니다.",
+            "operations": [{
+                "op": "add_artifact_view",
+                "artifact_ref": "new_result",
+                "view": "chart",
+                "title": "분석 차트",
+                "placement": {"width": "full"},
+            }],
+        })
+
+        result = apply_report_assistant_patch(
+            self.definition,
+            patch,
+            {**self.bindings, "new_result": binding},
+        )
+
+        self.assertEqual(
+            "분석 차트",
+            next(block.title for block in result.blocks if block.artifact_id == "artifact-internal"),
+        )
 
     def test_table_settings_and_artifact_view_presentation_are_typed(self) -> None:
         """표와 신규 Artifact view는 해당 view에 허용된 renderer 설정만 저장한다."""

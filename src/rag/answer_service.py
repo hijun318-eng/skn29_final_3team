@@ -1,6 +1,7 @@
 """OpenAI-compatible answer endpoint를 호출하고 evidence 인용 계약을 재검증한다."""
 
 import json
+import logging
 import re
 import unicodedata
 from typing import Dict, Any
@@ -23,6 +24,9 @@ from .answer_safety import AnswerSafetySettings, EvidenceSafetyGate
 from .llm_failure_diagnostics import LlmFailureDiagnostics
 from .manual_article_formatter import ManualArticleFormatter
 from .report_evidence_formatter import ReportEvidenceFormatter
+
+
+logger = logging.getLogger(__name__)
 
 
 _ANSWER_TYPE_BY_INTENT = {
@@ -300,6 +304,15 @@ class AnswerService:
                         for evidence_id in referenced_ids
                     ],
                 )
+                model_section_count = len(parsed_response.sections)
+                model_claim_count = sum(
+                    len(section.claims) for section in parsed_response.sections
+                )
+                model_claim_chars = sum(
+                    len(claim.text)
+                    for section in parsed_response.sections
+                    for claim in section.claims
+                )
 
                 # Override request/trace IDs to match input
                 parsed_response.request_id = request.request_id
@@ -307,6 +320,14 @@ class AnswerService:
 
                 # Validation rules
                 validated = self._validate_response(parsed_response, packed_request)
+                if validated.status == "GENERATION_FAILED":
+                    logger.warning(
+                        "rag_answer_validation_failed reason=%s sections=%s claims=%s claim_chars=%s",
+                        validated.answer,
+                        model_section_count,
+                        model_claim_count,
+                        model_claim_chars,
+                    )
                 return self._attach_context_receipt(
                     validated,
                     packed_context.receipt,
@@ -315,6 +336,12 @@ class AnswerService:
             except Exception as error:
                 diagnostic = LlmFailureDiagnostics.from_exception(error)
                 last_error = diagnostic.code
+                logger.warning(
+                    "rag_answer_generation_attempt_failed code=%s retryable=%s attempt=%s",
+                    diagnostic.code,
+                    diagnostic.retryable,
+                    attempt + 1,
+                )
                 if not diagnostic.retryable:
                     break
 

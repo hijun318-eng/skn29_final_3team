@@ -1564,6 +1564,172 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("waiting_patch_approval", response["session"]["phase"])
         repository.record_existing_assistant_patch_proposal.assert_awaited_once()
 
+    async def test_five_artifact_monthly_report_proposal_uses_existing_data_only(self) -> None:
+        """A~E 다섯 근거의 6개 typed 변경안은 새 분석 계획 없이 승인 대기한다."""
+
+        assistant_request_id = uuid4()
+        definition_id = uuid4()
+        artifact_ids = tuple(uuid4() for _ in range(5))
+        chart_id = "a-chart"
+        table_id = "a-table"
+        instruction = (
+            "이 다섯 개 근거로 2026년 8월 월간보고서를 정리해줘. "
+            "기존 호텔별 총 운영 매출 차트는 가로 막대로 바꾸고 표는 간결하게 유지해줘. "
+            "그 아래에는 전체 객실 점유율 KPI, GRAND 일별 객실 매출 선그래프, "
+            "전체 일별 식음 매출 선그래프, 호텔별 초과근로시간 표를 이 순서로 가로 폭 전체로 추가해줘."
+        )
+        session = {
+            "assistant_request_id": assistant_request_id,
+            "phase": "ready",
+            "session_definition_id": definition_id,
+            "session_definition_version": 1,
+            "base_revision": 1,
+            "artifact_id": artifact_ids[0],
+            "analysis_plan_json": None,
+            "instruction_hash": "0" * 64,
+            "message_revision": 0,
+            "artifact_bindings": tuple(
+                {"artifact_id": artifact_id} for artifact_id in artifact_ids
+            ),
+        }
+        definition = ReportDefinitionVersion(
+            str(definition_id), 1, DefinitionStatus.DRAFT,
+            "2026년 8월 호텔 운영 월간보고서",
+            (
+                ReportBlock(
+                    chart_id, "호텔별 총 운영 매출 · 차트", str(artifact_ids[0]),
+                    12, "query-a", BlockType.CHART, 0, 0, 12, 7,
+                ),
+                ReportBlock(
+                    table_id, "호텔별 총 운영 매출 · 표", str(artifact_ids[0]),
+                    12, "query-a", BlockType.TABLE, 0, 7, 12, 5,
+                ),
+            ),
+        )
+
+        def artifact(index: int, title: str, *, view: str) -> dict[str, object]:
+            metric_field = {
+                0: "total_operating_revenue_krw",
+                1: "occupancy_rate",
+                2: "room_revenue_krw",
+                3: "fnb_revenue_krw",
+                4: "overtime_hours",
+            }[index]
+            x_field = "hotel_code" if index in {0, 4} else "period"
+            columns = [x_field, metric_field]
+            return {
+                "artifact_id": artifact_ids[index],
+                "title": title,
+                "narrative_markdown": f"{title} 승인 결과",
+                "evidence_json": {
+                    "metric_values": [{"label": title, "value": 1, "unit": "value"}],
+                },
+                "chart_spec_json": (
+                    {"chart_type": "line", "x_field": x_field, "y_fields": [metric_field]}
+                    if view == "chart" or index == 0 else None
+                ),
+                "data_snapshot_json": {
+                    "columns": columns,
+                    "rows": [{x_field: "2026-08", metric_field: 1}],
+                },
+                "trino_query_id": f"query-{chr(97 + index)}",
+                "artifact_checksum": str(index + 1) * 64,
+            }
+
+        artifacts = (
+            artifact(0, "호텔별 총 운영 매출", view="chart"),
+            artifact(1, "전체 객실 점유율", view="kpi"),
+            artifact(2, "GRAND 일별 객실 매출", view="chart"),
+            artifact(3, "전체 일별 식음 매출", view="chart"),
+            artifact(4, "호텔별 초과근로시간", view="table"),
+        )
+        operations = [
+            {
+                "op": "update_chart_settings", "block_id": chart_id,
+                "chart_type": "horizontal-bar",
+            },
+            {
+                "op": "update_table_settings", "block_id": table_id,
+                "density": "compact",
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_2",
+                "view": "kpi", "title": "전체 객실 점유율 · 핵심 지표",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_3",
+                "view": "chart", "title": "GRAND 일별 객실 매출 · 차트",
+                "chart_type": "line",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_4",
+                "view": "chart", "title": "전체 일별 식음 매출 · 차트",
+                "chart_type": "line",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_5",
+                "view": "table", "title": "호텔별 초과근로시간 · 표",
+                "density": "compact",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+        ]
+        waiting = {
+            **session,
+            "phase": "waiting_patch_approval",
+            "verified_page_count": 1,
+            "message_revision": 1,
+            "patch_request_id": uuid4(),
+            "report_patch_json": {"summary": "8월 월간보고서 구성", "operations": operations},
+        }
+        repository = SimpleNamespace(
+            get_assistant_session=self._revision_session_reader(session, waiting),
+            get_assistant_artifacts=AsyncMock(return_value=artifacts),
+            get_assistant_turn_history=AsyncMock(return_value=()),
+            get_version=AsyncMock(return_value=definition),
+            record_assistant_proposal=AsyncMock(),
+            record_existing_assistant_patch_proposal=AsyncMock(return_value=waiting),
+        )
+        model = AsyncMock(return_value=({
+            "change_kind": "existing_artifact",
+            "message": "다섯 승인 근거로 8월 월간보고서 변경안을 준비했습니다.",
+            "analysis_plan": None,
+            "patch": {"summary": "8월 월간보고서 구성", "operations": operations},
+        }, {
+            "model_version": "report-model", "prompt_id": "report.assistant.turn",
+            "prompt_version": "PROMPT-v1.7.0", "prompt_hash": "c" * 64,
+        }))
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.adapters.report_assistant.generate_report_change_proposal", new=model),
+        ):
+            response = await submit_assistant_message(
+                str(assistant_request_id),
+                ReportAssistantMessageRequest(instruction=instruction),
+                object(),
+            )
+
+        payload = model.await_args.args[0]
+        self.assertEqual(
+            ["source_artifact", "source_artifact_2", "source_artifact_3", "source_artifact_4", "source_artifact_5"],
+            [payload["artifact"]["artifact_id"], *[
+                item["artifact_id"] for item in payload["additional_artifacts"]
+            ]],
+        )
+        self.assertNotIn("query-", repr(payload))
+        self.assertEqual("existing_artifact", response["change_kind"])
+        self.assertIsNone(response["session"]["analysis_plan"])
+        self.assertEqual("waiting_patch_approval", response["session"]["phase"])
+        self.assertEqual(tuple(artifact_ids), response["session"]["artifact_ids"])
+        self.assertEqual(6, len(response["session"]["patch_operations"]))
+        self.assertTrue(set(response["session"]["patch_operations"]) <= {
+            "update_chart_settings", "update_table_settings", "add_artifact_view",
+        })
+        repository.record_assistant_proposal.assert_not_awaited()
+        repository.record_existing_assistant_patch_proposal.assert_awaited_once()
+
     async def test_new_data_proposal_stops_at_waiting_approval(self) -> None:
         """clarification의 최초 지시·페이지 제약을 보존해 계획만 승인 대기에 저장한다."""
 
@@ -2357,6 +2523,177 @@ class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("ready", response["phase"])
         reject_repository.finalize_existing_assistant_patch.assert_not_awaited()
+
+    async def test_five_artifact_monthly_patch_approval_creates_one_revision(self) -> None:
+        """A~E의 6개 기존 근거 편집을 승인하면 새 분석 없이 Revision 하나만 만든다."""
+
+        artifact_ids = tuple(uuid4() for _ in range(5))
+        definition_id = uuid4()
+        assistant_request_id = uuid4()
+        patch_request_id = uuid4()
+        chart_id = "a-chart"
+        table_id = "a-table"
+        operations = [
+            {
+                "op": "update_chart_settings", "block_id": chart_id,
+                "chart_type": "horizontal-bar",
+            },
+            {
+                "op": "update_table_settings", "block_id": table_id,
+                "density": "compact",
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_2",
+                "view": "kpi", "title": "전체 객실 점유율 · 핵심 지표",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_3",
+                "view": "chart", "title": "GRAND 일별 객실 매출 · 차트",
+                "chart_type": "line",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_4",
+                "view": "chart", "title": "전체 일별 식음 매출 · 차트",
+                "chart_type": "line",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+            {
+                "op": "add_artifact_view", "artifact_ref": "source_artifact_5",
+                "view": "table", "title": "호텔별 초과근로시간 · 표",
+                "density": "compact",
+                "placement": {"after_block_id": table_id, "width": "full"},
+            },
+        ]
+        waiting = {
+            "assistant_request_id": assistant_request_id,
+            "phase": "waiting_patch_approval",
+            "verified_page_count": 1,
+            "page_renderer_fingerprint": PAGE_RENDERER_FINGERPRINT,
+            "session_definition_id": definition_id,
+            "session_definition_version": 1,
+            "base_revision": 1,
+            "artifact_id": artifact_ids[0],
+            "artifact_bindings": tuple(
+                {"artifact_id": artifact_id} for artifact_id in artifact_ids
+            ),
+            "analysis_plan_json": None,
+            "patch_request_id": patch_request_id,
+            "report_patch_json": {
+                "summary": "2026년 8월 월간보고서 구성",
+                "operations": operations,
+            },
+            "instruction_hash": "a" * 64,
+            "decision_hash": "b" * 64,
+            "model_version": "report-model",
+            "prompt_id": "report.assistant.turn",
+            "prompt_version": "PROMPT-v1.7.0",
+            "prompt_hash": "c" * 64,
+            "status": "running",
+            "approved_at": None,
+            "rejected_at": None,
+            "result_artifact_id": None,
+            "result_revision": None,
+            "error_code": None,
+        }
+        definition = ReportDefinitionVersion(
+            str(definition_id), 1, DefinitionStatus.DRAFT,
+            "2026년 8월 호텔 운영 월간보고서",
+            (
+                ReportBlock(
+                    chart_id, "호텔별 총 운영 매출 · 차트", str(artifact_ids[0]),
+                    12, "query-a", BlockType.CHART, 0, 0, 12, 7,
+                ),
+                ReportBlock(
+                    table_id, "호텔별 총 운영 매출 · 표", str(artifact_ids[0]),
+                    12, "query-a", BlockType.TABLE, 0, 7, 12, 5,
+                ),
+            ),
+        )
+        original_blocks = definition.blocks
+
+        def artifact(index: int, title: str, view: str) -> dict[str, object]:
+            metric = (
+                "total_operating_revenue_krw", "occupancy_rate", "room_revenue_krw",
+                "fnb_revenue_krw", "overtime_hours",
+            )[index]
+            x_field = "hotel_code" if index in {0, 4} else "period"
+            return {
+                "artifact_id": artifact_ids[index],
+                "title": title,
+                "narrative_markdown": f"{title} 승인 결과",
+                "evidence_json": {
+                    "metric_values": [{"label": title, "value": 1, "unit": "value"}],
+                },
+                "chart_spec_json": (
+                    {"chart_type": "line", "x_field": x_field, "y_fields": [metric]}
+                    if view == "chart" else None
+                ),
+                "data_snapshot_json": {
+                    "columns": [x_field, metric],
+                    "rows": [{x_field: "2026-08", metric: 1}],
+                },
+                "trino_query_id": f"query-{chr(97 + index)}",
+                "artifact_checksum": str(index + 1) * 64,
+            }
+
+        artifacts = (
+            artifact(0, "호텔별 총 운영 매출", "chart"),
+            artifact(1, "전체 객실 점유율", "kpi"),
+            artifact(2, "GRAND 일별 객실 매출", "chart"),
+            artifact(3, "전체 일별 식음 매출", "chart"),
+            artifact(4, "호텔별 초과근로시간", "table"),
+        )
+        saving = {**waiting, "phase": "saving_revision", "approved_at": object()}
+        completed = {
+            **saving, "phase": "completed", "status": "success", "result_revision": 2,
+        }
+        repository = SimpleNamespace(
+            decide_existing_assistant_patch=AsyncMock(return_value=(saving, True)),
+            get_version=AsyncMock(return_value=definition),
+            get_assistant_artifacts=AsyncMock(return_value=artifacts),
+            finalize_existing_assistant_patch=AsyncMock(return_value=completed),
+            fail_assistant_request=AsyncMock(),
+        )
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch(
+                "app.api.report_router._recover_and_get_assistant_session",
+                new=AsyncMock(return_value=waiting),
+            ),
+        ):
+            response = await decide_assistant_patch(
+                str(assistant_request_id),
+                ReportAssistantPatchApprovalRequest(
+                    request_id=patch_request_id, approved=True,
+                ),
+                object(),
+            )
+
+        finalized = repository.finalize_existing_assistant_patch.await_args.args
+        patched = finalized[8]
+        self.assertEqual("completed", response["phase"])
+        self.assertEqual(2, response["result_revision"])
+        self.assertIsNone(response["analysis_plan"])
+        self.assertEqual(tuple(artifact_ids), response["artifact_ids"])
+        self.assertEqual(6, len(finalized[7]["operations"]))
+        self.assertEqual(
+            {str(artifact_id) for artifact_id in artifact_ids},
+            {block.artifact_id for block in patched.blocks},
+        )
+        self.assertEqual(
+            [
+                "호텔별 총 운영 매출 · 차트", "호텔별 총 운영 매출 · 표",
+                "전체 객실 점유율 · 핵심 지표", "GRAND 일별 객실 매출 · 차트",
+                "전체 일별 식음 매출 · 차트", "호텔별 초과근로시간 · 표",
+            ],
+            [block.title for block in patched.blocks],
+        )
+        self.assertEqual(original_blocks, definition.blocks)
+        self.assertEqual(2, len(definition.blocks))
+        repository.finalize_existing_assistant_patch.assert_awaited_once()
+        repository.fail_assistant_request.assert_not_awaited()
 
     async def test_full_page_mismatch_is_409_without_state_or_revision_change(self) -> None:
         """전체 patch의 저장 renderer 값이 exact와 다르면 claim 전 typed 409다."""

@@ -68,6 +68,16 @@ class ReportRepository(Protocol):
         """소유 보고서를 멱등 복원하되 이전 schedule을 자동 재활성화하지 않는다."""
         ...
 
+    def permanently_delete_definition(
+        self,
+        definition_id: str,
+        *,
+        actor_role: str,
+        trace_id: str | None = None,
+    ) -> bool | Awaitable[bool]:
+        """휴지통에 있는 소유 보고서 데이터를 복원 불가능하게 제거하고 감사 기록만 보존한다."""
+        ...
+
     def approve(
         self, definition_id: str, version: int, approved_at: datetime
     ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:

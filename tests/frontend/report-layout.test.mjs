@@ -4,6 +4,7 @@ import {
   compactDraftLayout,
   isDraftLayoutValid,
   placeDraftBlock,
+  resolveDraftLayoutCollisions,
   restoreDraftLayout,
 } from "../../app/frontend/src/contracts/report.ts";
 
@@ -16,6 +17,17 @@ const validSavedLayout = [
 assert.equal(isDraftLayoutValid(validSavedLayout), true);
 assert.deepEqual(restoreDraftLayout(validSavedLayout), validSavedLayout);
 assert.deepEqual(restoreDraftLayout(restoreDraftLayout(validSavedLayout)), validSavedLayout);
+
+const collisionOnly = resolveDraftLayoutCollisions([
+  { id: "grown", title: "커진 요약", columns: 12, type: "text", content: "요약", x: 0, y: 3, w: 12, h: 8 },
+  { id: "colliding", title: "충돌 표", columns: 12, type: "table", content: "{}", x: 0, y: 10, w: 12, h: 5 },
+  { id: "gapped", title: "의도한 간격", columns: 12, type: "chart", content: "{}", x: 0, y: 30, w: 12, h: 7 },
+], "grown");
+assert.deepEqual(collisionOnly.map(({ id, y }) => [id, y]), [
+  ["grown", 3],
+  ["colliding", 11],
+  ["gapped", 30],
+]);
 
 const independentRowHeights = compactDraftLayout([
   { id: "row-summary", title: "요약", columns: 6, type: "text", content: "요약", x: 0, y: 9, w: 6, h: 4 },

@@ -1,6 +1,6 @@
 /** text template·artifact library·assistant 지시 입력을 제공하는 editor 도구 모듈이다. */
 import { memo, useDeferredValue, useMemo, useState } from "react";
-import { BarChart3, PanelLeftClose, Search, Sparkles, X } from "lucide-react";
+import { BarChart3, PanelLeftClose, Plus, Search, Sparkles, X } from "lucide-react";
 
 import { ReportArtifactLibraryTile } from "../ReportWholeArtifactBlock";
 import { compactReportArtifactOptions } from "../reportArtifactLibrary";
@@ -38,6 +38,7 @@ export const ReportToolPanel = memo(function ReportToolPanel({
   artifactOptions,
   artifactSelection,
   artifactStates,
+  artifactTemplates,
   artifacts,
   assistantInstruction,
   canEdit,
@@ -80,6 +81,10 @@ export const ReportToolPanel = memo(function ReportToolPanel({
     [artifactSelection, artifacts, visibleArtifacts],
   );
   const hiddenDuplicateCount = visibleArtifacts.length - compactArtifacts.length;
+  const visibleArtifactTemplates = useMemo(
+    () => artifactTemplates.filter((item) => matchesReportLibraryQuery(item, deferredQuery)),
+    [artifactTemplates, deferredQuery],
+  );
   const visibleOutline = useMemo(
     () => orderedBlocks.filter((item) => matchesReportLibraryQuery(item, deferredQuery)),
     [deferredQuery, orderedBlocks],
@@ -100,11 +105,12 @@ export const ReportToolPanel = memo(function ReportToolPanel({
       {visibleQuickTemplates.length > 0 && <details className="report-library-group" open><summary>기본 블록 <span>{visibleQuickTemplates.length}</span></summary><div className="report-insert-grid">{visibleQuickTemplates.map((template) => <TemplateTile template={template} onAdd={onAddTemplate} disabled={!canEdit} key={template.id} />)}</div></details>}
       {visibleReportTemplates.length > 0 && <details className="report-library-group" open={deferredQuery ? true : undefined}><summary>보고서 템플릿 <span>{visibleReportTemplates.length}</span></summary><div className="report-insert-grid report-template-grid">{visibleReportTemplates.map((template) => <TemplateTile template={template} onAdd={onAddTemplate} disabled={!canEdit} key={template.id} />)}</div></details>}
       <details className="report-library-group" open>
-        <summary>1. 분석 원본 <span>{visibleArtifacts.length}</span></summary>
-        {visibleArtifacts.length > 0 && <div className="report-artifact-library" aria-label="분석 원본 라이브러리">{visibleArtifacts.map((source) => <ReportArtifactLibraryTile source={source} artifact={artifacts[source.artifactId]} disabled={!canEdit || artifactStates[source.artifactId]?.status === "loading"} selected={source.artifactId === artifactSelection} onSelect={onSelectArtifact} key={source.artifactId} />)}</div>}
+        <summary>1. 분석 결과 선택 <span>{compactArtifacts.length}</span></summary>
+        {compactArtifacts.length > 0 && <div className="report-artifact-library" aria-label="분석 결과 라이브러리">{compactArtifacts.map((source) => <ReportArtifactLibraryTile source={source} artifact={artifacts[source.artifactId]} disabled={!canEdit || artifactStates[source.artifactId]?.status === "loading"} selected={source.artifactId === artifactSelection} onSelect={onSelectArtifact} key={source.artifactId} />)}</div>}
+        {hiddenDuplicateCount > 0 && <small className="report-insert-help">내용이 같은 최근 분석 {hiddenDuplicateCount}개를 하나로 묶었습니다.</small>}
         {!deferredQuery && !artifactOptions.length && <p className="report-artifact-library-empty">{analysisLibraryState.status === "loading" ? "저장된 분석 결과를 확인하는 중입니다." : "연결할 수 있는 승인 분석 결과가 없습니다."}</p>}
         {analysisLibraryState.status !== "loading" && analysisLibraryState.message && <small className="report-insert-help" role={analysisLibraryState.status === "error" ? "alert" : "status"}>{analysisLibraryState.message}</small>}
-        {artifactOptions.length > 0 && <details className="report-library-subgroup" open><summary>2. 추가할 분석 요소 <span>{selectedAvailableViews.length}/{artifactTemplates.length}</span></summary><p className="report-artifact-selection-summary" aria-live="polite"><span>선택한 원본</span><b title={selectedArtifactSource?.title || "분석 원본을 선택해 주세요."}>{selectedArtifactSource?.title || "분석 원본을 선택해 주세요."}</b></p>{visibleArtifactTemplates.length > 0 && <div className="report-insert-grid">{visibleArtifactTemplates.map((template) => { const unavailable = !selectedAvailableViews.includes(template.view); return <TemplateTile template={template} onAdd={onAddTemplate} disabled={!canEdit || unavailable} disabledReason={unavailable ? `선택한 원본에는 ${ARTIFACT_VIEW_LABELS[template.view]} 데이터가 없습니다.` : ""} key={template.id} />; })}</div>}<small className="report-artifact-availability-help">선택한 원본에서 제공되는 요소만 추가할 수 있습니다.</small></details>}
+        {artifactOptions.length > 0 && <details className="report-library-subgroup" open><summary>2. 추가할 내용 <span>{selectedAvailableViews.length}/{artifactTemplates.length}</span></summary><p className="report-artifact-selection-summary" aria-live="polite"><span>선택한 분석 결과</span><b title={selectedArtifactSource?.title || "분석 결과를 선택해 주세요."}>{selectedArtifactSource?.title || "분석 결과를 선택해 주세요."}</b></p>{visibleArtifactTemplates.length > 0 && <div className="report-insert-grid">{visibleArtifactTemplates.map((template) => { const unavailable = !selectedAvailableViews.includes(template.view); return <TemplateTile template={template} onAdd={onAddTemplate} disabled={!canEdit || unavailable} disabledReason={unavailable ? `선택한 분석 결과에는 ${ARTIFACT_VIEW_LABELS[template.view]} 데이터가 없습니다.` : ""} key={template.id} />; })}</div>}<small className="report-artifact-availability-help">선택한 분석 결과에서 제공되는 내용만 추가할 수 있습니다.</small></details>}
       </details>
       {selectedArtifact?.chart && <details className="report-library-group" open={deferredQuery ? true : undefined}><summary>차트 유형으로 바로 추가 <span>{REPORT_CHART_OPTIONS.length}</span></summary><div className="report-chart-gallery">{REPORT_CHART_OPTIONS.map(([chartType, label]) => <button type="button" onClick={() => onAddChart(chartType)} disabled={!canEdit} title={`${label} 차트 추가`} key={chartType}><BarChart3 size={13} aria-hidden="true" /><span>{label}</span></button>)}</div></details>}
       {deferredQuery && !hasSearchResults && <p className="report-library-empty-search">“{deferredQuery}”와 일치하는 블록이나 분석 결과가 없습니다.</p>}

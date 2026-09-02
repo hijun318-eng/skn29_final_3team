@@ -539,6 +539,12 @@ async def test_success_commit_has_complete_turn_run_artifact_release_lineage(
             },
         )
 
+        hydrated_turns = await repository.list_turns(conversation["conversation_id"])
+        assert [turn["query_id"] for turn in hydrated_turns] == [
+            "phase1-query-success",
+            "phase1-query-success",
+        ]
+
         async with factory() as session:
             lineage = (
                 await session.execute(

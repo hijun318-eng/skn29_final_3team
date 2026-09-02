@@ -159,7 +159,7 @@ export function MLPredictionResult({ result }) {
         </div>
         <div className="ml-workspace__kpis">
           <article><span>기간 예상 점유율</span><strong>{formatPercent(summary.occupancyRate)}</strong></article>
-          <article><span>누적 예상 객실 판매량</span><strong>{formatRooms(summary.totalOccupied)} 박</strong></article>
+          <article><span>누적 예상 객실 판매량</span><strong>{formatRooms(summary.totalOccupied)} 객실</strong></article>
         </div>
       </section>
 
@@ -172,26 +172,27 @@ export function MLPredictionResult({ result }) {
             </div>
             <strong>{days.length}일</strong>
           </header>
-          <div className="ml-workspace__table-scroll">
-            <table>
-              <thead><tr>
-                <th scope="col">날짜</th><th scope="col">예상 판매</th>
-                <th scope="col">예상 잔여</th><th scope="col">일 점유율</th>
-                <th scope="col">누적 예상 판매</th><th scope="col">누적 점유율</th>
-              </tr></thead>
-              <tbody>
-                {dailyRows.map((day) => (
-                  <tr key={day.target_date}>
-                    <th scope="row">{formatKoreanDate(day.target_date)}</th>
-                    <td className="is-primary"><strong>{formatRooms(day.predicted_occupied_rooms)}실</strong></td>
-                    <td>{formatRooms(day.predicted_available_rooms)}실</td>
-                    <td className="is-primary"><strong>{formatPercent(day.predicted_occupancy_rate)}</strong></td>
-                    <td className="is-cumulative"><strong>{formatRooms(day.cumulative_occupied_rooms)} 박</strong></td>
-                    <td className="is-cumulative"><strong>{formatPercent(day.cumulative_occupancy_rate)}</strong></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="ml-workspace__daily-scroll" role="region" aria-label="날짜별 객실 수요 예측" tabIndex="0">
+            <ol className="ml-workspace__daily-cards">
+              {dailyRows.map((day, index) => (
+                <li key={day.target_date}>
+                  <header>
+                    <time dateTime={day.target_date}>{formatKoreanDate(day.target_date)}</time>
+                    <span>{index + 1}일차</span>
+                  </header>
+                  <div className="ml-workspace__daily-primary">
+                    <span>예상 판매</span>
+                    <strong>{formatRooms(day.predicted_occupied_rooms)} 객실</strong>
+                  </div>
+                  <dl>
+                    <div><dt>예상 잔여</dt><dd>{formatRooms(day.predicted_available_rooms)} 객실</dd></div>
+                    <div><dt>일 점유율</dt><dd>{formatPercent(day.predicted_occupancy_rate)}</dd></div>
+                    <div className="is-cumulative"><dt>누적 예상 판매</dt><dd>{formatRooms(day.cumulative_occupied_rooms)} 객실</dd></div>
+                    <div className="is-cumulative"><dt>누적 점유율</dt><dd>{formatPercent(day.cumulative_occupancy_rate)}</dd></div>
+                  </dl>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
       )}

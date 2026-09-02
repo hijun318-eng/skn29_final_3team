@@ -15,6 +15,19 @@ import { reportTitleForAnalysis } from "../utils/presentation";
 import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers";
 import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationViewType, scopeNoticeRun, transientRun } from "./agentPageHelpers";
 
+const REPORT_ARTIFACT_VIEW = Object.freeze({
+  SUMMARY: "summary",
+  KPI: "kpi",
+  TABLE: "table",
+  CHART: "chart",
+  BAR: "chart",
+  LINE: "chart",
+  AREA: "chart",
+  HORIZONTAL_BAR: "chart",
+  PIE: "chart",
+  DONUT: "chart",
+});
+
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
@@ -530,7 +543,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     if (!artId) return;
     setFeedback(null);
     try {
-      await reportClient.createDraftFromArtifact(artId, reportTitle.trim() || reportTitleForAnalysis(reportModalRun));
+      await reportClient.createDraftFromArtifact(
+        artId,
+        reportTitle.trim() || reportTitleForAnalysis(reportModalRun),
+        REPORT_ARTIFACT_VIEW[String(reportModalViewType).toUpperCase()],
+      );
       setReportModal("");
       onNavigate("/reports");
     } catch (error) { setFeedback({ tone: "error", message: error instanceof Error ? error.message : "보고서 초안을 저장하지 못했습니다." }); }

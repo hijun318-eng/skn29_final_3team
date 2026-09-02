@@ -216,6 +216,7 @@ class AnalysisWorkflowAgentPort:
                     execution_options.update(
                         supervisor_plan_ref=request.supervisor_plan_ref,
                         task_objective=request.task_objective,
+                        task_analysis_route=request.task_analysis_route,
                         task_presentation_type=request.task_presentation_type,
                     )
                 if self._composite_augmentation is not None:

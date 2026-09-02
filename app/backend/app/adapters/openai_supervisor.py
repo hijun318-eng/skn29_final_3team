@@ -54,6 +54,8 @@ ML_PREDICTION은 제공된 ML scope 안의 미래 객실 수요 예측에만 사
 기간·지표·대상·명시한 문서 종류는 생략하거나 일반화하지 마세요.
 사용자가 분석 결과의 출력 표현을 명시했다면 ANALYSIS_WORKFLOW task의 presentation_type에
 그 표현을 구조화해 전달하고, 명시하지 않았다면 null로 두세요.
+ANALYSIS_WORKFLOW task는 새 측정·집계가 필요하면 analysis_route=ANALYSIS로, 기존 분석의
+표현만 바꾸면 analysis_route=PRESENTATION으로 지정하세요. PRESENTATION은 새 지표·기간·차원·필터를 요청하지 않을 때만 사용하세요.
 직전 route와 previous_analysis·previous_ml은 생략된 후속 요청의 문맥을 판정할 때만 사용하세요.
 previous_analysis는 서버가 확정한 이전 분석 지표·기간이며 새 사실로 간주하지 마세요.
 previous_analysis를 사용한 task의 objective에는 metric_ids와 정확한 시작일·종료일을 포함하세요.

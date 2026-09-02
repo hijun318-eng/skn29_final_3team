@@ -985,6 +985,47 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("PRESENTATION", presentation["turn"]["route"])
         self.assertEqual(0, gate.acquire_count)
 
+    async def test_supervisor_presentation_route_reuses_artifact_without_query(self) -> None:
+        """Supervisor의 표현 전환 task는 metadata·분석 실행 없이 기존 Artifact만 재사용한다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "supervisor presentation reuse",
+        )
+        analysis = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+            context=self.context,
+        )
+        query_count = len(self.data_platform.queries)
+        node1_count = len(self.support.questions)
+        analysis_count = len(self.submitted_requests)
+
+        presentation = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": "기존 결과의 표현을 변경해줘",
+                "idempotency_key": "supervisor-presentation-zero-query",
+                "expected_head_turn_id": str(analysis["turn"]["turn_id"]),
+            },
+            context=self.context,
+            supervisor_plan_ref=f"model-supervisor:sha256:{'a' * 64}",
+            task_objective="기존 분석 결과를 요청한 형식으로 변경",
+            task_analysis_route="PRESENTATION",
+            task_presentation_type="BAR",
+        )
+
+        self.assertEqual("SUCCESS", presentation["status"])
+        self.assertEqual("PRESENTATION", presentation["turn"]["route"])
+        self.assertEqual("BAR", presentation["turn"]["resolved_slots"]["target_chart_type"])
+        self.assertEqual(
+            analysis["turn"]["artifact_id"],
+            presentation["turn"]["artifact_id"],
+        )
+        self.assertEqual(query_count, len(self.data_platform.queries))
+        self.assertEqual(node1_count, len(self.support.questions))
+        self.assertEqual(analysis_count, len(self.submitted_requests))
+
     async def test_analysis_route_forwards_progress_and_cancel_controls(self) -> None:
         conversation = await self.repo.create_conversation(
             self.user_id,
@@ -2645,6 +2686,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                             SupervisorTaskPlan(
                                 agent=AgentKind.ANALYSIS_WORKFLOW,
                                 objective="승인된 객실 매출 지표 분석",
+                                analysis_route="ANALYSIS",
                             ),
                         ),
                     ),
@@ -2728,6 +2770,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                             SupervisorTaskPlan(
                                 agent=AgentKind.ANALYSIS_WORKFLOW,
                                 objective=analysis_objective,
+                                analysis_route="ANALYSIS",
                             ),
                             SupervisorTaskPlan(
                                 agent=AgentKind.INTERNAL_GUIDELINE,
@@ -4082,6 +4125,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                             SupervisorTaskPlan(
                                 agent=AgentKind.ANALYSIS_WORKFLOW,
                                 objective=second_message,
+                                analysis_route="ANALYSIS",
                             ),
                         ),
                     ),

@@ -117,6 +117,7 @@ class SupervisorTaskPlan(ContractModel):
 
     agent: AgentKind
     objective: str = Field(min_length=1, max_length=240)
+    analysis_route: Literal["ANALYSIS", "PRESENTATION"] | None = None
     presentation_type: Literal[
         "SUMMARY",
         "TABLE",
@@ -140,6 +141,10 @@ class SupervisorTaskPlan(ContractModel):
             and self.agent is not AgentKind.ANALYSIS_WORKFLOW
         ):
             raise ValueError("분석 Agent만 출력 표현 타입을 지정할 수 있습니다.")
+        if (self.agent is AgentKind.ANALYSIS_WORKFLOW) != (
+            self.analysis_route is not None
+        ):
+            raise ValueError("분석 Agent task에는 분석 라우트가 필요합니다.")
         return self
 
 
@@ -253,6 +258,7 @@ def materialize_supervisor_plan(
             target_agent=task.agent,
             invocation=invocation,
             task_objective=task.objective,
+            task_analysis_route=task.analysis_route,
             task_presentation_type=task.presentation_type,
             supervisor_plan_ref=result.evidence_ref,
         )

@@ -58,6 +58,7 @@ def _planned_request() -> AgentRequest:
         ),
         target_agent=AgentKind.ANALYSIS_WORKFLOW,
         task_objective="객실 매출 지표 분석",
+        task_analysis_route="ANALYSIS",
         supervisor_plan_ref=f"model-supervisor:sha256:{'a' * 64}",
     )
 

@@ -2102,6 +2102,7 @@ class ConversationOrchestrator:
         analysis_queue_wait_seconds: float = 0.0,
         supervisor_plan_ref: str | None = None,
         task_objective: str | None = None,
+        task_analysis_route: str | None = None,
         task_presentation_type: str | None = None,
         composite_augmentation: Any | None = None,
     ) -> dict[str, Any]:
@@ -2137,6 +2138,13 @@ class ConversationOrchestrator:
             )
         if task_objective is not None and not 1 <= len(task_objective.strip()) <= 240:
             raise ValueError("분석 command의 Supervisor objective가 올바르지 않습니다.")
+        if task_analysis_route is not None and (
+            not has_planned_execution
+            or task_analysis_route not in {"ANALYSIS", "PRESENTATION"}
+        ):
+            raise ValueError("분석 command의 Supervisor 분석 라우트가 올바르지 않습니다.")
+        if has_planned_execution and task_analysis_route is None:
+            raise ValueError("분석 command의 Supervisor 분석 라우트가 없습니다.")
         if task_presentation_type is not None and (
             not has_planned_execution
             or task_presentation_type not in ConversationSlotResolver.ALLOWED_CHART_TYPES
@@ -2359,10 +2367,16 @@ class ConversationOrchestrator:
             node1_res: dict[str, Any] = {}
             preflight_clarification: ContextBuildError | None = None
             action_signals = client_action_signals(payload)
-            reuses_existing_result = action_signals.get("requested_route") in {
-                "PRESENTATION",
-                "REPORT_ACTION",
-            }
+            planned_action_signals = (
+                {"requested_route": task_analysis_route}
+                if task_analysis_route is not None
+                else {}
+            )
+            reuses_existing_result = (
+                action_signals.get("requested_route")
+                in {"PRESENTATION", "REPORT_ACTION"}
+                or task_analysis_route == "PRESENTATION"
+            )
             try:
                 # 1차: user_message 원문으로 검색
                 search_context = {
@@ -2693,6 +2707,7 @@ class ConversationOrchestrator:
             )
             node1_res = {
                 **node1_res,
+                **planned_action_signals,
                 **planned_presentation_signals,
                 **action_signals,
             }

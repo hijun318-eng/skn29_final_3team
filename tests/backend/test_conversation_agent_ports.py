@@ -174,6 +174,7 @@ class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
             context=RequestContext(conversation_id=conversation_id),
             target_agent=AgentKind.ANALYSIS_WORKFLOW,
             task_objective="승인된 지표를 항목별로 비교",
+            task_analysis_route="ANALYSIS",
             task_presentation_type="TABLE",
             supervisor_plan_ref=f"model-supervisor:sha256:{'a' * 64}",
         )

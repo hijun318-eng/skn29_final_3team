@@ -94,6 +94,7 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
                         {
                             "agent": "ANALYSIS_WORKFLOW",
                             "objective": "승인된 객실 매출 지표를 표로 분석",
+                            "analysis_route": "ANALYSIS",
                             "presentation_type": "TABLE",
                             "ml_prediction": None,
                         }
@@ -154,6 +155,7 @@ def test_terra_planner_uses_responses_strict_schema_without_storage() -> None:
         ),
     )
     assert materialized.requests[0].task_presentation_type == "TABLE"
+    assert materialized.requests[0].task_analysis_route == "ANALYSIS"
     assert re.fullmatch(r"model-supervisor:sha256:[0-9a-f]{64}", result.evidence_ref)
 
 
@@ -172,6 +174,7 @@ def test_terra_planner_receives_only_typed_previous_analysis_context() -> None:
                         {
                             "agent": "ANALYSIS_WORKFLOW",
                             "objective": "3월부터 5월 기간의 이전 지표 분석",
+                            "analysis_route": "ANALYSIS",
                             "ml_prediction": None,
                         }
                     ],

@@ -69,20 +69,9 @@ def derive_metric_change(
     is_followup: bool,
     inherited_metric_id: str | None,
 ) -> SlotChange:
-    """새로운 사용자 발화와 이전 턴 정보를 바탕으로 `metric_id`의 변경 연산을 도출합니다.
-
-    [판정 로직]
-    1. 사용자가 새 지표를 언급한 경우 -> SET(새 지표)
-    2. 새 지표 언급이 없고 후속 질의(is_followup)이며 이전 지표가 있는 경우 -> PRESERVE(이전 지표 유지)
-    3. 그 외의 경우 -> CLEAR(지표 초기화)
-
-    Args:
-        candidate_metric: 이번 턴에서 추출된 후보 지표 ID (없으면 None)
-        is_followup: 이전 대화 컨텍스트를 이어가는 후속 질의 여부
-        inherited_metric_id: 이전 턴에서 확정되었던 지표 ID (없으면 None)
-
-    Returns:
-        도출된 metric_id 전용 SlotChange 객체
+    """[책임] 사용자 발화의 지표 후보와 이전 대화 컨텍스트를 대조하여 metric_id의 변경 연산을 도출한다.
+    - 입출력: candidate_metric, is_followup, inherited_metric_id 수신 → SET / PRESERVE / CLEAR 연산의 SlotChange 반환
+    - 주의조건: 새 지표가 없고 후속 질의가 아니면 CLEAR 연산으로 도출하여 이전 턴의 지표 오염을 방지
     """
     if candidate_metric:
         return SlotChange("metric_id", ChangeOperation.SET, candidate_metric)
@@ -92,16 +81,9 @@ def derive_metric_change(
 
 
 def apply_metric_change(change: SlotChange) -> tuple[str | None, bool]:
-    """도출된 `metric_id` SlotChange 연산을 적용하여 최종 지표 ID와 상속 여부를 반환합니다.
-
-    Args:
-        change: 적용할 SlotChange 객체
-
-    Returns:
-        tuple[최종 지표 ID (str | None), 이전 턴 상속 여부 (bool)]
-
-    Raises:
-        ValueError: metric_id에 지원되지 않는 연산(ADD_VALUE, REMOVE_VALUE 등)이 들어온 경우
+    """[책임] 도출된 metric_id SlotChange 연산을 평가하여 이번 턴의 최종 지표 ID와 상속 여부를 확정한다.
+    - 입출력: SlotChange 객체 수신 → (최종 지표 ID 문자열 | None, 상속 여부 boolean) 튜플 반환
+    - 주의조건: 단일 값 슬롯에 다중 값 연산(ADD_VALUE, REMOVE_VALUE)이 인입될 경우 ValueError 발생
     """
     if change.op in (ChangeOperation.SET, ChangeOperation.CLEAR):
         return change.value, False
@@ -116,26 +98,9 @@ def derive_dimension_changes(
     is_followup: bool,
     field: str = "dimension_fields",
 ) -> AnalysisChangeSet:
-    """다중 값 슬롯(차원 목록 또는 유저 필터)의 이전 집합과 새 후보를 비교하여 변경분(ChangeSet)을 도출합니다.
-
-    [상세 비교 알고리즘]
-    1. 새 후보가 있는 경우:
-       - 이전 집합의 진상위집합(Superset)인 경우: 새로 추가된 원소만 `ADD_VALUE`로 생성 (기존 유지 명시)
-       - 이전 집합의 진부분집합(Subset)인 경우: 제거된 원소만 `REMOVE_VALUE`로 생성
-       - 완전히 다르거나 겹치지 않는 경우: 전체 교체인 `SET`으로 생성
-    2. 새 후보가 없으나 후속 질의인 경우:
-       - 이전 집합을 그대로 유지하는 `PRESERVE` 생성
-    3. 그 외 이전 집합이 존재했다면:
-       - 슬롯을 비우는 `CLEAR` 생성
-
-    Args:
-        candidate_dims: 이번 턴에서 추출된 차원/필터 후보 튜플
-        inherited_dims: 이전 턴에서 유지되던 차원/필터 튜플
-        is_followup: 후속 질의 여부
-        field: 대상 슬롯 필드명 ('dimension_fields' 또는 'user_filters')
-
-    Returns:
-        도출된 SlotChange들의 불변 튜플 (AnalysisChangeSet)
+    """[책임] 다중 값 슬롯(차원 또는 필터)의 새 후보와 이전 집합을 대조하여 변경분 AnalysisChangeSet을 도출한다.
+    - 입출력: candidate_dims, inherited_dims, is_followup, field 수신 → ADD_VALUE, REMOVE_VALUE, SET 튜플 반환
+    - 주의조건: 새 후보와 이전 집합의 포함 관계(Superset/Subset)를 엄격히 비교하여 부분 갱신과 전체 교체를 구분
     """
     if candidate_dims:
         candidate_keys = {_dimension_key(d): d for d in candidate_dims}
@@ -170,18 +135,9 @@ def apply_dimension_changes(
     inherited_dims: tuple[dict[str, Any], ...],
     field: str = "dimension_fields",
 ) -> tuple[tuple[dict[str, Any], ...], bool]:
-    """다중 값 슬롯 연산 목록(ChangeSet)을 순차 적용하여 최종 차원/필터 튜플과 상속 여부를 반환합니다.
-
-    Args:
-        changes: 적용할 SlotChange 튜플
-        inherited_dims: 이전 턴의 기존 차원/필터 튜플
-        field: 대상 슬롯 필드명
-
-    Returns:
-        tuple[최종 차원/필터 튜플, 상속된 원소가 포함되어 있는지 여부 (bool)]
-
-    Raises:
-        ValueError: 다른 필드명의 SlotChange가 섞여 들어온 경우
+    """[책임] 슬롯 변경 연산 목록(AnalysisChangeSet)을 순차 적용하여 최종 차원/필터 집합을 결정론적으로 계산한다.
+    - 입출력: changes 튜플, inherited_dims, field 수신 → (최종 차원/필터 튜플, 상속 여부 boolean) 반환
+    - 주의조건: 지정된 field와 일치하지 않는 다른 필드의 SlotChange가 혼입된 경우 ValueError 발생
     """
     if not changes:
         return (), False

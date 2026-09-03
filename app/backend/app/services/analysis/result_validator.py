@@ -25,7 +25,10 @@ from app.services.context.builder import ContextPackage
 
 
 class PipelineResultValidator:
-    """쿼리 실행 결과의 거버넌스 무결성(G3)을 검증하는 정적 검증기 클래스."""
+    """[책임] Trino 쿼리 실행 결과의 거버넌스 무결성(G3)을 판정하고 아티팩트 증거를 생성하는 정적 검증기.
+    - 입출력: 쿼리 결과 레코드, AST 증거, ContextPackage 수신 → G3 위반 코드 또는 검증된 메타데이터 반환
+    - 주의조건: 결과 크기 한도(1,000행/50열) 초과, 미마스킹 민감 식별자 노출, 비율 지표 불일치 시 차단 코드 반환
+    """
 
     MAX_RESULT_ROWS = 1_000
     MAX_RESULT_COLUMNS = 50
@@ -33,7 +36,10 @@ class PipelineResultValidator:
 
     @staticmethod
     def result_value_type(value: object) -> str:
-        """Trino 결과 스칼라 값의 타입을 표준 문자열로 매핑합니다."""
+        """[책임] Trino 쿼리 결과 스칼라 값의 런타임 타입을 표준 데이터 타입 문자열로 매핑한다.
+        - 입출력: 임의의 Python 스칼라 값 수신 → 'string', 'number', 'integer', 'boolean', 'null' 문자열 반환
+        - 주의조건: 지원하지 않는 복합 객체나 정의되지 않은 타입인 경우 'unsupported'를 반환하여 후속 차단 유도
+        """
         if value is None:
             return "null"
         if isinstance(value, bool):
@@ -52,7 +58,10 @@ class PipelineResultValidator:
         rows: list[dict[str, object]],
         columns: tuple[str, ...],
     ) -> dict[str, object]:
-        """행/컬럼 데이터로부터 컬럼별 타입, 행 수, SHA-256 체크섬 메타데이터를 계산합니다."""
+        """[책임] 쿼리 실행 결과 행과 컬럼으로부터 컬럼별 타입 및 무결성 SHA-256 체크섬을 계산한다.
+        - 입출력: 행 리스트 rows 및 컬럼 튜플 columns 수신 → 타입 배열, 행 수, 체크섬이 포함된 딕셔너리 반환
+        - 주의조건: 컬럼 내 혼합 타입 감지 시 'mixed'로 마킹하며 정렬된 정규 JSON 직렬화로 재현 가능한 해시 보장
+        """
         typed_columns = []
         for name in columns:
             kinds = {
@@ -85,7 +94,10 @@ class PipelineResultValidator:
         plan: dict[str, object],
         package: ContextPackage,
     ) -> str | None:
-        """실행 결과가 승인된 계획 및 ContextPackage 규칙을 충족하는지 G3 게이트 검증을 수행합니다."""
+        """[책임] 실행 결과가 승인된 계획 및 ContextPackage 규칙을 충족하는지 G3 게이트 검증을 수행한다.
+        - 입출력: query 실행 딕셔너리, plan, package 수신 → 위반 사유 코드 문자열 반환 (정상 통과 시 None)
+        - 주의조건: 민감 식별자 미마스킹, 컬럼 스키마 불일치, 결과 셀 한도 초과 시 해당 에러 코드 반환 및 차단
+        """
         if not query.get("evidence_complete"):
             return "EVIDENCE_INCOMPLETE"
         if not isinstance(query.get("query_id"), str) or not query["query_id"]:
@@ -222,7 +234,10 @@ class PipelineResultValidator:
         query: dict[str, object],
         package: ContextPackage,
     ) -> dict[str, object]:
-        """단일 행 집계 결과가 모두 null인 경우 빈 행 목록으로 정규화합니다."""
+        """[책임] 단일 행 집계 결과의 지표 필드가 모두 null인 경우 빈 행 목록으로 정규화한다.
+        - 입출력: Trino 실행 결과 query 딕셔너리 및 package 수신 → rows가 빈 리스트로 보정된 정규화 딕셔너리 반환
+        - 주의조건: 실제 0건 매칭을 유효한 집계 행으로 오인하지 않도록 zero_result_suspicious 플래그를 마킹
+        """
         rows = query.get("rows")
         result_fields = {metric.result_field for metric in package.metrics}
         if not isinstance(rows, list) or len(rows) != 1 or not result_fields:
@@ -248,7 +263,10 @@ class PipelineResultValidator:
 
     @staticmethod
     def period(package: ContextPackage) -> PeriodEvidence:
-        """ContextPackage의 시간 파라미터 바인딩으로부터 PeriodEvidence 객체를 생성합니다."""
+        """[책임] ContextPackage의 시간 파라미터 바인딩으로부터 기간 증거 PeriodEvidence를 생성한다.
+        - 입출력: 검증된 ContextPackage 수신 → 시작일 및 종료일(exclusive)이 포함된 PeriodEvidence 객체 반환
+        - 주의조건: 시작/종료 파라미터 누락, ISO 날짜 파싱 실패 시 ValueError를 발생시켜 실행 차단
+        """
         contracts = getattr(package, "runtime_contracts", None) or {}
         time_rules = contracts.get("time_rules") or {}
         bindings = {item.name: item.value for item in package.parameter_bindings}
@@ -260,8 +278,10 @@ class PipelineResultValidator:
 
     @staticmethod
     def snapshot(package: ContextPackage) -> SnapshotEvidence:
-        """ContextPackage의 서버 소유 기준일 binding에서 snapshot evidence를 만든다."""
-
+        """[책임] ContextPackage의 서버 소유 기준일 바인딩으로부터 스냅샷 증거 SnapshotEvidence를 생성한다.
+        - 입출력: ContextPackage 수신 → 기준일 cutoff 및 선택 전략이 명시된 SnapshotEvidence 객체 반환
+        - 주의조건: time_rules 모드가 latest_snapshot이 아니거나 기준일 바인딩 결여 시 ValueError 발생
+        """
         contracts = getattr(package, "runtime_contracts", None) or {}
         time_rules = contracts.get("time_rules") or {}
         if (
@@ -284,17 +304,26 @@ class PipelineResultValidator:
 
     @staticmethod
     def gate_token(package: ContextPackage, sql: str) -> str:
-        """G2 검증을 통과한 SQL과 ContextPackage 해시에 결속된 실행 capability 토큰을 발급합니다."""
+        """[책임] G2 검증을 통과한 SQL과 ContextPackage 해시에 결속된 쿼리 실행 권한 capability 토큰을 발급한다.
+        - 입출력: package.package_hash 및 검증된 executable_sql 문자열 수신 → HMAC 기반 capability 토큰 반환
+        - 주의조건: SQL 또는 컨텍스트 해시가 1글자라도 변경되면 토큰 검증이 실패하여 Trino 어댑터가 실행 거부
+        """
         return issue_query_capability(package.package_hash, sql)
 
     @staticmethod
     def artifact_id(request_id: str, query_id: str, context_hash: str) -> UUID:
-        """요청 ID, 쿼리 ID, 컨텍스트 해시로부터 결정론적 UUID(v5)를 생성합니다."""
+        """[책임] 요청 ID, 쿼리 ID, 컨텍스트 해시로부터 결정론적 UUID v5 아티팩트 식별자를 생성한다.
+        - 입출력: request_id, query_id, context_hash 문자열 수신 → 동일 실행을 증명하는 결정론적 UUID 객체 반환
+        - 주의조건: 동일 입력에 대해 항상 일관된 UUID를 산출하며 임의의 랜덤 난수 생성을 엄격히 배제함
+        """
         return uuid5(NAMESPACE_URL, f"{request_id}:{query_id}:{context_hash}")
 
     @staticmethod
     def sources(assets: list[dict[str, object]]) -> tuple[SourceReference, ...]:
-        """자산 메타데이터 목록을 SourceReference 튜플로 변환합니다."""
+        """[책임] 자산 메타데이터 목록을 typed 불변 SourceReference 튜플로 변환한다.
+        - 입출력: assets 딕셔너리 리스트 수신 → URN, FQN, 버전 정보가 바인딩된 SourceReference 튜플 반환
+        - 주의조건: 필수 자산 식별자(URN, FQN, schema_version) 누락 시 불완전 참조로 처리되지 않도록 강제 변환
+        """
         return tuple(
             SourceReference(
                 urn=str(asset["urn"]),

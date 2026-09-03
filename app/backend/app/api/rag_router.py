@@ -57,7 +57,10 @@ async def query_internal_manual(
     payload: RagQueryRequest,
     context: Annotated[RequestContext, Depends(session_context)],
 ) -> dict:
-    """사용자 권한과 대화 head를 확인해 내부 매뉴얼 검색 결과를 반환한다."""
+    """[책임] 사용자 권한과 대화 상태를 확인하여 내부 업무 매뉴얼 RAG 검색 결과를 생성한다.
+    - 입출력: RagQueryRequest(질문, 대화 ID) 및 RequestContext 수신 → 근거 문서와 답변 딕셔너리 반환
+    - 주의조건: 기능 비활성화 시 503, 권한 부족 또는 CAS 충돌 시 해당 에러 상태 코드 반환
+    """
     try:
         result = await internal_manual_query_service().execute(
             InternalManualQuery(
@@ -81,7 +84,10 @@ async def query_internal_manual(
 async def list_internal_manuals(
     context: Annotated[RequestContext, Depends(session_context)],
 ) -> dict:
-    """현재 역할이 열람할 수 있는 승인 문서 목록을 동적으로 반환한다."""
+    """[책임] 현재 사용자 역할에 인가된 승인 내부 매뉴얼 문서 목록을 조회한다.
+    - 입출력: RequestContext(사용자 역할) 수신 → 열람 가능한 문서 카탈로그 목록 반환
+    - 주의조건: RUN_ANALYSIS 권한 부재 시 403, 데이터베이스 미설정 시 503 반환
+    """
     if not has_capability(context.role, Capability.RUN_ANALYSIS):
         raise HTTPException(status_code=403, detail="RAG 문서 열람 권한이 없습니다.")
     _require_internal_guideline_enabled()

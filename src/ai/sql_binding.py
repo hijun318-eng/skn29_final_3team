@@ -52,10 +52,9 @@ def bind_sql_parameters(
     *,
     dialect: str = "trino",
 ) -> str:
-    """placeholder와 parameter 이름을 exact match한 뒤 복사한 AST를 Trino SQL로 반환한다.
-
-    입력 tree는 변경하지 않는다. 누락·초과 parameter, 유효하지 않은 값, date·timestamp의
-    명시적 type conversion 부재는 ``SqlBindingError``로 거부하며 문자열 직접 삽입은 하지 않는다.
+    """[책임] SQLGlot AST의 named placeholder 노드를 서버 소유의 typed literal 노드로 치환하여 실행 SQL을 생성한다.
+    - 입출력: SQLGlot AST(tree) 및 파라미터 맵(parameters) 수신 → 바인딩이 완료된 최종 Trino SQL 문자열 반환
+    - 주의조건: 파라미터 누락/초과, 타입 불일치, date/timestamp 형식 위반 시 SqlBindingError 발생 (문자열 단순 치환 금지)
     """
 
     if not isinstance(tree, exp.Expression):

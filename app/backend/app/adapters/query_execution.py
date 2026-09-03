@@ -29,7 +29,10 @@ class QueryState:
 
 
 class QueryExecutionService:
-    """exact SQL capability 확인부터 pagination·deadline·cancel·TTL 상태 보존까지 Trino lifecycle을 소유한다."""
+    """[책임] Gate 토큰 검증, 비동기 Trino 쿼리 실행, 페이징 수집, TTL 캐시 및 취소 수명주기를 관리한다.
+    - 입출력: 바인딩 완료 SQL, gate_token 수신 → Trino 비동기 스트림 수집 후 구조화된 결과 딕셔너리 반환
+    - 주의조건: 미인가 SQL 변조 감지(Gate 토큰 불일치), 타임아웃, 최대 결과 행 수(1000행) 초과 시 즉시 차단
+    """
 
     def __init__(
         self,
@@ -93,7 +96,10 @@ class QueryExecutionService:
         parameters: dict[str, Any],
         gate_token: str,
     ) -> dict[str, Any]:
-        """parameter가 이미 AST에 binding되고 G2 token이 exact SQL과 일치할 때만 deadline 안에서 실행한다."""
+        """[책임] Gate 토큰과 SQL 일치성을 검증한 후 Trino 비동기 클라이언트를 통해 쿼리를 안전하게 실행한다.
+        - 입출력: 실행 가능 SQL 문자열, 바인딩 파라미터, gate_token 수신 → 컬럼 및 데이터 행이 담긴 결과 딕셔너리 반환
+        - 주의조건: SQL 파라미터 미바인딩 상태 인입, Gate 토큰 불일치, 행 수(1000행) 초과 시 예외 발생
+        """
         if not isinstance(sql, str) or not sql.strip():
             raise ValueError("executable SQL is required")
         if parameters:
@@ -233,7 +239,10 @@ class QueryExecutionService:
         )
 
     async def cancel_at(self, query_id: str, next_uri: str) -> dict[str, Any]:
-        """재시작 뒤에도 durable same-query URI로 coordinator 취소를 확인한다."""
+        """[책임] 재시작 이후에도 유효한 durable next_uri를 사용하여 Trino coordinator의 쿼리를 원격 취소한다.
+        - 입출력: query_id 문자열 및 대상 next_uri 수신 → 취소 상태 딕셔너리 {"query_id": ..., "status": ...} 반환
+        - 주의조건: 취소 대상 쿼리가 이미 완료되었거나(NOT_FOUND) 통신 오류 발생 시 표준 상태 코드로 처리
+        """
 
         try:
             await self._client.cancel_query(

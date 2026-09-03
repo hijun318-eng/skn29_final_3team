@@ -10,7 +10,10 @@ from .vector_models import VectorSearchResult
 
 
 class VectorRetrievalService:
-    """HYBRID mode와 reranker 가용성을 검증해 반환 점수·개수 Gate를 적용한다."""
+    """[책임] pgvector 하이브리드 검색과 BGE Reranker 재정렬을 연계하여 최적의 지식 청크를 추출한다.
+    - 입출력: 질문 텍스트, 임베딩 벡터, 권한 결정(SearchDecision) 수신 → 순위화된 VectorSearchResult 목록 반환
+    - 주의조건: Reranker 미구성 상태에서 Rerank 모드 요청 시 차단, 역할별 점수 하한 미달 청크는 필터링
+    """
 
     def __init__(self, repository: PgVectorRepository, reranker: 'RerankerProvider | None' = None) -> None:
         self._repository = repository
@@ -25,7 +28,10 @@ class VectorRetrievalService:
         retrieval_mode: str = "HYBRID",
         maximum_chunks_per_document: int = 1,
     ) -> list[VectorSearchResult]:
-        """질문·vector·role·score·문서 제한을 적용해 순위 검색 결과를 반환한다."""
+        """[책임] 임베딩 벡터와 질문 텍스트로 하이브리드 검색 및 선택적 Reranking을 수행하여 관련 청크를 반환한다.
+        - 입출력: query 문자열, 임베딩 vector, SearchDecision 수신 → 점수 임계값을 통과한 VectorSearchResult 리스트 반환
+        - 주의조건: HYBRID_RERANK 모드 선택 시 Reranker 미설정 상태이면 RuntimeError 발생
+        """
 
         if retrieval_mode == "HYBRID_RERANK" and self._reranker is None:
             raise RuntimeError("RAG reranker is not configured in this runtime")

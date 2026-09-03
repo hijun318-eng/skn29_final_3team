@@ -74,7 +74,10 @@ def _warning_messages(payload: dict[str, Any]) -> tuple[str, ...]:
 
 
 class TrinoAsyncClient:
-    """``httpx.AsyncClient``로 Trino statement를 실행하고 same-origin page 이동·취소만 허용한다."""
+    """[책임] httpx 기반 비동기 HTTP 통신으로 Trino statement 실행, 페이징 및 취소를 수행하는 전용 클라이언트.
+    - 입출력: Trino coordinator URL 및 인증 정보 수신 → 비동기 QueryPage 스트림 반환 및 쿼리 취소
+    - 주의조건: 비HTTPS 접속 거부, same-origin URI 검증을 통한 SSRF 방지, deadline 초과 시 타임아웃 발생
+    """
 
     def __init__(
         self,
@@ -248,7 +251,10 @@ class TrinoAsyncClient:
             ) from error
 
     async def execute(self, sql: str, *, deadline: float | None = None) -> QueryPage:
-        """SQL 원문을 coordinator statement endpoint에 POST하고 첫 응답을 typed ``QueryPage``로 변환한다."""
+        """[책임] SQL 원문을 Trino statement 엔드포인트로 비동기 POST 전송하고 첫 QueryPage를 수신한다.
+        - 입출력: 실행 SQL 문자열 및 타임아웃 deadline 수신 → 쿼리 ID와 상태가 포함된 QueryPage 반환
+        - 주의조건: 마감 시한(deadline) 초과 시 TIMEOUT, 권한 거부 시 FORBIDDEN AdapterError 발생
+        """
         payload = await self._request(
             "POST",
             f"{self._base_url}/v1/statement",
@@ -263,7 +269,10 @@ class TrinoAsyncClient:
         *,
         deadline: float | None = None,
     ) -> QueryPage:
-        """coordinator와 same-origin인 ``nextUri``만 GET해 deadline 안의 다음 ``QueryPage``를 반환한다."""
+        """[책임] 동일 오리진(same-origin)이 검증된 nextUri로 GET 요청을 보내 다음 결과 페이지를 수신한다.
+        - 입출력: 다음 페이지 next_uri 문자열 및 deadline 수신 → 레코드 행이 포함된 QueryPage 반환
+        - 주의조건: 다른 호스트로의 SSRF 리다이렉션 시도 또는 URI 스키마 불일치 시 ValueError 발생
+        """
         self._validate_next_uri(next_uri)
         return self._page(
             await self._request("GET", next_uri, None, deadline=deadline)
@@ -275,7 +284,10 @@ class TrinoAsyncClient:
         *,
         deadline: float | None = None,
     ) -> None:
-        """검증된 same-origin ``nextUri``에 DELETE를 보내 진행 중인 Trino statement를 취소한다."""
+        """[책임] 검증된 same-origin nextUri에 DELETE 요청을 전송하여 원격 Trino 쿼리를 즉시 취소한다.
+        - 입출력: 대상 쿼리의 next_uri 문자열 및 deadline 수신 → 원격 취소 신호 전달 후 리턴
+        - 주의조건: next_uri가 Coordinator 기본 URL과 일치하지 않는 경우 요청을 거절하여 보안 유지
+        """
         self._validate_next_uri(next_uri)
         await self._request("DELETE", next_uri, None, deadline=deadline)
 

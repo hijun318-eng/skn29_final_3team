@@ -88,7 +88,10 @@ async def ml_capabilities(
         Depends(session_context),
     ],
 ) -> dict[str, Any]:
-    """현재 역할과 feature flag를 확인한 뒤 runtime capability를 반환한다."""
+    """[책임] 사용자 권한과 피처 플래그를 검증한 후 머신러닝 예측 런타임 역량을 조회한다.
+    - 입출력: RequestContext(사용자 역할/세션) 수신 → 모델 버전 및 지원 기간이 담긴 MLRuntimeCapability 반환
+    - 주의조건: RUN_ANALYSIS 권한 부재 403, ML_PREDICTION 플래그 비활성화 또는 런타임 장애 시 503 반환
+    """
     _require_ml_access(context)
     try:
         return await service.capabilities()
@@ -129,7 +132,10 @@ async def create_ml_analysis(
     ],
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
-    """허용된 사용자 요청만 예측하고 provenance 감사 이벤트를 저장한다."""
+    """[책임] 승인된 호텔 지점 및 기간에 대해 ML 객실 수요 예측을 수행하고 감사 이벤트를 기록한다.
+    - 입출력: RoomDemandRequest, RequestContext, AsyncSession 수신 → 일자별 예측 수요 결과 딕셔너리 반환
+    - 주의조건: 허용 범위를 벗어난 예측 기간(horizon_days) 요청 또는 배포 정책 위반 시 에러 발생
+    """
     _require_ml_access(context)
     try:
         return await service.predict(

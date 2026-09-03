@@ -41,7 +41,10 @@ class ResolvedTimeRange:
 
 
 class TimeAlgebraEngine:
-    """Node 1이 해석한 기간 후보를 검증해 확정하는 엔진."""
+    """[책임] 질문의 시간 표현 후보를 검증하고 직전 턴 상속 여부와 영업일 기준 KST 기간을 확정하는 시간 대수 엔진.
+    - 입출력: Node 1 출력 후보, 직전 턴 기간, 기준일 as_of 수신 → 확정된 ResolvedTimeRange 및 상속 플래그 반환
+    - 주의조건: 기간 미특정 시 임의 기본값을 합성하지 않고 None을 반환하여 상위의 PERIOD_REQUIRED 재질의 유도
+    """
 
     @classmethod
     def resolve_time(
@@ -51,26 +54,9 @@ class TimeAlgebraEngine:
         last_time_range: ResolvedTimeRange | None,
         as_of: date,
     ) -> tuple[ResolvedTimeRange | None, bool]:
-        """이번 턴의 분석 기간과 직전 턴 상속 여부를 확정합니다.
-
-        적용 순서와 근거는 다음과 같습니다.
-
-        1. Node 1 typed 후보 — 질문의 시간 표현에 대한 유일한 권위. 대화 앵커가 필요한
-           표현도 `previous_period`를 받은 Node 1이 이미 반영해 반환한다.
-           ``period_relationship``이 "comparison"이면 질문이 참조한 순서대로 오므로 첫
-           후보를 이번 턴의 기본 분석 기간으로 쓰고, 비교 대상 기간은 하류
-           ``time_rules.comparison_window`` 계약이 소유한다.
-        2. 직전 턴 기간 상속 — 질문이 기간을 전혀 언급하지 않은 후속 질의.
-        3. 미확정(``None``) — 기본 기간을 합성하지 않고 상위 거버넌스에 위임한다.
-
-        Args:
-            user_message: 사용자 발화 원문(판정에 사용하지 않으며 추적용으로 유지)
-            node1_output: Node 1 정규화 결과(검증된 ``period_candidates`` 포함)
-            last_time_range: 직전 턴에서 확정된 기간(없으면 None)
-            as_of: 서버가 소유한 기준 일자(판정은 Node 1이 수행하므로 추적용으로 유지)
-
-        Returns:
-            (확정 기간 또는 None, 직전 턴 기간을 그대로 상속했는지 여부)
+        """[책임] Node 1 해석 후보 또는 직전 턴 상속 여부를 판단하여 이번 턴의 KST 반개구간 기간을 확정한다.
+        - 입출력: user_message, node1_output, last_time_range, as_of 수신 → (ResolvedTimeRange | None, 상속여부) 튜플 반환
+        - 주의조건: 기간 미특정 시 임의 기본값을 합성하지 않고 None을 반환하여 상위의 PERIOD_REQUIRED 재질의 유도
         """
         candidate = cls._first_valid_candidate(node1_output.get("period_candidates"))
         if candidate is not None:
@@ -87,8 +73,10 @@ class TimeAlgebraEngine:
         node1_output: dict[str, Any],
         as_of: date,
     ) -> ResolvedTimeRange | None:
-        """명시적 두 기간 비교의 두 번째 반개구간을 질문 순서 그대로 확정한다."""
-
+        """[책임] 명시적 2개 기간 비교 질의에서 두 번째 비교 대상 반개구간 [start, end)을 확정한다.
+        - 입출력: node1_output 및 기준일 as_of 수신 → 두 번째 비교 대상 ResolvedTimeRange 반환 (비교 아닐 시 None)
+        - 주의조건: period_relationship이 comparison이 아니거나 유효 후보가 2개가 아니면 None을 반환
+        """
         if node1_output.get("period_relationship") != "comparison":
             return None
         candidates = cls._valid_candidates(node1_output.get("period_candidates"))
@@ -101,11 +89,9 @@ class TimeAlgebraEngine:
         resolved: ResolvedTimeRange,
         as_of: date,
     ) -> ResolvedTimeRange:
-        """오늘을 포함한 기간을 오늘 시작 시점 미포함 경계로 제한한다.
-
-        서비스는 완료된 영업일 데이터만 공개한다. 사용자 표현과 무관한 typed 날짜
-        경계로서 과거 기간은 유지하고, 현재 진행 중인 기간은 ``[start, as_of)``로
-        바꾸며, 미래에만 걸친 기간은 상위 Context gate가 범위 오류로 차단하도록 둔다.
+        """[책임] 완료된 영업일 기준 데이터만 공개하도록 진행 중인 기간을 as_of 기준일 미만으로 클램핑한다.
+        - 입출력: 확정된 ResolvedTimeRange 및 기준일 as_of 수신 → 종료일이 as_of로 제한된 ResolvedTimeRange 반환
+        - 주의조건: start < as_of < end_exclusive인 경우에만 end_exclusive를 as_of로 절단하며 과거 기간은 불변 유지
         """
 
         if resolved.start < as_of < resolved.end_exclusive:

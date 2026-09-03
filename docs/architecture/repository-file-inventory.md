@@ -7,14 +7,14 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 149 |
+| archive | 150 |
 | asset | 24 |
-| documentation | 145 |
-| production | 511 |
-| project-config | 99 |
-| runtime-config | 114 |
+| documentation | 129 |
+| production | 516 |
+| project-config | 97 |
+| runtime-config | 115 |
 | runtime-contract | 45 |
-| test | 245 |
+| test | 249 |
 
 운영 무결성 위반: **0건**
 
@@ -22,19 +22,6 @@
 
 | 파일 | 분류 | 결과 |
 |---|---|---|
-| `.agents/skills/frontend-design/LICENSE.txt` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/frontend-design/SKILL.md` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/karpathy-guidelines/SKILL.md` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/agents/openai.yaml` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/assets/playwright-small.svg` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/assets/playwright.png` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/LICENSE.txt` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/NOTICE.txt` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/references/cli.md` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/references/workflows.md` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/scripts/playwright_cli.sh` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/playwright/SKILL.md` | documentation | REFERENCE_NON_RUNTIME |
-| `.agents/skills/senior-backend/SKILL.md` | documentation | REFERENCE_NON_RUNTIME |
 | `.dockerignore` | project-config | REVIEWED |
 | `.gitattributes` | project-config | REVIEWED |
 | `.githooks/pre-commit` | project-config | REVIEWED |
@@ -196,6 +183,7 @@
 | `app/backend/app/services/mcp_tool_rate_limit.py` | production | REVIEWED |
 | `app/backend/app/services/mcp_tool_registry.py` | production | REVIEWED |
 | `app/backend/app/services/ml_prediction_service.py` | production | REVIEWED |
+| `app/backend/app/services/rag_document_preview.py` | production | REVIEWED |
 | `app/backend/app/services/rag_gateway.py` | production | REVIEWED |
 | `app/backend/app/services/readiness.py` | production | REVIEWED |
 | `app/backend/app/services/report/__init__.py` | production | REVIEWED |
@@ -305,6 +293,7 @@
 | `app/backend/migrations/versions/20260831_70_report_assistant_external_transfer.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260901_71_legacy_report_receipt_backfill.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260901_72_activate_rag_ml_mcp_tools.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260901_73_report_permanent_deletion.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.lock.txt` | project-config | REVIEWED |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
@@ -324,6 +313,7 @@
 | `app/frontend/src/App.jsx` | production | REVIEWED |
 | `app/frontend/src/authenticatedBrowserState.js` | production | REVIEWED |
 | `app/frontend/src/authorization.ts` | production | REVIEWED |
+| `app/frontend/src/components/agent/AgentIdentity.jsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/analysis-failure-state.css` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisArtifactCollection.jsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisDashboardViews.tsx` | production | REVIEWED |
@@ -340,7 +330,6 @@
 | `app/frontend/src/components/ml/MLPredictionWorkspace.jsx` | production | REVIEWED |
 | `app/frontend/src/components/rag/RagAnswerCard.css` | production | REVIEWED |
 | `app/frontend/src/components/rag/RagAnswerCard.jsx` | production | REVIEWED |
-| `app/frontend/src/components/rag/RagEmptyState.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnEvidenceDrawer.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnReportModal.css` | production | REVIEWED |
 | `app/frontend/src/components/TurnReportModal.jsx` | production | REVIEWED |
@@ -362,6 +351,7 @@
 | `app/frontend/src/features/reports/components/ReportEditorBlock.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportEditorCanvas.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportEditorToolbar.jsx` | production | REVIEWED |
+| `app/frontend/src/features/reports/components/ReportFloatingPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportListView.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportOperationsPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/reportPresentation.js` | production | REVIEWED |
@@ -374,6 +364,7 @@
 | `app/frontend/src/features/reports/reportAnalysisArtifacts.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportArtifactEvidence.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportArtifactLayout.js` | production | REVIEWED |
+| `app/frontend/src/features/reports/reportArtifactLibrary.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportAssistantPatchSelection.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportAssistantSessionRecovery.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportAssistantUiState.js` | production | REVIEWED |
@@ -395,7 +386,9 @@
 | `app/frontend/src/features/reports/ReportPageCanvas.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportPageControllerSupport.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportPageLabels.ts` | production | REVIEWED |
+| `app/frontend/src/features/reports/reportResizeGeometry.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/reportTableRows.js` | production | REVIEWED |
+| `app/frontend/src/features/reports/reportTimePresentation.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/ReportWholeArtifactBlock.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/useFinalReportDocument.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/useReportArtifacts.ts` | production | REVIEWED |
@@ -420,7 +413,6 @@
 | `app/frontend/src/utils/createUuid.ts` | production | REVIEWED |
 | `app/frontend/src/utils/presentation.ts` | production | REVIEWED |
 | `app/frontend/vite.config.js` | runtime-config | REVIEWED |
-| `CLAUDE.md` | documentation | REFERENCE_NON_RUNTIME |
 | `compose.app-postgres.override.yml` | runtime-config | REVIEWED |
 | `compose.report-assistant-stage5.yml` | project-config | REVIEWED |
 | `compose.yml` | runtime-config | REVIEWED |
@@ -483,6 +475,8 @@
 | `docs/architecture/answervice_v3_4_report_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/canonical-semantic-release-migration.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/README.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/daesung/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/jaehong/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -548,6 +542,7 @@
 | `docs/deliverables/13_LLM활용소프트웨어_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/14_자체sLLM인공지능_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/15_시스템구성도_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/demo/Answervice_3-5분_시연_실서비스_구현전략_20260901.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/01_MVP_PRD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/02_Golden_Path_유저플로우.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/LOCAL_SETUP.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -580,14 +575,11 @@
 | `docs/Report_Assistant_V2_개발자_가이드_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_구현_진행_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_기능_설명서_20260826.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_V2_다음_작업_계획서_20260824.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_다음단계_인수인계_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_시나리오_검증보고서_20260826.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_전체_구현_검증보고서_20260826.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_고도화_현황_및_반응_정의_20260825.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_실연동_인프라_복구_실행_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Report_Assistant_실화면_독립검증_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/report_builder/BACKEND_EVOLUTION_ROADMAP.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/report_builder/REPORT_UIUX_전수조사_및_중간발표_피드백_평가_20260831.md` | documentation | REFERENCE_NON_RUNTIME |
 | `evals/__init__.py` | runtime-config | REVIEWED |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |
@@ -606,6 +598,7 @@
 | `evals/nlu_live_node1.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_route_accuracy.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/node1_grounding_gold/answervice_ko_node1.v1.json` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/node2_qwen35_2b_cp135_huggingface.receipt.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/node2_qwen35_2b_full3000_canary.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/node2_qwen35_2b_full3000_huggingface.receipt.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/node2_qwen35_2b_full3000_serverless-cu129.lock.txt` | archive | ARCHIVE_NON_RUNTIME |
@@ -929,10 +922,6 @@
 | `infrastructure/rag/requirements-cuda.txt` | project-config | REVIEWED |
 | `infrastructure/rag/requirements-qwen.txt` | project-config | REVIEWED |
 | `infrastructure/rag/requirements.txt` | project-config | REVIEWED |
-| `prototypes/report_assistant_v2/NEXT_IMPLEMENTATION_PROMPT.md` | documentation | REFERENCE_NON_RUNTIME |
-| `prototypes/report_assistant_v2/README.md` | documentation | REFERENCE_NON_RUNTIME |
-| `prototypes/report_assistant_v2/test_workflow.py` | project-config | REVIEWED |
-| `prototypes/report_assistant_v2/workflow.py` | project-config | REVIEWED |
 | `README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `scripts/audit_repository_integrity.py` | production | REVIEWED |
 | `scripts/build_node2_serverless_image.ps1` | production | REVIEWED |
@@ -1217,6 +1206,7 @@
 | `tests/backend/test_pipeline_query_planner.py` | test | TEST_ONLY |
 | `tests/backend/test_pipeline_sql_guard.py` | test | TEST_ONLY |
 | `tests/backend/test_production_model.py` | test | TEST_ONLY |
+| `tests/backend/test_rag_document_preview.py` | test | TEST_ONLY |
 | `tests/backend/test_rag_gateway.py` | test | TEST_ONLY |
 | `tests/backend/test_rag_routing.py` | test | TEST_ONLY |
 | `tests/backend/test_readiness.py` | test | TEST_ONLY |
@@ -1302,6 +1292,7 @@
 | `tests/frontend/rag-answer-card.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-a4.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-artifact-consistency.test.mjs` | test | TEST_ONLY |
+| `tests/frontend/report-artifact-library.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-artifact-presentation.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-assistant-patch-selection.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-assistant-session-recovery.test.mjs` | test | TEST_ONLY |
@@ -1316,7 +1307,9 @@
 | `tests/frontend/report-layout.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-page-architecture.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-pagination.test.mjs` | test | TEST_ONLY |
+| `tests/frontend/report-resize.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-source-contract.mjs` | test | TEST_ONLY |
+| `tests/frontend/report-time-presentation.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/run.mjs` | test | TEST_ONLY |
 | `tests/frontend/theme.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/turn-report-modal.test.mjs` | test | TEST_ONLY |

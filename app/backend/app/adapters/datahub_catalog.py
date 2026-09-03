@@ -43,7 +43,10 @@ class DataHubSearchHit:
 
 
 class DataHubCatalogClient:
-    """실시간 DataHub graph의 dataset·용어·거버넌스 엔터티를 제한된 페이지 크기로 읽는다."""
+    """[책임] DataHub GraphQL/REST API와 통신하여 데이터셋, 용어사전, 지표 메타데이터를 비동기 수집한다.
+    - 입출력: GraphQL 쿼리 및 URN 수신 → 파싱된 DataHubSearchHit 튜플 및 엔터티 상세 딕셔너리 반환
+    - 주의조건: 통신 타임아웃, 비인가 접근, 스키마 불일치 시 DataHubCatalogError를 발생시켜 실행 차단
+    """
 
     MAX_CANDIDATE_RESULTS = 50
     MAX_CANDIDATE_QUERY_CHARACTERS = 256
@@ -275,14 +278,9 @@ query GovernanceLifecycleStages {
         entity_types: tuple[str, ...],
         count: int,
     ) -> tuple[DataHubSearchHit, ...]:
-        """질문에서 유도한 질의 하나로 bounded top-K 후보만 읽고 DataHub 반환 순서를 보존한다.
-
-        전체 열거(``list_datasets``)와 달리 pagination을 하지 않는다. 반환 순서 자체가
-        DataHub의 relevance 증거이므로 호출자는 index를 rank로 쓸 수 있다. 결과는 아직
-        권한 검증을 거치지 않았으므로 backend entitlement filter 이전에 후보·prompt·응답
-        어디에도 노출하면 안 된다.
-
-        실패는 열거 실패와 구분해 ``DataHubSearchUnavailableError``로 닫는다.
+        """[책임] 사용자 질문 텍스트로부터 DataHub 상위 후보 엔터티를 top-K 범위로 조회한다.
+        - 입출력: 검색어 문자열, 대상 엔터티 유형 튜플, 요청 건수 수신 → DataHubSearchHit 튜플 반환
+        - 주의조건: 빈 검색어 전달 시 DataHubSearchUnavailableError, 글자 수(256자) 초과 시 ValueError 발생
         """
 
         normalized_query = query_text.strip()
@@ -567,7 +565,10 @@ query GovernanceLifecycleStages {
         return DataHubSearchHit(urn, entity_type, tuple(fields))
 
     async def get_dataset(self, urn: str) -> dict[str, Any]:
-        """검색에서 얻은 dataset URN의 최신 상세 aspect를 읽으며 부재·비객체 응답은 즉시 거부한다."""
+        """[책임] 지정된 Dataset URN의 스키마, 소유권, 도메인, 태그 메타데이터 상세를 단일 조회한다.
+        - 입출력: 데이터셋 urn 문자열 수신 → GraphQL 필드 정의 및 메타데이터 aspect 딕셔너리 반환
+        - 주의조건: 엔터티 부재 또는 비객체 응답 수신 시 DataHubCatalogError를 발생시켜 안전 차단
+        """
         data = await self.graphql(self._DATASET_QUERY, {"urn": urn})
         dataset = data.get("dataset")
         if not isinstance(dataset, dict):

@@ -39,7 +39,10 @@ from app.services.routing_service import RouteDecision
 
 
 class AnalysisPipeline:
-    """분석 파이프라인의 4개 단계를 순차 실행하는 메인 파이프라인 오케스트레이터 클래스."""
+    """[책임] 단일 분석 요청에 대해 4개 스테이지(Context → Plan → Query → Result)를 조율 실행하는 메인 오케스트레이터.
+    - 입출력: AnalysisRequest 및 RequestContext 수신 → 파이프라인 상태 머신을 전이하며 최종 AnalysisResponse 생성
+    - 주의조건: 스테이지별 조기 차단, 권한 거부, 쿼리 취소 감지 시 fail-closed 원칙에 따라 즉각적인 안전 응답 반환
+    """
 
     def __init__(
         self,
@@ -50,6 +53,10 @@ class AnalysisPipeline:
         cache: IsolatedExecutionCache,
         sql_generation_mode: SqlGenerationMode = SqlGenerationMode.HYBRID,
     ) -> None:
+        """[책임] 데이터 플랫폼, 모델 어댑터, 실행 제어 캐시 및 4개 하위 스테이지를 조립하여 파이프라인을 초기화한다.
+        - 입출력: DataPlatformAdapter, ModelAdapter, Cache, Mode 등 주입 수신 → 내부 4개 분석 스테이지 인스턴스 생성
+        - 주의조건: sql_generation_mode 설정(HYBRID vs COMPILER_ONLY)에 따라 PlanStage의 모델 호출 허용 여부가 고정됨
+        """
         self._responses = responses
         self._context_stage = AnalysisContextStage(
             adapter, model, support, responses
@@ -78,7 +85,10 @@ class AnalysisPipeline:
         ) = None,
         model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
-        """분석 요청을 받아 전체 파이프라인을 구동하고 최종 AnalysisResponse를 반환합니다."""
+        """[책임] 단일 분석 요청을 받아 전체 파이프라인 4단계를 순차 구동하고 최종 결과를 반환한다.
+        - 입출력: AnalysisRequest, RequestContext, RouteDecision 수신 → 상태 머신 전이 및 각 Stage 실행 후 AnalysisResponse 반환
+        - 주의조건: RBAC 권한 결여(RUN_ANALYSIS 부재), 사용자 취소, 스테이지 실패 시 즉시 fail-closed 안전 응답 반환
+        """
         # 1. 요청별 격리된 파이프라인 상태 객체 초기화
         state = AnalysisPipelineState(
             payload=payload,

@@ -969,11 +969,9 @@ async def mcp_post(
     request: Request,
     principal: Annotated[Principal, Security(_principal)],
 ) -> Response:
-    """MCP JSON-RPC 요청의 origin·버전·header·도구 권한을 검증해 한 건을 실행한다.
-
-    현재 주체에게 승인된 exact registry Tool만 실행하며 성공·거부·실패를 모두
-    tool audit에 남긴다. 프로토콜 위반은 JSON-RPC 오류로, 저장소·runtime 장애는
-    도구 실행 오류로 닫힌다.
+    """[책임] MCP JSON-RPC 2.0 프로토콜에 따라 도구 목록 조회 및 도구 호출 요청을 처리한다.
+    - 입출력: Request 및 인증된 Principal 수신 → JSON-RPC 표준 규격의 Response 반환
+    - 주의조건: 오리진 불일치, 프로토콜 버전 미지원, RateLimit 초과 시 해당 RPC 에러 반환
     """
     if not _origin_allowed(request.headers.get("Origin")):
         return _rpc_error(None, -32600, "Origin is not allowed", 403)

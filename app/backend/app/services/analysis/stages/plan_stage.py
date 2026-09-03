@@ -40,7 +40,10 @@ logger = logging.getLogger("uvicorn.error")
 
 
 class AnalysisPlanStage:
-    """SQL 생성, G2 가드 검증 및 1회성 Repair를 총괄하는 단계 처리기 클래스."""
+    """[책임] 분석 요청에 대해 컴파일러 또는 sLLM 기반 SQL 계획을 수립하고 G2 가드로 AST 거버넌스를 검증한다.
+    - 입출력: ContextPackage 수신 → G2 검증을 통과한 실행 가능한 SQL 계획을 생성하여 QueryStage로 인계
+    - 주의조건: 미승인 JOIN, Grain 불일치, 팬아웃 위험 감지 시 fail-closed 차단 응답을 반환하며 1회 한정 repair 예외 적용
+    """
 
     def __init__(
         self,
@@ -50,6 +53,10 @@ class AnalysisPlanStage:
         cache: IsolatedExecutionCache,
         sql_generation_mode: SqlGenerationMode = SqlGenerationMode.HYBRID,
     ) -> None:
+        """[책임] 모델 어댑터, 캐시, SQL 컴파일러 모드를 설정하여 분석 계획 및 G2 가드 검증 스테이지를 초기화한다.
+        - 입출력: ModelAdapter, PipelineSupport, AnalysisResponseFactory, IsolatedExecutionCache, SqlGenerationMode 수신 → 필드 보관
+        - 주의조건: sql_generation_mode가 COMPILER_ONLY인 경우 sLLM 호출을 차단하고 템플릿 컴파일러 경로만 강제
+        """
         self._model = model
         self._support = support
         self._responses = responses
@@ -57,7 +64,10 @@ class AnalysisPlanStage:
         self._sql_generation_mode = sql_generation_mode
 
     async def run(self, state: AnalysisPipelineState) -> AnalysisResponse | None:
-        """계획 수립 단계를 실행하여 state에 검증된 plan을 저장합니다 (실패 시 AnalysisResponse 반환)."""
+        """[책임] 논리 계획 및 SQL을 생성하고 G2 AST 검증을 통과한 실행 계획을 state.plan에 저장한다.
+        - 입출력: AnalysisPipelineState(컨텍스트, 요청) 수신 → 검증된 SQL 계획(`executable_sql`)을 state에 저장 후 QueryStage로 인계
+        - 주의조건: G2 정책 위반(미승인 테이블/컬럼/연산자), 스키마 오류, 권한 결여 시 즉시 fail-closed 응답 반환
+        """
         package = cast(ContextPackage, state.package)
         context = state.context
         decision = state.decision

@@ -68,16 +68,9 @@ def join_violation(
     result: SqlValidationResult | None = None,
     logical_plan: Any | None = None,
 ) -> JoinDecision:
-    """출력 스코프의 실제 JOIN 구문들을 runtime join_graph와 정밀 대조하여 검증합니다.
-
-    Args:
-        package: ContextPackage 인스턴스 (join_graph 포함)
-        physical_tables: 쿼리에서 사용된 물리 테이블 FQN 집합
-        scope: 프로젝션 스코프 증거
-        assets: 승인된 자산 룩업 맵
-
-    Returns:
-        JoinDecision 객체 (위반 여부 및 사용된 조인 ID 목록)
+    """[책임] 출력 스코프의 실제 JOIN 구문들을 승인된 DataHub join_graph 및 Grain 정책과 대조 검증한다.
+    - 입출력: ContextPackage, 물리 테이블 집합, ProjectionScopeEvidence, assets 수신 → 검증 결과 JoinDecision 반환
+    - 주의조건: 미승인 조인 엣지 사용, 필수 조인 키 누락, 1:N 조인 시 사전 집계(Preaggregation) 누락 시 차단 반환
     """
     graph: tuple[GovernedJoin, ...] = tuple(getattr(package, "join_graph", ()))
     if (

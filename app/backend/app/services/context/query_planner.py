@@ -31,26 +31,9 @@ def determine_query_strategy(
     package: ContextPackage,
     runtime_contracts: dict[str, Any],
 ) -> str:
-    """ContextPackage의 지표 및 자산 구성과 runtime_contracts를 분석하여 최적의 쿼리 전략을 결정합니다.
-
-    [판정 알고리즘]
-    1. 지표가 참조하는 물리 테이블 FQN 목록 수집 (Ratio 지표는 분자/분모 지표의 물리 테이블로 대체)
-    2. 모든 참조 테이블의 카탈로그가 `serving` 접두사를 가지는지 검사:
-       - `serving`이 아닌 원본 테이블이 하나라도 포함되면 -> RAW_APPROVED_DETAIL
-    3. 모든 참조 asset의 Grain이 존재하고 어느 것도 원본 row Grain이 아니어야 view 경로를 허용한다.
-    4. 참조 `serving` 테이블이 정확히 1개이면 -> VIEW_REUSE (단일 뷰 재사용)
-    5. 참조 `serving` 테이블이 여러 개이고 모든 테이블의 Grain 키 집합이 완전히 일치하면 -> VIEW_COMPOSE (뷰 간 합성)
-    6. 그 외 Grain 누락·row Grain·Grain 불일치는 -> RAW_APPROVED_DETAIL
-
-    Args:
-        package: 검증된 ContextPackage 인스턴스
-        runtime_contracts: 스키마 및 자산 Grain 메타데이터 사전
-
-    Returns:
-        결정된 쿼리 전략 문자열 ('VIEW_REUSE' | 'VIEW_COMPOSE' | 'RAW_APPROVED_DETAIL')
-
-    Raises:
-        ValueError: 해결된 지표 자산이 전혀 없는 경우
+    """[책임] 지표가 참조하는 물리 테이블의 카탈로그 접두사와 집계 단위(Grain)를 분석하여 최적의 쿼리 전략을 결정한다.
+    - 입출력: ContextPackage 및 runtime_contracts 딕셔너리 수신 → VIEW_REUSE / VIEW_COMPOSE / RAW_APPROVED_DETAIL 반환
+    - 주의조건: 참조 자산 부재 시 ContextBuildError 발생, 미승인 카탈로그나 Grain 불일치 시 RAW_APPROVED_DETAIL 강제
     """
     metrics_by_id = {metric.id: metric for metric in package.metrics}
     asset_fqns: set[str] = set()
@@ -106,7 +89,10 @@ def determine_query_strategy(
 
 
 def _enforce_metric_strategy(package: ContextPackage, strategy: str) -> str:
-    """구조적으로 계산한 전략이 모든 v2 실행 Metric의 허용 집합 안인지 확인한다."""
+    """[책임] 계산된 쿼리 전략이 DataHub에 등록된 거버넌스 허용 전략 목록에 포함되는지 검증한다.
+    - 입출력: ContextPackage 및 계산된 전략 문자열 strategy 수신 → 승인된 전략 문자열 반환
+    - 주의조건: 지표별 허용 전략(query_strategies)을 벗어난 전략일 경우 QUERY_STRATEGY_NOT_APPROVED 에러 발생
+    """
 
     governed = [metric for metric in package.metrics if metric.query_strategies]
     if any(strategy not in metric.query_strategies for metric in governed):

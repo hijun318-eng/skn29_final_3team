@@ -28,7 +28,10 @@ from app.services.analysis.pipeline_support import PipelineSupport
 
 
 class AnalysisQueryStage:
-    """Trino 쿼리 실행 및 G3 결과 검증을 총괄하는 단계 처리기 클래스."""
+    """[책임] G2 검증된 SQL을 Trino 엔진에 비동기 전달하고 실행 결과에 대한 G3 거버넌스 검증을 총괄한다.
+    - 입출력: state.plan의 SQL 및 gate_token 수신 → Trino 실행 결과 레코드를 검증하여 ResultStage로 인계
+    - 주의조건: 타임아웃 초과, 사용자 취소 발생, G3 스키마 불일치/마스킹 누락 시 롤백 및 fail-closed 반환
+    """
 
     def __init__(
         self,
@@ -37,13 +40,20 @@ class AnalysisQueryStage:
         responses: AnalysisResponseFactory,
         cache: IsolatedExecutionCache,
     ) -> None:
+        """[책임] 데이터 플랫폼 어댑터, 실행 제어 캐시 및 응답 팩토리를 주입받아 쿼리 실행 스테이지를 초기화한다.
+        - 입출력: DataPlatformAdapter, PipelineSupport, AnalysisResponseFactory, IsolatedExecutionCache 수신 → 멤버 변수 설정
+        - 주의조건: Trino 연결 및 격리 캐시 인스턴스가 유효해야 정상적인 쿼리 발행 및 결과 재사용이 가능함
+        """
         self._adapter = adapter
         self._support = support
         self._responses = responses
         self._cache = cache
 
     async def run(self, state: AnalysisPipelineState) -> AnalysisResponse | None:
-        """쿼리 실행 단계를 수행하여 state에 검증된 query 결과를 저장합니다 (실패 시 AnalysisResponse 반환)."""
+        """[책임] 검증된 SQL을 Trino 연합 쿼리 엔진에 발행하고 반환된 결과에 대해 G3 거버넌스를 검증한다.
+        - 입출력: AnalysisPipelineState(plan, gate_token) 수신 → Trino 실행 결과 레코드를 state에 저장 후 ResultStage로 전달
+        - 주의조건: 쿼리 실행 타임아웃, 취소 신호 수신, G3 스키마/단위 불일치 시 트랜잭션을 롤백하고 fail-closed 응답 반환
+        """
         package = cast(ContextPackage, state.package)
         plan = cast(dict[str, Any], state.plan)
         context = state.context

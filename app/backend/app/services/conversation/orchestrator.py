@@ -478,7 +478,10 @@ def _safe_analysis_observation(execution: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class ConversationOrchestrator:
-    """멀티턴 대화의 상태 머신, 동시성 제어 및 라우트 실행을 담당하는 오케스트레이터."""
+    """[책임] 멀티턴 대화의 수명주기, CAS 동시성 제어 및 3대 라우트(분석/프레젠테이션/보고서) 실행을 총괄한다.
+    - 입출력: ConversationCommandRequest 및 RequestContext 수신 → 슬롯 해석, 파이프라인 구동 후 Turn 결과 반환
+    - 주의조건: 동시 요청 경합(CAS 충돌), 악의적 SQL 키워드 포함, 릴리스 영수증 불일치 시 원자적으로 차단
+    """
 
     def __init__(
         self,
@@ -639,7 +642,10 @@ class ConversationOrchestrator:
         context: RequestContext,
         title: str,
     ) -> dict[str, Any]:
-        """서버 권한·active release를 pin한 새 Conversation을 만든다."""
+        """[책임] 사용자 권한과 활성 데이터 릴리스를 핀(pin) 고정한 신규 대화방 세션을 생성한다.
+        - 입출력: RequestContext 및 제목 title 수신 → 생성된 Conversation 메타데이터 딕셔너리 반환
+        - 주의조건: 카탈로그가 준비되지 않았거나(readiness 미충족) 릴리스 변경 감지 시 ReleaseReceiptChangedError 발생
+        """
 
         product_release, semantic_release = await self._release_receipt()
         permission_receipt = permission_snapshot_id(context.user_id, context.role)
@@ -2106,29 +2112,9 @@ class ConversationOrchestrator:
         task_presentation_type: str | None = None,
         composite_augmentation: Any | None = None,
     ) -> dict[str, Any]:
-        """사용자의 멀티턴 명령을 멱등성 및 거버넌스 규칙에 따라 안전하게 실행합니다.
-
-        [실행 단계]
-        1. 멱등성 검사 (Idempotency Replay): 동일 idempotency_key가 이미 완료된 경우 기존 턴 반환
-        2. CAS 및 Lease 획득: expected_head_turn_id 불일치 시 충돌(CONFLICT) 반환
-        3. 이전 불변 턴 목록 조회
-        4. Node 1 사전 발화 정규화 (지표/자산 검색)
-        5. 슬롯/라우트 결정론적 해석 (`ConversationSlotResolver.resolve`)
-        6. 3대 라우트 분기 실행:
-           - ANALYSIS: 원천 데이터 쿼리 및 분석 파이프라인 호출
-           - PRESENTATION: 동일 결과에 대한 ViewSpec 생성 (쿼리 0건)
-           - REPORT_ACTION: 분석 결과를 리포트 초안 블록으로 조립 (쿼리 0건)
-        7. 모호성 해소(Disambiguation) 필요 여부 판별
-        8. 단일 트랜잭션 DB 커밋 및 Lease 해제
-        9. 수화(Hydration)된 최신 상태 응답 반환
-
-        Args:
-            conversation_id: 대상 대화방 UUID
-            payload: 사용자 요청 페이로드 (user_message, idempotency_key, expected_head_turn_id 등)
-            context: 요청 컨텍스트 (user_id, role, as_of, timezone 등)
-
-        Returns:
-            대화 턴 실행 결과 딕셔너리 (status, turn, conversation, disambiguation_options 등)
+        """[책임] 멱등성 검사, DB CAS Lease 획득 및 3대 라우트 분기를 거쳐 멀티턴 명령을 안전하게 실행한다.
+        - 입출력: conversation_id, 사용자 payload, context 수신 → 턴 실행 및 DB 커밋 후 완성된 Turn 응답 딕셔너리 반환
+        - 주의조건: 동일 멱등키 재요청 시 기존 결과 즉시 재생(Replay), CAS 헤드 불일치 시 CONCURRENT_CONFLICT 에러 반환
         """
         command = ConversationCommandRequest.model_validate(payload)
         has_planned_execution = supervisor_plan_ref is not None

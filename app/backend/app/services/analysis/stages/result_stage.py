@@ -37,7 +37,10 @@ def _chart_spec(
     rows: list[dict[str, Any]],
     governed_result_fields: tuple[str, ...],
 ) -> ChartSpec | None:
-    """결과 데이터 행들과 지표 필드들로부터 최적의 바 차트(ChartSpec) 규격을 조립합니다."""
+    """[책임] 쿼리 실행 결과 행과 지표 목록을 분석하여 최적의 바 차트 렌더링 규격을 결정론적으로 조립한다.
+    - 입출력: 쿼리 결과 rows 및 governed_result_fields 수신 → X축/Y축 필드가 지정된 ChartSpec 반환 (불가 시 None)
+    - 주의조건: 수치형 컬럼 부재, 기간 비교 다중 필드 충돌 시 차트 생성을 생략하고 None을 반환해 표 형태로만 렌더링
+    """
     if not rows:
         return None
     columns = tuple(rows[0])
@@ -86,7 +89,10 @@ def _chart_spec(
 
 
 class AnalysisResultStage:
-    """분석 결과 요약, 차트 규격 구성 및 아티팩트 발급을 총괄하는 단계 처리기 클래스."""
+    """[책임] 쿼리 실행 결과에 대한 자연어 요약 생성, 차트 규격 조립 및 아티팩트 발급을 총괄한다.
+    - 입출력: Trino 실행 결과 레코드 및 ContextPackage 수신 → ArtifactReference와 ChartSpec이 포함된 AnalysisResponse 반환
+    - 주의조건: LLM 요약과 실제 데이터 간 수치 불일치(환각) 감지 시 결정론적 백업 텍스트로 대체하여 정직성 유지
+    """
 
     def __init__(
         self,
@@ -94,12 +100,19 @@ class AnalysisResultStage:
         support: PipelineSupport,
         responses: AnalysisResponseFactory,
     ) -> None:
+        """[책임] 모델 어댑터와 응답 팩토리를 설정하여 파이프라인의 결과 정리 및 아티팩트 생성 단계를 초기화한다.
+        - 입출력: ModelAdapter, PipelineSupport, AnalysisResponseFactory 수신 → 내부 의존성 보관
+        - 주의조건: 요약 생성을 위한 Node 3 모델 호출 경로와 불변 응답 팩토리의 정합성을 보장해야 함
+        """
         self._model = model
         self._support = support
         self._responses = responses
 
     async def run(self, state: AnalysisPipelineState) -> AnalysisResponse:
-        """결과 단계를 수행하여 최종 AnalysisResponse를 조립 및 반환합니다."""
+        """[책임] 쿼리 실행 결과 데이터를 바탕으로 근거 기반 자연어 요약과 차트 스펙을 생성하고 최종 성공 응답을 조립한다.
+        - 입출력: AnalysisPipelineState(query rows, package) 수신 → ArtifactReference와 ChartSpec이 포함된 AnalysisResponse 반환
+        - 주의조건: Node 3 LLM 요약이 실제 수치와 불일치(환각)할 경우 결정론적 fallback 텍스트(`grounded_summary`)로 강제 대체
+        """
         package = cast(ContextPackage, state.package)
         plan = cast(dict[str, Any], state.plan)
         query = cast(dict[str, Any], state.query)

@@ -48,11 +48,9 @@ def compile_typed_sql(
     plan: AnalysisPlan,
     package: object,
 ) -> dict[str, object] | None:
-    """지원 가능한 단일 자산 계획을 SQLGlot AST로 컴파일한다.
-
-    반환값이 ``None``이면 계획이 현재 결정론적 범위 밖이라는 뜻이며 안전성 실패를 성공으로
-    바꾸지 않는다. 호출자는 기존 Node 2 후보를 생성하더라도 동일한 ``AnalysisPlan``과 G2
-    검증을 강제해야 한다.
+    """[책임] 승인된 AnalysisPlan과 시맨틱 컨텍스트를 파싱하여 결정론적 Trino SQL AST 및 실행 명세를 컴파일한다.
+    - 입출력: AnalysisPlan, RuntimeContextPackage 수신 → canonical_sql/executable_sql 딕셔너리 반환 (지원 범위 외 None 반환)
+    - 주의조건: 미승인 집계 함수, 단일 자산 범위 초과, 비율식 지표 의존성 불완전 시 None을 반환하여 Node 2 경로로 위임
     """
 
     contracts = getattr(package, "runtime_contracts", None)

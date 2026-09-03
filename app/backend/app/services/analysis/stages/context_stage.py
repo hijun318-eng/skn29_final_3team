@@ -46,7 +46,10 @@ logger = logging.getLogger("uvicorn.error")
 
 
 class AnalysisContextStage:
-    """파이프라인의 컨텍스트 빌드 및 G1 게이트 검증을 총괄하는 단계 처리기 클래스."""
+    """[책임] 사용자 질문을 정규화하고 DataHub 메타데이터 및 승인 규칙과 바인딩하여 불변 ContextPackage(G1)를 구축한다.
+    - 입출력: 사용자 질문/세션 수신 → 지표/차원/시간 규칙이 검증된 ContextPackage 생성 후 PlanStage로 인계
+    - 주의조건: 미승인 자산 접근, 지표/기간 불완전 시 fail-closed 정책에 따라 명확화 요구 또는 접근 차단 반환
+    """
 
     def __init__(
         self,
@@ -55,13 +58,20 @@ class AnalysisContextStage:
         support: PipelineSupport,
         responses: AnalysisResponseFactory,
     ) -> None:
+        """[책임] 데이터 플랫폼 어댑터, LLM 모델 어댑터, 지원 유틸리티를 바인딩하여 컨텍스트 스테이지를 초기화한다.
+        - 입출력: DataPlatformAdapter, ModelAdapter, PipelineSupport, AnalysisResponseFactory 수신 → 내부 의존성 보관
+        - 주의조건: 메타데이터 소스와 모델 추론 인터페이스가 유효하지 않으면 런타임 초기화 단계에서 에러 발생
+        """
         self._adapter = adapter
         self._model = model
         self._support = support
         self._responses = responses
 
     async def run(self, state: AnalysisPipelineState) -> AnalysisResponse | None:
-        """컨텍스트 단계를 실행하여 state에 package와 references를 채웁니다 (실패 시 AnalysisResponse 반환)."""
+        """[책임] 컨텍스트 단계를 실행하여 state에 G1 검증을 통과한 ContextPackage와 참조 정보를 채운다.
+        - 입출력: AnalysisPipelineState 수신 → 지표/자산/권한/시간 스냅샷을 구성하여 state.package에 저장 (실패 시 에러 응답 반환)
+        - 주의조건: 기간 누락, 지표 미매칭, 자산 권한 부재 시 CLARIFICATION_REQUIRED 또는 ACCESS_DENIED 에러 반환
+        """
         payload = state.payload
         context = state.context
         decision = state.decision

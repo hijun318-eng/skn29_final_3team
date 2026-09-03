@@ -76,7 +76,10 @@ def decide_fanout_plan(
     join: GovernedJoin,
     evidence: GrainSafetyEvidence,
 ) -> FanoutDecision:
-    """카디널리티 방향과 명시적 grain 증거만으로 JOIN 물리 계획을 선택한다."""
+    """[책임] 카디널리티 방향과 집계 단위(Grain) 증거를 대조하여 팬아웃 안전 물리 계획을 결정한다.
+    - 입출력: GovernedJoin 및 GrainSafetyEvidence 수신 → DIRECT_JOIN / PREAGGREGATE / SEMI_JOIN / REJECT 결정 객체 반환
+    - 주의조건: N:M 조인, 키 고유성 증명 실패, 다중 Fact 공통 Grain 부재 시 FanoutPlan.REJECT를 반환하여 안전 차단
+    """
 
     endpoints = frozenset({join.left, join.right})
     assets = _validate_evidence(join, evidence)

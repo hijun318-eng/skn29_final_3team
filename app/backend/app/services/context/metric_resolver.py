@@ -1168,9 +1168,16 @@ async def _complete_business_metric_terms(
 
 
 class MetricResolver:
-    """승인된 자산 메타데이터 및 용어사전과 사용자의 질의를 대조하여 단일 지표를 확정하는 리졸버."""
+    """[책임] 승인된 DataHub 자산 메타데이터 및 용어사전과 사용자 질의를 대조하여 지표와 차원을 확정한다.
+    - 입출력: 자연어 질의 및 세션 컨텍스트 수신 → DataHub Glossary 매핑 및 멀티턴 슬롯이 결속된 지표 명세 반환
+    - 주의조건: 지표 매칭 실패, 다중 지표 모호성, 필수 기간 파라미터 누락 시 ContextBuildError 발생으로 차단
+    """
 
     def __init__(self, adapter: DataPlatformAdapter, model: object) -> None:
+        """[책임] 데이터 플랫폼 어댑터와 LLM 모델 어댑터를 주입받고 차원 값 캐시를 초기화한다.
+        - 입출력: DataPlatformAdapter 및 ModelAdapter 객체 수신 → 내부 클라이언트와 TTL 캐시 저장소 설정
+        - 주의조건: DIMENSION_VALUE_CACHE_TTL_SECONDS 환경변수를 파싱하며 범위(30초~3600초) 외 값은 클램핑
+        """
         self._adapter = adapter
         self._model = model
         try:
@@ -1361,7 +1368,10 @@ class MetricResolver:
         candidate_set: AssetCandidateSet | None = None,
         budget: Any = None,
     ) -> tuple[list[dict[str, object]], str, dict[str, object]]:
-        """사용자 요청으로부터 지표, 차원, 기간, 의도를 확정하고 구조화된 요청 객체를 생성합니다."""
+        """[책임] 사용자 요청과 DataHub 메타데이터를 대조하여 단일/복수 지표, 기간, 차원 및 의도를 확정한다.
+        - 입출력: AnalysisRequest, RequestContext, assets 수신 → 확정된 지표 목록, 의도, structured_request 튜플 반환
+        - 주의조건: 지표 모호성(여러 지표 경합), 기간 누락, 권한 외 차원 요청 시 CLARIFICATION_REQUIRED 예외 발생
+        """
         calendar_ids = {
             str(metadata.get("calendar_id") or "")
             for asset in assets

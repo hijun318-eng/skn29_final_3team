@@ -295,13 +295,20 @@ def _metric(item: dict[str, Any]) -> ContextMetric:
 
 
 class PipelineContextService:
-    """파이프라인 컨텍스트 구축 서비스 클래스."""
+    """[책임] 런타임 카탈로그 메타데이터와 실데이터 필터를 결속하여 불변 RuntimeContextPackage를 조립한다.
+    - 입출력: AnalysisRequest 및 승인 자산 메타데이터 수신 → 런타임 스키마 및 시간 바인딩이 완료된 RuntimeContextPackage 반환
+    - 주의조건: 스키마 조회 실패, 필터 값 DB 미존재, 토큰 예산 초과 시 ContextBuildError를 발생시켜 실행 차단
+    """
 
     def __init__(
         self,
         adapter: DataPlatformAdapter,
         context_builder: ContextPackageBuilder,
     ) -> None:
+        """[책임] 데이터 플랫폼 어댑터와 컨텍스트 패키지 빌더를 주입받아 서비스를 초기화한다.
+        - 입출력: DataPlatformAdapter 및 ContextPackageBuilder 인스턴스 수신 → 서비스 멤버 변수로 보관
+        - 주의조건: 카탈로그 통신 및 불변 패키지 직렬화 의존성이 유효해야 런타임 스키마 조회가 가능함
+        """
         self._adapter = adapter
         self._context_builder = context_builder
 
@@ -312,7 +319,10 @@ class PipelineContextService:
         assets: list[dict[str, object]],
         structured_request: dict[str, object] | None = None,
     ) -> RuntimeContextPackage:
-        """선택된 자산 메타데이터로부터 실행 컨텍스트 스냅샷인 RuntimeContextPackage를 생성합니다."""
+        """[책임] 선택된 자산 메타데이터, 스키마, 필터 실데이터를 결합하여 RuntimeContextPackage를 생성한다.
+        - 입출력: AnalysisRequest, RequestContext, assets, structured_request 수신 → 검증된 RuntimeContextPackage 반환
+        - 주의조건: 시간 파라미터 불일치, 필터 값 미확인, 토큰 예산(6000) 초과 시 ContextBuildError 발생
+        """
         # 1. 대상 자산들의 스키마를 DataPlatformAdapter로부터 병렬/순차 조회
         schemas: dict[str, dict[str, Any]] = {}
         for asset in assets:

@@ -50,7 +50,10 @@ __all__ = [
 
 
 class ContextPackageBuilder:
-    """검증된 자산과 지표들로부터 정규화된 불변 ContextPackage를 생성하는 빌더 클래스."""
+    """[책임] 권한 검사된 DataHub 메타데이터, 지표 및 파라미터를 불변 ContextPackage 스냅샷으로 조립한다.
+    - 입출력: ContextBuildRequest 및 entitled_asset_urns 수신 → 패키지 해시가 봉인된 ContextPackage 객체 반환
+    - 주의조건: 데이터셋 8개/컬럼 60개 한도 초과, 미승인 URN 접근 시 ContextBuildError 발생으로 fail-closed
+    """
 
     MAX_DATASETS = 8
     MAX_COLUMNS = 60
@@ -62,7 +65,10 @@ class ContextPackageBuilder:
         request: ContextBuildRequest,
         entitled_asset_urns: frozenset[str],
     ) -> ContextPackage:
-        """권한 및 상한을 검증하고 canonical SHA-256 해시가 포함된 불변 ContextPackage를 생성합니다."""
+        """[책임] 권한 및 상한 규격을 검증하고 정규화된 SHA-256 해시가 부여된 불변 ContextPackage를 생성한다.
+        - 입출력: ContextBuildRequest 및 entitled_asset_urns 수신 → 검증된 ContextPackage 객체 생성 후 파이프라인으로 반환
+        - 주의조건: 허용 상한(8개 데이터셋/60개 컬럼) 초과, 미승인 URN 참조, 지표 수식 오류 시 ContextBuildError 발생
+        """
         self._validate_request_metadata(request)
         assets = tuple(
             sorted(

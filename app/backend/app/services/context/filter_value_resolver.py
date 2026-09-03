@@ -59,11 +59,9 @@ async def discover_dimension_values(
     asset_fqn: str,
     column: str,
 ) -> tuple[str, ...]:
-    """승인된 저카디널리티 차원 필드의 실제 값 후보를 제한된 범위로 조회한다.
-
-    의미 기반 BI 도구의 실데이터 값 추천 방식처럼 최대 64개까지만 언어 해석기에
-    전달한다. 65번째 값이 확인되면 일부 목록을 전체 후보처럼 오인하지 않도록 빈
-    결과를 반환한다.
+    """[책임] 저카디널리티 차원 컬럼에 대해 실제 DB에 존재하는 고유 값 후보를 안전하게 조회한다.
+    - 입출력: DataPlatformAdapter, asset_fqn, column 수신 → 최대 64개의 고유 문자열 값 튜플 반환
+    - 주의조건: 카디널리티 한도(64개) 초과 시 부분 추천으로 인한 왜곡을 방지하기 위해 빈 튜플 반환
     """
 
     sql = (
@@ -103,20 +101,9 @@ async def resolve_filter_value(
     operator: str,
     value_text: str,
 ) -> ResolvedFilterValue:
-    """승인된 자산/컬럼에서 value_text와 대소문자 무관 일치하는 단일 실제 값을 조회하여 반환합니다.
-
-    Args:
-        adapter: Trino 실행 어댑터
-        asset_fqn: 승인된 테이블 FQN
-        column: 승인된 컬럼명
-        operator: 비교 연산자
-        value_text: 사용자가 입력한 필터 텍스트
-
-    Returns:
-        DB에서 확인된 ResolvedFilterValue 객체
-
-    Raises:
-        FilterValueUnresolvedError: 매칭되는 값이 없거나 2개 이상 모호한 경우
+    """[책임] 사용자가 입력한 필터 텍스트를 실제 DB 값과 대소문자 무관 대조하여 정확한 단일 값으로 바인딩한다.
+    - 입출력: 어댑터, 테이블 FQN, 컬럼, 연산자, 사용자 입력 텍스트 수신 → 확정된 ResolvedFilterValue 반환
+    - 주의조건: 일치하는 값이 없거나 2개 이상 모호하게 매칭되는 경우 FilterValueUnresolvedError 발생
     """
     candidate = value_text.strip()
     if not candidate:

@@ -8,6 +8,8 @@ import { createServer } from "../../app/frontend/node_modules/vite/dist/node/ind
 
 const frontendRoot = fileURLToPath(new URL("../../app/frontend", import.meta.url));
 const chartSource = readFileSync(new URL("../../app/frontend/src/components/charts/EnterpriseChart.jsx", import.meta.url), "utf8");
+assert.match(chartSource, /interval=\{compactCategoryChart \? 0 : "preserveStartEnd"\}/);
+assert.match(chartSource, /width=\{compactCategoryChart \? 54 : 72\}/);
 const stylesSource = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
 const server = await createServer({
   appType: "custom",

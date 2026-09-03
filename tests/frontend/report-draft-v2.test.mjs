@@ -563,12 +563,30 @@ const wideMonthlyTable = { ...monthlyArtifact, table: { ...monthlyArtifact.table
 assert.equal(estimateArtifactViewBlockLayout(legacyMonthlyTable, wideMonthlyTable, { orientation: "landscape" }).height, 12);
 const manuallySizedLegacyTable = { ...legacyMonthlyTable, h: 9, content: JSON.stringify({ density: "comfortable", sizeMode: "manual" }) };
 assert.equal(fitFrontendArtifactViewBlock(manuallySizedLegacyTable, monthlyArtifact, { orientation: "portrait" }), manuallySizedLegacyTable);
+const compactHotelTable = {
+  ...channelArtifact,
+  table: {
+    ...channelArtifact.table,
+    columns: channelArtifact.table.columns.slice(0, 2),
+    rows: channelArtifact.table.rows.slice(0, 3),
+  },
+};
+assert.deepEqual(
+  estimateArtifactViewBlockLayout({ ...legacyChannelTable, w: 6, columns: 6 }, compactHotelTable, { orientation: "portrait" }),
+  { width: 6, height: 6 },
+  "three-row tables should fit their content without a clipped row or an oversized block",
+);
+const undersizedChart = resizeDraftBlocks([legacyChart], legacyChart.id, 6, 5, "portrait");
+assert.equal(undersizedChart?.blocks[0].h, 9, "portrait charts must retain enough height for category labels");
+const undersizedTable = resizeDraftBlocks([{ ...legacyChannelTable, h: 9 }], legacyChannelTable.id, 6, 5, "portrait");
+assert.equal(undersizedTable?.blocks[0].h, 6, "portrait tables must retain enough height for three visible rows");
 assert.deepEqual(legacyChart, { id: "legacy-chart", title: "월별 차트", type: "chart", artifactId: monthlyArtifact.artifact_id, content: JSON.stringify({ showLegend: true }), columns: 6, x: 0, y: 0, w: 6, h: 7 }, "legacy sizing must be pure");
 
 assert.match(reportSources.blockControls, /memo\(function ReportCurrencyControl/);
 assert.match(reportSources.controller, /currency=\{reportCurrency\}/);
 assert.match(reportSources.dragAndDrop, /keyboardEndDropPosition\(blocksRef\.current/);
 assert.match(reportSources.dragAndDrop, /유효한 위치가 없어 이동을 취소했습니다/);
+assert.match(reportSources.presentation, /safeDataBlockHeight\(block, orientation\)/);
 assert.match(
   reportSources.controller,
   /if \(draft\.isDirty\) \{\s*lifecycle\.setError\("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요\."\)/,

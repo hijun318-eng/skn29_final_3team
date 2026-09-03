@@ -1,5 +1,5 @@
 /** 보고서 editor의 저장·history·방향·미리보기 명령을 제공하는 toolbar 모듈이다. */
-import { memo, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -56,6 +56,17 @@ export const ReportEditorToolbar = memo(function ReportEditorToolbar({
 }) {
   const titleAtFocusRef = useRef(reportTitle || "보고서 초안");
   const cancelTitleEditRef = useRef(false);
+  useEffect(() => {
+    const handleDocumentClick = (event) => {
+      const openMenu = document.querySelector(".report-view-menu[open]");
+      if (openMenu && !openMenu.contains(event.target)) {
+        openMenu.removeAttribute("open");
+      }
+    };
+    document.addEventListener("pointerdown", handleDocumentClick);
+    return () => document.removeEventListener("pointerdown", handleDocumentClick);
+  }, []);
+
   const commitTitle = (value) => {
     const nextTitle = value.trim();
     onReportTitleChange?.(nextTitle);

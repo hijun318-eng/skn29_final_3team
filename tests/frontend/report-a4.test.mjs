@@ -17,6 +17,7 @@ const styleSources = Object.fromEntries(styleFiles.map((file) => [file, source(f
 const styles = styleFiles.map((file) => styleSources[file]).join("\n");
 
 assert.match(component, /import "\.\/report-a4-paper\.css";\s*import "\.\/report-a4-content\.css";\s*import "\.\/report-a4-artifact\.css";\s*import "\.\/report-a4-print\.css";/);
+assert.match(styleSources["report-a4-artifact.css"], /\.notion-block:has\(> \.report-whole-artifact > \.report-whole-artifact-kpis\.is-comparison\) > \.notion-block-title--readonly\s*\{[\s\S]*margin-block-end: 3mm;/);
 assert.doesNotMatch(component, /report-a4\.css/);
 assert.match(component, /new ResizeObserver\(resize\)/);
 assert.match(component, /pages\.map\(\(page, pageIndex\)/);

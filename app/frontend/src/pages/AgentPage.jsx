@@ -29,6 +29,7 @@ const REPORT_ARTIFACT_VIEW = Object.freeze({
 });
 
 const MAX_QUESTION_LENGTH = 1000;
+const SAVED_ANALYSIS_PAGE_SIZE = 5;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
 
@@ -51,7 +52,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [savedBusy, setSavedBusy] = useState(false);
   const [definitions, setDefinitions] = useState([]);
   const [definitionQuery, setDefinitionQuery] = useState("");
-  const [visibleDefinitionCount, setVisibleDefinitionCount] = useState(10);
   const requestInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const activeTraceId = useRef("");
@@ -69,10 +69,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
 
   const filteredDefinitions = useMemo(() => {
     const normalized = definitionQuery.trim().toLocaleLowerCase("ko-KR");
-    return definitions.filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
+    return definitions
+      .slice(0, SAVED_ANALYSIS_PAGE_SIZE)
+      .filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
   }, [definitionQuery, definitions]);
 
-  const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
+  const visibleDefinitions = filteredDefinitions;
   const latestArtifactTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
     [turns],
@@ -569,7 +571,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         <p>저장된 분석</p>
         <label className="saved-analysis-search">
           <span className="sr-only">저장된 분석 검색</span>
-          <input value={definitionQuery} onChange={(e) => { setDefinitionQuery(e.target.value); setVisibleDefinitionCount(10); }} placeholder="저장 분석 검색" />
+          <input value={definitionQuery} onChange={(e) => setDefinitionQuery(e.target.value)} placeholder="저장 분석 검색" />
         </label>
         {visibleDefinitions.length === 0 && <small className="chat-history-empty">아직 저장된 분석이 없습니다.</small>}
         {visibleDefinitions.map((d) => (
@@ -577,9 +579,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
             <MessageSquareText size={15} /><span>{d.question}<small>다시 분석하기</small></span>
           </button>
         ))}
-        {filteredDefinitions.length > visibleDefinitionCount && (
-          <button type="button" className="saved-analysis-more" onClick={() => setVisibleDefinitionCount((c) => c + 10)}>더 보기</button>
-        )}
       </aside>
 
       {/* 중앙: 대화 스레드 메인 */}

@@ -930,9 +930,9 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;out
 
 /* 단일 KPI는 여러 지표 카드와 구분해 한눈에 읽히는 Hero Metric으로 표시한다. */
 .analysis-kpi-section.is-single-metric .analysis-metrics.is-single-metric{grid-template-columns:minmax(0,1fr)}
-.analysis-kpi-section.is-single-metric .analysis-metric-card--total.is-hero-metric{min-height:158px;padding:21px 23px;border-color:var(--av-paper-line-strong)!important;background:linear-gradient(145deg,var(--av-paper-accent),var(--av-paper) 72%)!important;box-shadow:0 8px 24px rgba(5,19,38,.12)}
-.analysis-kpi-section.is-single-metric .analysis-metric-card--total.is-hero-metric strong{margin-top:14px!important;font-size:clamp(38px,4vw,48px)!important;font-weight:560;letter-spacing:-.045em}
-.analysis-kpi-section.is-single-metric .analysis-metric-card--total.is-hero-metric strong em{font-size:14px;font-weight:650}
+.analysis-kpi-section.is-single-metric .analysis-metric-card--total.is-hero-metric{min-height:112px;padding:17px 18px;border:1px solid var(--av-paper-line)!important;border-top:2px solid var(--av-blue)!important;background:var(--av-paper)!important;box-shadow:0 3px 12px rgba(5,19,38,.08)}
+.analysis-kpi-section.is-single-metric .analysis-metric-card--total.is-hero-metric strong{margin-top:10px!important;font-size:clamp(28px,3vw,34px)!important;font-weight:700;letter-spacing:-.035em}
+.analysis-kpi-section.is-single-metric .analysis-metric-card--total.is-hero-metric strong em{font-size:12px;font-weight:650}
 .analysis-kpi-sparkline{width:100%;height:58px;margin:14px 0 2px;color:var(--av-blue);border-bottom:1px solid var(--av-paper-line-soft)}
 .analysis-kpi-sparkline svg{width:100%;height:100%;overflow:visible}
 .analysis-kpi-sparkline polygon{fill:currentColor;opacity:.08}

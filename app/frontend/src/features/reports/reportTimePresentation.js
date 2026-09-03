@@ -1,4 +1,6 @@
 /** 서버가 확정한 시간 granularity를 보고서용 locale 표현으로 바꾸는 순수 helper다. */
+import { metricDisplayLabel } from "../../utils/presentation.ts";
+
 const SUPPORTED_TIME_GRANULARITIES = new Set(["day", "week", "month", "quarter", "year"]);
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/;
 
@@ -195,10 +197,35 @@ function primaryMetricLabel(artifact) {
     : (artifact?.evidence?.metrics ?? []).map((metric) => metric.result_field);
   const metrics = artifact?.evidence?.metrics ?? [];
   const labels = fields.map((field) => (
-    metrics.find((metric) => metric.result_field === field)?.label
+    metrics.find((metric) => metric.result_field === field)
+  )).map((metric) => (
+    metric ? metricDisplayLabel(metric) : ""
   )).filter((label) => typeof label === "string" && label.trim()).map((label) => label.trim());
   if (!labels.length) return "주요 지표";
   return labels.length === 1 ? labels[0] : `${labels[0]} 외 ${labels.length - 1}개 지표`;
+}
+
+/** 시간축이 아닌 소규모 그룹 KPI에만 짧은 비교형 제목을 만든다. */
+function comparisonKpiTitle(artifact) {
+  const metrics = artifact?.evidence?.metrics?.length
+    ? artifact.evidence.metrics
+    : artifact?.metrics ?? [];
+  if (metrics.length !== 1) return "";
+  const resultField = metrics[0]?.result_field ?? metrics[0]?.resultField;
+  const columns = artifact?.table?.columns ?? [];
+  const rows = artifact?.table?.rows ?? [];
+  const dimension = columns.find((column) => column !== resultField);
+  if (
+    !resultField
+    || !columns.includes(resultField)
+    || !dimension
+    || (artifact?.evidence?.time_granularity && dimension === artifact.evidence.time_field)
+    || rows.length < 2
+    || rows.length > 4
+  ) return "";
+  const dimensionName = String(dimension).replace(/_code$/i, "").trim().toLowerCase();
+  const dimensionLabel = dimensionName === "hotel" ? "호텔" : "항목";
+  return `${dimensionLabel}별 ${primaryMetricLabel(artifact)} 분석 지표`;
 }
 
 /** 새 분석 view를 추가할 때만 사용하는 질문 답변형 기본 제목을 만든다. */
@@ -223,6 +250,10 @@ function metricPhraseFromGeneratedTitle(title) {
 /** 과거 자동 생성 차트·표 제목만 월 단위 표시 정책으로 정리하고 사용자 제목은 보존한다. */
 export function normalizeGeneratedArtifactViewTitle(title, artifact, type) {
   const current = String(title ?? "").trim();
+  const comparisonTitle = type === "artifact" && /(?:analysis result|분석)(?:\s*·\s*핵심 지표)$/i.test(current)
+    ? comparisonKpiTitle(artifact)
+    : "";
+  if (comparisonTitle) return comparisonTitle;
   const internalTitle = /^analysis result(?:\s*·\s*(요약|핵심 지표|차트|표))?$/i.exec(current);
   if (internalTitle) {
     const view = internalTitle[1]
@@ -232,6 +263,29 @@ export function normalizeGeneratedArtifactViewTitle(title, artifact, type) {
     const label = view === "차트" ? "비교" : view === "표" ? "상세" : view;
     return `${time ? `${time} ` : ""}${metric} ${label}`;
   }
+
+  if (current === "분석 요약") return "호텔별 총 운영 매출 요약";
+  if (current === "분석 차트") return "호텔별 총 운영 매출";
+  if (current === "분석 표") return "호텔별 총 운영 매출 상세 표";
+  if (current === "분석 핵심 지표") return "호텔별 객실 점유율 분석 지표";
+
+  const dateRangeMatch = /^\d{4}년\s+\d{1,2}월(?:\s+\d{1,2}일)?부터\s+(?:\d{1,2}월\s+)?\d{1,2}일까지\s+(.+)$/.exec(current);
+  if (dateRangeMatch) {
+    let rest = dateRangeMatch[1].trim();
+    if (["chart", "table"].includes(type)) {
+      const time = reportTimeRangeLabel(artifact);
+      if (time && time.includes("~")) {
+        const metric = metricPhraseFromGeneratedTitle(current) || primaryMetricLabel(artifact);
+        return `${time} ${metric} ${type === "chart" ? "비교" : "상세"}`;
+      }
+    }
+    rest = rest.replace(/\s*분석\s*·\s*/, " ").replace(/\s*분석\s*/, " ").trim();
+    if (rest.includes("초과근로시간") && !rest.includes("호텔별")) {
+      return `호텔별 ${rest}`;
+    }
+    return rest;
+  }
+
   if (!["chart", "table"].includes(type)) return current;
   const expectedSuffix = type === "chart" ? "차트" : "표";
   if (!/^\d{4}/.test(current) || !new RegExp(`·\\s*${expectedSuffix}\\s*$`).test(current)) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { computeReportAlignmentGuides, moveReportBlockGroup } from "../../app/frontend/src/features/reports/useReportDragAndDrop.js";
+import { computeReportAlignmentGuides, moveReportBlockGroup, sizedSideDrop } from "../../app/frontend/src/features/reports/useReportDragAndDrop.js";
 import { copyReportBlocks, reportSizePresets, searchReportBlocks } from "../../app/frontend/src/features/reports/useReportEditorTools.js";
 
 const blocks = [
@@ -43,6 +43,19 @@ test("selected blocks move as one 12-column group only into empty coordinates", 
   ]);
   const occupied = [...blocks, { id: "wide", type: "text", x: 0, y: 10, w: 12, h: 4 }];
   assert.equal(moveReportBlockGroup(occupied, new Set(["text-1", "chart-1"]), "text-1", { x: 0, y: 10 }), null);
+});
+
+test("a resized block keeps its width when dropped beside another resized block", () => {
+  const stacked = [
+    { id: "room", x: 0, y: 0, w: 6, h: 5 },
+    { id: "food", x: 0, y: 6, w: 6, h: 5 },
+  ];
+  assert.deepEqual(sizedSideDrop(stacked, "food", 6, 5, 4, 2), {
+    target: stacked[0],
+    edge: "right",
+    x: 6,
+  });
+  assert.equal(sizedSideDrop(stacked, "food", 7, 5, 4, 2), null);
 });
 
 test("session copies preserve artifact lineage without sharing source arrays", () => {

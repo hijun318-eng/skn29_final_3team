@@ -11,10 +11,10 @@ import { DataProvenanceBadge, ReportArtifactContent } from "./ReportArtifactCont
 import { ReportBlockMenu } from "./ReportBlockControls";
 import { MarkdownBlockEditor } from "./MarkdownBlockEditor";
 
-function blockMinimumHeight(type) {
+function blockMinimumHeight(type, orientation) {
   if (type === "artifact") return 5;
-  if (type === "chart") return 7;
-  if (type === "table") return 5;
+  if (type === "chart") return orientation === "portrait" ? 9 : 8;
+  if (type === "table") return 6;
   return 3;
 }
 
@@ -23,10 +23,10 @@ const RESIZE_DIRECTIONS = [
   ["s", "아래쪽"], ["sw", "왼쪽 아래"], ["w", "왼쪽"], ["nw", "왼쪽 위"],
 ];
 
-function blockResizeLimits(type) {
+function blockResizeLimits(type, orientation) {
   return {
     minimumWidth: type === "text" ? 4 : 6,
-    minimumHeight: blockMinimumHeight(type),
+    minimumHeight: blockMinimumHeight(type, orientation),
     maximumHeight: ["artifact", "chart", "table"].includes(type) ? 18 : 14,
   };
 }
@@ -45,6 +45,7 @@ function editorBlockPropsEqual(previous, next) {
     && previous.artifact === next.artifact
     && previous.artifactState === next.artifactState
     && previous.currency === next.currency
+    && previous.orientation === next.orientation
     && previous.isDraft === next.isDraft
     && previous.selected === next.selected
     && previous.primary === next.primary
@@ -60,6 +61,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   artifact,
   artifactState,
   currency,
+  orientation,
   isDraft,
   selected,
   primary,
@@ -167,7 +169,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       start.direction,
       Math.round((event.clientX - start.pointerX) / start.columnStep),
       Math.round((event.clientY - start.pointerY) / start.rowStep),
-      blockResizeLimits(block.type),
+      blockResizeLimits(block.type, orientation),
     );
     resizePreviewRef.current = next;
     setResizePreview(next);
@@ -217,7 +219,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       direction,
       deltaX,
       deltaY,
-      blockResizeLimits(block.type),
+      blockResizeLimits(block.type, orientation),
     );
     resizeBlock(next.w, next.h, { x: next.x, y: next.y });
   };

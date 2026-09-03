@@ -37,7 +37,7 @@
 }
 [data-report-builder="v2"]>.notion-editor-topbar{
   position:relative;
-  z-index:30;
+  z-index:100;
   top:auto;
   min-height:var(--builder-header);
   margin:0;
@@ -66,7 +66,8 @@
 [data-report-builder="v2"] .report-builder-heading>div{min-width:0}
 [data-report-builder="v2"] .report-builder-heading small{display:block;flex:none;color:#6da9f8;font-size:10px;font-weight:800;letter-spacing:.14em;white-space:nowrap}
 [data-report-builder="v2"] .report-builder-heading h1{max-width:min(430px,36vw);margin:3px 0 1px;overflow:hidden;color:#f6f8fb;font-size:18px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
-[data-report-builder="v2"] .report-builder-title-input{width:min(430px,34vw);margin:3px -6px 1px;padding:2px 6px;overflow:hidden;color:#f6f8fb;border:1px solid transparent;border-radius:5px;outline:0;background:transparent;font-size:20px;font-weight:750;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
+[data-report-builder="v2"] .report-builder-heading h1:hover{color:#4f99f5}
+[data-report-builder="v2"] .report-builder-title-input{width:auto;max-width:min(430px,36vw);height:32px;margin:1px 0;padding:0 8px;color:#f6f8fb;border:1px solid transparent;border-radius:6px;outline:0;background:transparent;font-size:18px;font-weight:700;line-height:1.25}
 [data-report-builder="v2"] .report-builder-title-input:hover{border-color:#26384f;background:#0a111c}
 [data-report-builder="v2"] .report-builder-title-input:focus{border-color:#4f99f5;background:#0b1523;box-shadow:0 0 0 3px rgba(79,153,245,.14)}
 [data-report-builder="v2"] .report-builder-title-input:disabled{color:#8395ab;opacity:1}
@@ -78,7 +79,7 @@
 [data-report-builder="v2"] .report-view-menu>summary{height:34px;padding:0 10px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#aab8c9;border:1px solid #2a374a;border-radius:4px;background:#111926;font-size:11px;list-style:none;white-space:nowrap}
 [data-report-builder="v2"] .report-view-menu>summary::-webkit-details-marker{display:none}
 [data-report-builder="v2"] .report-view-menu[open]>summary,[data-report-builder="v2"] .report-view-menu>summary:hover{color:#fff;border-color:#4c78ad;background:#13253a}
-[data-report-builder="v2"] .report-view-menu-popover{position:absolute;z-index:90;top:calc(100% + 9px);right:0;width:286px;padding:12px;display:grid;gap:10px;color:#cbd7e5;border:1px solid #2b3c52;border-radius:10px;background:#0d1622;box-shadow:0 20px 55px rgba(0,0,0,.42)}
+[data-report-builder="v2"] .report-view-menu-popover{position:absolute;z-index:120;top:calc(100% + 9px);right:0;width:286px;padding:12px;display:grid;gap:10px;color:#cbd7e5;border:1px solid #2b3c52;border-radius:10px;background:#0d1622;box-shadow:0 20px 55px rgba(0,0,0,.42)}
 [data-report-builder="v2"] .report-view-menu-popover>label,[data-report-builder="v2"] .report-view-menu-popover>.report-orientation-switch{min-height:auto!important;padding:0!important;display:grid!important;grid-template-columns:96px minmax(0,1fr);align-items:center;gap:8px;color:#8fa1b7;border:0!important;background:transparent!important;font-size:10px}
 [data-report-builder="v2"] .report-view-menu-popover select{width:100%;height:34px;padding:0 9px;color:#dbe5f1;border:1px solid #304158;border-radius:6px;outline:0;background:#111c2b;font-size:11px}
 [data-report-builder="v2"] .report-view-menu-popover>.report-view-compact{height:auto!important;min-height:48px!important;padding:8px 10px!important;justify-content:flex-start!important;text-align:left}
@@ -90,18 +91,14 @@
 [data-report-builder="v2"] .report-view-menu-popover>.report-orientation-switch{grid-template-columns:96px 1fr 1fr}
 [data-report-builder="v2"] .report-view-menu-popover>.report-editor-theme-toggle{width:100%;min-width:0!important;justify-content:center}
 
-@media(max-width:1599px) and (min-width:901px){
-  [data-report-builder="v2"]>.notion-editor-topbar{padding:10px 16px;grid-template-columns:minmax(0,1fr);row-gap:8px}
-  [data-report-builder="v2"]>.notion-editor-topbar>.editor-navigation-actions{width:100%}
-  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{width:100%;margin-left:0;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin}
-  [data-report-builder="v2"] .report-builder-heading{min-width:0;flex:1}
-  [data-report-builder="v2"] .report-builder-heading h1{max-width:none}
+@media(max-width:1599px){
+  [data-report-builder="v2"] .report-view-menu-popover{left:0;right:auto}
 }
 
 @media(max-width:1599px) and (min-width:901px){
   [data-report-builder="v2"]>.notion-editor-topbar{padding:10px 16px;grid-template-columns:minmax(0,1fr);row-gap:8px}
   [data-report-builder="v2"]>.notion-editor-topbar>.editor-navigation-actions{width:100%}
-  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{width:100%;margin-left:0;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin}
+  [data-report-builder="v2"]>.notion-editor-topbar>.editor-command-actions{width:100%;margin-left:0;justify-content:flex-start;overflow:visible;flex-wrap:wrap;gap:7px}
   [data-report-builder="v2"] .report-builder-heading{min-width:0;flex:1}
   [data-report-builder="v2"] .report-builder-heading h1{max-width:none}
 }

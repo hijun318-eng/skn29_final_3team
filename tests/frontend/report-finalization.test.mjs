@@ -214,6 +214,8 @@ assert.doesNotMatch(reportFeatureSource, /현재 PDF에 포함되지 않아 확�
 assert.match(reportSources.documentView, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
 assert.match(reportSources.documentView, /PDF 새 탭에서 열기/);
 assert.match(reportSources.documentView, /PDF 다운로드/);
+assert.match(reportSources.documentView, /HTML 다운로드/);
+assert.match(reportSources.documentView, /onOpenFinalAsset\("html", true\)/);
 assert.match(reportSources.listView, /report-collection-tabs/);
 assert.match(reportSources.listView, /활성 보고서/);
 assert.match(reportSources.listView, /휴지통/);
@@ -295,6 +297,10 @@ assert.match(
 );
 assert.match(saveSource, /서버에는 저장했지만 이 브라우저의 임시 복구본은 갱신하지 못했습니다/);
 assert.match(saveSource, /title: draft\.titleRef\.current\.trim|const title = draft\.titleRef\.current\.trim/);
+assert.match(saveSource, /saveError instanceof ReportApiError && saveError\.status === 409/);
+assert.match(saveSource, /await lifecycle\.fetchDefinition\(definition\)/);
+assert.match(saveSource, /serverBlocks: latest\.blocks/);
+assert.match(saveSource, /현재 편집 내용은 보존했습니다/);
 assert.match(reportSources.finalDocument, /new AbortController\(\)/);
 assert.match(reportSources.finalDocument, /FINAL_DOCUMENT_TIMEOUT_MS = 15_000/);
 assert.match(reportSources.finalDocument, /controller\.abort\(\)/);

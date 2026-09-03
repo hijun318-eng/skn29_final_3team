@@ -216,16 +216,19 @@ export function estimateArtifactViewBlockLayout(block, artifact, options = {}) {
       + Math.max(0, Math.ceil((seriesCount - 2) / 2))
       + (rowCount > 12 ? 1 : 0);
   } else {
+    const compactThreeRowTable = rowCount <= 3 && columnCount <= 3;
     const widthColumnCapacity = width <= 6 ? 2 : 4;
-    height = 3
-      + Math.ceil(rowCount * 0.75)
-      + (rowCount > 4 ? 1 : 0)
-      + (orientation === "portrait" ? 1 : 0)
-      + (width <= 6 ? 1 : 0)
-      + (width > 6 ? 2 : 0)
-      + Math.max(0, Math.ceil((columnCount - widthColumnCapacity) / 2));
-    if (artifactViewBlockSettings(block)?.density === "compact") height -= 1;
-    height = Math.max(5, height);
+    height = compactThreeRowTable
+      ? 6
+      : 3
+        + Math.ceil(rowCount * 0.75)
+        + (rowCount > 4 ? 1 : 0)
+        + (orientation === "portrait" ? 1 : 0)
+        + (width <= 6 ? 1 : 0)
+        + (width > 6 ? 2 : 0)
+        + Math.max(0, Math.ceil((columnCount - widthColumnCapacity) / 2));
+    if (!compactThreeRowTable && artifactViewBlockSettings(block)?.density === "compact") height -= 1;
+    height = Math.max(6, height);
   }
   return { width, height: Math.min(18, height) };
 }

@@ -495,6 +495,78 @@ def _validate_wire_text_operation(
     )
 
 
+def _normalize_model_resize_operation(
+    payload: dict[str, object],
+    raw_operation: dict[str, object],
+) -> dict[str, object]:
+    """모델 resize 값을 현재 block 유형의 렌더링 최소 크기로 올린다."""
+
+    if raw_operation.get("op") != "resize_block":
+        return raw_operation
+    report = payload.get("report")
+    blocks = report.get("blocks") if isinstance(report, dict) else None
+    if not isinstance(blocks, list):
+        return raw_operation
+    target = next(
+        (
+            block
+            for block in blocks
+            if isinstance(block, dict)
+            and block.get("block_id") == raw_operation.get("block_id")
+        ),
+        None,
+    )
+    minimums = {
+        "text": (4, 4),
+        "chart": (6, 7),
+        "table": (6, 5),
+        "artifact": (6, 12),
+    }
+    block_minimums = minimums.get(target.get("type")) if target else None
+    if block_minimums is None:
+        return raw_operation
+    minimum_width, minimum_height = block_minimums
+    return {
+        **raw_operation,
+        "block_width": max(int(raw_operation["block_width"]), minimum_width),
+        "block_height": max(int(raw_operation["block_height"]), minimum_height),
+    }
+
+
+def _normalize_model_turn_response(result: dict[str, object]) -> dict[str, object]:
+    """모델이 생략한 의미 없는 nullable wire 필드만 strict 계약 형태로 채운다."""
+
+    normalized = dict(result)
+    normalized.setdefault("analysis_plan", None)
+    normalized.setdefault("patch", None)
+    normalized.setdefault("suggestions", [])
+    normalized.setdefault("exact_page_count", None)
+    patch = normalized.get("patch")
+    if not isinstance(patch, dict):
+        return normalized
+    operations = patch.get("operations")
+    if not isinstance(operations, list):
+        return normalized
+    nullable_fields = (
+        "block_id", "artifact_ref", "view", "title", "content", "orientation",
+        "currency_display_unit", "block_width", "block_height", "chart_type",
+        "show_legend", "density", "show_row_numbers", "size_mode",
+        "after_block_id", "width",
+    )
+    normalized_operations = []
+    for operation in operations:
+        if not isinstance(operation, dict):
+            normalized_operations.append(operation)
+            continue
+        normalized_operation = dict(operation)
+        for field in nullable_fields:
+            normalized_operation.setdefault(field, None)
+        normalized_operation.setdefault("evidence_refs", [])
+        normalized_operations.append(normalized_operation)
+    normalized["patch"] = {**patch, "operations": normalized_operations}
+    return normalized
+
+
 def _model_artifact_by_alias(
     payload: dict[str, object],
     artifact_ref: object,
@@ -662,9 +734,10 @@ async def generate_report_change_proposal(
                     timeout,
                     model=route.model,
                     provider=route.provider,
-                )
+            )
             transport_meta = result.pop(_TRANSPORT_META_KEY, {})
             failure_stage = "response_contract"
+            result = _normalize_model_turn_response(result)
             validate_payload(response_definition(node), result)
             failure_stage = "change_contract"
             kind = result["change_kind"]
@@ -700,6 +773,9 @@ async def generate_report_change_proposal(
                 for raw_operation in raw_patch["operations"]:
                     failure_stage = "wire_text_validation"
                     raw_operation = _validate_wire_text_operation(
+                        payload, raw_operation
+                    )
+                    raw_operation = _normalize_model_resize_operation(
                         payload, raw_operation
                     )
                     failure_stage = "operation_projection"

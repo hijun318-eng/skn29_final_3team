@@ -411,8 +411,8 @@ assert.match(source("pages/AgentPage.jsx"), /className=\{`analysis-notice analys
 assert.match(source("pages/AgentPage.jsx"), /reportTitleForAnalysis/);
 assert.match(source("pages/AgentPage.jsx"), /REPORT_ARTIFACT_VIEW\[String\(reportModalViewType\)\.toUpperCase\(\)\]/);
 assert.match(source("api/reportClient.ts"), /preferred_view: preferredView/);
-assert.match(source("pages/AgentPage.jsx"), /definitions\.filter/);
-assert.match(source("pages/AgentPage.jsx"), /filteredDefinitions\.slice\(0, visibleDefinitionCount\)/);
+assert.match(source("pages/AgentPage.jsx"), /definitions[\s\S]*\.slice\(0, SAVED_ANALYSIS_PAGE_SIZE\)[\s\S]*\.filter/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /saved-analysis-more/);
 assert.match(reportSources.lifecycle, /filteredRuns\.slice\(0, visibleRunCount\)/);
 assert.match(source("styles.css"), /@media\(max-width:1200px\)[\s\S]*\.chat-layout \.evidence-panel\{position:fixed/);
 assert.doesNotMatch(source("styles.css"), /\.page-stage\{[^}]*animation:[^}]*\sboth\}/);

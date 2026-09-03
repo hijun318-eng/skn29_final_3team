@@ -73,7 +73,10 @@ class ResolvedTurnSlots:
 
 
 class ConversationSlotResolver:
-    """멀티턴 대화 슬롯 해석 및 라우트 결정 상태 머신."""
+    """[책임] 대화 기록과 Node 1의 출력을 대조하여 3대 라우트(ANALYSIS/PRESENTATION/REPORT_ACTION)와 슬롯을 확정한다.
+    - 입출력: 사용자 발화, Node 1 정규화 출력, 이전 턴 히스토리 수신 → 라우트 및 지표/차원/기간이 바인딩된 ResolvedTurnSlots 반환
+    - 주의조건: 모호성 해소 대기 상태, 뷰 전환 요청, 단답형 후속 질의를 분기하여 불필요한 원천 쿼리 재실행을 차단
+    """
 
     ALLOWED_CHART_TYPES = ("SUMMARY", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT")
     CHART_CYCLE_ALLOWLIST = ("BAR", "LINE", "HORIZONTAL_BAR")
@@ -85,21 +88,9 @@ class ConversationSlotResolver:
         user_message: str,
         options: Sequence[dict[str, Any]],
     ) -> dict[str, Any] | None:
-        """사용자의 선택 발화가 모호성 해소 후보(지표/기간 목록) 중 어느 항목에 해당하는지 매칭합니다.
-
-        [매칭 알고리즘 단계]
-        1. 완전 일치 (Exact match): value, metric_id, label과 대소문자 무관 완전 일치
-        2. 서수 선택 (Ordinal match): 발화 맨 앞 정수를 선택지 순번으로 읽는다. 조사·수량사
-           종류는 열거하지 않으며, 뒤에 다른 숫자가 오면 순번으로 보지 않는다.
-        3. 부분 문자열 포함 (Substring/Token match): label이나 metric_id가 발화에 포함된 경우
-        4. 기간 범위 일치 (Period range match): 시작일/종료일 또는 기간 텍스트 매칭
-
-        Args:
-            user_message: 사용자가 입력한 선택 발화
-            options: 이전 턴에서 제시되었던 모호성 해소 후보 리스트
-
-        Returns:
-            매칭된 옵션 딕셔너리 (없으면 None)
+        """[책임] 사용자의 선택 발화를 모호성 해소 후보(지표/기간 목록)와 대조하여 일치하는 항목을 매칭한다.
+        - 입출력: user_message 문자열 및 options 후보 시퀀스 수신 → 매칭된 후보 딕셔너리 반환 (실패 시 None)
+        - 주의조건: 완전 일치, 서수 선택("1번"), 부분 토큰 포함 순으로 판정하며 모호한 다중 매칭 시 None 반환
         """
         if not options:
             return None
@@ -155,23 +146,9 @@ class ConversationSlotResolver:
         as_of: date | None = None,
         timezone_str: str = "Asia/Seoul",
     ) -> ResolvedTurnSlots:
-        """대화 기록(히스토리)과 Node 1의 출력을 대조하여 이번 턴의 슬롯과 라우트를 결정론적으로 확정합니다.
-
-        [처리 단계]
-        0. Disambiguation 선택 처리: 이전 턴이 모호성 해소 대기 상태였는지 확인
-        1. REPORT_ACTION 감지: "보고서에 담아줘", "리포트 생성" 등 의도 분석
-        2. PRESENTATION 감지: "차트로 보여줘", "표로 바꿔줘" 등 쿼리 재실행 없는 뷰 전환 의도 분석
-        3. ANALYSIS 슬롯 상속 & ChangeSet 적용: 단답형 후속 질의 여부를 판정하고 5대 연산으로 슬롯 확정
-
-        Args:
-            user_message: 사용자의 입력 발화
-            node1_output: LLM Node 1의 분석 결과 딕셔너리
-            previous_turns: 이전 턴들의 데이터 목록
-            as_of: 기준 일자 (생략 시 오늘)
-            timezone_str: 타임존 (기본 'Asia/Seoul')
-
-        Returns:
-            확정된 ResolvedTurnSlots 객체
+        """[책임] 대화 기록과 Node 1 출력을 평가하여 슬롯 변경 연산(ChangeSet)을 적용하고 최종 라우트를 확정한다.
+        - 입출력: user_message, node1_output, previous_turns, as_of 수신 → 확정된 슬롯과 라우트의 ResolvedTurnSlots 반환
+        - 주의조건: 후속 질의 상속 규칙 위반, 지원하지 않는 차트 전환 요청, 미승인 연산자 인입 시 안전 fallback 적용
         """
         msg = user_message.strip()
         as_of_date = as_of or date.today()

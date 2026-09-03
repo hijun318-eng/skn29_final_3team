@@ -28,7 +28,10 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
 
 
 class ConversationReconciler:
-    """외부 query cancel을 먼저 확인한 뒤 DB terminal state를 한 transaction으로 닫는다."""
+    """[책임] 원격 Trino 고아 쿼리를 안전하게 취소하고 DB의 만료된 stale 대화 명령을 원자적으로 종결한다.
+    - 입출력: 만료 기준 시각 수신 → 원격 취소 확인 후 DB 터미널 상태로 전이된 레코드 수 통계 반환
+    - 주의조건: Trino 원격 취소 실패 시 DB 상태를 성공으로 가장하지 않고 즉시 예외를 발생시켜 fail-closed
+    """
 
     def __init__(
         self,
@@ -38,6 +41,10 @@ class ConversationReconciler:
         stale_seconds: int = 120,
         batch_limit: int = 100,
     ) -> None:
+        """[책임] 고아 쿼리 취소 및 좀비 상태 대화 명령 복구를 위한 조정자 인스턴스를 초기화한다.
+        - 입출력: ConversationRepository, DataPlatformAdapter, 만료 시간(초), 배치 한도 수신 → 설정 보관
+        - 주의조건: stale_seconds(1~86400) 및 batch_limit(1~1000) 범위를 벗어날 경우 ValueError 발생
+        """
         if not 1 <= stale_seconds <= 86_400:
             raise ValueError("stale_seconds는 1~86400이어야 합니다.")
         if not 1 <= batch_limit <= 1_000:
@@ -48,8 +55,10 @@ class ConversationReconciler:
         self._batch_limit = batch_limit
 
     async def run_once(self, *, now: datetime | None = None) -> dict[str, int]:
-        """한 bounded batch를 취소·terminalize하며 cancel 실패 시 DB 성공으로 가장하지 않는다."""
-
+        """[책임] 만료된 Trino 쿼리를 원격 취소하고 DB의 stale 대화 명령을 단일 트랜잭션으로 종결한다.
+        - 입출력: 기준 시각 now 수신 → 취소 및 종결 처리된 레코드 수 통계 딕셔너리 반환
+        - 주의조건: Trino 원격 쿼리 취소 실패 시 DB 상태를 종결하지 않고 예외를 전파하여 일관성 유지
+        """
         current = now or datetime.now(timezone.utc)
         stale_before = current - timedelta(seconds=self._stale_seconds)
         orphan_queries = await self._repository.list_orphan_queries(
@@ -82,7 +91,10 @@ class ConversationReconciler:
 
 
 class ConversationRecoveryWorker:
-    """App DB가 구성된 process에서 stale recovery를 주기적으로 실행한다."""
+    """[책임] 애플리케이션 백그라운드에서 주기적으로 stale 대화 복구 루프를 실행하는 워커.
+    - 입출력: DataPlatformAdapter 수신 → 주기적 타이머 기반으로 ConversationReconciler.run_once 실행
+    - 주의조건: 프로세스 종료 신호(stop event) 수신 시 진행 중인 복구 작업을 안전하게 drain 후 종료
+    """
 
     def __init__(self) -> None:
         self._task: asyncio.Task[None] | None = None
@@ -96,7 +108,10 @@ class ConversationRecoveryWorker:
         return self._status
 
     async def start(self, data_platform: DataPlatformAdapter) -> None:
-        """App DB가 설정된 process에서 bounded stale recovery loop를 시작한다."""
+        """[책임] 백그라운드 태스크로 주기적인 stale recovery 루프를 구동한다.
+        - 입출력: DataPlatformAdapter 인스턴스 수신 → 백그라운드 asyncio 루프 태스크 시작
+        - 주의조건: App DB 미구성 환경(예: CI/Mock)인 경우 실행을 건너뛰고 not_required 상태 유지
+        """
 
         database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
         if not database_url:

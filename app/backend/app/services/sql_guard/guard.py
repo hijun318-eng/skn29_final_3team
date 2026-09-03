@@ -95,20 +95,9 @@ class GuardDecision:
 
 
 def validate_plan(plan: object, package: Any) -> GuardDecision:
-    """생성된 모델 계획(Plan)의 SQL 텍스트를 AST 수준에서 엄격히 검증하고 GuardDecision을 생성합니다.
-
-    [검증 4단계]
-    1. 기본 구문 및 정적 정책 검증 (validate_sql): SELECT 단일문, LIMIT 범위, 읽기 전용 검사
-    2. 세맨틱 의미론 검증 (validate_parsed_semantics): 카탈로그, 함수, 컬럼, 지표 수식, 조인, 필수 필터, 시간 조건 검사
-    3. 파라미터 바인딩 (bind_sql_parameters): 런타임 값으로 typed named parameter 치환
-    4. GuardDecision 반환 (성공 시 실행 가능 SQL 포함, 실패 시 차단 코드 반환)
-
-    Args:
-        plan: LLM이 생성한 SQL 계획 딕셔너리 (sql 키 포함)
-        package: ContextPackage 인스턴스 (runtime_contracts, parameter_bindings 등 포함)
-
-    Returns:
-        최종 GuardDecision 객체
+    """[책임] 생성된 모델 계획의 SQL을 SQLGlot AST 수준에서 파싱·검증하고 실행 가능 SQL을 확정한다.
+    - 입출력: plan 딕셔너리(SQL 포함) 및 ContextPackage 수신 → canonical/executable_sql이 포함된 GuardDecision 반환
+    - 주의조건: SELECT 외 구문, 미승인 컬럼/테이블 참조, 조인 키 불일치, LIMIT 누락 시 즉시 차단(fail-closed)
     """
     if not isinstance(plan, dict) or not isinstance(plan.get("sql"), str):
         return _blocked("MODEL_PLAN_INVALID", "모델 계획은 반드시 SQL 텍스트를 포함해야 합니다.")
@@ -167,7 +156,10 @@ def validate_parsed_semantics(
     package: Any,
     plan: dict[str, Any] | None = None,
 ) -> SemanticDecision:
-    """SQL 정책을 통과한 SQLGlot AST를 대상으로 세부 런타임 거버넌스 규칙들을 종합 검증합니다."""
+    """[책임] SQL 정책을 통과한 SQLGlot AST를 대상으로 세부 런타임 거버넌스 규칙들을 종합 검증한다.
+    - 입출력: SqlValidationResult, ContextPackage, plan 딕셔너리 수신 → 위반 여부와 AST 증거가 담긴 SemanticDecision 반환
+    - 주의조건: 승인 자산 범위를 벗어난 물리 테이블, 미승인 컬럼, 시간 조건 및 조인 위반 시 해당 차단 사유 반환
+    """
     if not result.ok or result.expression is None:
         return _semantic_blocked("SQL_POLICY_INVALID", "SQL 정책 검증에 실패한 AST입니다.")
     try:
@@ -462,7 +454,10 @@ def validate_parsed_semantics(
 
 
 def apply_guard_decision(plan: dict[str, Any], decision: GuardDecision) -> None:
-    """가드 검증을 통과한 canonical_sql, executable_sql 및 증거 데이터를 계획(Plan) 딕셔너리에 반영합니다."""
+    """[책임] 가드 검증을 통과한 정규 SQL, 실행 가능 SQL 및 AST 증거 메타데이터를 plan 딕셔너리에 바인딩한다.
+    - 입출력: plan 딕셔너리 및 GuardDecision 객체 수신 → plan 내부에 검증된 SQL/파라미터/참조/증거 직접 주입
+    - 주의조건: decision.ok가 False인 경우(위반 발생 시) 어떠한 키도 수정하지 않고 즉시 리턴하여 오염 방지
+    """
     if not decision.ok:
         return
     plan["sql"] = decision.canonical_sql

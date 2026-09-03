@@ -122,7 +122,10 @@ def projection_scope_evidence(
     result: SqlValidationResult,
     projection_alias: object,
 ) -> ProjectionScopeEvidence | None:
-    """루트 SELECT 문에서 지정된 출력 alias에 해당하는 스코프 로컬 증거를 조회합니다."""
+    """[책임] 루트 SELECT 문에서 지정된 출력 alias에 해당하는 스코프 로컬 증거를 조회한다.
+    - 입출력: SqlValidationResult 및 projection_alias 수신 → 매칭된 ProjectionScopeEvidence 반환 (실패 시 None)
+    - 주의조건: SELECT 식이 아니거나 해당 alias의 프로젝션 노드가 스코프에 없으면 None을 반환
+    """
     if not isinstance(result.expression, exp.Select):
         return None
     scopes = scope_evidence(result)
@@ -137,7 +140,10 @@ def projection_scope_evidence(
 
 
 def scope_evidence(result: SqlValidationResult) -> dict[int, ScopeEvidence]:
-    """SQLGlot AST의 모든 SELECT 스코프를 순회하며 각 스코프별 증거 맵을 구축합니다."""
+    """[책임] SQLGlot AST의 모든 SELECT 스코프를 순회하며 각 스코프별 소스 및 조인 증거 맵을 구축한다.
+    - 입출력: SqlValidationResult 인스턴스 수신 → 스코프 ID를 키로 하는 ScopeEvidence 딕셔너리 반환
+    - 주의조건: 루트 expression이 None인 경우 빈 딕셔너리를 반환하며 중첩 CTE/서브쿼리 순서를 보존
+    """
     if result.expression is None:
         return {}
     built: dict[int, ScopeEvidence] = {}
@@ -152,7 +158,10 @@ def resolve_scope_operand(
     value: exp.Expression,
     scope: ScopeEvidence,
 ) -> str | None:
-    """스코프 내의 표현식 노드를 'FQN.column' 또는 ':named_param' 형태로 해석합니다."""
+    """[책임] 스코프 내의 피연산자 노드를 정규화된 물리 'FQN.column' 또는 ':named_param' 형태로 해석한다.
+    - 입출력: 피연산자 exp.Expression 노드 및 ScopeEvidence 수신 → 정규화된 식별자 문자열 반환 (불가 시 None)
+    - 주의조건: 파생 스코프에서 출처 컬럼이 소실되었거나 모호한 다중 소스 참조 시 None을 반환하여 차단
+    """
     while isinstance(
         value,
         (
@@ -181,7 +190,10 @@ def source_column(
     value: exp.Expression,
     scope: ScopeEvidence,
 ) -> tuple[SourceEvidence, str] | None:
-    """컬럼 AST 노드를 현재 스코프의 소스 증거와 표준 컬럼명 튜플로 해석합니다."""
+    """[책임] 컬럼 AST 노드를 현재 스코프의 소스 증거 및 표준 컬럼명 튜플로 해석한다.
+    - 입출력: exp.Expression 노드 및 ScopeEvidence 수신 → (SourceEvidence, 컬럼명) 튜플 반환 (실패 시 None)
+    - 주의조건: 컬럼 노드가 아니거나 테이블 수식어가 현재 스코프의 소스에 등록되지 않은 경우 None 반환
+    """
     while isinstance(value, exp.Paren):
         value = value.this
     if not isinstance(value, exp.Column):

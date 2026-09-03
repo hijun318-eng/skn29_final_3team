@@ -630,7 +630,7 @@ class ReportAssistantContractTests(unittest.TestCase):
         """현재 새 지시와 원자 Artifact view는 과거 clarification보다 우선한다."""
 
         prompt = get_prompt("report.assistant.turn")
-        self.assertEqual("PROMPT-v1.15.0", prompt.version)
+        self.assertEqual("PROMPT-v1.16.0", prompt.version)
         self.assertIn("operation_scope is server-owned authority", prompt.text)
         self.assertIn("exactly one set_report_title operation", prompt.text)
         self.assertIn("requests no other effect, return clarification with patch null", prompt.text)
@@ -660,6 +660,9 @@ class ReportAssistantContractTests(unittest.TestCase):
         self.assertIn("do not ask whether those values should remain the same", prompt.text)
         self.assertIn("require only duplicate_block", prompt.text)
         self.assertIn("Never add reposition_block for the source", prompt.text)
+        self.assertIn("chart width 6 and height 7", prompt.text)
+        self.assertIn("set block_width to 6 and preserve the current block_height", prompt.text)
+        self.assertIn("Do not add set_block_size_mode to a resize request", prompt.text)
 
     def test_turn_contract_supports_persisted_editor_settings(self):
         """문서·블록·차트·표 설정은 임의 JSON 없이 strict typed operation으로 표현한다."""
@@ -862,6 +865,101 @@ class ReportAssistantRepositionAdapterTests(unittest.IsolatedAsyncioTestCase):
             },
             proposal["patch"]["operations"][0],
         )
+
+    async def test_resize_wire_operation_uses_renderable_chart_minimums(self):
+        """모델의 과도한 축소값은 첫 요청에서 적용 가능한 차트 최소 크기로 보정한다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = copy.deepcopy(REPORT_ASSISTANT_EXISTING_RESPONSE)
+        response["patch"]["operations"] = [{
+            **REPORT_ASSISTANT_WIRE_OPERATION,
+            "op": "resize_block",
+            "block_id": "block-one",
+            "block_width": 4,
+            "block_height": 3,
+        }]
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch(
+                "app.adapters.report_assistant.openai_transport",
+                new=AsyncMock(return_value=response),
+            ),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual(
+            {
+                "op": "resize_block",
+                "block_id": "block-one",
+                "block_width": 6,
+                "block_height": 7,
+            },
+            proposal["patch"]["operations"][0],
+        )
+
+    async def test_table_view_accepts_omitted_nullable_wire_fields(self):
+        """표 추가 의미에 영향 없는 nullable 필드 생략은 한 번의 모델 호출로 보완한다."""
+
+        from app.adapters.report_assistant import generate_report_change_proposal
+
+        response = {
+            "change_kind": "existing_artifact",
+            "message": "선택한 분석을 표로도 추가합니다.",
+            "patch": {
+                "summary": "선택한 분석의 표 보기를 추가합니다.",
+                "operations": [{
+                    "op": "add_artifact_view",
+                    "artifact_ref": "source_artifact",
+                    "view": "table",
+                    "density": "compact",
+                    "size_mode": "auto",
+                }],
+            },
+        }
+        route = SimpleNamespace(
+            endpoint="https://model.invalid/v1",
+            token="test-token",
+            model="test-model",
+            provider="openai",
+        )
+        transport = AsyncMock(return_value=response)
+        with (
+            patch("app.adapters.report_assistant.resolve_active_model_routes", return_value=object()),
+            patch("app.adapters.report_assistant.active_route_for_node", return_value=route),
+            patch("app.adapters.report_assistant.openai_transport", new=transport),
+        ):
+            proposal, _trace = await generate_report_change_proposal(
+                copy.deepcopy(REPORT_ASSISTANT_TURN_REQUEST)
+            )
+
+        self.assertEqual(1, transport.await_count)
+        self.assertEqual(
+            {
+                "op": "add_artifact_view",
+                "artifact_ref": "source_artifact",
+                "view": "table",
+                "chart_type": None,
+                "show_legend": None,
+                "density": "compact",
+                "show_row_numbers": None,
+                "size_mode": "auto",
+                "title": "Approved analysis · 표",
+                "placement": {"after_block_id": None, "width": "full"},
+            },
+            proposal["patch"]["operations"][0],
+        )
+        self.assertEqual((), proposal["suggestions"])
+        self.assertIsNone(proposal["exact_page_count"])
 
     async def test_report_title_scope_accepts_only_one_typed_title_operation(self):
         """제목 전용 범위는 단일 set_report_title을 typed patch로 통과시킨다."""

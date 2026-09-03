@@ -92,7 +92,7 @@ export function metricDisplayUnit(unit?: string | null, approvedDisplayUnit?: st
   if (!unit) return null;
   const normalized = unit.trim().toLowerCase();
   if (normalized === "krw" || normalized.startsWith("krw_per_")) return "원";
-  if (normalized === "ratio" || normalized === "%") return "%";
+  if (normalized === "ratio" || normalized === "percent" || normalized === "%") return "%";
   if (normalized === "room_night" || normalized === "room_nights") return "객실박";
   if (normalized === "room" || normalized === "rooms") return "실";
   if (normalized === "hour" || normalized === "hours") return "시간";

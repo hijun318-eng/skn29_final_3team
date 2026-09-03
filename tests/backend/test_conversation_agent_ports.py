@@ -162,6 +162,38 @@ class _RagExecutor:
 
 
 class ConversationAgentPortTest(unittest.IsolatedAsyncioTestCase):
+    async def test_analysis_port_forwards_supervisor_presentation_type(self) -> None:
+        conversation_id = uuid4()
+        request = AgentRequest(
+            conversation_id=conversation_id,
+            command=ConversationCommandRequest(
+                user_message="승인된 범위에서 비교해줘",
+                idempotency_key=uuid4().hex,
+                expected_head_turn_id=None,
+            ),
+            context=RequestContext(conversation_id=conversation_id),
+            target_agent=AgentKind.ANALYSIS_WORKFLOW,
+            task_objective="승인된 지표를 항목별로 비교",
+            task_analysis_route="ANALYSIS",
+            task_presentation_type="TABLE",
+            supervisor_plan_ref=f"model-supervisor:sha256:{'a' * 64}",
+        )
+        orchestrator = _AnalysisOrchestrator(
+            {"status": "SUCCESS", "turn": {"route": "ANALYSIS"}}
+        )
+        port = AnalysisWorkflowAgentPort(
+            orchestrator,
+            ConcurrentExecutionGate(),
+            _ProgressTracker(),
+        )
+
+        await port.execute(request)
+
+        self.assertEqual(
+            orchestrator.calls[0][1]["task_presentation_type"],
+            "TABLE",
+        )
+
     async def test_analysis_port_forwards_pre_admission_without_reacquiring_it(self) -> None:
         request = _agent_request("ANALYSIS")
         admission = object()

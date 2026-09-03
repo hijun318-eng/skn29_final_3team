@@ -1,4 +1,4 @@
-"""관리 연결 화면의 9개 고정 probe와 Trino source 경계를 검증한다."""
+"""관리 연결 화면의 10개 고정 probe와 Trino·RAG 경계를 검증한다."""
 
 from __future__ import annotations
 
@@ -9,12 +9,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "app" / "backend"), str(ROOT)]
 
 from app.adapters.trino_async import AdapterError, AdapterErrorCode  # noqa: E402
 from app.services.admin_connections import (  # noqa: E402
     _SOURCE_CATALOGS,
+    _rag_knowledge_ready,
     _trino_catalog_ready,
     probe_admin_connections,
 )
@@ -98,7 +101,50 @@ async def test_source_catalog_probe_closes_after_bounded_transport_failure() -> 
 
 
 @_run_async
-async def test_admin_connection_projection_contains_exact_nine_server_targets() -> None:
+async def test_rag_knowledge_probe_requires_active_pgvector_corpus() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == "http://rag-api:8000/health/ready"
+        return httpx.Response(
+            200,
+            json={
+                "status": "healthy",
+                "database": {
+                    "pgvector_version": "0.8.1",
+                    "documents": 41,
+                    "chunks": 320,
+                },
+                "active_corpus_release": {"release_id": "release-1"},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with patch.dict("os.environ", {"RAG_API_URL": "http://rag-api:8000"}):
+            assert await _rag_knowledge_ready(client)
+
+
+@_run_async
+async def test_rag_knowledge_probe_rejects_empty_corpus() -> None:
+    async def response_for(payload: dict[str, object]) -> bool:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(200, json=payload)
+            )
+        ) as client:
+            return await _rag_knowledge_ready(client)
+
+    assert not await response_for({
+        "status": "healthy",
+        "database": {
+            "pgvector_version": "0.8.1",
+            "documents": 0,
+            "chunks": 0,
+        },
+        "active_corpus_release": {"release_id": "release-1"},
+    })
+
+
+@_run_async
+async def test_admin_connection_projection_contains_exact_ten_server_targets() -> None:
     with (
         patch.object(
             AppDatabaseReadiness,
@@ -124,6 +170,10 @@ async def test_admin_connection_projection_contains_exact_nine_server_targets() 
             "app.services.admin_connections._trino_catalog_ready",
             AsyncMock(return_value=True),
         ),
+        patch(
+            "app.services.admin_connections._rag_knowledge_ready",
+            AsyncMock(return_value=True),
+        ),
     ):
         rows = await probe_admin_connections()
 
@@ -137,6 +187,7 @@ async def test_admin_connection_projection_contains_exact_nine_server_targets() 
         "trino",
         "datahub",
         "model-api",
+        "rag-knowledge",
     ]
     assert all(row["status"] == "ready" for row in rows)
 
@@ -163,6 +214,10 @@ async def test_paused_admin_connections_skip_only_the_selected_probes() -> None:
         ),
         patch.object(AppDatabaseReadiness, "_model_probe", model_probe),
         patch("app.services.admin_connections._trino_catalog_ready", source_probe),
+        patch(
+            "app.services.admin_connections._rag_knowledge_ready",
+            AsyncMock(return_value=True),
+        ) as rag_probe,
     ):
         rows = await probe_admin_connections(("pms", "model-api", "unknown"))
 
@@ -176,4 +231,5 @@ async def test_paused_admin_connections_skip_only_the_selected_probes() -> None:
     )
     assert source_probe.await_count == 4
     assert model_probe.await_count == 0
+    assert rag_probe.await_count == 1
     assert database_probe.await_count == 1

@@ -116,6 +116,16 @@ class AgentRequest(ContractModel):
     previous_analysis: AgentPreviousAnalysisContext | None = None
     previous_ml: AgentPreviousMLContext | None = None
     task_objective: str | None = Field(default=None, min_length=1, max_length=240)
+    task_analysis_route: Literal["ANALYSIS", "PRESENTATION"] | None = None
+    task_presentation_type: Literal[
+        "SUMMARY",
+        "TABLE",
+        "BAR",
+        "LINE",
+        "PIE",
+        "HORIZONTAL_BAR",
+        "DONUT",
+    ] | None = None
     supervisor_plan_ref: str | None = Field(
         default=None,
         pattern=SUPERVISOR_PLAN_REFERENCE_PATTERN,
@@ -140,6 +150,22 @@ class AgentRequest(ContractModel):
                 raise ValueError("Supervisor 계획에는 실행 objective가 필요합니다.")
         elif self.task_objective is not None:
             raise ValueError("모델 계획이 아닌 요청은 task objective를 가질 수 없습니다.")
+        if self.task_analysis_route is not None and (
+            not is_model_planned
+            or self.target_agent is not AgentKind.ANALYSIS_WORKFLOW
+        ):
+            raise ValueError("Supervisor의 분석 계획만 분석 라우트를 전달할 수 있습니다.")
+        if (
+            is_model_planned
+            and self.target_agent is AgentKind.ANALYSIS_WORKFLOW
+            and self.task_analysis_route is None
+        ):
+            raise ValueError("Supervisor의 분석 계획에는 분석 라우트가 필요합니다.")
+        if self.task_presentation_type is not None and (
+            not is_model_planned
+            or self.target_agent is not AgentKind.ANALYSIS_WORKFLOW
+        ):
+            raise ValueError("Supervisor의 분석 계획만 출력 표현 타입을 전달할 수 있습니다.")
         if (self.target_agent is AgentKind.ML_PREDICTION) != has_ml_invocation:
             raise ValueError(
                 "ML target Agent와 prediction invocation은 함께 지정해야 합니다."

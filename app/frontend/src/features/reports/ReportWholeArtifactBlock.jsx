@@ -23,6 +23,22 @@ function shortSummary(summary) {
   return value.length > 240 ? `${value.slice(0, 239).trimEnd()}…` : value;
 }
 
+/** 승인된 소규모 그룹 결과를 값 재집계 없이 한 행 비교 카드로 표시한다. */
+export function artifactComparisonCards(artifact, metrics) {
+  if (metrics.length !== 1) return null;
+  const metric = metrics[0];
+  const resultField = metric.result_field || metric.resultField;
+  const columns = artifact?.table?.columns || [];
+  const rows = artifact?.table?.rows || [];
+  if (!resultField || !columns.includes(resultField) || rows.length < 2 || rows.length > 4) return null;
+  const dimension = columns.find((column) => column !== resultField);
+  if (!dimension || !rows.every((row) => (
+    row[dimension] !== null && row[dimension] !== undefined && String(row[dimension]).trim()
+    && Number.isFinite(Number(row[resultField]))
+  ))) return null;
+  return { dimension, metric, resultField, rows };
+}
+
 /** governed artifact source의 근거 준비 상태를 표시하고 삽입 원본만 선택한다. */
 export function ReportArtifactLibraryTile({ source, artifact, disabled = false, selected = false, onSelect }) {
   const metrics = artifactMetricCards(artifact);
@@ -95,6 +111,7 @@ export function ReportWholeArtifactBlock({ block, artifact, artifactState, curre
   }
   const visibleViewLabel = ARTIFACT_VIEW_LABELS[view];
   const visibleMetrics = metrics.slice(0, block.w <= 6 ? 2 : 4);
+  const comparison = view === "kpi" ? artifactComparisonCards(artifact, metrics) : null;
   const summaryMetrics = artifact.evidence?.metrics?.length
     ? artifact.evidence.metrics
     : metrics;
@@ -105,8 +122,8 @@ export function ReportWholeArtifactBlock({ block, artifact, artifactState, curre
   );
   const timeDescription = analysisTimeLabel(artifact.evidence);
   return <section className={`report-whole-artifact ${block.w <= 6 ? "is-half" : ""}`} aria-label={`${block.title} ${visibleViewLabel} 분석 요소`}>
-    <header className="report-whole-artifact-heading"><div><small>분석 결과</small><b>{timeDescription || "분석 결과"}</b></div><span>{visibleViewLabel}</span></header>
+    {!comparison && <header className="report-whole-artifact-heading"><div><small>분석 결과</small><b>{timeDescription || "분석 결과"}</b></div><span>{visibleViewLabel}</span></header>}
     {view === "summary" && <p className="report-whole-artifact-summary">{shortSummary(localizedSummary)}</p>}
-    {view === "kpi" && <div className="report-whole-artifact-kpis" aria-label="주요 지표">{visibleMetrics.map((metric) => { const currencyMetric = isCurrencyMetricUnit(metric.unit); const meta = [metric.context, currencyMetric ? currency.label : ""].filter(Boolean).join(" · "); return <dl key={metric.metric_id || metric.metricId || metric.label}><dt>{metricDisplayLabel(metric)}{meta && <small>{meta}</small>}</dt><dd>{currencyMetric ? formatCurrencyAmount(metric.value, currency.unit, currency.policy) : formatMetricDisplayValue(metric.value, metric)}</dd></dl>; })}{metrics.length > visibleMetrics.length && <small>외 {metrics.length - visibleMetrics.length}개 지표</small>}</div>}
+    {view === "kpi" && <div className={`report-whole-artifact-kpis${comparison ? " is-comparison" : ""}`} style={comparison ? { "--report-kpi-columns": comparison.rows.length } : undefined} aria-label={comparison ? "항목별 주요 지표 비교" : "주요 지표"}>{comparison ? comparison.rows.map((row) => { const currencyMetric = isCurrencyMetricUnit(comparison.metric.unit); return <dl className="report-comparison-kpi" key={String(row[comparison.dimension])}><dt>{String(row[comparison.dimension])}</dt><dd>{currencyMetric ? formatCurrencyAmount(row[comparison.resultField], currency.unit, currency.policy) : formatMetricDisplayValue(row[comparison.resultField], comparison.metric)}</dd><small>{metricDisplayLabel(comparison.metric)}</small></dl>; }) : visibleMetrics.map((metric) => { const currencyMetric = isCurrencyMetricUnit(metric.unit); const meta = [metric.context, currencyMetric ? currency.label : ""].filter(Boolean).join(" · "); return <dl key={metric.metric_id || metric.metricId || metric.label}><dt>{metricDisplayLabel(metric)}{meta && <small>{meta}</small>}</dt><dd>{currencyMetric ? formatCurrencyAmount(metric.value, currency.unit, currency.policy) : formatMetricDisplayValue(metric.value, metric)}</dd></dl>; })}{!comparison && metrics.length > visibleMetrics.length && <small>외 {metrics.length - visibleMetrics.length}개 지표</small>}</div>}
   </section>;
 }

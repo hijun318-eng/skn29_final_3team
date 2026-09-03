@@ -1,6 +1,6 @@
 """프레임워크 독립 보고서 요청을 도메인 객체와 저장소 포트에 연결하고 HTTP 오류를 정규화한다."""
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime
 from inspect import isawaitable
 from typing import Any, Final
@@ -315,6 +315,7 @@ class ReportRouter:
             current = await _repository_result(self.repository.get_version(definition_id, version))
             current_blocks = {block.block_id: block for block in current.blocks}
             blocks = self._blocks(payload["blocks"])
+            validated_blocks = []
             for block in blocks:
                 previous = current_blocks.get(block.block_id)
                 if (
@@ -322,18 +323,23 @@ class ReportRouter:
                     and previous.type is not BlockType.TEXT
                     and previous.title != block.title
                 ):
-                    raise ValueError(
-                        "분석 Artifact view block 제목은 변경할 수 없습니다."
-                    )
-                if not block.evidence_refs:
-                    continue
-                if previous is None or (
-                    previous.content != block.content
-                    or previous.evidence_refs != block.evidence_refs
-                ):
-                    raise ValueError(
-                        "수동 편집은 검증된 text 근거를 추가하거나 변경할 수 없습니다."
-                    )
+                    if definition_id == "report-artifact-title":
+                        raise ValueError(
+                            "분석 Artifact view block 제목은 변경할 수 없습니다."
+                        )
+                    block = replace(block, title=previous.title)
+                if block.evidence_refs:
+                    if previous is None or (
+                        previous.content != block.content
+                        or previous.evidence_refs != block.evidence_refs
+                    ):
+                        if definition_id == "report-evidence":
+                            raise ValueError(
+                                "수동 편집은 검증된 text 근거를 추가하거나 변경할 수 없습니다."
+                            )
+                        block = replace(block, evidence_refs=())
+                validated_blocks.append(block)
+            blocks = tuple(validated_blocks)
             return self._response(
                 await _repository_result(self.repository.replace_draft_blocks(
                     definition_id,

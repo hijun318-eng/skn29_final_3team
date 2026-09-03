@@ -255,13 +255,23 @@ export function paginateReportBlocks(blocks, orientation, documentId = "report")
   return pages;
 }
 
-/** text 높이를 다시 계산한 뒤 충돌 블록만 아래로 이동해 editor grid를 준비한다. */
+/** 이전 저장본도 A4 표 행과 차트 축이 잘리지 않는 최소 높이까지 복구한다. */
+function safeDataBlockHeight(block, orientation) {
+  const minimum = block.type === "chart"
+    ? orientation === "portrait" ? 9 : 8
+    : block.type === "table"
+      ? 6
+      : block.type === "artifact" ? 5 : 1;
+  return Math.max(block.h ?? minimum, minimum);
+}
+
+/** text 높이와 데이터 블록 안전 높이를 다시 계산한 뒤 충돌 블록만 아래로 이동해 editor grid를 준비한다. */
 export function prepareEditorLayout(blocks, orientation = "landscape") {
   return resolveDraftLayoutCollisions(
     restoreDraftLayout(blocks).map((block) => (
       block.type === "text"
         ? { ...block, h: frontendTextBlockLayout(block, orientation).height }
-        : block
+        : { ...block, h: safeDataBlockHeight(block, orientation) }
     )),
   );
 }

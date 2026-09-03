@@ -144,6 +144,28 @@ def test_ready_manifest_compiles_complete_existing_authoring_contract() -> None:
     }
 
 
+def test_occupancy_rate_allows_the_governed_hotel_dimension() -> None:
+    """전체 KPI와 호텔별 비교가 같은 승인된 ratio 계약을 사용한다."""
+
+    manifest = load_canonical_metadata_manifest(METADATA)
+    document = manifest.as_document()
+    metric = next(
+        item for item in document["metrics"] if item["metric_id"] == "occupancy_rate"
+    )
+    assert metric["allowed_dimensions"] == [
+        {
+            "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+            "column": "hotel_code",
+        }
+    ]
+
+    policy = compile_semantic_authoring_policy(manifest)
+    occupancy = next(
+        item for item in policy["metric_rules"] if item["id"] == "occupancy_rate"
+    )
+    assert occupancy["dimensions"] == []
+
+
 def test_authoring_compile_rejects_glossary_and_metric_semantic_drift() -> None:
     document = load_canonical_metadata_manifest(METADATA).as_document()
     term = next(

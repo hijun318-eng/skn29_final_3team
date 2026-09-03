@@ -434,6 +434,22 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
             json.loads(created["blocks"][3]["content"]),
         )
 
+        table_router = create_report_router(TransferRepository())
+        table_payload = CreateReportFromArtifactRequest(
+            artifact_id=payload.artifact_id,
+            title="표 보기 보고서",
+            preferred_view="table",
+        )
+        with patch.object(report_api, "_router", return_value=table_router):
+            table_draft = await report_api.create_draft_from_analysis_artifact(
+                table_payload, context(Role.ANALYST)
+            )
+        self.assertEqual(1, len(table_draft["blocks"]))
+        self.assertEqual("table", table_draft["blocks"][0]["type"])
+        self.assertEqual(
+            ["table"], json.loads(table_draft["blocks"][0]["content"])["visibleViews"]
+        )
+
         reloaded = await router.get_version(created["definition_id"], 1)
         self.assertEqual(created["blocks"], reloaded["blocks"])
         self.assertEqual(
@@ -533,6 +549,15 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual("직접 생성 제목", direct.title)
         self.assertEqual("Artifact 제목", transferred.title)
+        self.assertIsNone(transferred.preferred_view)
+        self.assertEqual(
+            "table",
+            CreateReportFromArtifactRequest.model_validate({
+                "artifact_id": uuid4(),
+                "title": "표 보고서",
+                "preferred_view": "table",
+            }).preferred_view,
+        )
         normalized = ReplaceReportBlocksRequest.model_validate({
             "blocks": [],
             "title": f"  {'가' * 255}  ",

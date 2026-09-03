@@ -224,6 +224,14 @@ class AnalysisData(ContractModel):
     disambiguation_options: tuple[DisambiguationOption, ...] = ()
 
 
+class AgentTaskProgress(ContractModel):
+    """Supervisor가 확정한 Agent별 작업 목적과 현재 실행 상태를 공개한다."""
+
+    agent: Literal["ANALYSIS_WORKFLOW", "INTERNAL_GUIDELINE", "ML_PREDICTION"]
+    objective: str = Field(min_length=1, max_length=240)
+    status: Literal["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"]
+
+
 class AnalysisProgressData(ContractModel):
     """진행 조회 시 실행 식별자, 시작 시각, 경과 시간, 취소 요청과 누적 추적을 반환한다."""
     trace_id: str
@@ -233,6 +241,7 @@ class AnalysisProgressData(ContractModel):
     elapsed_seconds: float = Field(ge=0)
     cancel_requested: bool
     trace: tuple[TraceStep, ...] = ()
+    agent_tasks: tuple[AgentTaskProgress, ...] = Field(default=(), max_length=3)
 
 
 class HealthData(ContractModel):

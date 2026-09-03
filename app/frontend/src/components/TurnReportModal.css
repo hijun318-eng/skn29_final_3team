@@ -356,6 +356,17 @@
 
 .report-analysis-preview>.analysis-state{margin:0}
 
+.report-analysis-preview--selected-view{margin-top:16px}
+
+.report-analysis-preview--selected-view .analysis-result-section>header{display:none}
+
+.report-analysis-preview--selected-view .analysis-result-section{
+  margin:0;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+
 .ppt-theme .report-modal-backdrop{background:rgba(0,0,0,.76)}
 
 .ppt-theme .report-transfer-modal{

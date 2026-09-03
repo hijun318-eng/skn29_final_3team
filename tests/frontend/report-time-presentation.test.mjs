@@ -88,6 +88,33 @@ assert.equal(
   normalizeGeneratedArtifactViewTitle("Analysis result · 핵심 지표", sameYear, "artifact"),
   "2026년 5월~8월 객실 매출 핵심 지표",
 );
+const hotelComparison = {
+  table: {
+    columns: ["hotel_code", "occupancy_rate"],
+    rows: [
+      { hotel_code: "DOUGLAS", occupancy_rate: 49.12 },
+      { hotel_code: "GRAND", occupancy_rate: 68.19 },
+      { hotel_code: "VISTA", occupancy_rate: 57.74 },
+    ],
+  },
+  chart: { x_field: "hotel_code", y_fields: ["occupancy_rate"] },
+  evidence: {
+    time_field: "hotel_code",
+    metrics: [{
+      result_field: "occupancy_rate",
+      label: "Occupancy Rate",
+      display_label: "객실 점유율",
+    }],
+  },
+};
+assert.equal(
+  normalizeGeneratedArtifactViewTitle(
+    "2026년 8월 1일부터 31일까지 객실 점유율 분석 · 핵심 지표",
+    hotelComparison,
+    "artifact",
+  ),
+  "호텔별 객실 점유율 분석 지표",
+);
 assert.equal(
   normalizeGeneratedReportTitle(
     "2026.05.01–2026.08.30 객실 매출 분석 보고서",

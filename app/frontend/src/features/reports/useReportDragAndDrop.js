@@ -43,6 +43,45 @@ export function computeReportAlignmentGuides(position, blocks, activeId) {
     : null;
 }
 
+/** 사용자가 줄인 블록 너비를 유지하면서 가로 빈 공간이 있는 블록 옆 드롭 위치를 찾는다. */
+export function sizedSideDrop(blocks, activeId, width, height, pointerColumn, pointerRow) {
+  const candidates = blocks.flatMap((target) => {
+    if (target.id === activeId) return [];
+    const x = target.x ?? 0;
+    const y = target.y ?? 0;
+    const blockWidth = target.w ?? target.columns ?? 12;
+    const blockHeight = target.h ?? 1;
+    if (blockWidth >= 12 || pointerRow < y || pointerRow >= y + blockHeight) return [];
+    return [["left", x - width], ["right", x + blockWidth]].flatMap(([edge, candidateX]) => {
+      if (candidateX < 0 || candidateX + width > 12) return [];
+      const pointerHitsTarget = pointerColumn >= x && pointerColumn < x + blockWidth;
+      const pointerHitsSlot = pointerColumn >= candidateX && pointerColumn < candidateX + width;
+      if (!pointerHitsTarget && !pointerHitsSlot) return [];
+      const occupied = blocks.some((block) => {
+        if (block.id === activeId || block.id === target.id) return false;
+        const blockX = block.x ?? 0;
+        const blockY = block.y ?? 0;
+        const occupiedWidth = block.w ?? block.columns ?? 12;
+        const occupiedHeight = block.h ?? 1;
+        return candidateX < blockX + occupiedWidth && candidateX + width > blockX
+          && y < blockY + occupiedHeight && y + height > blockY;
+      });
+      return occupied ? [] : [{
+        target,
+        edge,
+        x: candidateX,
+        pointerHitsSlot,
+        distance: Math.abs(pointerColumn - (candidateX + width / 2)),
+      }];
+    });
+  }).sort((left, right) => (
+    Number(right.pointerHitsSlot) - Number(left.pointerHitsSlot)
+    || left.distance - right.distance
+  ));
+  const available = candidates[0];
+  return available ? { target: available.target, edge: available.edge, x: available.x } : null;
+}
+
 /** 선택 블록의 상대 배치를 유지하며 빈 12열 좌표로만 그룹을 이동한다. */
 export function moveReportBlockGroup(blocks, blockIds, activeId, position) {
   const selectedIds = new Set(blockIds);
@@ -169,27 +208,33 @@ export function useReportDragAndDrop({
       block.id !== activeId && (block.w ?? block.columns) === 12
       && pointerRow >= (block.y ?? 0) && pointerRow < (block.y ?? 0) + (block.h ?? 1)
     ));
-    const contentTarget = fullRowTarget || blocksRef.current
+    const sizedSide = source
+      ? sizedSideDrop(blocksRef.current, activeId, width, height, pointerColumn, pointerRow)
+      : null;
+    const sideTarget = fullRowTarget || sizedSide?.target;
+    const contentTarget = sideTarget || blocksRef.current
       .filter((block) => block.id !== activeId)
       .sort((left, right) => Math.abs((left.y ?? 0) + (left.h ?? 1) / 2 - pointerRow) - Math.abs((right.y ?? 0) + (right.h ?? 1) / 2 - pointerRow))[0];
     const rawX = Math.round((center.x - bounds.left - paddingLeft) / columnStep - width / 2);
-    const requestedX = fullRowTarget ? (pointerColumn < 6 ? 0 : 6) : Math.max(0, rawX);
+    const requestedX = fullRowTarget
+      ? (pointerColumn < 6 ? 0 : 6)
+      : sizedSide?.x ?? Math.max(0, rawX);
     const dropWidth = fullRowTarget ? 6 : width;
     const dropHeight = !source && template?.id?.startsWith("artifact-")
       ? viewArtifactTemplateFor(template, dropWidth).h
       : height;
-    const y = fullRowTarget
-      ? fullRowTarget.y ?? 0
+    const y = sideTarget
+      ? sideTarget.y ?? 0
       : Math.max(page.offsetY, Math.round((center.y - bounds.top - paddingTop) / rowStep - dropHeight / 2) + page.offsetY);
     return {
       pageId: page.id,
-      x: fullRowTarget ? (pointerColumn < 6 ? 0 : 6) : Math.min(12 - width, Math.max(0, rawX)),
+      x: sideTarget ? requestedX : Math.min(12 - width, Math.max(0, rawX)),
       requestedX,
       y,
       w: dropWidth,
       h: dropHeight,
-      placement: fullRowTarget
-        ? { type: "side", targetBlockId: fullRowTarget.id, edge: pointerColumn < 6 ? "left" : "right" }
+      placement: sideTarget
+        ? { type: "side", targetBlockId: sideTarget.id, edge: fullRowTarget ? (pointerColumn < 6 ? "left" : "right") : sizedSide.edge }
         : contentTarget
           ? { type: pointerRow < (contentTarget.y ?? 0) + (contentTarget.h ?? 1) / 2 ? "before" : "after", targetBlockId: contentTarget.id }
           : { type: "end", pageId: page.id },

@@ -205,7 +205,7 @@
   block-size: auto;
   max-inline-size: none;
   padding: 0.5mm 1.2mm;
-  display: inline-flex;
+  display: none !important;
   flex: none;
   place-items: initial;
   color: #6b5128;
@@ -330,7 +330,7 @@
 }
 
 .answer-report-page .generated-report-block {
-  padding: 3mm;
+  padding: 2.2mm 2.8mm;
   overflow: hidden;
   color: #24354e;
   border: 0.25mm solid #d9e3ef;
@@ -359,15 +359,15 @@
 }
 
 .answer-report-page .generated-report-block > header {
-  margin-block-end: 2mm;
-  padding-block-end: 1.8mm;
+  margin-block-end: 1.6mm;
+  padding-block-end: 1.4mm;
   gap: 2mm;
   border-color: #dfe7f0;
 }
 
 .answer-report-page .generated-report-block > header > span {
   inline-size: 7mm;
-  block-size: 7mm;
+  block-size: 6.7mm;
   border-radius: 1.5mm;
   background: #1c69d4;
   font-size: 8pt;
@@ -571,7 +571,7 @@
 
 .answer-report-page .generated-report-table th,
 .answer-report-page .generated-report-table td {
-  block-size: 8mm;
+  block-size: 7mm;
   min-inline-size: 0;
   padding: 0 2.2mm !important;
   overflow: hidden;
@@ -606,8 +606,8 @@
 
 .answer-report-page .generated-report-table .report-table-sort {
   width: 100%;
-  min-block-size: 8mm;
-  block-size: 8mm;
+  min-block-size: 6.7mm;
+  block-size: 6.7mm;
   padding: 0 !important;
   justify-content: flex-start;
   gap: 1mm;
@@ -701,4 +701,8 @@
   color: #718096;
   border-top: 1px solid #dbe4ed;
   font-size: 9px;
+}
+
+.report-finalization-panel {
+  display: none !important;
 }

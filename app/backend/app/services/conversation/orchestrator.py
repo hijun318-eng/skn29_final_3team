@@ -1437,6 +1437,7 @@ class ConversationOrchestrator:
         )
         from app.services.internal_manual_query import InternalManualQuery
         from app.services.mcp_agent_tools import MCPMLPredictionExecutor
+        from app.services.analysis import analysis_progress
         from app.services.supervisor_planner import MaterializedSupervisorPlan
 
         if not isinstance(materialized_plan, MaterializedSupervisorPlan) or not (
@@ -1468,6 +1469,18 @@ class ConversationOrchestrator:
                 "복합 실행을 확정할 대표 Agent가 없습니다.",
                 evidence_refs=(materialized_plan.evidence_ref,),
             )
+
+        progress_tasks = tuple(
+            (request.target_agent.value, request.task_objective or "")
+            for request in requests
+        )
+        analysis_progress.start_agent_plan(
+            admission.context.trace_id,
+            admission.context.user_id,
+            admission.context.role,
+            admission.context.request_id,
+            progress_tasks,
+        )
 
         shared_rag_service = (
             internal_manual_query_service_factory()
@@ -1523,6 +1536,7 @@ class ConversationOrchestrator:
                 except asyncio.CancelledError:
                     pass
 
+        active_agent: AgentKind | None = None
         try:
             routings: dict[AgentKind, Any] = {}
             evidence_refs: list[str] = []
@@ -1552,6 +1566,12 @@ class ConversationOrchestrator:
                         "AGENT_PORT_NOT_READY",
                         "RAG 실행 서비스가 구성되지 않았습니다.",
                     )
+                active_agent = AgentKind.INTERNAL_GUIDELINE
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "RUNNING",
+                )
                 rag_response = dict(
                     await shared_rag_service.execute(
                         InternalManualQuery(
@@ -1573,6 +1593,12 @@ class ConversationOrchestrator:
                         persist_turn=False,
                     )
                 )
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "SUCCEEDED",
+                )
+                active_agent = None
                 rag_response.pop("turn_id", None)
                 rag_tool_run_id = rag_response.get("mcp_tool_run_id")
                 if isinstance(rag_tool_run_id, str) and rag_tool_run_id:
@@ -1603,6 +1629,12 @@ class ConversationOrchestrator:
                         shared_ml_service,
                     )
                 try:
+                    active_agent = AgentKind.ML_PREDICTION
+                    analysis_progress.record_agent(
+                        admission.context.request_id,
+                        active_agent.value,
+                        "RUNNING",
+                    )
                     ml_prediction = dict(
                         await ml_tool_executor.execute(
                             {
@@ -1627,6 +1659,12 @@ class ConversationOrchestrator:
                         "AGENT_PORT_NOT_READY",
                         "ML 예측 실행 서비스를 확인하지 못했습니다.",
                     ) from error
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "SUCCEEDED",
+                )
+                active_agent = None
                 ml_tool_run_id = ml_prediction.get("mcp_tool_run_id")
                 if isinstance(ml_tool_run_id, str) and ml_tool_run_id:
                     evidence_refs.append(f"mcp-tool-run:{ml_tool_run_id}")
@@ -1665,11 +1703,51 @@ class ConversationOrchestrator:
                 ml_prediction_executor_factory=ml_prediction_executor_factory,
                 composite_augmentation=augmentation,
             )
+            active_agent = primary_agent
+            analysis_progress.record_agent(
+                admission.context.request_id,
+                active_agent.value,
+                "RUNNING",
+            )
             outcome = await execution_supervisor.execute_routed_with_state(
                 by_agent[primary_agent],
                 routings[primary_agent],
             )
+            analysis_progress.record_agent(
+                admission.context.request_id,
+                active_agent.value,
+                "SUCCEEDED",
+            )
+            analysis_progress.finish(
+                admission.context.request_id,
+                AnalysisStatus.SUCCEEDED,
+            )
+            active_agent = None
             return outcome.result.payload
+        except asyncio.CancelledError:
+            if active_agent is not None:
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "CANCELLED",
+                )
+            analysis_progress.finish(
+                admission.context.request_id,
+                AnalysisStatus.CANCELLED,
+            )
+            raise
+        except Exception:
+            if active_agent is not None:
+                analysis_progress.record_agent(
+                    admission.context.request_id,
+                    active_agent.value,
+                    "FAILED",
+                )
+            analysis_progress.finish(
+                admission.context.request_id,
+                AnalysisStatus.FAILED,
+            )
+            raise
         finally:
             await _stop_route_lease()
 
@@ -2024,6 +2102,8 @@ class ConversationOrchestrator:
         analysis_queue_wait_seconds: float = 0.0,
         supervisor_plan_ref: str | None = None,
         task_objective: str | None = None,
+        task_analysis_route: str | None = None,
+        task_presentation_type: str | None = None,
         composite_augmentation: Any | None = None,
     ) -> dict[str, Any]:
         """사용자의 멀티턴 명령을 멱등성 및 거버넌스 규칙에 따라 안전하게 실행합니다.
@@ -2058,6 +2138,18 @@ class ConversationOrchestrator:
             )
         if task_objective is not None and not 1 <= len(task_objective.strip()) <= 240:
             raise ValueError("분석 command의 Supervisor objective가 올바르지 않습니다.")
+        if task_analysis_route is not None and (
+            not has_planned_execution
+            or task_analysis_route not in {"ANALYSIS", "PRESENTATION"}
+        ):
+            raise ValueError("분석 command의 Supervisor 분석 라우트가 올바르지 않습니다.")
+        if has_planned_execution and task_analysis_route is None:
+            raise ValueError("분석 command의 Supervisor 분석 라우트가 없습니다.")
+        if task_presentation_type is not None and (
+            not has_planned_execution
+            or task_presentation_type not in ConversationSlotResolver.ALLOWED_CHART_TYPES
+        ):
+            raise ValueError("분석 command의 Supervisor 출력 표현 타입이 올바르지 않습니다.")
         if composite_augmentation is not None:
             from app.ports.agent import AgentKind
             from app.services.composite_agent_execution import (
@@ -2275,10 +2367,16 @@ class ConversationOrchestrator:
             node1_res: dict[str, Any] = {}
             preflight_clarification: ContextBuildError | None = None
             action_signals = client_action_signals(payload)
-            reuses_existing_result = action_signals.get("requested_route") in {
-                "PRESENTATION",
-                "REPORT_ACTION",
-            }
+            planned_action_signals = (
+                {"requested_route": task_analysis_route}
+                if task_analysis_route is not None
+                else {}
+            )
+            reuses_existing_result = (
+                action_signals.get("requested_route")
+                in {"PRESENTATION", "REPORT_ACTION"}
+                or task_analysis_route == "PRESENTATION"
+            )
             try:
                 # 1차: user_message 원문으로 검색
                 search_context = {
@@ -2599,7 +2697,20 @@ class ConversationOrchestrator:
 
             # 5-1. UI가 이미 아는 동작은 자연어로 바꾸지 않고 typed action으로 받는다.
             # 신호는 후보일 뿐이며 재사용 가능 여부는 아래 라우팅 계약이 다시 확인한다.
-            node1_res = {**node1_res, **action_signals}
+            planned_presentation_signals = (
+                {
+                    "presentation_type": task_presentation_type,
+                    "presentation_explicit": True,
+                }
+                if task_presentation_type is not None
+                else {}
+            )
+            node1_res = {
+                **node1_res,
+                **planned_action_signals,
+                **planned_presentation_signals,
+                **action_signals,
+            }
             if (
                 preflight_clarification is None
                 and not action_signals

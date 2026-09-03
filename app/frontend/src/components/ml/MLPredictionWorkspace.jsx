@@ -75,6 +75,12 @@ function formatKoreanDate(value) {
 }
 
 
+function propertyLabel(value) {
+  const label = String(value || "").trim();
+  return /(?:호텔|hotel)$/i.test(label) ? label : `${label} 호텔`;
+}
+
+
 function validForecastDay(day) {
   return Boolean(
     day
@@ -106,7 +112,7 @@ function buildForecastSummary(days) {
 }
 
 
-/** 예측 결과의 사용자 요약과 선택형 상세 정보를 표시한다. */
+/** 예측 결과의 핵심 요약과 날짜별 상세 전망을 표시한다. */
 export function MLPredictionResult({ result }) {
   const forecasts = result?.daily_forecasts;
   if (!Array.isArray(forecasts) || !forecasts.every(validForecastDay)) {
@@ -117,53 +123,58 @@ export function MLPredictionResult({ result }) {
   }
   const days = forecasts;
   const summary = buildForecastSummary(days);
+  const forecastPeriod = `${formatKoreanDate(days[0].target_date)} ~ ${formatKoreanDate(days.at(-1).target_date)}`;
 
   return (
     <div className="ml-workspace__result" aria-live="polite">
-      <div className="ml-workspace__result-meta">
-        <div><span>호텔</span><strong title={String(result.property_id)}>{result.property_id}</strong></div>
-        <div><span>예측 기준일</span><strong>{formatKoreanDate(result.as_of)}</strong></div>
-        <div><span>실적 데이터 기준</span><strong>{formatKoreanDate(result.feature_as_of || result.as_of)}</strong></div>
-      </div>
-
       <section className="ml-workspace__summary" aria-labelledby="ml-forecast-summary-heading">
         <div className="ml-workspace__section-heading">
           <div>
-            <h3 id="ml-forecast-summary-heading">예측 요약</h3>
-            <p>선택한 기간의 객실 수요를 한눈에 확인하세요.</p>
+            <small>수요 예측</small>
+            <h3 id="ml-forecast-summary-heading">{propertyLabel(result.property_id)} 객실 수요 예측</h3>
+            <p className="ml-workspace__forecast-meta">
+              <span>{forecastPeriod} · {days.length}일 전망</span>
+              <span>예측 기준 {formatKoreanDate(result.as_of)}</span>
+              <span>실적 기준 {formatKoreanDate(result.feature_as_of || result.as_of)}</span>
+            </p>
           </div>
         </div>
         <div className="ml-workspace__kpis">
-          <article><span>예측 기간</span><strong>{days.length}일</strong></article>
           <article><span>기간 예상 점유율</span><strong>{formatPercent(summary.occupancyRate)}</strong></article>
-          <article><span>누적 예상 객실 판매량</span><strong>{formatRooms(summary.totalOccupied)} 박</strong></article>
+          <article><span>누적 예상 객실 판매량</span><strong>{formatRooms(summary.totalOccupied)} 객실</strong></article>
         </div>
       </section>
 
       {days.length > 0 && (
-        <details className="ml-workspace__details">
-          <summary><span>일별 예측 상세 보기</span><strong>{days.length}일</strong></summary>
-          <div className="ml-workspace__table-scroll">
-            <table>
-              <thead><tr>
-                <th scope="col">날짜</th><th scope="col">전체 객실</th>
-                <th scope="col">예상 판매</th><th scope="col">예상 잔여</th>
-                <th scope="col">예상 점유율</th>
-              </tr></thead>
-              <tbody>
-                {days.map((day) => (
-                  <tr key={day.target_date}>
-                    <th scope="row">{formatKoreanDate(day.target_date)}</th>
-                    <td>{formatRooms(day.total_available_rooms)}실</td>
-                    <td>{formatRooms(day.predicted_occupied_rooms)}실</td>
-                    <td>{formatRooms(day.predicted_available_rooms)}실</td>
-                    <td>{formatPercent(day.predicted_occupancy_rate)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <section className="ml-workspace__daily" aria-labelledby="ml-daily-forecast-heading">
+          <header>
+            <div>
+              <small>일별 전망</small>
+              <h4 id="ml-daily-forecast-heading">날짜별 판매 및 점유율</h4>
+            </div>
+            <strong>{days.length}일</strong>
+          </header>
+          <div className="ml-workspace__daily-scroll" role="region" aria-label="날짜별 객실 수요 예측" tabIndex="0">
+            <ol className="ml-workspace__daily-cards">
+              {days.map((day, index) => (
+                <li key={day.target_date}>
+                  <header>
+                    <time dateTime={day.target_date}>{formatKoreanDate(day.target_date)}</time>
+                    <span>{index + 1}일차</span>
+                  </header>
+                  <div className="ml-workspace__daily-primary">
+                    <span>예상 판매</span>
+                    <strong>{formatRooms(day.predicted_occupied_rooms)} 객실</strong>
+                  </div>
+                  <dl>
+                    <div><dt>예상 잔여</dt><dd>{formatRooms(day.predicted_available_rooms)} 객실</dd></div>
+                    <div><dt>일 점유율</dt><dd>{formatPercent(day.predicted_occupancy_rate)}</dd></div>
+                  </dl>
+                </li>
+              ))}
+            </ol>
           </div>
-        </details>
+        </section>
       )}
 
       {(result.model_version || result.provenance?.trino_query_id) && (

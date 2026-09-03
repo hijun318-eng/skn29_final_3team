@@ -1,6 +1,8 @@
 /** 관리자 계정·연결 상태와 읽기 전용 감사 추적 화면의 탭·공통 상태를 조정한다. */
 import {
   AlertTriangle,
+  ArrowRight,
+  BookOpenText,
   BrainCircuit,
   Check,
   ChevronLeft,
@@ -56,8 +58,10 @@ const CONNECTION_VISUALS = Object.freeze({
   trino: { icon: SiTrino, tone: "trino", label: "Trino" },
   datahub: { icon: DataHubMark, tone: "datahub", label: "DataHub" },
   "model-api": { icon: BrainCircuit, tone: "model", label: "Model API" },
+  "rag-knowledge": { icon: BookOpenText, tone: "rag", label: "pgvector" },
 });
 const CONNECTION_IDS = new Set(Object.keys(CONNECTION_VISUALS));
+const CORE_OPERATION_CONNECTION_IDS = Object.freeze(["pms", "pos", "crm", "banquet", "facility"]);
 
 function readPausedConnectionIds() {
   if (typeof window === "undefined") return [];
@@ -95,16 +99,15 @@ function formatTimestamp(value) {
 }
 
 /** 고정 연결 ID에 대응하는 엔진 아이콘과 상태 점검 switch를 한 카드에 표시한다. */
-function ConnectionCard({ connection, index, paused, pending, onToggle }) {
+function ConnectionCard({ connection, featured = false, compact = false, paused, pending, onToggle }) {
   const visual = CONNECTION_VISUALS[connection.id] ?? { icon: Database, tone: "default", label: connection.kind };
   const Icon = visual.icon;
   const status = paused ? "paused" : connection.status;
   const enabled = status !== "paused";
 
-  return <article className={`admin-connection-card card${enabled ? "" : " is-paused"}`} data-connection-tone={visual.tone}>
+  return <article className={`admin-connection-card card${featured ? " is-featured" : ""}${compact ? " is-compact" : ""}${enabled ? "" : " is-paused"}`} data-connection-tone={visual.tone}>
     <header>
       <span className="admin-connection-card__icon" aria-hidden="true"><Icon size={26} /></span>
-      <span className="admin-connection-card__index">{String(index + 1).padStart(2, "0")}</span>
       <button
         className="admin-connection-switch"
         type="button"
@@ -113,7 +116,7 @@ function ConnectionCard({ connection, index, paused, pending, onToggle }) {
         aria-label={`${connection.name} 상태 점검 ${enabled ? "끄기" : "켜기"}`}
         disabled={pending}
         onClick={() => onToggle(connection)}
-      ><span aria-hidden="true"><i /></span><em>{enabled ? "ON" : "OFF"}</em></button>
+      ><span aria-hidden="true"><i /></span><em>{enabled ? "점검" : "중지"}</em></button>
     </header>
     <div className="admin-connection-card__body">
       <span>{visual.label}</span>
@@ -316,6 +319,20 @@ export function AdminPage({ role, client }) {
   };
 
   const checkedAt = connections[0]?.checked_at;
+  const connectionById = new Map(connections.map((connection) => [connection.id, connection]));
+  const coreConnections = CORE_OPERATION_CONNECTION_IDS
+    .map((connectionId) => connectionById.get(connectionId))
+    .filter(Boolean);
+  const trinoConnection = connectionById.get("trino");
+  const supportingConnections = connections.filter(
+    (connection) => !CORE_OPERATION_CONNECTION_IDS.includes(connection.id) && connection.id !== "trino",
+  );
+  const effectiveStatus = (connection) => pausedConnectionIds.includes(connection?.id)
+    ? "paused"
+    : connection?.status;
+  const readyConnectionCount = connections.filter((connection) => effectiveStatus(connection) === "ready").length;
+  const readyCoreCount = coreConnections.filter((connection) => effectiveStatus(connection) === "ready").length;
+  const trinoStatus = effectiveStatus(trinoConnection);
   const accountPageCount = Math.max(1, Math.ceil(accounts.total / accounts.page_size));
 
   return <div className="page-content admin-console">
@@ -331,12 +348,33 @@ export function AdminPage({ role, client }) {
     </nav>
 
     {section === "connections" && <section className="admin-panel" id="admin-panel-connections" role="tabpanel" aria-labelledby="admin-tab-connections">
-      <header className="admin-panel__header"><div><small>READ ONLY INFRASTRUCTURE</small><h2>데이터 연결 상태</h2><p>연결별 상태 점검을 켜거나 일시 중지하고, 승인된 서비스의 응답 상태를 확인합니다.</p></div><button className="secondary" type="button" disabled={loading.connections} onClick={() => void loadConnections()}><RefreshCw size={15} />{loading.connections ? "확인 중…" : "상태 새로고침"}</button></header>
-      <div className="admin-connection-grid">
-        {connections.map((connection, index) => <ConnectionCard key={connection.id} connection={connection} index={index} paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
-      </div>
+      <header className="admin-panel__header"><div><small>CONNECTED DATA LANDSCAPE</small><h2>데이터 연결 상태</h2><p>서로 다른 운영 데이터베이스를 Trino 승인 View로 연결해 하나의 분석 경로로 제공합니다.</p></div><div className="admin-panel__header-actions"><span>{checkedAt ? `마지막 확인 ${formatTimestamp(checkedAt)}` : loading.connections ? "연결 상태 확인 중" : "확인 기록 없음"}</span><button className="secondary" type="button" disabled={loading.connections} onClick={() => void loadConnections()}><RefreshCw size={15} />{loading.connections ? "확인 중…" : "상태 새로고침"}</button></div></header>
+      {connections.length > 0 && <>
+        <section className="admin-connection-summary" aria-label="연결 상태 요약">
+          <article className={readyConnectionCount === connections.length ? "is-ready" : "is-attention"}><span>전체 연결</span><b>{readyConnectionCount} / {connections.length}</b><small>{readyConnectionCount === connections.length ? "모두 정상" : "확인 필요"}</small></article>
+          <article className={readyCoreCount === CORE_OPERATION_CONNECTION_IDS.length ? "is-ready" : "is-attention"}><span>핵심 운영 DB</span><b>{readyCoreCount} / {CORE_OPERATION_CONNECTION_IDS.length}</b><small>{readyCoreCount === CORE_OPERATION_CONNECTION_IDS.length ? "분석 준비 완료" : "확인 필요"}</small></article>
+          <article className={trinoStatus === "ready" ? "is-ready" : "is-attention"}><span>Trino 통합 계층</span><b>{STATUS_LABELS[trinoStatus] ?? "확인 중"}</b><small>{trinoStatus === "ready" ? "승인 View 사용 가능" : "상태 확인 필요"}</small></article>
+        </section>
+
+        <section className="admin-connection-story" aria-labelledby="admin-core-connections-title">
+          <header><div><small>CORE DATA SOURCES</small><h3 id="admin-core-connections-title">핵심 운영 데이터</h3><p>객실·식음·고객·연회·시설 데이터를 원본 DB 구분 없이 분석합니다.</p></div><span>이종 DB {coreConnections.length}개</span></header>
+          <div className="admin-connection-story__flow">
+            <div className="admin-connection-core-grid">
+              {coreConnections.map((connection) => <ConnectionCard key={connection.id} connection={connection} compact paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
+            </div>
+            <div className="admin-connection-bridge" aria-hidden="true"><span>승인 View</span><i /><ArrowRight size={22} /></div>
+            {trinoConnection && <ConnectionCard connection={trinoConnection} featured paused={pausedConnectionIds.includes(trinoConnection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />}
+          </div>
+        </section>
+
+        {supportingConnections.length > 0 && <section className="admin-connection-support" aria-labelledby="admin-support-connections-title">
+          <header><div><small>SUPPORTING SERVICES</small><h3 id="admin-support-connections-title">기타 연결 및 지원 서비스</h3></div><span>{supportingConnections.length}개 연결</span></header>
+          <div className="admin-connection-grid admin-connection-support-grid">
+            {supportingConnections.map((connection) => <ConnectionCard key={connection.id} connection={connection} compact paused={pausedConnectionIds.includes(connection.id)} pending={loading.connections} onToggle={toggleConnectionMonitoring} />)}
+          </div>
+        </section>}
+      </>}
       {!loading.connections && connections.length === 0 && !error && <div className="admin-empty card"><div><Database size={24} /><b>등록된 연결 점검 대상이 없습니다.</b><span>Backend에 승인된 연결 대상이 등록되면 이곳에 표시됩니다.</span></div></div>}
-      <p className="admin-panel__receipt">{checkedAt ? `마지막 확인 ${formatTimestamp(checkedAt)}` : loading.connections ? "연결 상태를 확인하고 있습니다." : "확인된 연결 상태가 없습니다."}</p>
     </section>}
 
     {section === "accounts" && <section className="admin-panel" id="admin-panel-accounts" role="tabpanel" aria-labelledby="admin-tab-accounts">

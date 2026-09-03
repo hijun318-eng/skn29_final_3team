@@ -238,7 +238,13 @@ export function resizeDraftBlocks(
   const textMinimum = source.type === "text"
     ? frontendTextBlockLayout({ ...source, w: width, columns: width, h: 4 }, orientation).minimumHeight
     : 4;
-  const minimumHeight = source.type === "artifact" ? 5 : source.type === "chart" ? 7 : source.type === "table" ? 5 : textMinimum;
+  const minimumHeight = source.type === "artifact"
+    ? 5
+    : source.type === "chart"
+      ? orientation === "portrait" ? 9 : 8
+      : source.type === "table"
+        ? 6
+        : textMinimum;
   const maximumHeight = ["artifact", "chart", "table"].includes(source.type ?? "") ? 18 : 14;
   let height = requestedHeight === undefined
     ? Math.max(source.h, minimumHeight)

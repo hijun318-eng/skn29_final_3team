@@ -802,7 +802,9 @@ metrics:
   visibility: BUSINESS
   zero_division_policy: NOT_APPLICABLE
 - aggregation: ratio
-  allowed_dimensions: []
+  allowed_dimensions:
+  - asset_fqn: serving.analytics_v4_3.hotel_operations_daily
+    column: hotel_code
   business_name: Occupancy Rate
   definition: 요청 기간의 점유 객실박 합계를 판매 가능 객실박 합계로 나눈 값이며 일별 비율을 단순 평균하지 않는다.
   formula:

@@ -443,9 +443,13 @@ export function createReportClient(
         await send("/reports/definitions", "POST", payload),
       ));
     },
-    async createDraftFromArtifact(artifactId: string, title: string) {
+    async createDraftFromArtifact(artifactId: string, title: string, preferredView?: "summary" | "kpi" | "chart" | "table") {
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
-        await send("/reports/drafts/from-analysis-artifact", "POST", { artifact_id: artifactId, title }),
+        await send("/reports/drafts/from-analysis-artifact", "POST", {
+          artifact_id: artifactId,
+          title,
+          ...(preferredView ? { preferred_view: preferredView } : {}),
+        }),
       ));
     },
     async listDefinitions(archived = false): Promise<readonly ReportDefinitionVersion[]> {

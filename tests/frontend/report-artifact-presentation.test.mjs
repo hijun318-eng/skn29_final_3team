@@ -15,7 +15,7 @@ const server = await createServer({
 });
 
 try {
-  const { ReportWholeArtifactBlock } = await server.ssrLoadModule(
+  const { ReportWholeArtifactBlock, artifactComparisonCards } = await server.ssrLoadModule(
     "/src/features/reports/ReportWholeArtifactBlock.jsx",
   );
   const { ReportArtifactContent } = await server.ssrLoadModule(
@@ -111,6 +111,36 @@ try {
   assert.match(countTableHtml, /합성 취소 연회 건수.*건/s);
   assert.match(countTableHtml, /report-table-sort-label/);
   assert.doesNotMatch(`${countKpiHtml}${countTableHtml}`, />count<|\(count\)/);
+
+  const occupancyArtifact = {
+    ...countArtifact,
+    metrics: [{
+      metric_id: "occupancy_rate_pct", result_field: "occupancy_rate_pct",
+      label: "객실 점유율", value: 63.77, unit: "percent",
+    }],
+    table: {
+      columns: ["hotel_code", "occupancy_rate_pct"],
+      rows: [
+        { hotel_code: "DOUGLAS 호텔", occupancy_rate_pct: 62.1 },
+        { hotel_code: "GRAND 호텔", occupancy_rate_pct: 65.4 },
+        { hotel_code: "VISTA 호텔", occupancy_rate_pct: 63.8 },
+      ],
+    },
+  };
+  const comparison = artifactComparisonCards(occupancyArtifact, occupancyArtifact.metrics);
+  assert.equal(comparison?.rows.length, 3);
+  const occupancyKpiHtml = renderToStaticMarkup(createElement(ReportWholeArtifactBlock, {
+    block: { title: "호텔별 객실 점유율", w: 12, type: "artifact", content: '{"visibleViews":["kpi"]}' },
+    artifact: occupancyArtifact,
+    artifactState: { status: "success" },
+    currency: { label: "억 원", unit: "billion", policy: {} },
+  }));
+  assert.match(occupancyKpiHtml, /항목별 주요 지표 비교/);
+  assert.match(occupancyKpiHtml, /DOUGLAS 호텔/);
+  assert.match(occupancyKpiHtml, /GRAND 호텔/);
+  assert.match(occupancyKpiHtml, /VISTA 호텔/);
+  assert.match(occupancyKpiHtml, /62\.1%/);
+  assert.doesNotMatch(occupancyKpiHtml, /report-whole-artifact-heading/);
 
   const legacyBundleHtml = renderToStaticMarkup(createElement(ReportWholeArtifactBlock, {
     block: {

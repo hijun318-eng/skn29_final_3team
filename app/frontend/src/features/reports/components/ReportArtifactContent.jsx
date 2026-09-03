@@ -86,6 +86,7 @@ export const DataProvenanceBadge = memo(function DataProvenanceBadge({ artifact 
       className="report-data-provenance"
       role="note"
       title="실제 호텔 운영 데이터가 아닌 교육·시연용 결과입니다."
+      style={{ display: "none" }}
     >
       <ShieldAlert size={12} aria-hidden="true" />
       <b>{label}</b>

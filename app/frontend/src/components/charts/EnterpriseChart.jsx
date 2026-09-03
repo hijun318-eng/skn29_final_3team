@@ -176,6 +176,7 @@ export function EnterpriseChart({
   const isBar = chartType === "bar" || chartType === "horizontal-bar" || chartType === "stacked-bar";
   const isHorizontal = chartType === "horizontal-bar";
   const isStacked = chartType === "stacked-bar";
+  const compactCategoryChart = !isHorizontal && chartRows.length <= 4;
   const barValueDomain = isBar ? resolveBarValueDomain(chartRows, normalizedSeries) : undefined;
   const categoryLength = isHorizontal ? 18 : chartRows.length > 8 ? 8 : chartRows.length > 4 ? 10 : 14;
   const formatCategory = (value) => categoryLabel(
@@ -184,14 +185,14 @@ export function EnterpriseChart({
   );
   const margin = isHorizontal
     ? { top: commonUnit ? 26 : 16, right: showLabels && normalizedSeries.length === 1 ? 82 : 28, bottom: 10, left: 8 }
-    : { top: showLabels && chartType === "bar" ? 32 : commonUnit ? 26 : 16, right: 24, bottom: 10, left: 18 };
+    : { top: showLabels && chartType === "bar" ? 32 : commonUnit ? 26 : 16, right: 16, bottom: 10, left: compactCategoryChart ? 0 : 12 };
   const categoryAxisWidth = Math.min(160, Math.max(76, Math.max(...chartRows.map((row) => [...formatCategory(row[xKey])].length)) * 7.4));
   const axes = isHorizontal ? <>
     <XAxis className="enterprise-chart-axis enterprise-chart-axis--value" type="number" axisLine={{ stroke: "var(--chart-axis)" }} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} domain={barValueDomain} />
     <YAxis className="enterprise-chart-axis enterprise-chart-axis--category" type="category" dataKey={xKey} name={xLabel} width={categoryAxisWidth} axisLine={false} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={11} interval={0} tickFormatter={formatCategory} />
   </> : <>
-    <XAxis className="enterprise-chart-axis enterprise-chart-axis--category" dataKey={xKey} name={xLabel} height={40} axisLine={{ stroke: "var(--chart-axis)" }} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={12} minTickGap={chartRows.length > 8 ? 34 : 24} interval="preserveStartEnd" tickFormatter={formatCategory} padding={{ left: 14, right: 14 }} />
-    <YAxis className="enterprise-chart-axis enterprise-chart-axis--value" width={82} axisLine={false} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={11} tickFormatter={axisFormatter} domain={barValueDomain} />
+    <XAxis className="enterprise-chart-axis enterprise-chart-axis--category" dataKey={xKey} name={xLabel} height={40} axisLine={{ stroke: "var(--chart-axis)" }} tick={CATEGORY_AXIS_TICK} tickLine={false} tickMargin={12} minTickGap={chartRows.length > 8 ? 34 : 24} interval={compactCategoryChart ? 0 : "preserveStartEnd"} tickFormatter={formatCategory} padding={{ left: 8, right: 8 }} />
+    <YAxis className="enterprise-chart-axis enterprise-chart-axis--value" width={compactCategoryChart ? 54 : 72} axisLine={false} tick={VALUE_AXIS_TICK} tickLine={false} tickMargin={8} tickFormatter={axisFormatter} domain={barValueDomain} />
   </>;
   const common = <>
     <CartesianGrid strokeDasharray="2 6" horizontal={!isHorizontal} vertical={isHorizontal} />

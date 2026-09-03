@@ -22,6 +22,9 @@ try {
   const { TurnReportModal } = await server.ssrLoadModule("/src/components/TurnReportModal.jsx");
   const run = {
     question: "표로 보여줘",
+    requestId: "request-table-preview",
+    status: "success",
+    rowCount: 3,
     summary: "2026-05-01부터 2026-06-01 전까지의 Room Revenue 합계 계산 결과는 6,114,218,700 KRW입니다.",
     metrics: [{
       metricId: "room_revenue",
@@ -36,11 +39,19 @@ try {
       period: { start: "2026-05-01", endExclusive: "2026-06-01" },
       metrics: [],
     },
-    table: { columns: [], rows: [] },
+    table: {
+      columns: ["hotel_code", "room_revenue"],
+      rows: [
+        { hotel_code: "DOUGLAS", room_revenue: 2760000000 },
+        { hotel_code: "GRAND", room_revenue: 18470000000 },
+        { hotel_code: "VISTA", room_revenue: 10840000000 },
+      ],
+    },
   };
   const html = renderToStaticMarkup(createElement(TurnReportModal, {
     mode: "draft",
     run,
+    viewType: "TABLE",
     title: "2026년 5월 객실 매출 분석 보고서",
     onTitleChange: () => {},
     onConfirm: () => {},
@@ -57,14 +68,17 @@ try {
   assert.match(html, /2026년 5월 객실 매출 분석/);
   assert.doesNotMatch(html, /표로 보여줘/);
   assert.match(html, /객실 매출/);
-  assert.match(html, /61\.1/);
+  assert.match(html, /호텔/);
+  assert.match(html, /DOUGLAS 호텔/);
+  assert.match(html, /184\.7/);
   assert.match(html, /억 원/);
-  assert.match(html, /title="6,114,218,700 원"/);
+  assert.match(html, /3개 행/);
+  assert.doesNotMatch(html, /1개 지표/);
+  assert.doesNotMatch(html, /class="analysis-kpi-section"/);
   assert.doesNotMatch(html, /Room Revenue|KRW|style=/);
 
   assert.match(modalSource, /import "\.\/TurnReportModal\.css"/);
-  assert.match(modalSource, /metricDisplayLabel\(metric\)/);
-  assert.match(modalSource, /userFacingAnalysisSummary\(run, valueScale\)/);
+  assert.match(modalSource, /<AnalysisStatePanel run=\{run\} viewType=\{viewType\}/);
   assert.doesNotMatch(modalSource, /style=\{\{|<dt>\{metric\.label\}|metric\.unit \|\| ""/);
   assert.match(modalStyles, /\.report-transfer-modal\{[\s\S]*--report-modal-bg:/);
   assert.match(modalStyles, /\.report-title-field input:focus-visible/);

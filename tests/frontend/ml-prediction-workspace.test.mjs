@@ -17,7 +17,7 @@ const styles = readFileSync(
   "utf8",
 );
 
-test("ML 예측 결과는 핵심 KPI를 먼저 보여주고 상세·기술 정보는 접어 둔다", async () => {
+test("ML 예측 결과는 핵심 KPI와 날짜별 카드를 먼저 보여주고 기술 정보만 접어 둔다", async () => {
   const server = await createServer({
     appType: "custom",
     cacheDir: "node_modules/.vite-ml-prediction-workspace-test",
@@ -40,7 +40,7 @@ test("ML 예측 결과는 핵심 KPI를 먼저 보여주고 상세·기술 정�
     assert.equal(mlResponseErrorMessage({ detail: { code: "UNKNOWN" } }), "ML 요청을 처리하지 못했습니다.");
     const html = renderToStaticMarkup(createElement(MLPredictionResult, {
       result: {
-        property_id: "HOTEL-SEOUL",
+        property_id: "GRAND",
         as_of: "2026-08-30",
         feature_as_of: "2026-08-29",
         model_version: "room-demand-hgbr-v2.2.0",
@@ -64,17 +64,28 @@ test("ML 예측 결과는 핵심 KPI를 먼저 보여주고 상세·기술 정�
       },
     }));
 
-    assert.match(html, /예측 요약/);
+    assert.match(html, /GRAND 호텔 객실 수요 예측/);
+    assert.match(html, /2026\.08\.31\. ~ 2026\.09\.01\. · 2일 전망/);
     assert.match(html, /기간 예상 점유율<\/span><strong>75%/);
-    assert.match(html, /누적 예상 객실 판매량<\/span><strong>150 박/);
-    assert.match(html, /title="HOTEL-SEOUL"/);
+    assert.match(html, /누적 예상 객실 판매량<\/span><strong>150 객실/);
+    assert.doesNotMatch(html, /<article><span>예측 기간<\/span>/);
+    assert.match(html, /예측 기준 2026\.08\.30\./);
+    assert.match(html, /실적 기준 2026\.08\.29\./);
+    assert.match(html, /날짜별 판매 및 점유율/);
+    assert.match(html, /class="ml-workspace__daily-cards"/);
+    assert.match(html, /<time dateTime="2026-08-31">2026\.08\.31\.<\/time>/);
+    assert.match(html, /예상 판매<\/span><strong>70 객실<\/strong>/);
+    assert.doesNotMatch(html, /<dt>누적 예상 판매<\/dt>|<dt>누적 점유율<\/dt>/);
+    assert.doesNotMatch(html, /is-cumulative/);
+    assert.doesNotMatch(html, /\s박<|\d실</);
     assert.match(html, /2026\.08\.30\./);
     assert.doesNotMatch(html, /role="img"|예상 점유율 추이|ml-workspace__chart/);
     assert.doesNotMatch(html, />2026-08-31</);
     assert.match(html, /room-demand-hgbr-v2\.2\.0/);
     assert.doesNotMatch(html, /예측 한계|불확실성 구간/);
-    assert.match(html, /<details class="ml-workspace__details">/);
-    assert.match(html, /<table>/);
+    assert.doesNotMatch(html, /<details class="ml-workspace__details">/);
+    assert.match(html, /<section class="ml-workspace__daily"/);
+    assert.doesNotMatch(html, /<table>/);
     assert.match(html, /<details class="ml-workspace__technical-details">/);
     assert.match(html, /<dt>사용 모델<\/dt><dd>room-demand-hgbr-v2\.2\.0<\/dd>/);
     assert.doesNotMatch(html, /<details[^>]+open/);

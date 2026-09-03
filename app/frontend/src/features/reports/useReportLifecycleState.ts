@@ -86,7 +86,30 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const [selectedDefinition, setSelectedDefinition] = useState<ReportDefinitionVersion | null>(null);
   const [pendingOperations, setPendingOperations] = useState<readonly PendingOperation[]>([]);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNoticeState] = useState("");
+  const noticeTimerRef = useRef<number | null>(null);
+
+  const setNotice = useCallback((message: string) => {
+    setNoticeState(message);
+    if (noticeTimerRef.current !== null) {
+      window.clearTimeout(noticeTimerRef.current);
+      noticeTimerRef.current = null;
+    }
+    if (message) {
+      noticeTimerRef.current = window.setTimeout(() => {
+        setNoticeState("");
+        noticeTimerRef.current = null;
+      }, 3000);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current !== null) {
+        window.clearTimeout(noticeTimerRef.current);
+      }
+    };
+  }, []);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DefinitionStatusFilter>("all");
   const [definitionCollection, setDefinitionCollectionState] = useState<DefinitionCollection>("active");
@@ -158,11 +181,13 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     name: string,
     action: () => Promise<T> | T,
     isCurrent: () => boolean = () => true,
+    onError?: (error: unknown) => void,
   ): Promise<T | null> => {
     const operationId = beginOperation(name);
     try {
       return await action();
     } catch (nextError) {
+      onError?.(nextError);
       if (isCurrent()) {
         setError(reportApiError(nextError));
         if (name === "assistant-patch-approval" && nextError instanceof ReportApiError) {

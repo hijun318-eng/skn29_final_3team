@@ -175,6 +175,10 @@
   flex-direction: column;
 }
 
+.answer-report-page .notion-block:has(> .report-whole-artifact > .report-whole-artifact-kpis.is-comparison) > .notion-block-title--readonly {
+  margin-block-end: 3mm;
+}
+
 .report-whole-artifact {
   min-width: 0;
   min-height: 0;
@@ -205,31 +209,17 @@
 .report-whole-artifact.report-artifact-state.is-legacy p { margin: 1.2mm 0 0; color: #78623a; font-size: 7pt; line-height: 1.45; }
 
 .report-whole-artifact-heading {
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 3mm;
-}
-
-.report-whole-artifact-heading > div { min-width: 0; display: grid; gap: 0.6mm; }
-.report-whole-artifact-heading small { color: #1c69d4; font-size: 6pt; font-weight: 850; letter-spacing: 0.1em; }
-.report-whole-artifact-heading b { overflow: hidden; color: #40536d; font-size: 7pt; text-overflow: ellipsis; white-space: nowrap; }
-.report-whole-artifact-heading > span { flex: none; padding: 1mm 1.8mm; color: #1558a8; border: 0.2mm solid #c7dcf7; border-radius: 99px; background: #eef6ff; font-size: 6.5pt; font-weight: 760; }
-
-.report-whole-artifact-context {
-  margin: 0;
-  color: #62758d;
-  font-size: 6.5pt;
-  font-weight: 700;
+  display: none !important;
 }
 
 .report-whole-artifact-summary {
   margin: 0;
-  color: #263b58;
-  font-size: 8pt;
-  font-weight: 620;
-  line-height: 1.48;
+  color: #334155;
+  font-size: 8.8pt;
+  font-weight: 500;
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 .report-whole-artifact-kpis {
@@ -240,10 +230,14 @@
 }
 
 .report-whole-artifact.is-half .report-whole-artifact-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.report-whole-artifact-kpis dl { min-width: 0; margin: 0; padding: 1.6mm 1.8mm; border: 0.2mm solid #d9e4f0; border-radius: 1.5mm; background: #f6f9fd; }
+.report-whole-artifact .report-whole-artifact-kpis.is-comparison { grid-template-columns: repeat(var(--report-kpi-columns, 3), minmax(0, 1fr)); }
+.report-whole-artifact-kpis dl { min-width: 0; margin: 0; padding: 1.6mm 1.8mm; border: 0.2mm solid #d9e4f0; border-top: 0.55mm solid #1c69d4; border-radius: 1.2mm; background: #fff; }
 .report-whole-artifact-kpis dt { overflow: hidden; color: #62758d; font-size: 6.5pt; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .report-whole-artifact-kpis dt small { margin-inline-start: 1mm; color: #8393a8; font-size: 5.5pt; font-weight: 700; }
 .report-whole-artifact-kpis dd { margin: 0.8mm 0 0; color: #122b50; font-size: 10pt; font-weight: 820; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; }
+.report-whole-artifact-kpis .report-comparison-kpi dt { color: #263f60; font-size: 7.2pt; font-weight: 800; }
+.report-whole-artifact-kpis .report-comparison-kpi dd { margin-top: 1.2mm; font-size: 12pt; }
+.report-whole-artifact-kpis .report-comparison-kpi > small { display: block; margin-top: 0.8mm; color: #74869c; font-size: 5.8pt; font-weight: 700; }
 .report-whole-artifact-kpis > p,
 .report-whole-artifact-kpis > small { grid-column: 1 / -1; margin: 0; color: #6d7f95; font-size: 6.5pt; }
 

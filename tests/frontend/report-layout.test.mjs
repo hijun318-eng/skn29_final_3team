@@ -7,6 +7,17 @@ import {
   resolveDraftLayoutCollisions,
   restoreDraftLayout,
 } from "../../app/frontend/src/contracts/report.ts";
+import { sizedSideDrop } from "../../app/frontend/src/features/reports/useReportDragAndDrop.js";
+
+const halfWidthRows = [
+  { id: "table", title: "분석 표", columns: 6, type: "table", content: "{}", x: 0, y: 0, w: 6, h: 4 },
+  { id: "chart", title: "분석 차트", columns: 6, type: "chart", content: "{}", x: 0, y: 4, w: 6, h: 7 },
+];
+assert.deepEqual(
+  sizedSideDrop(halfWidthRows, "chart", 6, 7, 9, 2),
+  { target: halfWidthRows[0], edge: "right", x: 6 },
+  "the visible empty half of a row must accept a side drop",
+);
 
 const validSavedLayout = [
   { id: "summary", title: "요약", columns: 4, type: "text", content: "요약", x: 2, y: 3, w: 4, h: 4 },

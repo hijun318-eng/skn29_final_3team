@@ -13,9 +13,23 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { attachAgentResults, mlPredictionRun, ragRun } from "./agentResponseMappers";
-import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationViewType, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, hasReusablePresentationArtifact, hydrateTurnsFromServer, presentationAnalysisRun, presentationViewType, scopeNoticeRun, transientRun } from "./agentPageHelpers";
+
+const REPORT_ARTIFACT_VIEW = Object.freeze({
+  SUMMARY: "summary",
+  KPI: "kpi",
+  TABLE: "table",
+  CHART: "chart",
+  BAR: "chart",
+  LINE: "chart",
+  AREA: "chart",
+  HORIZONTAL_BAR: "chart",
+  PIE: "chart",
+  DONUT: "chart",
+});
 
 const MAX_QUESTION_LENGTH = 1000;
+const SAVED_ANALYSIS_PAGE_SIZE = 5;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
 
@@ -32,12 +46,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
   const [reportModal, setReportModal] = useState("");
   const [reportModalRun, setReportModalRun] = useState(null);
+  const [reportModalViewType, setReportModalViewType] = useState("SUMMARY");
   const [reportTitle, setReportTitle] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [savedBusy, setSavedBusy] = useState(false);
   const [definitions, setDefinitions] = useState([]);
   const [definitionQuery, setDefinitionQuery] = useState("");
-  const [visibleDefinitionCount, setVisibleDefinitionCount] = useState(10);
   const requestInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const activeTraceId = useRef("");
@@ -55,10 +69,12 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
 
   const filteredDefinitions = useMemo(() => {
     const normalized = definitionQuery.trim().toLocaleLowerCase("ko-KR");
-    return definitions.filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
+    return definitions
+      .slice(0, SAVED_ANALYSIS_PAGE_SIZE)
+      .filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
   }, [definitionQuery, definitions]);
 
-  const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
+  const visibleDefinitions = filteredDefinitions;
   const latestArtifactTurn = useMemo(
     () => [...turns].reverse().find((turn) => turn.run?.artifact) || null,
     [turns],
@@ -221,7 +237,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       turnId: `temp-${Date.now()}`,
       question: normalized,
       run: canReuseArtifact
-        ? { ...sourceRun, question: normalized, status: "success", traceId, elapsedSeconds: 0 }
+        ? presentationAnalysisRun(sourceRun, { question: normalized, status: "success", traceId, elapsedSeconds: 0 })
         : { ...transientRun(normalized, "running"), traceId, chatPending: true },
       resolvedSlots: null,
       viewType: canReuseArtifact ? action.presentation_type : null,
@@ -362,12 +378,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
             required_action: "NONE",
           });
         } else {
-          finalRun = {
-            ...sourceRun,
+          finalRun = presentationAnalysisRun(sourceRun, {
             question: normalized,
             status: "success",
             viewSpecId: serverTurn?.view_spec_id,
-          };
+          });
         }
       } else if (isPresentationAction) {
         finalRun = commandErrorRun(normalized, {
@@ -529,7 +544,11 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
     if (!artId) return;
     setFeedback(null);
     try {
-      await reportClient.createDraftFromArtifact(artId, reportTitle.trim() || reportTitleForAnalysis(reportModalRun));
+      await reportClient.createDraftFromArtifact(
+        artId,
+        reportTitle.trim() || reportTitleForAnalysis(reportModalRun),
+        REPORT_ARTIFACT_VIEW[String(reportModalViewType).toUpperCase()],
+      );
       setReportModal("");
       onNavigate("/reports");
     } catch (error) { setFeedback({ tone: "error", message: error instanceof Error ? error.message : "보고서 초안을 저장하지 못했습니다." }); }
@@ -552,7 +571,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
         <p>저장된 분석</p>
         <label className="saved-analysis-search">
           <span className="sr-only">저장된 분석 검색</span>
-          <input value={definitionQuery} onChange={(e) => { setDefinitionQuery(e.target.value); setVisibleDefinitionCount(10); }} placeholder="저장 분석 검색" />
+          <input value={definitionQuery} onChange={(e) => setDefinitionQuery(e.target.value)} placeholder="저장 분석 검색" />
         </label>
         {visibleDefinitions.length === 0 && <small className="chat-history-empty">아직 저장된 분석이 없습니다.</small>}
         {visibleDefinitions.map((d) => (
@@ -560,9 +579,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
             <MessageSquareText size={15} /><span>{d.question}<small>다시 분석하기</small></span>
           </button>
         ))}
-        {filteredDefinitions.length > visibleDefinitionCount && (
-          <button type="button" className="saved-analysis-more" onClick={() => setVisibleDefinitionCount((c) => c + 10)}>더 보기</button>
-        )}
       </aside>
 
       {/* 중앙: 대화 스레드 메인 */}
@@ -597,7 +613,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
                     {!turnItem.run.scopeNotice && !(turnItem.run.chatPending && !turnItem.processViewModel) && (
-                      <AgentExecutionBar run={turnItem.run} />
+                      <AgentExecutionBar run={turnItem.run} processViewModel={turnItem.processViewModel} />
                     )}
                     {turnItem.run.scopeNotice ? (
                       <div className="scope-notice-response" role="status">
@@ -609,8 +625,9 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         <RagAnswerCard
                           rag={turnItem.run.rag}
                           pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
+                            documentId: item.document_id || "",
                             label: item.document_name || "근거 문서",
-                            url: item.document_id ? analysisClient.manualSourceUrl(item.document_id) : "",
+                            url: item.document_id ? analysisClient.manualPreviewUrl(item.document_id) : "",
                           }))}
                           onFollowUp={turnItem.turnId === turns.at(-1)?.turnId
                             ? (followUp) => void analyzeQuestion(followUp, {
@@ -621,7 +638,6 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         />
                         {turnItem.run.mlPrediction && (
                           <section className="composite-agent-result" aria-label="객실 수요 예측">
-                            <small className="agent-result-type">객실 수요 예측</small>
                             <div className="ml-conversation-result">
                               <MLPredictionResult result={turnItem.run.mlPrediction} />
                             </div>
@@ -639,7 +655,10 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                         <span aria-hidden="true"><i /><i /><i /></span>
                         <p>답변을 준비하고 있어요</p>
                       </div>
-                    ) : <AnalysisStatePanel
+                    ) : turnItem.run.chatPending
+                      && turnItem.processViewModel?.agentTasks?.length
+                      && turnItem.processViewModel.steps.every((step) => step.state === "pending") ? null
+                    : <AnalysisStatePanel
                       run={turnItem.run}
                       viewType={turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY"}
                       artifactReuse={turnItem.isArtifactReuse ? {
@@ -650,26 +669,14 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
-                      onRequestBarPresentation={() => void analyzeQuestion(
-                        "호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘.",
-                        {
-                          requested_route: "PRESENTATION",
-                          presentation_type: "HORIZONTAL_BAR",
-                          inherit_previous_context: true,
-                        },
-                        turnItem,
-                      )}
                       onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
                       onSave={["success", "partial"].includes(turnItem.run.status) && !turnItem.isArtifactReuse ? () => void saveAnalysis(turnItem.run) : undefined}
                       saveDisabled={savedBusy}
                       onCreateReportDraft={canDraftReport && turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
                         setReportModalRun(turnItem.run);
+                        setReportModalViewType(turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY");
                         setReportTitle(reportTitleForAnalysis(turnItem.run));
                         setReportModal("draft");
-                      } : undefined}
-                      onPreview={canDraftReport && turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
-                        setReportModalRun(turnItem.run);
-                        setReportModal("preview");
                       } : undefined}
                       onOpenEvidence={turnItem.run.artifact ? () => {
                         setSelectedEvidenceRun(turnItem.run);
@@ -678,19 +685,23 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
                     />}
                     {turnItem.run.rag && turnItem.run.evidence && (
                       <section className="composite-agent-result" aria-label="내부 문서 근거">
-                        <small className="agent-result-type">내부 문서 근거</small>
+                        <header className="composite-agent-result__header">
+                          <small>내부 문서</small>
+                          <h3>운영 보고서 참고 내용</h3>
+                          <p>분석 결과와 함께 확인할 내부 근거입니다.</p>
+                        </header>
                         <RagAnswerCard
                           rag={turnItem.run.rag}
                           pdfSources={(turnItem.run.rag.evidence_bundle || []).map((item) => ({
+                            documentId: item.document_id || "",
                             label: item.document_name || "근거 문서",
-                            url: item.document_id ? analysisClient.manualSourceUrl(item.document_id) : "",
+                            url: item.document_id ? analysisClient.manualPreviewUrl(item.document_id) : "",
                           }))}
                         />
                       </section>
                     )}
                     {turnItem.run.mlPrediction && turnItem.run.evidence && (
                       <section className="composite-agent-result" aria-label="객실 수요 예측">
-                        <small className="agent-result-type">객실 수요 예측</small>
                         <div className="ml-conversation-result">
                           <MLPredictionResult result={turnItem.run.mlPrediction} />
                         </div>
@@ -759,6 +770,7 @@ export function AgentPage({ canDraftReport = false, enabledFeatures = [], onNavi
       {canDraftReport && <TurnReportModal
         mode={reportModal}
         run={reportModalRun || activeEvidenceRun}
+        viewType={reportModalViewType}
         title={reportTitle}
         onTitleChange={setReportTitle}
         onConfirm={() => void createReportDraft()}

@@ -222,6 +222,10 @@ async def create_artifact_draft(
     views = _artifact_visible_views(artifact)
     if not source_title or not views:
         raise ValueError("승인 Artifact에 보고서로 만들 수 있는 원자 view가 없습니다.")
+    if payload.preferred_view is not None:
+        if payload.preferred_view not in views:
+            raise ValueError("선택한 Artifact 보기를 보고서로 만들 수 없습니다.")
+        views = [payload.preferred_view]
     blocks: list[ReportBlock] = []
     view_widths = {"summary": 6, "kpi": 6, "chart": 12, "table": 12}
     row_x = row_y = row_height = 0

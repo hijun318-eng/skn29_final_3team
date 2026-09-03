@@ -110,6 +110,7 @@ class CreateReportFromArtifactRequest(ReportContractModel):
     """기존 분석 산출물 ID와 사용자 제목으로 첫 보고서 정의를 생성하도록 요청한다."""
     artifact_id: UUID
     title: str = Field(min_length=1, max_length=255)
+    preferred_view: Literal["summary", "kpi", "chart", "table"] | None = None
 
     @field_validator("title", mode="before")
     @classmethod

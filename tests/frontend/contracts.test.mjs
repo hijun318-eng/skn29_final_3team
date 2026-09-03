@@ -141,7 +141,7 @@ const analysisPanelSource = [
   source("components/analysis/AnalysisFailureState.tsx"),
 ].join("\n");
 assert.match(analysisPanelSource, /분석 취소/);
-assert.match(analysisPanelSource, /서버가 반환한 실행 트레이스를 업무 단계로 묶어 표시합니다/);
+assert.doesNotMatch(analysisPanelSource, /서버가 확인한 현재 상태와 경과 시간|서버가 반환한 실행 트레이스를 업무 단계로 묶어 표시합니다/);
 assert.doesNotMatch(analysisPanelSource, /ANALYSIS_PHASES|modelCount/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /supportedChartType/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /문의 코드/);
@@ -204,6 +204,11 @@ assert.match(source("pages/AdminPage.jsx"), /client\.listConnections\(pausedConn
 assert.match(source("pages/AdminPage.jsx"), /role="switch"/);
 assert.match(source("pages/AdminPage.jsx"), /aria-checked=\{enabled\}/);
 assert.match(source("pages/AdminPage.jsx"), /CONNECTION_VISUALS/);
+assert.match(source("pages/AdminPage.jsx"), /"rag-knowledge": \{ icon: BookOpenText, tone: "rag", label: "pgvector" \}/);
+assert.match(source("pages/AdminPage.jsx"), /CORE_OPERATION_CONNECTION_IDS/);
+assert.match(source("pages/AdminPage.jsx"), /admin-connection-story__flow/);
+assert.match(source("pages/AdminPage.jsx"), /기타 연결 및 지원 서비스/);
+assert.match(source("pages/AdminPage.jsx"), /readyCoreCount/);
 assert.match(source("pages/AdminPage.jsx"), /client\.listAccounts\(accountPage, accountSearch\)/);
 assert.match(source("pages/AdminPage.jsx"), /<AuditTrailPanel client=\{client\}/);
 assert.match(source("App.jsx"), /const adminClient = useMemo\(\(\) => canUseAdmin \? createAdminClient\(undefined, fetch\) : null, \[canUseAdmin\]\)/);
@@ -217,6 +222,9 @@ assert.doesNotMatch(source("pages/AdminPage.jsx"), /<option value="(?:report_adm
 assert.match(source("pages/AdminPage.jsx"), /accountForm\.role === modal\.account\.role \? \{\} : \{ role: accountForm\.role \}/);
 assert.match(globalStyles, /\.admin-console\{display:grid;gap:18px;padding-top:22px\}/);
 assert.match(globalStyles, /\.admin-connection-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+assert.match(globalStyles, /\.admin-connection-summary\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+assert.match(globalStyles, /\.admin-connection-story__flow\{[^}]*grid-template-columns:minmax\(0,2fr\) 104px minmax\(240px,\.8fr\)/);
+assert.match(globalStyles, /\.admin-connection-support-grid\{grid-template-columns:repeat\(auto-fit,minmax\(220px,1fr\)/);
 assert.match(globalStyles, /\.admin-data-table__head,\.admin-data-table__row\{[^}]*display:grid/);
 assert.match(globalStyles, /\.ppt-theme \.admin-console__tabs button\.is-active\{/);
 assert.match(globalStyles, /@media\(max-width:700px\)\{\.admin-console\{padding-top:14px\}/);
@@ -401,9 +409,10 @@ assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
 assert.match(source("pages/AgentPage.jsx"), /className=\{`analysis-notice analysis-notice--\$\{feedback\.tone\}`\}/);
 assert.match(source("pages/AgentPage.jsx"), /reportTitleForAnalysis/);
-assert.match(source("pages/AgentPage.jsx"), /createDraftFromArtifact\(artId, reportTitle\.trim\(\) \|\| reportTitleForAnalysis\(reportModalRun\)\)/);
-assert.match(source("pages/AgentPage.jsx"), /definitions\.filter/);
-assert.match(source("pages/AgentPage.jsx"), /filteredDefinitions\.slice\(0, visibleDefinitionCount\)/);
+assert.match(source("pages/AgentPage.jsx"), /REPORT_ARTIFACT_VIEW\[String\(reportModalViewType\)\.toUpperCase\(\)\]/);
+assert.match(source("api/reportClient.ts"), /preferred_view: preferredView/);
+assert.match(source("pages/AgentPage.jsx"), /definitions[\s\S]*\.slice\(0, SAVED_ANALYSIS_PAGE_SIZE\)[\s\S]*\.filter/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /saved-analysis-more/);
 assert.match(reportSources.lifecycle, /filteredRuns\.slice\(0, visibleRunCount\)/);
 assert.match(source("styles.css"), /@media\(max-width:1200px\)[\s\S]*\.chat-layout \.evidence-panel\{position:fixed/);
 assert.doesNotMatch(source("styles.css"), /\.page-stage\{[^}]*animation:[^}]*\sboth\}/);
@@ -775,6 +784,11 @@ const hydratedComposite = hydrateTurnsFromServer([{
       answer: { text: "내부 보고서에서 확인한 하락 원인입니다." },
       evidence_bundle: [{ document_id: "REPORT-2026-08-ROOMS", document_name: "8월 객실 운영보고서" }],
     },
+    ml_prediction: {
+      status: "SUCCEEDED",
+      model_key: "generic_forecast",
+      predictions: [{ forecast_date: "2026-09-01", predicted_value: 100 }],
+    },
     supervisor_composition: {
       schema_version: "SupervisorCompositionReceipt.v1",
       plan_ref: `model-supervisor:sha256:${"b".repeat(64)}`,
@@ -783,16 +797,29 @@ const hydratedComposite = hydrateTurnsFromServer([{
       evidence_refs: [`model-supervisor:sha256:${"b".repeat(64)}`],
     },
   },
+}, {
+  turn_id: "turn-composite-chart",
+  user_message: "막대그래프로 보여줘",
+  route: "PRESENTATION",
+  terminal_status: "SUCCEEDED",
+  artifact_id: "composite-artifact",
+  view_spec_id: "view-composite-bar",
+  view_type: "BAR",
+  resolved_slots: { target_chart_type: "BAR" },
 }]);
 assert.equal(hydratedComposite[0].viewType, "SUMMARY");
 assert.equal(hydratedComposite[0].run.requestId, "composite-request");
 assert.equal(hydratedComposite[0].run.rag.answer_text, "내부 보고서에서 확인한 하락 원인입니다.");
 assert.equal(hydratedComposite[0].run.supervisorComposition.schema_version, "SupervisorCompositionReceipt.v1");
+assert.equal(hydratedComposite[1].viewType, "BAR");
+assert.equal(hydratedComposite[1].run.artifact.artifactId, "composite-artifact");
+assert.equal(hydratedComposite[1].run.rag, undefined);
+assert.equal(hydratedComposite[1].run.mlPrediction, undefined);
+assert.equal(hydratedComposite[1].run.supervisorComposition, undefined);
 assert.match(source("pages/AgentPage.jsx"), /responseType === "COMPOSITE"/);
 assert.match(source("pages/AgentPage.jsx"), /attachAgentResults\(finalRun,[\s\S]*?ragResult: ragResponse,[\s\S]*?mlPrediction,[\s\S]*?supervisorComposition/);
 assert.match(source("pages/AgentPage.jsx"), /className="composite-agent-result"/);
-assert.match(source("pages/AgentPage.jsx"), /호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘\./);
-assert.match(source("pages/AgentPage.jsx"), /requested_route: "PRESENTATION",[\s\S]*?presentation_type: "HORIZONTAL_BAR",[\s\S]*?turnItem/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /가로 막대그래프로 보기|호텔별 차이가 잘 보이게 가로 막대그래프로 바꿔줘\./);
 assert.match(source("pages/AgentPage.jsx"), /sourceArtifactId !== serverTurn\.artifact_id[\s\S]*?!sourceQueryId[\s\S]*?serverTurn\?\.query_id !== sourceQueryId[\s\S]*?!serverTurn\?\.view_spec_id/);
 
 const mismatchedPresentation = hydrateTurnsFromServer([{
@@ -883,6 +910,11 @@ const commandProgressSnapshot = {
     { stage: "CONTEXT", outcome: "PASSED" },
     { stage: "G1", outcome: "PASSED" },
   ],
+  agent_tasks: [
+    { agent: "INTERNAL_GUIDELINE", objective: "내부 운영 보고서를 검색한다.", status: "SUCCEEDED" },
+    { agent: "ML_PREDICTION", objective: "GRAND 객실 수요를 예측한다.", status: "RUNNING" },
+    { agent: "ANALYSIS_WORKFLOW", objective: "호텔별 총 운영 매출을 비교한다.", status: "PENDING" },
+  ],
 };
 const normalizedCommandProgress = normalizeConversationCommandProgress(commandProgressSnapshot);
 assert.equal(normalizedCommandProgress.traceId, "command-trace");
@@ -890,6 +922,17 @@ assert.deepEqual(normalizedCommandProgress.steps.map((step) => step.state), [
   "complete", "complete", "active", "pending", "pending", "pending",
 ]);
 assert.match(normalizedCommandProgress.steps[2].label, /SQL/);
+assert.deepEqual(normalizedCommandProgress.agentTasks, [
+  { agent: "INTERNAL_GUIDELINE", objective: "내부 운영 보고서를 검색한다.", state: "complete" },
+  { agent: "ML_PREDICTION", objective: "GRAND 객실 수요를 예측한다.", state: "active" },
+  { agent: "ANALYSIS_WORKFLOW", objective: "호텔별 총 운영 매출을 비교한다.", state: "pending" },
+]);
+const supervisorOnlyProgress = normalizeConversationCommandProgress({
+  ...commandProgressSnapshot,
+  trace: [],
+});
+assert.equal(supervisorOnlyProgress.steps.every((step) => step.state === "pending"), true);
+assert.equal(supervisorOnlyProgress.agentTasks[1].state, "active");
 
 let commandResponseResolve;
 let receivedCommandProgress = null;
@@ -1062,6 +1105,10 @@ assert.equal(ragCatalogRequest.init.headers.Authorization, "Bearer runtime-token
 assert.equal(
   ragCatalogClient.manualSourceUrl("REPORT-2026-08-ROOMS"),
   "http://backend.test/rag/documents/REPORT-2026-08-ROOMS/source",
+);
+assert.equal(
+  ragCatalogClient.manualPreviewUrl("REPORT-2026-08-ROOMS"),
+  "http://backend.test/rag/documents/REPORT-2026-08-ROOMS/preview",
 );
 
 const invalidRagCatalogClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({

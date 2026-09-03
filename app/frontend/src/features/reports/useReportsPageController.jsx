@@ -1,6 +1,7 @@
 /** 보고서 하위 hook과 memo renderer를 목록·문서·editor 화면 계약으로 합성하는 controller 모듈이다. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ReportApiError } from "../../api/reportClient.ts";
 import { toReportBlockRequest } from "../../contracts/report";
 import { createUuid } from "../../utils/createUuid.ts";
 import {
@@ -221,6 +222,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       return;
     }
     lifecycle.clearAssistantTrace();
+    lifecycle.setNotice("");
     applyDefinition(current);
     setView("document");
     await artifacts.loadArtifacts(current);
@@ -334,7 +336,8 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       return;
     }
     draft.beginSave();
-    const saved = await lifecycle.mutate("save", () => lifecycle.reportClient.replaceDraftBlocks(
+    let saveError = null;
+    let saved = await lifecycle.mutate("save", () => lifecycle.reportClient.replaceDraftBlocks(
       definition.definitionId,
       definition.version,
       persistedBlocks.map(toReportBlockRequest),
@@ -344,11 +347,48 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
         orientation: draft.reportOrientation,
         currencyDisplayUnit: draft.reportCurrencyPolicy.displayUnit,
       },
-    ));
+    ), undefined, (error) => { saveError = error; });
+    if (!saved && saveError instanceof ReportApiError && saveError.status === 409) {
+      const latest = await lifecycle.fetchDefinition(definition);
+      if (latest) {
+        saved = await lifecycle.mutate("save", () => lifecycle.reportClient.replaceDraftBlocks(
+          definition.definitionId,
+          definition.version,
+          persistedBlocks.map(toReportBlockRequest),
+          {
+            title,
+            expectedDraftRevision: latest.draftRevision,
+            orientation: draft.reportOrientation,
+            currencyDisplayUnit: draft.reportCurrencyPolicy.displayUnit,
+          },
+        ), undefined, (error) => { saveError = error; });
+        if (saved) {
+          lifecycle.setError("");
+        } else {
+          const serverCurrencyPolicy = {
+            ...DEFAULT_FRONTEND_CURRENCY_POLICY,
+            displayUnit: latest.currencyDisplayUnit || DEFAULT_FRONTEND_CURRENCY_POLICY.displayUnit,
+          };
+          applyDefinition({ ...latest, blocks: persistedBlocks }, {
+            serverBlocks: latest.blocks,
+            forceDirty: true,
+            title,
+            savedTitle: latest.title,
+            orientation: draft.reportOrientation,
+            savedOrientation: latest.orientation,
+            currencyPolicy: draft.reportCurrencyPolicy,
+            savedCurrencyPolicy: serverCurrencyPolicy,
+          });
+          lifecycle.setNotice("최신 저장본을 불러왔고 현재 편집 내용은 보존했습니다. 변경 사항을 확인한 뒤 다시 저장해 주세요.");
+          return;
+        }
+      }
+    }
     if (!saved) {
       draft.markSaveFailed();
       return;
     }
+    lifecycle.setError("");
     let localSnapshotSaved = true;
     try {
       saveFrontendDraft(window.sessionStorage, snapshot.snapshot);
@@ -536,6 +576,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     }
     const definition = lifecycle.selectedDefinition;
     if (!definition) return;
+    lifecycle.setNotice("");
     lifecycle.selectDefinition({ ...definition, blocks: [...draft.blocks] });
     setView("document");
     void artifacts.loadArtifacts({ ...definition, blocks: [...draft.blocks] });
@@ -545,6 +586,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
       lifecycle.setError("삭제된 보고서는 읽기 전용입니다. 복원한 뒤 편집해 주세요.");
       return;
     }
+    lifecycle.setNotice("");
     const focus = () => focusReportBlock(dnd.pageCanvasRefs, draft.selectedBlockId);
     if (lifecycle.selectedDefinition?.status === "draft") {
       setView("editor");
@@ -669,10 +711,10 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
   } = draft;
   const renderEditorBlock = useCallback((layoutBlock, context) => {
     const block = layoutBlock.sourceBlock || layoutBlock;
-    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} isDraft={canEdit} selected={editorTools.selectedBlockIds.has(block.id)} primary={draft.selectedBlockId === block.id} dragging={dnd.draggedBlockIds.has(block.id)} groupTransform={dnd.draggedBlockId !== block.id && dnd.draggedBlockIds.has(block.id) ? dnd.dragDelta : null} locked={editorTools.lockedBlockIds.has(block.id)} onSelect={editorTools.selectBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={editorTools.deleteBlock} onToggleLock={editorTools.toggleBlockLock} onRetryArtifact={artifacts.retryArtifact} />;
+    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} orientation={draft.reportOrientation} isDraft={canEdit} selected={editorTools.selectedBlockIds.has(block.id)} primary={draft.selectedBlockId === block.id} dragging={dnd.draggedBlockIds.has(block.id)} groupTransform={dnd.draggedBlockId !== block.id && dnd.draggedBlockIds.has(block.id) ? dnd.dragDelta : null} locked={editorTools.lockedBlockIds.has(block.id)} onSelect={editorTools.selectBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={editorTools.deleteBlock} onToggleLock={editorTools.toggleBlockLock} onRetryArtifact={artifacts.retryArtifact} />;
   }, [
     artifactStateFor, artifacts.artifacts, artifacts.retryArtifact, canEdit,
-    dnd.dragDelta, dnd.draggedBlockId, dnd.draggedBlockIds, draft.selectedBlockId,
+    dnd.dragDelta, dnd.draggedBlockId, dnd.draggedBlockIds, draft.reportOrientation, draft.selectedBlockId,
     duplicateDraftBlock, editorTools, moveDraftBlock, reportCurrency,
     resizeDraftBlock, setDraftBlockSetting, updateDraftBlock,
   ]);

@@ -1,7 +1,6 @@
 /** 분석 실행 상태와 governed 결과·근거를 사용자 화면으로 표현하는 모듈이다. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3,
   LoaderCircle,
   StopCircle,
 } from "lucide-react";
@@ -74,8 +73,6 @@ export function AnalysisStatePanel({
   onSave,
   onCreateReportDraft,
   onOpenEvidence,
-  onPreview,
-  onRequestBarPresentation,
   artifactReuse = null,
   processViewModel = null,
   saveDisabled = false,
@@ -90,8 +87,6 @@ export function AnalysisStatePanel({
   onSave?: () => void;
   onCreateReportDraft?: () => void;
   onOpenEvidence?: () => void;
-  onPreview?: () => void;
-  onRequestBarPresentation?: () => void;
   artifactReuse?: { pending?: boolean; viewSpecId?: string | null } | null;
   processViewModel?: AnalysisProcessViewModel | null;
   saveDisabled?: boolean;
@@ -106,7 +101,6 @@ export function AnalysisStatePanel({
   const [elapsed, setElapsed] = useState(0);
   const terminalStateRef = useRef<HTMLElement | null>(null);
   const [tableSort, setTableSort] = useState<TableSort>({ column: "", direction: "" });
-  const [chartDisplayOverride, setChartDisplayOverride] = useState("");
 
   const normalizedViewType = (viewType || "SUMMARY").toUpperCase();
   const isSummaryMode = normalizedViewType === "SUMMARY";
@@ -121,8 +115,6 @@ export function AnalysisStatePanel({
     ? "regular"
     : analysisResultDensity(run, normalizedViewType);
   const widthClass = `analysis-state--${resultDensity}-width`;
-  // 차트 표현 전환은 서버가 확정한 차트 보기 요청에서만 제공한다. 기본 요약·KPI·전체 보기에는 노출하지 않는다.
-  const showChartDisplayControls = isChartMode;
   const displayedProcessViewModel = processViewModel ?? createAnalysisProcessViewModel({
     kind: isPresentationPending ? "PRESENTATION" : "ANALYSIS",
     status: "running",
@@ -147,16 +139,6 @@ export function AnalysisStatePanel({
     && chart.yFields.every((field) => chartColumns.has(field)),
   );
   const canRenderChart = supportedChartType && chartFieldsMatchTable && (table?.rows?.length ?? 0) > 0;
-  const isBarPresentation = ["BAR", "HORIZONTAL_BAR"].includes(normalizedViewType)
-    || (normalizedViewType === "CHART" && ["bar", "horizontal-bar"].includes(chartType));
-  const canRequestBarPresentation = Boolean(
-    onRequestBarPresentation
-    && run.artifact?.artifactId
-    && run.artifact?.queryId
-    && chart
-    && chartFieldsMatchTable
-    && !isBarPresentation,
-  );
   // KPI·차트·표가 같은 통화 배율을 쓰도록 결과 한 건당 한 번만 배율을 정한다.
   const valueScale = useMemo(
     () => createAnalysisValueScale(run.metrics ?? [], table?.rows ?? []),
@@ -175,19 +157,7 @@ export function AnalysisStatePanel({
   const hasLongCategories = Boolean(chart && table?.rows?.some((row) => [...String(row[chart.xField] ?? "")].length > 10));
   const defaultChartDisplayType = chartType === "bar" && hasLongCategories ? "horizontal-bar" : chartType;
 
-  const chartDisplayOptions = [
-    { type: "bar", label: "세로 막대" },
-    { type: "horizontal-bar", label: "가로 막대" },
-    { type: "line", label: "선 그래프" },
-    { type: "area", label: "영역 차트" },
-    ...(["pie", "donut"].includes(chartType)
-      ? [{ type: "pie", label: "원형" }, { type: "donut", label: "도넛" }]
-      : []),
-  ];
-
-  const chartDisplayType = chartDisplayOptions.some((option) => option.type === chartDisplayOverride)
-    ? chartDisplayOverride
-    : defaultChartDisplayType;
+  const chartDisplayType = defaultChartDisplayType;
   const chartHeight = chartDisplayType === "horizontal-bar"
     ? Math.max(280, Math.min(420, (table?.rows?.length ?? 0) * 46 + 54))
     : 280;
@@ -213,10 +183,6 @@ export function AnalysisStatePanel({
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     return () => window.clearInterval(timer);
   }, [isPresentationPending, run.elapsedSeconds, run.traceId, viewState]);
-
-  useEffect(() => {
-    setChartDisplayOverride("");
-  }, [chartType, run.traceId]);
 
   useEffect(() => {
     if (!run.error || viewState === "LOADING" || viewState === "DELAYED") return undefined;
@@ -284,10 +250,7 @@ export function AnalysisStatePanel({
                     supportedChartType={supportedChartType}
                     hasTableColumns={hasTableColumns}
                     chartTitle={chartTitle}
-                    chartDisplayOptions={chartDisplayOptions}
                     chartDisplayType={chartDisplayType}
-                    showDisplayControls={showChartDisplayControls}
-                    setChartDisplayOverride={setChartDisplayOverride}
                     chartLines={chartLines}
                     chartHeight={chartHeight}
                     chartDescription={chartDescription}
@@ -328,17 +291,13 @@ export function AnalysisStatePanel({
                   supportedChartType={supportedChartType}
                   hasTableColumns={hasTableColumns}
                   chartTitle={chartTitle}
-                  chartDisplayOptions={chartDisplayOptions}
                   chartDisplayType={chartDisplayType}
-                  showDisplayControls={false}
-                  setChartDisplayOverride={setChartDisplayOverride}
                   chartLines={chartLines}
                   chartHeight={chartHeight}
                   chartDescription={chartDescription}
                   columnLabel={columnLabel}
                   valueScale={valueScale}
                   chartCurrencyField={chartCurrencyField}
-                  showAsOf={false}
                 />}
                 {hasTableRows && <AnalysisDataSection
                   run={run}
@@ -362,22 +321,8 @@ export function AnalysisStatePanel({
             onSave={onSave}
             onCreateReportDraft={onCreateReportDraft}
             onOpenEvidence={onOpenEvidence}
-            onPreview={onPreview}
             saveDisabled={saveDisabled}
           />}
-          {!isPresentationPending && (canRequestBarPresentation || artifactReuse?.viewSpecId) && (
-            <div className="analysis-presentation-actions">
-              {canRequestBarPresentation && (
-                <button type="button" onClick={onRequestBarPresentation}>
-                  <BarChart3 size={14} aria-hidden="true" />
-                  가로 막대그래프로 보기
-                </button>
-              )}
-              {artifactReuse?.viewSpecId && (
-                <span role="status">기존 분석 재사용 · 새 분석 쿼리 없음</span>
-              )}
-            </div>
-          )}
         </div>
       )}
     </section>

@@ -9,24 +9,12 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
-![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?logo=sqlalchemy&logoColor=white)
-![Alembic](https://img.shields.io/badge/Alembic-Migration-6BA81E)
-<br />
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111111)
-![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
-![Recharts](https://img.shields.io/badge/Recharts-3.10-22B5BF)
-![Nginx](https://img.shields.io/badge/Nginx-1.28-009639?logo=nginx&logoColor=white)
 <br />
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)
-![SQL Server](https://img.shields.io/badge/SQL_Server-2022-CC2927?logo=microsoftsqlserver&logoColor=white)
-![ClickHouse](https://img.shields.io/badge/ClickHouse-FFCC01?logo=clickhouse&logoColor=111111)
 ![Trino](https://img.shields.io/badge/Trino-483-DD00A1?logo=trino&logoColor=white)
 ![DataHub](https://img.shields.io/badge/DataHub-1.7-5A67D8)
-<br />
 ![SQLGlot](https://img.shields.io/badge/SQLGlot-30.17-4B5563)
-![pgvector](https://img.shields.io/badge/pgvector-Vector_DB-336791?logo=postgresql&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-1.9-F7931E?logo=scikitlearn&logoColor=white)
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
 [제품 문서](docs/README.md) · [PRD](docs/product/01_PRD.md) · [사용자 흐름](docs/product/02_유저플로우.md) · [아키텍처](docs/product/03_아키텍처.md)
@@ -35,7 +23,33 @@
 
 ---
 
-## Answervice란?
+## 목차
+
+1. [한눈에 보기](#한눈에-보기)
+2. [왜 Answervice인가?](#왜-answervice인가)
+3. [사용자는 이렇게 분석합니다](#사용자는-이렇게-분석합니다)
+4. [주요 기능](#주요-기능)
+5. [현재 구현 범위](#현재-구현-범위)
+6. [시스템 아키텍처](#시스템-아키텍처)
+7. [기술 스택](#기술-스택)
+8. [저장소 구조](#저장소-구조)
+9. [팀 구성](#팀-구성)
+10. [문서 안내](#문서-안내)
+
+## 한눈에 보기
+
+| 궁금한 점 | 답변 |
+|---|---|
+| 무엇을 만드는가? | 여러 업무 시스템의 데이터를 자연어로 분석하고, 결과와 근거를 보고서로 이어 주는 기업용 데이터 분석 서비스 |
+| 누가 사용하는가? | 데이터 질문을 실행·저장하는 **분석 사용자**와 결과를 검토·승인하는 **보고서 관리자** |
+| 무엇을 입력하는가? | 지표, 기간, 비교 대상과 조건을 담은 한국어 업무 질문 |
+| 무엇을 받는가? | 설명, KPI, 차트, 표와 함께 기간·필터·지표 정의·데이터 출처·query 추적 정보 |
+| 무엇이 다른가? | AI가 낸 SQL을 바로 실행하지 않고, 승인된 metadata·권한·SQL 정책을 통과한 읽기 전용 분석만 수행 |
+| 어떤 데이터를 쓰는가? | 실제 고객 정보가 아닌 교육용 **합성 호텔 데이터** |
+
+> **한 문장으로:** 데이터베이스나 SQL을 몰라도 업무 언어로 질문하되, 답이 어떤 기준과 데이터에서 나왔는지 다시 확인할 수 있게 만드는 프로젝트입니다.
+
+## 왜 Answervice인가?
 
 호텔의 운영 데이터는 PMS, POS, CRM, 시설, 연회 시스템에 나뉘어 있습니다. 현업 담당자가 하나의 질문에 답하려면 여러 부서에서 자료를 모으고, 서로 다른 기준을 맞추고, 결과를 다시 표와 보고서로 옮겨야 합니다.
 
@@ -47,25 +61,67 @@
 | 기존 업무의 문제 | Answervice가 제공하는 방식 |
 |---|---|
 | 데이터가 시스템별로 분산됨 | Trino를 통한 5개 업무 원천의 연합 조회 |
-| 같은 지표도 계산 기준이 달라짐 | DataHub 용어·자산과 Runtime Catalog 기반의 승인된 의미 사용 |
+| 같은 지표도 계산 기준이 달라짐 | DataHub 용어·자산과 Runtime Catalog 기반의 승인된 지표 정의 사용 |
 | SQL 작성과 검증에 전문 인력이 필요함 | 다단계 AI 분석과 결정론적 SQL Guard 결합 |
-| 결과의 출처와 조건을 다시 확인하기 어려움 | 기간·필터·Metric·데이터셋·query ID를 Artifact에 함께 보존 |
-| 분석 결과를 보고서로 다시 옮겨야 함 | 분석 Artifact를 보고서 초안·승인본·HTML/PDF로 연결 |
+| 결과의 출처와 조건을 다시 확인하기 어려움 | 기간·필터·업무 지표·데이터셋·query ID를 분석 결과 묶음에 함께 보존 |
+| 분석 결과를 보고서로 다시 옮겨야 함 | 검증된 분석 결과를 보고서 초안·승인본·HTML/PDF로 연결 |
 
-## 핵심 사용자 경험
+정해진 KPI를 같은 화면에서 반복 조회하는 일은 기존 BI가 더 적합합니다. Answervice는 **기존 대시보드에 없는 교차 질문을 안전하게 분석하고, 그 결과를 저장·재실행·보고서에 재사용하는 상황**에 집중합니다.
+
+### 다루는 호텔 업무 데이터
+
+| 업무 영역 | 원천 시스템 | 분석 예시 |
+|---|---|---|
+| 객실 | PMS · PostgreSQL | 객실 매출, 투숙·예약 기준 비교 |
+| 식음료 | POS · MySQL | 업장·기간별 식음료 매출 비교 |
+| 고객 | CRM · Microsoft SQL Server | 거래 시점의 회원 등급을 반영한 고객군 분석 |
+| 시설 | Facility · ClickHouse | 유료시설 이용·매출 추이 분석 |
+| 연회 | Banquet · PostgreSQL | 행사·기간별 연회 실적 분석 |
+
+각 원천은 애플리케이션이 직접 수정하지 않습니다. Trino가 승인된 범위만 읽기 전용으로 조회하고, DataHub가 업무 용어와 데이터 자산의 의미·관계를 제공합니다.
+
+## 사용자는 이렇게 분석합니다
 
 ```text
-로그인 → 자연어 질문 → 기준 확인 → 읽기 전용 분석 → KPI·차트·표·근거 확인
-       → 분석 저장·재실행 → 보고서 편집 → 승인·HTML/PDF 출력
+① 질문하기       ② 기준 확인         ③ 안전하게 분석       ④ 결과 이해          ⑤ 업무에 재사용
+업무 언어 입력 → 지표·기간·권한 확인 → SQL 생성·정책 검증 → KPI·차트·표·근거 → 저장·재실행·보고서
 ```
 
-- **대화형 데이터 분석**: 한국어 질문과 제한된 멀티턴 문맥을 구조화해 새로운 분석 또는 기존 결과의 표현 변경으로 구분합니다.
-- **Governed Text-to-SQL**: 모델이 만든 후보를 그대로 실행하지 않고 승인 Context, SQL AST, 자산·컬럼·JOIN·함수·조회량 정책으로 다시 검증합니다.
-- **다중 원천 통합**: PostgreSQL, MySQL, Microsoft SQL Server, ClickHouse에 분산된 호텔 데이터를 Trino에서 읽기 전용으로 조회합니다.
-- **설명 가능한 결과**: 요약뿐 아니라 KPI, 차트, 표, 기간, 필터, Metric, 데이터 출처와 query 추적 정보를 하나의 Artifact로 제공합니다.
-- **분석 재사용**: 분석 정의를 저장하고 현재 권한·데이터·정책으로 다시 실행해 과거 SQL이나 결과를 새 실행처럼 재사용하지 않습니다.
-- **보고서 워크플로**: 드래그 앤 드롭 편집, 버전 관리, 승인, 수동·예약 실행, Assistant 제안 승인, HTML·PDF 문서화를 지원합니다.
-- **역할 기반 접근 제어**: 분석 사용자와 보고서 관리자의 화면·API·객체 소유권을 서버의 Capability 정책으로 분리합니다.
+1. **질문하기** — 분석 사용자가 지표·기간·비교 조건을 평소 업무 표현으로 입력합니다.
+2. **기준 확인** — 표현이 모호하거나 승인 범위를 벗어나면 추측해 실행하지 않고, 선택 가능한 기준이나 수정 방법을 안내합니다.
+3. **안전하게 분석** — 질문을 승인된 업무 지표(Metric)와 데이터 자산에 연결하고, 생성된 SQL의 읽기 전용 여부·컬럼·JOIN·함수·조회량을 검사합니다.
+4. **결과 이해** — 설명, KPI, 차트와 표를 보여 주고 사용한 기간·필터·지표·데이터셋·query ID를 같은 결과에 묶습니다.
+5. **업무에 재사용** — 분석 정의를 저장해 현재 권한과 최신 승인 데이터로 다시 실행하고, 검증된 결과를 보고서 초안과 승인 흐름에 연결합니다.
+
+### 역할별 경험
+
+| 역할 | 할 수 있는 일 | 안전 경계 |
+|---|---|---|
+| 분석 사용자 (`analyst`) | 자연어 분석, 기준 확인, 결과·근거 열람, 분석 저장·재실행, 자신의 보고서 초안 작성 | 모든 질문이나 임의 SQL이 아니라 현재 권한과 승인 catalog 범위만 사용 |
+| 보고서 관리자 (`report_admin`) | 제출된 보고서 검토·승인·반려, 승인 버전 실행과 이력 확인 | 분석 사용자의 데이터 권한을 우회하거나 임의 자연어 분석을 실행하지 않음 |
+
+### 결과 한 건에 함께 담기는 것
+
+| 결과 구성 | 사용자가 확인하는 내용 |
+|---|---|
+| 요약 | 질문에 대한 핵심 해석과 비교 결과 |
+| KPI · 차트 · 표 | 같은 검증 결과를 목적에 맞는 형태로 표현한 값 |
+| 분석 조건 | 확정된 기간, 필터, 비교 기준과 집계 단위 |
+| 의미 근거 | 사용한 업무 지표의 정의·단위와 승인된 DataHub 자산 |
+| 실행 근거 | query ID, 분석 결과(Artifact) 식별자와 정책 Gate 결과 |
+
+## 주요 기능
+
+| 기능 | 사용자 가치 | 구현의 핵심 |
+|---|---|---|
+| 자연어 데이터 분석 | SQL 없이 새로운 업무 질문을 시작 | 질문 해석 → 승인 Context 결속 → Text-to-SQL |
+| 모호성 확인과 안전 차단 | 잘못된 기준으로 그럴듯한 숫자를 만드는 일을 방지 | 기간·Metric·권한·데이터 범위를 서버에서 확정 |
+| 다중 원천 연합 조회 | 여러 시스템의 데이터를 한 분석에서 비교 | Trino와 5개 read-only Source DB |
+| 설명 가능한 분석 결과 | 숫자의 의미와 출처를 함께 검토 | Safe Result, Artifact, DataHub lineage |
+| 분석 저장과 재실행 | 반복 보고 때 같은 분석 정의를 재사용 | Definition·Run·Artifact 분리, 현재 권한 재검증 |
+| 보고서 워크플로 | 분석 결과를 복사하지 않고 보고서 자산으로 연결 | 블록 편집, 버전, 승인·반려, 실행 이력, HTML/PDF |
+| 내부 지침 검색 | 내부 매뉴얼의 근거 문단과 함께 답변 | pgvector 기반 evidence-bound RAG, 선택 기능 |
+| 객실 수요 예측 | 최대 7일의 객실 수요 후보를 별도 기능으로 확인 | HGBR 모델 artifact, 선택 기능 |
 
 ## 현재 구현 범위
 

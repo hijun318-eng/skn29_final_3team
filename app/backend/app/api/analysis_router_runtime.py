@@ -22,7 +22,10 @@ from src.modelops.runtime_config import (
 
 
 def routing_service() -> RoutingService:
-    """DB가 구성되면 승인 template 저장소를 쓰고, 없으면 일반 분석만 허용하는 라우터를 만든다."""
+    """[책임] 템플릿 저장소 DB 연결 여부에 따라 라우팅 서비스 인스턴스를 생성한다.
+    - 입출력: 환경변수 APP_RUNTIME_DATABASE_URL 참조 → 구성된 RoutingService 인스턴스 반환
+    - 주의조건: DB URL 부재 시 인메모리 기본 RoutingService를 반환하여 템플릿 쿼리 비활성화
+    """
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
     if database_url:
         return RoutingService.from_database(database_url)
@@ -30,12 +33,9 @@ def routing_service() -> RoutingService:
 
 
 def data_platform():
-    """Active RuntimeCatalogProjection, DataHub Search와 TLS Trino 어댑터를 구성한다.
-
-    Trino 사용자·비밀번호·CA가 비어 있거나 HTTPS 검증을 구성할 수 없으면 어댑터 생성이
-    실패한다. 요청 catalog는 DB active pointer에서만 읽고 DataHub 전체 read-back은
-    readiness parity에만 사용한다. 질문 경로는 bounded Search만 수행하며 projection 부재를
-    live catalog fallback으로 숨기지 않는다.
+    """[책임] DataHub 카탈로그 프로젝션과 TLS Trino 어댑터를 결합한 데이터 플랫폼 인스턴스를 구성한다.
+    - 입출력: 환경변수(DB, Trino, 릴리스 계약) 참조 → GovernedDataPlatformAdapter 반환
+    - 주의조건: DB URL 또는 Trino 인증 정보 누락, TLS CA 파일 부재 시 RuntimeError 발생
     """
     from app.adapters.governed_data_platform import GovernedDataPlatformAdapter
     from app.adapters.runtime_catalog_repository import (

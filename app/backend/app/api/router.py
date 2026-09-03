@@ -577,7 +577,10 @@ async def create_conversation(
     payload: dict[str, Any] = Body(...),
     context: RequestContext = Depends(session_context),
 ) -> dict[str, Any]:
-    """새로운 분석 대화방을 생성한다."""
+    """[책임] 사용자 세션을 검증하고 신규 분석 대화방을 원자적으로 생성한다.
+    - 입출력: 대화방 제목 payload 및 RequestContext 수신 → 생성된 대화방 메타데이터 {"status": "SUCCESS", "data": conv} 반환
+    - 주의조건: 카탈로그 메타데이터 장애 시 503 DEPENDENCY_UNAVAILABLE 에러 반환
+    """
     from app.api.analysis_router_runtime import conversation_orchestrator
     title = str(payload.get("title") or "새 분석 대화").strip()
     orch = conversation_orchestrator(_controller())
@@ -630,7 +633,10 @@ async def execute_conversation_command(
     payload: ConversationCommandRequest,
     context: RequestContext = Depends(session_context),
 ) -> dict[str, Any]:
-    """대화방에서 분석·표현·보고서·내부지침 명령을 수행한다."""
+    """[책임] 멀티턴 대화방에서 분석/표현/보고서 명령을 오케스트레이터로 디스패치하여 실행한다.
+    - 입출력: conversation_id, ConversationCommandRequest, context 수신 → 턴 실행 결과 딕셔너리 반환
+    - 주의조건: 존재하지 않거나 권한 없는 대화방 404, 아카이브 상태 대화방은 409 CONVERSATION_ARCHIVED 반환
+    """
     from app.api.analysis_router_runtime import conversation_orchestrator
     orch = conversation_orchestrator(_controller())
     conv = await orch.get_conversation(conversation_id, context.user_id)

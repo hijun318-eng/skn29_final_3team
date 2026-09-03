@@ -1811,9 +1811,9 @@ async def create_definition(
     payload: CreateReportDefinitionRequest,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    """검증된 title·block grid·표시 설정으로 소유자 범위의 version 1 draft를 저장한다.
-
-    도메인 필드 오류와 저장 상태 충돌은 ``_call``을 통해 공개 가능한 HTTP 오류로 변환한다.
+    """[책임] 검증된 제목, 블록 레이아웃 및 표시 설정으로 소유자 범위의 신규 보고서 정의(v1 draft)를 생성한다.
+    - 입출력: CreateReportDefinitionRequest 및 RequestContext 수신 → 생성된 보고서 메타데이터 딕셔너리 반환
+    - 주의조건: 블록 수(최대 50개) 초과, 레이아웃 행 수 초과 또는 권한 부재 시 HTTP 에러 반환
     """
     return await _call(
         lambda: _router(context).create_definition(
@@ -1831,7 +1831,10 @@ async def create_draft_from_analysis_artifact(
     payload: CreateReportFromArtifactRequest,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    """분석 산출물 입력의 소유권과 필드를 검증해 draft 산출물을 생성한다."""
+    """[책임] 기존 완료된 분석 결과 아티팩트(Artifact)를 기반으로 신규 보고서 초안(Draft)을 자동 생성한다.
+    - 입출력: CreateReportFromArtifactRequest 및 RequestContext 수신 → 아티팩트가 바인딩된 보고서 정의 반환
+    - 주의조건: 아티팩트 소유권 불일치, 만료되었거나 존재하지 않는 artifact_id 인입 시 에러 발생
+    """
     return await _create_artifact_draft(_router(context), payload, _repository_call)
 
 
